@@ -732,6 +732,9 @@ body.nav-editing {
         </button>
     </div>
     <div class="top-fab-area" id="top-fab-area">
+        <button class="settings-fab" id="tt-lang-btn" onclick="ttOpenLang()" title="表示言語を切り替え"><!-- translation-v1 -->
+            <span class="material-symbols-outlined">language</span>
+        </button>
         <button class="settings-fab" id="update-log-btn">
             <span class="material-symbols-outlined">notifications</span>
         </button>
@@ -4127,30 +4130,60 @@ async function auRenderTop(){
 </script>
 <!-- translation-v1: 外国人スタッフ向け翻訳入力バー -->
 <script src="/static/tt_input.js"></script>
-<!-- Google翻訳ウィジェット: ページ全体の表示言語を切り替える -->
+<!-- translation-v1: Googleウィジェットは非表示で機能だけ使う。言語切替はカスタムボタン経由。 -->
 <style>
-  #tt-translate-widget { position:fixed; top:8px; right:8px; z-index:9999; }
-  #tt-translate-widget .goog-te-gadget { font-size:0 !important; }
-  #tt-translate-widget select.goog-te-combo {
-    font-size:0.75rem; border:1.5px solid #dadce0; border-radius:8px;
-    padding:4px 8px; background:#fff; color:#202124; cursor:pointer;
-    box-shadow:0 1px 4px rgba(0,0,0,0.12); max-width:130px;
-  }
-  /* Googleウィジェットのバナーを画面下部ではなく目立たなくする */
-  .goog-te-banner-frame { display:none !important; }
-  body { top: 0 !important; }
+  #tt-translate-widget { position:fixed; top:-200px; left:-200px; width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; }
+  .goog-te-banner-frame, .skiptranslate > span { display:none !important; }
+  body { top:0 !important; }
+  /* 言語ピッカーモーダル */
+  #tt-lang-modal { position:fixed; inset:0; z-index:9800; background:rgba(0,0,0,0.4); display:none; align-items:flex-end; justify-content:center; padding-bottom:env(safe-area-inset-bottom); }
+  #tt-lang-modal.open { display:flex; }
+  #tt-lang-sheet { background:#fff; border-radius:22px 22px 0 0; width:100%; max-width:var(--page-max-width,480px); padding:20px 16px 32px; box-shadow:0 -4px 24px rgba(0,0,0,0.15); }
+  #tt-lang-sheet h3 { font-size:0.92rem; font-weight:800; color:#202124; margin:0 0 14px; text-align:center; }
+  .tt-lang-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .tt-lang-btn { padding:10px 4px; border:1.5px solid #e0e0e0; border-radius:12px; background:#fff; font-size:0.78rem; font-weight:700; color:#202124; cursor:pointer; text-align:center; line-height:1.4; transition:background .12s,border-color .12s; }
+  .tt-lang-btn:active { background:#e8f0fe; border-color:#1a73e8; }
+  .tt-lang-btn.active { background:#e8f0fe; border-color:#1a73e8; color:#1a73e8; }
+  .tt-lang-btn .tt-lang-flag { font-size:1.3rem; display:block; margin-bottom:2px; }
+  .tt-lang-reset { width:100%; margin-top:10px; padding:11px; border:1.5px solid #dadce0; border-radius:12px; background:#f8f9fa; font-size:0.82rem; font-weight:700; color:#5f6368; cursor:pointer; }
 </style>
-<div id="tt-translate-widget">
-  <div id="google_translate_element"></div>
+<div id="tt-translate-widget"><div id="google_translate_element"></div></div>
+<!-- 言語ピッカーモーダル -->
+<div id="tt-lang-modal" onclick="if(event.target===this)ttCloseLang()">
+  <div id="tt-lang-sheet">
+    <h3>🌐 表示言語を選択</h3>
+    <div class="tt-lang-grid">
+      <button class="tt-lang-btn" onclick="ttSetLang('en')"><span class="tt-lang-flag">🇺🇸</span>English</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('zh-CN')"><span class="tt-lang-flag">🇨🇳</span>中文</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('ko')"><span class="tt-lang-flag">🇰🇷</span>한국어</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('vi')"><span class="tt-lang-flag">🇻🇳</span>Tiếng Việt</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('tl')"><span class="tt-lang-flag">🇵🇭</span>Filipino</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('id')"><span class="tt-lang-flag">🇮🇩</span>Indonesia</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('pt')"><span class="tt-lang-flag">🇧🇷</span>Português</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('es')"><span class="tt-lang-flag">🇪🇸</span>Español</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('th')"><span class="tt-lang-flag">🇹🇭</span>ภาษาไทย</button>
+    </div>
+    <button class="tt-lang-reset" onclick="ttResetLang()">🇯🇵 日本語に戻す</button>
+  </div>
 </div>
 <script>
 function googleTranslateElementInit() {
-  new google.translate.TranslateElement({
-    pageLanguage: 'ja',
-    includedLanguages: 'en,zh-CN,zh-TW,ko,vi,tl,id,pt,es,th,my',
-    layout: google.translate.TranslateElement.InlineLayout.SIMPLE,
-    autoDisplay: false
-  }, 'google_translate_element');
+  new google.translate.TranslateElement({ pageLanguage:'ja', includedLanguages:'en,zh-CN,zh-TW,ko,vi,tl,id,pt,es,th,my', autoDisplay:false }, 'google_translate_element');
+}
+function ttOpenLang() { document.getElementById('tt-lang-modal').classList.add('open'); }
+function ttCloseLang() { document.getElementById('tt-lang-modal').classList.remove('open'); }
+function ttSetLang(lang) {
+  document.querySelectorAll('.tt-lang-btn').forEach(function(b){ b.classList.remove('active'); });
+  event.currentTarget.classList.add('active');
+  var sel = document.querySelector('.goog-te-combo');
+  if (sel) { sel.value = lang; sel.dispatchEvent(new Event('change')); }
+  setTimeout(ttCloseLang, 300);
+}
+function ttResetLang() {
+  document.querySelectorAll('.tt-lang-btn').forEach(function(b){ b.classList.remove('active'); });
+  var sel = document.querySelector('.goog-te-combo');
+  if (sel) { sel.value = 'ja'; sel.dispatchEvent(new Event('change')); }
+  ttCloseLang();
 }
 </script>
 <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
