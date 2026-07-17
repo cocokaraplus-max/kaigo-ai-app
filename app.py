@@ -11889,13 +11889,14 @@ def api_generate_daily_summary():
         force = data.get('force', False)
         try:
             cached = supabase.table('daily_summaries').select(
-                'summary, last_record_at'
+                'summary, last_record_at, image_urls'
             ).eq('facility_code', f_code).eq(
                 'user_name', user_name
             ).eq('summary_date', date_str).execute()
             if not force and cached.data and cached.data[0]['last_record_at'] >= latest_record_at:
-                c_res = supabase.table('records').select('image_urls').eq('facility_code', f_code).eq('user_name', user_name).gte('created_at', day_start.isoformat()).lt('created_at', day_end.isoformat()).execute()
-                c_urls = [u for r in (c_res.data or []) for u in (r.get('image_urls') or [])]
+                c_urls = cached.data[0].get('image_urls') or []
+                if not isinstance(c_urls, list):
+                    c_urls = []
                 return jsonify({'summary': cached.data[0]['summary'], 'cached': True, 'image_urls': c_urls})
         except:
             pass
@@ -11912,6 +11913,12 @@ def api_generate_daily_summary():
         )
         summary = model.generate_content([prompt]).text.strip()
 
+        all_image_urls = []
+        for r in records:
+            urls = r.get('image_urls') or []
+            if isinstance(urls, list):
+                all_image_urls.extend(urls)
+
         try:
             supabase.table('daily_summaries').upsert({
                 'facility_code':  f_code,
@@ -11919,15 +11926,12 @@ def api_generate_daily_summary():
                 'summary_date':   date_str,
                 'summary':        summary,
                 'last_record_at': latest_record_at,
+                'image_urls':     all_image_urls,
                 'updated_at':     datetime.now(tokyo_tz).isoformat()
             }, on_conflict='facility_code,user_name,summary_date').execute()
         except:
             pass
 
-        all_image_urls = []
-        for r in records:
-            urls = r.get('image_urls') or []
-            all_image_urls.extend(urls)
         return jsonify({'summary': summary, 'cached': False, 'image_urls': all_image_urls})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
