@@ -214,11 +214,15 @@
   });
 
   // ===== 初期化・動的要素対応 =====
+  function isTTEnabled() { return localStorage.getItem('tt_enabled') !== '0'; }
+
   function attachAll() {
+    if (!isTTEnabled()) return;
     document.querySelectorAll('textarea').forEach(attach);
   }
 
   document.addEventListener('DOMContentLoaded', function () {
+    if (!isTTEnabled()) return;
     attachAll();
     new MutationObserver(function () { attachAll(); }).observe(document.body, {childList: true, subtree: true});
   });

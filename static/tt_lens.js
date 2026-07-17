@@ -165,18 +165,30 @@
   }
 
   // ===== レンズクリックハンドラ =====
+  // ナビゲーション・アクション要素は翻訳対象から除外（常に通過）
+  var LENS_PASS = [
+    '#tt-bar','#tt-lang-modal','#tt-lang-picker-modal','#tt-lens-btn',
+    '.bottom-nav-item','.bottom-nav','a[href]','form','button[type="submit"]',
+    '#user-settings-modal','.settings-fab','.tt-panel','.tt-field-btn',
+    '.dw-overlay','#drawer-wrapper'
+  ].join(',');
+
   function handleClick(e) {
     if (!lensActive) return;
-    // 翻訳バー・モーダル・レンズボタン自体は通過させる
-    if (e.target.closest('#tt-bar,#tt-lang-modal,#tt-lang-picker-modal,#tt-lens-btn')) return;
+    if (e.target.closest(LENS_PASS)) return;
     if (tooltip && tooltip.contains(e.target)) { hideTooltip(); return; }
 
-    e.preventDefault();
-    e.stopPropagation();
-
     var found = findTarget(e.target);
-    if (found) translate(found.el, found.text);
-    else hideTooltip();
+    if (found) {
+      // 日本語テキストが見つかった場合のみクリックをブロックして翻訳
+      e.preventDefault();
+      e.stopPropagation();
+      translate(found.el, found.text);
+    } else {
+      // テキストなし → ツールチップを閉じてレンズOFF（ナビ操作として扱う）
+      hideTooltip();
+      disableLens();
+    }
   }
 
   // ===== レンズモード ON/OFF =====
@@ -257,11 +269,31 @@
     document.getElementById('tt-lang-picker-modal').classList.add('open');
   };
 
+  // ===== 翻訳機能ON/OFF =====
+  var TT_KEY = 'tt_enabled';
+  function isTTEnabled() { return localStorage.getItem(TT_KEY) !== '0'; }
+
+  window.ttSetEnabled = function (on) {
+    localStorage.setItem(TT_KEY, on ? '1' : '0');
+    var btn = document.getElementById('tt-lens-btn');
+    if (!on) {
+      disableLens();
+      if (btn) btn.style.display = 'none';
+      // tt_input.jsのボタンも非表示
+      document.querySelectorAll('.tt-field-btn').forEach(function (b) { b.style.display = 'none'; });
+    } else {
+      if (btn) btn.style.display = '';
+      document.querySelectorAll('.tt-field-btn').forEach(function (b) { b.style.display = ''; });
+      updateBtn(false);
+    }
+  };
+
   // ===== CSS =====
   var s = document.createElement('style');
   s.textContent =
     'body.tt-lens-on { cursor: crosshair !important; }' +
     'body.tt-lens-on *:not(#tt-bar):not(#tt-lens-btn):not(#tt-lang-picker-modal) { cursor: crosshair !important; }' +
+    'body.tt-lens-on .bottom-nav-item,.bottom-nav-item { cursor: pointer !important; }' +
     'body.tt-lens-on::before { content:""; position:fixed; inset:0; z-index:9700;' +
     '  background:rgba(26,115,232,0.07); pointer-events:none; border:2.5px solid rgba(26,115,232,0.25); box-sizing:border-box; }' +
     '.tt-lens-highlight { outline:2.5px solid #1a73e8 !important; outline-offset:2px !important;' +
@@ -270,6 +302,11 @@
 
   // ===== 初期化 =====
   document.addEventListener('DOMContentLoaded', async function () {
+    var btn = document.getElementById('tt-lens-btn');
+    if (!isTTEnabled()) {
+      if (btn) btn.style.display = 'none';
+      return;
+    }
     await loadUserLang();
     updateBtn(false);
   });
