@@ -732,6 +732,9 @@ body.nav-editing {
         </button>
     </div>
     <div class="top-fab-area" id="top-fab-area">
+        <button class="settings-fab" id="tt-lens-btn" onclick="ttLensToggle()" title="翻訳レンズ"><!-- translation-v1 -->
+            <span class="material-symbols-outlined">search</span>
+        </button>
         <button class="settings-fab" id="tt-lang-btn" onclick="ttOpenLang()" title="表示言語を切り替え"><!-- translation-v1 -->
             <span class="material-symbols-outlined">language</span>
         </button>
@@ -4128,8 +4131,9 @@ async function auRenderTop(){
   }catch(e){box.innerHTML='<div style="color:#c5221f;">読み込みに失敗しました</div>';}
 }
 </script>
-<!-- translation-v1: 外国人スタッフ向け翻訳入力バー -->
+<!-- translation-v1: 外国人スタッフ向け翻訳入力バー・翻訳レンズ -->
 <script src="/static/tt_input.js"></script>
+<script src="/static/tt_lens.js"></script>
 <!-- translation-v1: Googleウィジェットは非表示で機能だけ使う。言語切替はカスタムボタン経由。 -->
 <style>
   #tt-translate-widget { position:fixed; top:-200px; left:-200px; width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; }
@@ -4148,6 +4152,29 @@ async function auRenderTop(){
   .tt-lang-reset { width:100%; margin-top:10px; padding:11px; border:1.5px solid #dadce0; border-radius:12px; background:#f8f9fa; font-size:0.82rem; font-weight:700; color:#5f6368; cursor:pointer; }
 </style>
 <div id="tt-translate-widget"><div id="google_translate_element"></div></div>
+<!-- 翻訳レンズ：言語設定ピッカー -->
+<div id="tt-lang-picker-modal" onclick="if(event.target===this)document.getElementById('tt-lang-picker-modal').classList.remove('open')"
+     style="position:fixed;inset:0;z-index:9850;background:rgba(0,0,0,0.4);display:none;align-items:flex-end;justify-content:center;"
+     class="">
+  <style>#tt-lang-picker-modal.open{display:flex;}</style>
+  <div style="background:#fff;border-radius:22px 22px 0 0;width:100%;max-width:var(--page-max-width,480px);padding:20px 16px 32px;box-shadow:0 -4px 24px rgba(0,0,0,0.15);">
+    <h3 style="font-size:0.92rem;font-weight:800;color:#202124;margin:0 0 6px;text-align:center;">🔍 あなたの母国語を選択</h3>
+    <p style="font-size:0.72rem;color:#5f6368;text-align:center;margin:0 0 14px;">選択後、読みたいUI要素をタップすると翻訳されます</p>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+      <button onclick="ttLensPickLang('en')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇺🇸</span>English</button>
+      <button onclick="ttLensPickLang('zh-CN')" style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇨🇳</span>中文</button>
+      <button onclick="ttLensPickLang('ko')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇰🇷</span>한국어</button>
+      <button onclick="ttLensPickLang('vi')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇻🇳</span>Tiếng Việt</button>
+      <button onclick="ttLensPickLang('tl')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇵🇭</span>Filipino</button>
+      <button onclick="ttLensPickLang('id')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇮🇩</span>Indonesia</button>
+      <button onclick="ttLensPickLang('pt')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇧🇷</span>Português</button>
+      <button onclick="ttLensPickLang('es')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇪🇸</span>Español</button>
+      <button onclick="ttLensPickLang('my')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇲🇲</span>မြန်မာ</button>
+    </div>
+    <button onclick="ttLensClearLang()" style="width:100%;margin-top:10px;padding:11px;border:1.5px solid #dadce0;border-radius:12px;background:#f8f9fa;font-size:0.82rem;font-weight:700;color:#5f6368;cursor:pointer;">設定をクリア（日本語に戻す）</button>
+  </div>
+</div>
+
 <!-- 言語ピッカーモーダル -->
 <div id="tt-lang-modal" onclick="if(event.target===this)ttCloseLang()">
   <div id="tt-lang-sheet">
