@@ -11006,6 +11006,59 @@ def api_transcribe():
         print(f"[transcribe error] {e}")
         return jsonify({"error": f"音声変換に失敗しました: {str(e)}"}), 500
 
+# ===== translation-v1: 外国人スタッフ向け翻訳入力 =====
+@app.route('/api/translate/text', methods=['POST'])
+@login_required
+def api_translate_text():
+    """任意言語のテキストを日本語に翻訳する。Gemini API使用。"""
+    data = request.json or {}
+    text = (data.get('text') or '').strip()
+    if not text:
+        return jsonify({'status': 'error', 'message': 'テキストが空です'}), 400
+    from utils import get_generative_model
+    model = get_generative_model()
+    try:
+        prompt = (
+            "以下のテキストを自然な介護記録向けの日本語に翻訳してください。"
+            "翻訳後のテキストのみ出力してください。"
+            "元のテキストが既に日本語の場合はそのまま返してください。\n\n" + text
+        )
+        result = model.generate_content([prompt])
+        return jsonify({'status': 'success', 'translated': result.text.strip()})
+    except Exception as e:
+        print(f"api_translate_text error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/translate/voice', methods=['POST'])
+@login_required
+def api_translate_voice():
+    """音声を受け取り、文字起こし＋日本語翻訳して返す。Gemini API使用。"""
+    data = request.json or {}
+    audio_data = data.get('audio_data')
+    if not audio_data:
+        return jsonify({'status': 'error', 'message': '音声データがありません'}), 400
+    try:
+        audio_bytes = base64.b64decode(audio_data)
+    except Exception:
+        return jsonify({'status': 'error', 'message': '音声データのデコードに失敗しました'}), 400
+    mime = data.get('audio_mime', 'audio/webm')
+    from utils import get_generative_model
+    model = get_generative_model()
+    try:
+        prompt = (
+            "この音声を文字起こしし、日本語で出力してください。"
+            "音声が日本語以外の場合は日本語に翻訳してから出力してください。"
+            "介護記録として自然な日本語にしてください。テキストのみ出力してください。"
+        )
+        result = model.generate_content([prompt, {"mime_type": mime, "data": audio_bytes}])
+        return jsonify({'status': 'success', 'translated': result.text.strip()})
+    except Exception as e:
+        print(f"api_translate_voice error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+# ===== /translation-v1 =====
+
+
 @app.route('/api/generate_daily', methods=['POST'])
 @login_required
 def api_generate_daily():
