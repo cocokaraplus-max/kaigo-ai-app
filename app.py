@@ -2005,6 +2005,7 @@ MENU_ITEMS = [   # top-grid-v1
     # record-check-v1: 記録充足チェックは「ケース記録」の上のタブから入る導線に一本化した。
     # アイコンを別に立てると入口が2つになり、メニューも増える。タブだけ残す。
     {"href": "/monitoring",     "icon": "monitoring",             "label": "モニタリング",   "need": None},
+    {"href": "/patient-info",  "icon": "person_book",            "label": "利用者情報",     "need": None},  # patient-hub-v1
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
     {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None},
     {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None},
