@@ -658,6 +658,25 @@ body.nav-editing {
                 </div>
             </div>
 
+            <!-- translation-v1: 翻訳機能ON/OFF -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">translate</span>外国語スタッフ向け翻訳機能
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">
+                    <div>
+                        <div style="font-size:0.85rem;font-weight:700;color:#202124;">翻訳レンズ・翻訳入力を使う</div>
+                        <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">外国語スタッフが使う機能です。不要な場合はOFFにしてください。</div>
+                    </div>
+                    <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:12px;">
+                        <input type="checkbox" id="tt-enabled-toggle" onchange="ttToggleEnabled(this.checked)"
+                               style="opacity:0;width:0;height:0;">
+                        <span id="tt-enabled-slider" style="position:absolute;inset:0;border-radius:24px;background:#ccc;cursor:pointer;transition:.2s;"></span>
+                        <span id="tt-enabled-knob" style="position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
+                    </label>
+                </div>
+            </div>
+
             <!-- nav-remove-v1: 「ナビカラー」は下のメニューバーの配色設定だったので廃止。
                  代わりに、バーにしか無かった **ログアウト** をここへ移す。
                  引き出しは MENU_ITEMS から作るが、そこにログアウトは入っていない。 -->
@@ -3150,6 +3169,16 @@ window.openSettings = function() {
     var activeEl = document.getElementById('nav-color-active');
     if (normalEl) { normalEl.value = savedNormal; document.getElementById('nav-color-normal-label').textContent = savedNormal; }
     if (activeEl) { activeEl.value = savedActive; document.getElementById('nav-color-active-label').textContent = savedActive; }
+    // 翻訳機能トグル初期化
+    (function() {
+        var tog = document.getElementById('tt-enabled-toggle');
+        var slider = document.getElementById('tt-enabled-slider');
+        var knob = document.getElementById('tt-enabled-knob');
+        var enabled = localStorage.getItem('tt_enabled') !== '0';
+        if (tog) tog.checked = enabled;
+        if (slider) slider.style.background = enabled ? '#1a73e8' : '#ccc';
+        if (knob) knob.style.left = enabled ? '22px' : '2px';
+    })();
     // パスコードトグル
     var lockEnabled = localStorage.getItem('tasukaru_lock_enabled') === '1';
     var toggle = document.getElementById('passcode-toggle');
@@ -4198,6 +4227,13 @@ async function auRenderTop(){
 function googleTranslateElementInit() {
   new google.translate.TranslateElement({ pageLanguage:'ja', includedLanguages:'en,zh-CN,zh-TW,ko,vi,tl,id,pt,es,th,my', autoDisplay:false }, 'google_translate_element');
 }
+window.ttToggleEnabled = function(enabled) {
+  var slider = document.getElementById('tt-enabled-slider');
+  var knob = document.getElementById('tt-enabled-knob');
+  if (slider) slider.style.background = enabled ? '#1a73e8' : '#ccc';
+  if (knob) knob.style.left = enabled ? '22px' : '2px';
+  if (typeof window.ttSetEnabled === 'function') window.ttSetEnabled(enabled);
+};
 function ttOpenLang() { document.getElementById('tt-lang-modal').classList.add('open'); }
 function ttCloseLang() { document.getElementById('tt-lang-modal').classList.remove('open'); }
 function ttSetLang(lang) {
