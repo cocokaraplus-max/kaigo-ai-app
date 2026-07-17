@@ -4157,8 +4157,10 @@ async function auRenderTop(){
      style="position:fixed;inset:0;z-index:9850;background:rgba(0,0,0,0.4);align-items:flex-end;justify-content:center;"
      class="">
   <div style="background:#fff;border-radius:22px 22px 0 0;width:100%;max-width:var(--page-max-width,480px);padding:20px 16px 32px;box-shadow:0 -4px 24px rgba(0,0,0,0.15);">
-    <h3 style="font-size:0.92rem;font-weight:800;color:#202124;margin:0 0 6px;text-align:center;">🔍 あなたの母国語を選択</h3>
-    <p style="font-size:0.72rem;color:#5f6368;text-align:center;margin:0 0 14px;">選択後、読みたいUI要素をタップすると翻訳されます</p>
+    <h3 style="font-size:0.92rem;font-weight:800;color:#202124;margin:0 0 6px;text-align:center;">🔍 母国語を選択</h3>
+    <p style="font-size:0.72rem;color:#5f6368;text-align:center;margin:0 0 10px;">選択後、読みたいUI要素をタップすると翻訳されます</p>
+    <!-- このまま使うボタン：言語設定済みのとき表示 -->
+    <button id="tt-lens-keep-btn" onclick="ttLensKeepLang()" style="display:none;width:100%;margin-bottom:10px;padding:12px;border:2px solid #1a73e8;border-radius:12px;background:#e8f0fe;font-size:0.85rem;font-weight:800;color:#1a73e8;cursor:pointer;">このまま使う ▶</button>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
       <button onclick="ttLensPickLang('en')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇺🇸</span>English</button>
       <button onclick="ttLensPickLang('zh-CN')" style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇨🇳</span>中文</button>

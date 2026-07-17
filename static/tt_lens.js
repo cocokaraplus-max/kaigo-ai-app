@@ -207,10 +207,13 @@
       btn.style.color = '';
       if (btn.querySelector('span')) btn.querySelector('span').style.color = '';
     }
-    // 言語が設定済みならフラグを表示
-    if (!active && userLang) {
+    // ボタン表示: ON中はフラグ+虫眼鏡、OFF+言語設定済みはフラグのみ、未設定は虫眼鏡
+    if (active && userLang) {
+      btn.innerHTML = '<span style="font-size:1rem;line-height:1;">' + (LANG_FLAGS[userLang] || '🌐') + '</span>';
+      btn.style.color = '#fff';
+    } else if (!active && userLang) {
       btn.innerHTML = '<span style="font-size:1.25rem;line-height:1;">' + (LANG_FLAGS[userLang] || '🌐') + '</span>';
-    } else if (!userLang) {
+    } else {
       btn.innerHTML = '<span class="material-symbols-outlined">search</span>';
     }
   }
@@ -218,18 +221,27 @@
   // ===== 言語ピッカーモーダル =====
   window.ttLensToggle = async function () {
     var lang = await loadUserLang();
-    if (!lang) {
-      document.getElementById('tt-lang-picker-modal').classList.add('open');
+    if (lensActive) {
+      // レンズON中 → OFF
+      disableLens();
       return;
     }
-    if (lensActive) disableLens();
-    else enableLens();
+    // レンズOFF → 言語ピッカーを開く（言語設定済みでも「このまま使う」ボタンで即起動できる）
+    var modal = document.getElementById('tt-lang-picker-modal');
+    var keepBtn = document.getElementById('tt-lens-keep-btn');
+    if (keepBtn) keepBtn.style.display = lang ? '' : 'none';
+    modal.classList.add('open');
   };
 
   window.ttLensPickLang = async function (lang) {
     await saveUserLang(lang);
     document.getElementById('tt-lang-picker-modal').classList.remove('open');
     updateBtn(false);
+    enableLens();
+  };
+
+  window.ttLensKeepLang = function () {
+    document.getElementById('tt-lang-picker-modal').classList.remove('open');
     enableLens();
   };
 
