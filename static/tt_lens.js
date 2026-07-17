@@ -27,9 +27,11 @@
     var btn = document.getElementById('tt-lens-btn');
     if (!on) {
       hideTooltip();
+      applySelectOff(false);
       if (btn) btn.style.display = 'none';
       document.querySelectorAll('.tt-field-btn').forEach(function (b) { b.style.display = 'none'; });
     } else {
+      applySelectOff(true);
       if (btn) btn.style.display = '';
       document.querySelectorAll('.tt-field-btn').forEach(function (b) { b.style.display = ''; });
       updateBtn();
@@ -270,8 +272,15 @@
   var s = document.createElement('style');
   s.textContent =
     '.tt-lens-highlight { outline:2.5px solid #1a73e8 !important; outline-offset:2px !important;' +
-    '  background:rgba(26,115,232,0.10) !important; border-radius:4px !important; }';
+    '  background:rgba(26,115,232,0.10) !important; border-radius:4px !important; }' +
+    // 翻訳ON時：iOSネイティブ選択メニューを抑制（入力欄は除外）
+    '.tt-select-off, .tt-select-off *:not(input):not(textarea):not([contenteditable]) {' +
+    '  -webkit-user-select: none !important; user-select: none !important; }';
   document.head.appendChild(s);
+
+  function applySelectOff(on) {
+    document.body.classList.toggle('tt-select-off', on);
+  }
 
   // ===== 初期化 =====
   document.addEventListener('DOMContentLoaded', async function () {
@@ -280,6 +289,7 @@
       if (btn) btn.style.display = 'none';
       return;
     }
+    applySelectOff(true);
     await loadUserLang();
     updateBtn();
   });
