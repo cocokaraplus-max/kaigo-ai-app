@@ -137,19 +137,35 @@
     t.style.top = top + 'px';
     t.style.left = left + 'px';
 
-    // 外タップで閉じる（次フレームで登録して即発火を防ぐ）
-    setTimeout(function () {
-      document.addEventListener('touchstart', dismissTooltip, {once: true, passive: true});
-      document.addEventListener('click', dismissTooltip, {once: true});
-    }, 100);
+    // 外タップで閉じる（リスナーを一元管理して多重登録を防ぐ）
+    setupDismiss();
   }
 
-  function dismissTooltip(e) {
-    if (tooltip && tooltip.contains(e.target)) return;
-    hideTooltip();
+  var dismissHandler = null;
+  function setupDismiss() {
+    clearDismiss();
+    dismissHandler = function (e) {
+      if (tooltip && tooltip.contains(e.target)) return;
+      clearDismiss();
+      hideTooltip();
+    };
+    // 長押し終了後の touchend が先に来るので少し遅らせる
+    setTimeout(function () {
+      if (dismissHandler) {
+        document.addEventListener('touchend', dismissHandler, {capture: true, passive: true});
+      }
+    }, 350);
+  }
+
+  function clearDismiss() {
+    if (dismissHandler) {
+      document.removeEventListener('touchend', dismissHandler, {capture: true});
+      dismissHandler = null;
+    }
   }
 
   function hideTooltip() {
+    clearDismiss();
     if (tooltip) { tooltip.remove(); tooltip = null; }
     if (highlightEl) { highlightEl.classList.remove('tt-lens-highlight'); highlightEl = null; }
     if (window.speechSynthesis) window.speechSynthesis.cancel();
@@ -211,9 +227,13 @@
     pressTimer = setTimeout(function () {
       pressTimer = null;
       if (!pressEl) return;
-      if (navigator.vibrate) navigator.vibrate(30);
+      // iOSはnavigator.vibrate非対応 → パルスアニメーションで代替
       var found = findTarget(pressEl);
-      if (found) translate(found.el, found.text);
+      if (found) {
+        found.el.classList.add('tt-lens-pulse');
+        setTimeout(function () { found.el.classList.remove('tt-lens-pulse'); }, 400);
+        translate(found.el, found.text);
+      }
     }, LONG_PRESS_MS);
   }, {passive: true});
 
@@ -273,6 +293,8 @@
   s.textContent =
     '.tt-lens-highlight { outline:2.5px solid #1a73e8 !important; outline-offset:2px !important;' +
     '  background:rgba(26,115,232,0.10) !important; border-radius:4px !important; }' +
+    '@keyframes tt-pulse { 0%{box-shadow:0 0 0 0 rgba(26,115,232,0.5)} 70%{box-shadow:0 0 0 12px rgba(26,115,232,0)} 100%{box-shadow:0 0 0 0 rgba(26,115,232,0)} }' +
+    '.tt-lens-pulse { animation: tt-pulse 0.4s ease-out !important; border-radius:4px !important; }' +
     // 翻訳ON時：iOSネイティブ選択メニューを抑制（入力欄は除外）
     '.tt-select-off, .tt-select-off *:not(input):not(textarea):not([contenteditable]) {' +
     '  -webkit-user-select: none !important; user-select: none !important; }';
