@@ -70,27 +70,41 @@
   }
 
   // ===== ツールチップ =====
+  var highlightEl = null;
+
   function showTooltip(el, html) {
     hideTooltip();
+    // タップ要素をハイライト
+    if (highlightEl) highlightEl.classList.remove('tt-lens-highlight');
+    el.classList.add('tt-lens-highlight');
+    highlightEl = el;
+
     var t = document.createElement('div');
     t.id = 'tt-lens-tip';
     t.style.cssText = [
-      'position:fixed;z-index:9900;pointer-events:none;',
-      'background:#202124;color:#fff;border-radius:12px;',
+      'position:fixed;z-index:9900;',
+      'background:#202124;color:#fff;border-radius:14px;',
       'padding:10px 14px;font-size:0.82rem;line-height:1.5;',
-      'max-width:260px;word-break:break-word;',
-      'box-shadow:0 4px 20px rgba(0,0,0,0.32);',
+      'max-width:300px;max-height:45vh;overflow-y:auto;',
+      'word-break:break-word;',
+      'box-shadow:0 4px 20px rgba(0,0,0,0.4);',
     ].join('');
     t.innerHTML = html;
     document.body.appendChild(t);
     tooltip = t;
 
-    // 位置計算（要素の上 or 下）
+    // 位置計算：上下どちらにスペースが多いか
     var rect = el.getBoundingClientRect();
-    var th = t.offsetHeight || 60;
-    var tw = t.offsetWidth || 260;
-    var top = rect.top - th - 10;
-    if (top < 8) top = rect.bottom + 10;
+    var th = t.offsetHeight || 80;
+    var tw = t.offsetWidth || 300;
+    var spaceAbove = rect.top - 8;
+    var spaceBelow = window.innerHeight - rect.bottom - 8;
+    var top;
+    if (spaceAbove >= th || spaceAbove >= spaceBelow) {
+      top = Math.max(8, rect.top - th - 10);
+    } else {
+      top = Math.min(rect.bottom + 10, window.innerHeight - th - 8);
+    }
     var left = rect.left + (rect.width - tw) / 2;
     left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
     t.style.top = top + 'px';
@@ -99,10 +113,21 @@
 
   function hideTooltip() {
     if (tooltip) { tooltip.remove(); tooltip = null; }
+    if (highlightEl) { highlightEl.classList.remove('tt-lens-highlight'); highlightEl = null; }
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
   }
 
   function esc(s) {
     return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ===== 読み上げ =====
+  function speak(text, lang) {
+    if (!window.speechSynthesis) return;
+    window.speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(text);
+    u.lang = lang;
+    window.speechSynthesis.speak(u);
   }
 
   // ===== 翻訳 =====
@@ -113,7 +138,7 @@
       showTooltip(el, tipHtml(text, cache[key]));
       return;
     }
-    showTooltip(el, '<span style="opacity:0.6;font-size:0.78rem;">翻訳中...</span>');
+    showTooltip(el, '<div style="opacity:0.6;font-size:0.78rem;pointer-events:none;">翻訳中...</div>');
     try {
       var r = await fetch('/api/translate/ui', {
         method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -129,8 +154,14 @@
 
   function tipHtml(orig, trans) {
     var flag = LANG_FLAGS[userLang] || '🌐';
-    return '<div style="font-size:0.68rem;opacity:0.55;margin-bottom:4px;">' + esc(orig) + '</div>' +
-           '<div style="font-weight:700;font-size:0.88rem;">' + flag + ' ' + esc(trans) + '</div>';
+    var lang = userLang || 'en';
+    // 読み上げボタン（onclick属性でIIFE外から呼ばれるためwindowに登録）
+    window._ttSpeak = function () { speak(trans, lang); };
+    return '<div style="font-size:0.68rem;opacity:0.55;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,0.12);padding-bottom:6px;">' + esc(orig) + '</div>' +
+           '<div style="display:flex;align-items:flex-start;gap:8px;">' +
+             '<div style="flex:1;font-weight:700;font-size:0.9rem;">' + flag + ' ' + esc(trans) + '</div>' +
+             '<button onclick="_ttSpeak()" style="flex-shrink:0;background:rgba(255,255,255,0.15);border:none;color:#fff;border-radius:8px;padding:4px 8px;font-size:0.8rem;cursor:pointer;white-space:nowrap;">🔊</button>' +
+           '</div>';
   }
 
   // ===== レンズクリックハンドラ =====
@@ -220,7 +251,9 @@
     'body.tt-lens-on { cursor: crosshair !important; }' +
     'body.tt-lens-on *:not(#tt-bar):not(#tt-lens-btn):not(#tt-lang-picker-modal) { cursor: crosshair !important; }' +
     'body.tt-lens-on::before { content:""; position:fixed; inset:0; z-index:9700;' +
-    '  background:rgba(26,115,232,0.07); pointer-events:none; border:2.5px solid rgba(26,115,232,0.25); box-sizing:border-box; }';
+    '  background:rgba(26,115,232,0.07); pointer-events:none; border:2.5px solid rgba(26,115,232,0.25); box-sizing:border-box; }' +
+    '.tt-lens-highlight { outline:2.5px solid #1a73e8 !important; outline-offset:2px !important;' +
+    '  background:rgba(26,115,232,0.10) !important; border-radius:4px !important; }';
   document.head.appendChild(s);
 
   // ===== 初期化 =====
