@@ -4154,10 +4154,10 @@ async function auRenderTop(){
 </style>
 <div id="tt-translate-widget"><div id="google_translate_element"></div></div>
 <!-- 翻訳レンズ：言語設定ピッカー -->
+<style>#tt-lang-picker-modal{display:none;}#tt-lang-picker-modal.open{display:flex!important;}</style>
 <div id="tt-lang-picker-modal" onclick="if(event.target===this)document.getElementById('tt-lang-picker-modal').classList.remove('open')"
-     style="position:fixed;inset:0;z-index:9850;background:rgba(0,0,0,0.4);display:none;align-items:flex-end;justify-content:center;"
+     style="position:fixed;inset:0;z-index:9850;background:rgba(0,0,0,0.4);align-items:flex-end;justify-content:center;"
      class="">
-  <style>#tt-lang-picker-modal.open{display:flex;}</style>
   <div style="background:#fff;border-radius:22px 22px 0 0;width:100%;max-width:var(--page-max-width,480px);padding:20px 16px 32px;box-shadow:0 -4px 24px rgba(0,0,0,0.15);">
     <h3 style="font-size:0.92rem;font-weight:800;color:#202124;margin:0 0 6px;text-align:center;">🔍 あなたの母国語を選択</h3>
     <p style="font-size:0.72rem;color:#5f6368;text-align:center;margin:0 0 14px;">選択後、読みたいUI要素をタップすると翻訳されます</p>
