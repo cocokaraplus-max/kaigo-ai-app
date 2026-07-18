@@ -15765,6 +15765,8 @@ _LEAVE_TYPES = {
     "off":        {"label": "休み",   "form": "休",   "partial": False},
     "half":       {"label": "半休",   "form": "半",   "partial": True},
     "hourly":     {"label": "時間休", "form": "時",   "partial": True},
+    # timecard-cancel-v1: 施設休日に出勤するスタッフ等、記録不要な日をスキップするため
+    "cancel":     {"label": "対象外", "form": "-",    "partial": False},
 }
 
 import re as _leave_re
