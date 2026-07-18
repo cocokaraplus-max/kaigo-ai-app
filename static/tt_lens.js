@@ -89,14 +89,23 @@
 
   function findTarget(target) {
     var el = target;
+    var bestEl = null, bestText = null;
     for (var i = 0; i < 6; i++) {
       if (!el || el === document.body) break;
       var text = getCleanText(el);
-      if (text && /[぀-ヿ一-鿿]/.test(text) && text.length <= 200) {
-        return {el: el, text: text};
+      if (text && /[぀-ヿ一-鿿]/.test(text)) {
+        if (text.length <= 600) {
+          // ちょうど良いサイズ → 確定
+          return {el: el, text: text};
+        } else if (!bestEl) {
+          // 長すぎるが日本語あり → 最初の600文字で翻訳（候補として保持）
+          bestEl = el;
+          bestText = text.slice(0, 600);
+        }
       }
       el = el.parentElement;
     }
+    if (bestEl) return {el: bestEl, text: bestText};
     return null;
   }
 
