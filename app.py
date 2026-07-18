@@ -1339,6 +1339,23 @@ DAILY_SUMMARY_PROMPT = """以下は介護職員それぞれが記録した1日�
 # ==========================================
 # 休み連絡content生成ヘルパー
 # ==========================================
+def _invalidate_daily_summary(supabase, f_code, user_name, created_at_str=None, date_str=None):
+    """AI要約キャッシュを無効化（記録の追加・編集・削除後に呼ぶ）。失敗しても呼び出し元は止めない。"""
+    try:
+        if not date_str:
+            if created_at_str:
+                _dt_obj = datetime.fromisoformat(created_at_str.replace('Z', '+00:00'))
+                date_str = _dt_obj.astimezone(tokyo_tz).strftime('%Y-%m-%d')
+            else:
+                date_str = datetime.now(tokyo_tz).strftime('%Y-%m-%d')
+        supabase.table('daily_summaries').delete().eq(
+            'facility_code', f_code
+        ).eq('user_name', user_name).eq('summary_date', date_str).execute()
+        print(f"[AI要約キャッシュ無効化] {f_code}/{user_name}/{date_str}", flush=True)
+    except Exception as _inv_e:
+        print(f"[AI要約キャッシュ無効化エラー] {_inv_e}", flush=True)
+
+
 def _build_leave_content(period, reporter_type, other_detail, leave_reason):
     """休み連絡のcontent文字列を生成する共通関数"""
     # leave-reporter-display-v1: 連絡者はcontent文章には入れず、daily_viewのバッジでのみ表示する。
@@ -2640,6 +2657,9 @@ def input_view():
                                 print(f"[vas_records] saved {len(vas_rows)} entries for record {new_id}", flush=True)
                     except Exception as _vas_err:
                         print(f"[vas_records] save failed for new record: {_vas_err}", flush=True)
+
+                    # AI要約キャッシュ無効化
+                    _invalidate_daily_summary(supabase, f_code, m.group(2), date_str=record_date)
 
                     content = ""
                     selected_patient = ""
@@ -11218,6 +11238,13 @@ def api_update_record():
             # JSのautoUpdateLeaveContent()が日付/理由変更時にtextareaを更新するので、
             # サーバ側の再生成は不要。
         supabase.table("records").update(update_payload).eq("id", data["id"]).execute()
+        # AI要約キャッシュ無効化
+        try:
+            _rec_info = supabase.table('records').select('user_name,created_at').eq('id', data['id']).execute()
+            if _rec_info.data:
+                _invalidate_daily_summary(supabase, f_code, _rec_info.data[0]['user_name'], _rec_info.data[0].get('created_at'))
+        except Exception as _inv_e2:
+            print(f"[AI要約キャッシュ無効化エラー(edit)] {_inv_e2}", flush=True)
         # 休み日付変更時にカレンダーイベントも同期
         if new_leave_start:
             try:
@@ -11292,7 +11319,7 @@ def api_delete_record():
         supabase = get_supabase()
         # 権限チェック：自分の記録か管理者のみ削除可能
         rec = supabase.table("records").select(
-            "staff_name,facility_code,calendar_event_id,category").eq("id", data["id"]).execute()
+            "staff_name,facility_code,calendar_event_id,category,user_name,created_at").eq("id", data["id"]).execute()
         if not rec.data:
             return jsonify({"status": "error", "message": "記録が見つかりません"}), 404
         r = rec.data[0]
@@ -11317,6 +11344,8 @@ def api_delete_record():
             # カレンダー削除に失敗しても記録削除は続行（孤児イベントは残るが記録は消える）
             print(f"[record delete] calendar sync failed for record {data['id']}: {_cal_del_err}", flush=True)
 
+        # AI要約キャッシュ無効化（削除前に user_name/created_at を使う）
+        _invalidate_daily_summary(supabase, f_code, r.get('user_name', ''), r.get('created_at'))
         supabase.table("records").delete().eq("id", data["id"]).execute()
         return jsonify({"status": "success"})
     except Exception as e:
