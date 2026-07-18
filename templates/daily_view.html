@@ -2479,6 +2479,28 @@ window.startEdit = function(id, content) {
     var curReason = recordEl.getAttribute('data-leave-reason') || '';
     var reasonInput = document.getElementById('leave-edit-reason-' + id);
     if (reasonInput) reasonInput.value = curReason;
+
+    // leave-content-trust-v1: 日付・理由を変えたときtextareaを自動更新
+    function autoUpdateLeaveContent() {
+        var s = startInput ? startInput.value : '';
+        var e = endInput ? endInput.value : '';
+        var r = reasonInput ? reasonInput.value : '';
+        if (!s) return;
+        var sd = new Date(s + 'T00:00:00');
+        var period = (e && e !== s)
+            ? (sd.getMonth()+1)+'月'+sd.getDate()+'日〜'+(new Date(e+'T00:00:00').getMonth()+1)+'月'+(new Date(e+'T00:00:00').getDate())+'日'
+            : (sd.getMonth()+1)+'月'+sd.getDate()+'日';
+        var ta = document.getElementById('edit-text-' + id);
+        if (ta) ta.value = period + 'はお休みです。' + (r ? '理由：' + r : '');
+    }
+    [startInput, endInput, reasonInput].forEach(function(inp) {
+        if (!inp) return;
+        var key = '_leaveContentHandler';
+        if (inp[key]) inp.removeEventListener('change', inp[key]);
+        inp[key] = autoUpdateLeaveContent;
+        inp.addEventListener('change', inp[key]);
+        if (inp === reasonInput) inp.addEventListener('input', inp[key]);
+    });
 };
 window.cancelEdit = function(id) {
     document.getElementById('edit-area-'+id).style.display = 'none';
