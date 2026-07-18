@@ -37,17 +37,17 @@
 .sr-type { font-size:0.68rem; font-weight:800; border-radius:6px; padding:2px 6px; white-space:nowrap; flex:0 0 auto; }
 .sr-type.pickup  { background:#E6F1FB; color:#185FA5; }
 .sr-type.dropoff { background:#EAF3DE; color:#3B6D11; }
-.sr-name { flex:1; min-width:0; font-weight:700; font-size:0.92rem; overflow-wrap:anywhere; }
-/* 住所は名前の下に小さく。
-   soge-run-addr2-v1: 1行で切ると読めないので、入らないぶんは2段目に回す（最大2行）。
-   行が伸びすぎないよう、文字は少し小さく・行間は詰める。3行目からは … で切る。
-   都道府県はサーバ側(_soge_addr_short)で落としてあるので、市から始まる。 */
+/* soge-layout-v2: 名前エリアとボタン群を分離して名前が押しつぶされないようにする */
+.sr-info { flex:1; min-width:0; }
+.sr-name { display:block; font-weight:700; font-size:0.92rem; overflow-wrap:anywhere; }
+.sr-actions { flex:0 0 auto; display:flex; align-items:center; gap:4px; }
+/* 住所は名前の下に小さく。最大2行で切る。 */
 .sr-addr { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2;
   font-weight:400; font-size:0.66rem; line-height:1.2; color:#9aa0a6; margin-top:2px;
   white-space:normal; overflow:hidden; overflow-wrap:anywhere; }
 .sr-tag { font-size:0.66rem; font-weight:700; border-radius:6px; padding:2px 5px; margin-left:4px; white-space:nowrap;
   background:#f3e8ff; color:#6b21a8; }
-.sr-plan { font-size:0.72rem; color:#9aa0a6; font-variant-numeric:tabular-nums; flex:0 0 auto; }
+.sr-plan { display:block; font-size:0.72rem; color:#9aa0a6; font-variant-numeric:tabular-nums; margin-top:2px; }
 
 /* 打刻ボタン。指で押しやすい大きさにする */
 .sr-tap { flex:0 0 auto; border:none; border-radius:10px; padding:9px 14px; font-weight:800; font-size:0.9rem;
@@ -262,17 +262,21 @@
             : '<button class="sr-tap" data-tap="' + s.id + '">到着</button>' +
               '<button class="sr-pen" data-pen="' + s.id + '" data-init="' + esc(s.planned_at || '') + '" title="時刻を手で入れる">✎</button>');
 
+      // soge-layout-v2: 名前(sr-info)とボタン(sr-actions)を分離して名前が縦にならないようにする
       return '<div class="sr-stop ' + cls + '">' +
         '<span class="sr-seq">' + (i + 1) + '</span>' +
         '<span class="sr-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>' +
-        // soge-addr-v1: 運転手が現地で見るので、名前の下に住所を小さく出す
-        '<span class="sr-name">' + esc(s.user_name) +
-          (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') +
+        '<div class="sr-info">' +
+          '<span class="sr-name">' + esc(s.user_name) +
+            (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') +
+          '</span>' +
           (s.address ? '<span class="sr-addr">' + esc(s.address) + '</span>' : '') +
-        '</span>' +
-        (s.planned_at ? '<span class="sr-plan">予定 ' + esc(s.planned_at) + '</span>' : '') +
-        right +
-        '<button class="sr-x' + (s.is_absent ? ' on' : '') + '" data-abs="' + s.id + '" title="休み">✕</button>' +
+          (s.planned_at ? '<span class="sr-plan">予定 ' + esc(s.planned_at) + '</span>' : '') +
+        '</div>' +
+        '<div class="sr-actions">' +
+          right +
+          '<button class="sr-x' + (s.is_absent ? ' on' : '') + '" data-abs="' + s.id + '" title="休み">✕</button>' +
+        '</div>' +
       '</div>';
     }).join('');
 
