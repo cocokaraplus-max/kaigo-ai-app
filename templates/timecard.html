@@ -233,6 +233,7 @@
     </div>
     <div id="tc-leave-days"></div>
     <button class="tc-submit" id="tc-leave-submit">登録して閉じる</button>
+    <button class="tc-mbtn-cancel" id="tc-leave-close" style="width:100%">後で入力する（閉じる）</button>
   </div>
 </div>
 <!-- timecard-leave-note-v1: 休暇・備考の登録／修正モーダル（打刻画面から後で入れる） -->
@@ -791,6 +792,7 @@
   $("tc-leave-edit-btn").addEventListener("click", openLeaveNoteModal);
   $("tc-lne-submit").addEventListener("click", submitLeaveNote);
   $("tc-lne-cancel").addEventListener("click", function(){ $("tc-leavenote-modal").classList.add("hidden"); });
+  $("tc-leave-close").addEventListener("click", function(){ $("tc-leave-modal").classList.add("hidden"); });
 
   // モーダルのボタン接続
   $("tc-in-normal").addEventListener("click", function(){ _tcInWith(null); });
