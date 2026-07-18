@@ -11213,21 +11213,10 @@ def api_update_record():
         if new_leave_start:
             update_payload["leave_date_start"] = new_leave_start
             update_payload["leave_date_end"] = new_leave_end or new_leave_start
-            # contentを再生成
-            try:
-                from datetime import datetime as _dt3
-                _ls3 = _dt3.strptime(new_leave_start, "%Y-%m-%d")
-                _ls3_str = f"{_ls3.month}月{_ls3.day}日"
-                _type3 = (data.get("leave_reporter_type") or "").strip()
-                _reason3 = (data.get("leave_reason") or "").strip()
-                if new_leave_end and new_leave_end != new_leave_start:
-                    _le3 = _dt3.strptime(new_leave_end, "%Y-%m-%d")
-                    _period3 = f"{_ls3_str}〜{_le3.month}月{_le3.day}日"
-                else:
-                    _period3 = _ls3_str
-                update_payload["content"] = _build_leave_content(_period3, _type3, "", _reason3)
-            except Exception as _ce3:
-                print(f"[休み編集content再生成エラー] {_ce3}", flush=True)
+            # leave-content-trust-v1: contentはフロントのtextarea値をそのまま使う。
+            # 以前はここでサーバ側再生成していたが、ユーザーが編集した内容を上書きしてしまうバグの原因だった。
+            # JSのautoUpdateLeaveContent()が日付/理由変更時にtextareaを更新するので、
+            # サーバ側の再生成は不要。
         supabase.table("records").update(update_payload).eq("id", data["id"]).execute()
         # 休み日付変更時にカレンダーイベントも同期
         if new_leave_start:
