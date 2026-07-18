@@ -675,6 +675,16 @@ body.nav-editing {
                         <span id="tt-enabled-knob" style="position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
                     </label>
                 </div>
+                <!-- translation-v1: 言語選択ボタン（翻訳ONのときだけ表示） -->
+                <div id="tt-settings-lang-row" style="display:none;">
+                    <button id="tt-settings-lang-btn" onclick="ttLensToggle()" style="
+                        display:flex;align-items:center;gap:8px;width:100%;
+                        padding:10px 14px;border-radius:10px;border:1.5px solid #1a73e8;
+                        background:#e8f0fe;color:#1a73e8;font-weight:700;font-size:0.85rem;cursor:pointer;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">translate</span>
+                        <span id="tt-settings-lang-label">言語を選択する</span>
+                    </button>
+                </div>
             </div>
 
             <!-- nav-remove-v1: 「ナビカラー」は下のメニューバーの配色設定だったので廃止。
@@ -751,10 +761,7 @@ body.nav-editing {
         </button>
     </div>
     <div class="top-fab-area" id="top-fab-area">
-        <button class="settings-fab" id="tt-lens-btn" onclick="ttLensToggle()" title="翻訳言語を選択"><!-- translation-v1 -->
-            <span class="material-symbols-outlined">translate</span>
-        </button>
-        <!-- translation-v1: Google翻訳ボタンはレイアウト崩れのため削除 -->
+        {% block translate_fab %}{% endblock %}<!-- translation-v1: TOPページだけ出す -->
         <button class="settings-fab" id="update-log-btn">
             <span class="material-symbols-outlined">notifications</span>
         </button>
@@ -3174,10 +3181,12 @@ window.openSettings = function() {
         var tog = document.getElementById('tt-enabled-toggle');
         var slider = document.getElementById('tt-enabled-slider');
         var knob = document.getElementById('tt-enabled-knob');
+        var langRow = document.getElementById('tt-settings-lang-row');
         var enabled = localStorage.getItem('tt_enabled') !== '0';
         if (tog) tog.checked = enabled;
         if (slider) slider.style.background = enabled ? '#1a73e8' : '#ccc';
         if (knob) knob.style.left = enabled ? '22px' : '2px';
+        if (langRow) langRow.style.display = enabled ? '' : 'none';
     })();
     // パスコードトグル
     var lockEnabled = localStorage.getItem('tasukaru_lock_enabled') === '1';

@@ -25,14 +25,17 @@
   window.ttSetEnabled = function (on) {
     localStorage.setItem(TT_KEY, on ? '1' : '0');
     var btn = document.getElementById('tt-lens-btn');
+    var langRow = document.getElementById('tt-settings-lang-row');
     if (!on) {
       hideTooltip();
       applySelectOff(false);
       if (btn) btn.style.display = 'none';
+      if (langRow) langRow.style.display = 'none';
       document.querySelectorAll('.tt-field-btn').forEach(function (b) { b.style.display = 'none'; });
     } else {
       applySelectOff(true);
       if (btn) btn.style.display = '';
+      if (langRow) langRow.style.display = '';
       document.querySelectorAll('.tt-field-btn').forEach(function (b) { b.style.display = ''; });
       updateBtn();
     }
@@ -68,14 +71,23 @@
 
   // ===== ボタン表示更新 =====
   function updateBtn() {
+    // TOPページのボタン（存在する場合のみ）
     var btn = document.getElementById('tt-lens-btn');
-    if (!btn) return;
-    btn.style.background = '';
-    btn.style.color = '';
-    if (userLang) {
-      btn.innerHTML = '<span style="font-size:1.25rem;line-height:1;">' + (LANG_FLAGS[userLang] || '🌐') + '</span>';
-    } else {
-      btn.innerHTML = '<span class="material-symbols-outlined">translate</span>';
+    if (btn) {
+      btn.style.background = '';
+      btn.style.color = '';
+      if (userLang) {
+        btn.innerHTML = '<span style="font-size:1.25rem;line-height:1;">' + (LANG_FLAGS[userLang] || '🌐') + '</span>';
+      } else {
+        btn.innerHTML = '<span class="material-symbols-outlined">translate</span>';
+      }
+    }
+    // 設定モーダル内の言語ボタン
+    var label = document.getElementById('tt-settings-lang-label');
+    if (label) {
+      label.textContent = userLang
+        ? (LANG_FLAGS[userLang] || '🌐') + ' 言語を変更する'
+        : '言語を選択する';
     }
   }
 
@@ -316,11 +328,14 @@
   // ===== 初期化 =====
   document.addEventListener('DOMContentLoaded', async function () {
     var btn = document.getElementById('tt-lens-btn');
+    var langRow = document.getElementById('tt-settings-lang-row');
     if (!isTTEnabled()) {
       if (btn) btn.style.display = 'none';
+      if (langRow) langRow.style.display = 'none';
       return;
     }
     applySelectOff(true);
+    if (langRow) langRow.style.display = '';
     await loadUserLang();
     updateBtn();
   });
