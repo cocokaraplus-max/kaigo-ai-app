@@ -36,6 +36,10 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = True  # HTTPS only (Cloud Run is always HTTPS)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
+# ===== 料金・トライアル設定（pricing-rebuild-v1）=====
+TRIAL_DAYS = 60        # 無料トライアル日数（2ヶ月）
+SUB_GRACE_DAYS = 3     # サブスク更新時のアクセス猶予日数（決済リトライ中の即ロック防止）
+
 @app.before_request
 def make_session_permanent():
     from flask import session
@@ -1840,7 +1844,8 @@ def login():
                             except (ValueError, TypeError):
                                 expires = None
                         if expires is not None and expires < datetime.now(timezone.utc):
-                            error = "この施設コードの有効期限が切れています。"
+                            # pricing-rebuild-v1 : 行き止まりにせず、再開の受け皿ページへ誘導
+                            return redirect(url_for("reactivate", fc=f_code))
                         else:
                             import hashlib
                             def verify_password(pw, hashed):
@@ -2016,6 +2021,8 @@ def register():
 # メニューの定義。ボトムナビ(base.html)は当面ハードコードのままなので、
 # 新しい導線を足したらここにも1行足すこと（いずれ base.html をここから描く）。
 #   need: 表示条件。None=全員 / 'ledger' / 'rec_expense' / 'dev'
+#   tier: プラン下限。None=全プラン / 'standard' / 'pro'。plan-gating-v1
+#     体験中(in_trial)は上位機能も開放しつつ badge を付ける。トライアル外の強制は将来対応(enforcement)。
 MENU_ITEMS = [   # top-grid-v1
     {"href": "/input",          "icon": "edit_note",              "label": "記録入力",       "need": None},
     {"href": "/daily_view",     "icon": "calendar_month",         "label": "ケース記録",     "need": None},
@@ -2024,14 +2031,14 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/monitoring",     "icon": "monitoring",             "label": "モニタリング",   "need": None},
     {"href": "/patient-info",  "icon": "person_book",            "label": "利用者情報",     "need": None},  # patient-hub-v1
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
-    {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None},
-    {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None},
+    {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None, "tier": "standard"},
+    {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None, "tier": "standard"},
     {"href": "/fitness",        "icon": "fitness_center",         "label": "体力・体重",     "need": None},
     {"href": "/life_check",     "icon": "checklist",              "label": "生活機能CHECK",  "need": None},
     {"href": "/calendar",       "icon": "calendar_month",         "label": "カレンダー",     "need": None},
     {"href": "/assessment",     "icon": "assignment",             "label": "評価",           "need": None},
     {"href": "/print_output",   "icon": "print",                  "label": "書類出力",       "need": None},
-    {"href": "/admin/meetings", "icon": "groups",                 "label": "会議記録",       "need": None},
+    {"href": "/admin/meetings", "icon": "groups",                 "label": "会議記録",       "need": None, "tier": "pro"},
     {"href": "/tasks",          "icon": "task_alt",               "label": "タスク",         "need": None},
     {"href": "/board",          "icon": "campaign",               "label": "掲示板",         "need": None},
     {"href": "/ledger",         "icon": "account_balance",        "label": "出納帳",         "need": "ledger"},
@@ -2043,6 +2050,80 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/dev",            "icon": "code",                   "label": "開発者",         "need": "dev"},
     {"href": "/manual",         "icon": "menu_book",              "label": "ガイド",         "need": None},
 ]
+
+# plan-gating-v1: プラン順位。上位ほど数値が大きい。free=未契約、monitor=自社等(全機能相当)。
+PLAN_RANK = {"free": 0, "starter": 1, "standard": 2, "pro": 3, "monitor": 99}
+# 各 tier に必要な順位と、体験中に見せるバッジ表記。
+TIER_RANK = {"standard": 2, "pro": 3}
+TIER_BADGE = {"standard": "スタンダード", "pro": "PRO"}
+
+
+def _plan_rank(plan):  # plan-gating-v1
+    return PLAN_RANK.get((plan or "free").lower(), 0)
+
+
+def _facility_plan_state(supabase, f_code):  # plan-gating-v1
+    """施設のプラン状態を1回のDB照会で返す（バッジ判定と enforcement の共有元）。
+    返り値: {plan, rank, in_trial, is_monitor}。"""
+    state = {"plan": "free", "rank": 0, "in_trial": False, "is_monitor": False}
+    try:
+        pr = (supabase.table("facilities")
+              .select("plan,trial_ends_at,is_monitor")
+              .eq("facility_code", f_code).execute())
+        if pr.data:
+            row = pr.data[0]
+            plan = row.get("plan") or "free"
+            state["is_monitor"] = bool(row.get("is_monitor"))
+            if state["is_monitor"]:
+                plan = "monitor"  # 自社等・全機能相当
+            state["plan"] = plan
+            te = row.get("trial_ends_at")
+            if te:
+                try:
+                    ted = datetime.fromisoformat(str(te).replace("Z", "+00:00"))
+                    if ted > datetime.now(timezone.utc):
+                        state["in_trial"] = True
+                except (ValueError, TypeError):
+                    pass
+    except Exception as e:
+        print("_facility_plan_state error: %s" % e, flush=True)
+    state["rank"] = _plan_rank(state["plan"])
+    return state
+
+
+def _tier_ok(state, tier):  # plan-gating-v1
+    """この施設のプランで tier 機能を『契約上』使えるか。体験中・モニターは常に可。"""
+    if not tier:
+        return True
+    if state.get("in_trial") or state.get("is_monitor"):
+        return True
+    return state.get("rank", 0) >= TIER_RANK.get(tier, 0)
+
+
+# plan-enforce-v1: プラン階層による強制アクセス制御のキルスイッチ。
+#   既定 False（＝ブロックしない・バッジ表示のみ。体験開放と同じ見た目のまま）。
+#   DEVで各施設の plan 値を検証してから True にすると、tier を満たさない施設は
+#   該当ページで /pricing に誘導される（体験中・モニターは常に許可。既存の施設別トグルとは AND）。
+PLAN_ENFORCE = False
+
+
+def _plan_block_redirect(tier):  # plan-enforce-v1
+    """PLAN_ENFORCE 有効時、tier を満たさない施設を /pricing へ誘導する。
+    満たす／フラグ無効／未ログインなら None を返し、呼び出し側は通常処理を続ける。"""
+    if not PLAN_ENFORCE or not tier:
+        return None
+    try:
+        f_code = session.get("f_code")
+        if not f_code:
+            return None
+        state = _facility_plan_state(get_supabase(), f_code)
+        if _tier_ok(state, tier):
+            return None
+        return redirect(url_for("pricing"))
+    except Exception as e:
+        print("_plan_block_redirect error: %s" % e, flush=True)
+        return None  # 判定に失敗したら安全側（通す）
+
 
 STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden",
                       "drawer_pos")   # 受け付けるキーはこれだけ
@@ -2069,6 +2150,16 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
     except Exception:
         can_photo = False
 
+    # plan-gating-v1: 施設プランと体験期間を判定（共有ヘルパー）。
+    #   体験中(in_trial)は上位機能も表示（開放）し、プランを上回る項目に badge を付ける。
+    #   体験外でプランを上回る項目は locked=True（enforcement 用の印。表示は従来どおり通す）。
+    state = _facility_plan_state(supabase, f_code)
+    rank = state["rank"]
+    in_trial = state["in_trial"]
+    # plan-gating-v1: 無料(free)・モニター施設は「永久無料」扱いとしてバッジを出さない
+    #   （どちらの方法で無料にしてもバッジが出っ放しにならないようにする安全網）。
+    plan_exempt = state["plan"] in ("free", "monitor")
+
     out = []
     for it in MENU_ITEMS:
         need = it.get("need")
@@ -2080,7 +2171,18 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
             continue
         if need == "dev" and not is_dev:
             continue
-        out.append({"href": it["href"], "icon": it["icon"], "label": it["label"]})
+        item = {"href": it["href"], "icon": it["icon"], "label": it["label"]}
+        # plan-gating-v1: プラン下限を上回る（この施設のプランに含まれない）機能。
+        #   バッジは「体験中のみ」表示する（有料運用に入ったら邪魔になるため出さない）。
+        #   locked は enforcement 用のフラグで、体験外のときだけ立てる（表示はしない）。
+        tier = it.get("tier")
+        if tier and not plan_exempt and rank < TIER_RANK.get(tier, 0):
+            if in_trial:
+                item["badge"] = TIER_BADGE.get(tier)
+                item["tier"] = tier
+            else:
+                item["locked"] = True
+        out.append(item)
     return out
 
 
@@ -2261,6 +2363,7 @@ def top():
         my_icon_image_url=my_icon_image_url,
         my_color=staff_color(my_name),
         my_initial=staff_initial(my_name),
+        contract=_contract_overview(f_code),  # pricing-rebuild-v1
     )
 
 # ===== record-check-v1 : 記録の充足チェック =====
@@ -3937,6 +4040,9 @@ def renraku_print_page():
 @app.route('/renraku')
 @login_required
 def renraku_page():  # renraku-v1
+    _blk = _plan_block_redirect("standard")  # plan-enforce-v1
+    if _blk:
+        return _blk
     return render_template('renraku.html')
 
 
@@ -12109,6 +12215,42 @@ def api_dev_toggle_monitor():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# pricing-rebuild-v1 : dev割引変更時、課金中サブスクにクーポンを適用/解除（次回請求から反映）
+#   クーポンは duration=forever のものを想定（継続割引）。0% は割引解除。
+def _sync_discount_to_subscription(supabase, facility_code, rate):
+    try:
+        fres = supabase.table("facilities").select(
+            "stripe_subscription_id,payment_type").eq("facility_code", facility_code).execute()
+        if not fres.data:
+            return {"applied": False, "message": "施設が見つかりません"}
+        sub_id = fres.data[0].get("stripe_subscription_id")
+        pay = fres.data[0].get("payment_type")
+        if not sub_id:
+            return {"applied": False, "message": "Stripeサブスクなし（新規契約時に反映されます）"}
+        if pay == "lump":
+            return {"applied": False, "message": "一括前払いのため既存請求への割引反映はありません"}
+        stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+        if not rate:
+            try:
+                stripe.Subscription.delete_discount(sub_id)
+            except Exception as e:
+                return {"applied": False, "message": "割引解除に失敗: " + str(e)}
+            return {"applied": True, "message": "既存サブスクの割引を解除しました"}
+        coupon_map = {0.2: "STRIPE_COUPON_20", 0.3: "STRIPE_COUPON_30", 0.5: "STRIPE_COUPON_50"}
+        coupon_env = coupon_map.get(round(float(rate), 2))
+        coupon_id = get_secret(coupon_env) if coupon_env else None
+        if not coupon_id:
+            return {"applied": False, "message": "クーポン未設定: " + str(coupon_env)}
+        try:
+            stripe.Subscription.modify(sub_id, coupon=coupon_id)
+        except Exception as e:
+            return {"applied": False, "message": "割引適用に失敗: " + str(e)}
+        return {"applied": True,
+                "message": "既存サブスクに%d%%割引を適用しました（次回請求から反映）" % int(rate * 100)}
+    except Exception as e:
+        return {"applied": False, "message": str(e)}
+
+
 @app.route('/api/dev/update_discount', methods=['POST'])
 @login_required
 def api_dev_update_discount():
@@ -12131,7 +12273,9 @@ def api_dev_update_discount():
         update_data = {"discount_rate": rate, "discount_until": until if until else None}
         supabase = get_supabase()
         supabase.table("facilities").update(update_data).eq("facility_code", facility_code).execute()
-        return jsonify({"status": "success"})
+        # pricing-rebuild-v1 : 課金中なら既存サブスクにもクーポンを適用/解除（次回請求から反映）
+        stripe_result = _sync_discount_to_subscription(supabase, facility_code, rate)
+        return jsonify({"status": "success", "stripe": stripe_result})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -14731,6 +14875,13 @@ def timecard_bootstrap():
             return jsonify({"status": "ok", "registered": True,
                             "enabled": False,
                             "message": "この施設ではタイムカード機能が有効になっていません。"})
+        # plan-enforce-v1: タイムカードはプロ機能。強制制御(PLAN_ENFORCE)が有効な間は
+        #   プラン未満だと使わせない（体験中・モニターは _tier_ok 側で常に許可。timecard_enabled との AND）。
+        #   既定は PLAN_ENFORCE=False のためこの分岐は通らず、従来どおり動作する。
+        if PLAN_ENFORCE and not _tier_ok(_facility_plan_state(supabase, f_code), "pro"):
+            return jsonify({"status": "ok", "registered": True,
+                            "enabled": False,
+                            "message": "タイムカードはプロプランの機能です。ご利用にはプランのアップグレードが必要です。"})
         # 施設名
         fac_name = f_code
         try:
@@ -14781,6 +14932,9 @@ def timecard_punch():
         f_code = dev.get("facility_code")
         if not _tc_facility_enabled(supabase, f_code):
             return jsonify({"status": "error", "message": "タイムカード機能が無効です。"}), 403
+        # plan-enforce-v1: プロ機能。強制制御が有効な間はプラン未満だと打刻不可（体験中・モニターは許可）。
+        if PLAN_ENFORCE and not _tier_ok(_facility_plan_state(supabase, f_code), "pro"):
+            return jsonify({"status": "error", "message": "タイムカードはプロプランの機能です。"}), 403
         if punch_type not in _TC_PUNCH_TYPES:
             return jsonify({"status": "error", "message": "打刻種別が不正です。"}), 400
         if not staff_name:
@@ -20200,6 +20354,9 @@ def _soge_planned_times(depart, stops, drive_minutes, settings):  # soge-time-v1
 @login_required
 def soge_week_page():
     """送迎表（曜日別テンプレート）。"""
+    _blk = _plan_block_redirect("standard")  # plan-enforce-v1
+    if _blk:
+        return _blk
     return render("soge_week.html")
 # ===== /soge-week-ui-v1 =====
 
@@ -23373,6 +23530,110 @@ def line_notify_admin(message):
         return False
     return line_send_message(admin_line_id, [{"type": "text", "text": message}])
 
+# pricing-rebuild-v1 : 契約時の割引後価格表（違約金計算・表示用。pricing.html の PRICES と一致させること）
+PLAN_PRICES = {
+    "starter":  {"monthly": 5980,  "1y_m": 4780,  "1y_l": 57400,  "2y_m": 3880,  "2y_l": 93300,  "3y_m": 2990,  "3y_l": 107600},
+    "standard": {"monthly": 12800, "1y_m": 10240, "1y_l": 122800, "2y_m": 8320,  "2y_l": 199700, "3y_m": 6400,  "3y_l": 230400},
+    "pro":      {"monthly": 24800, "1y_m": 19840, "1y_l": 238100, "2y_m": 16120, "2y_l": 387100, "3y_m": 12400, "3y_l": 446400},
+}
+PLAN_LABELS = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ", "monitor": "モニター", "free": "無料"}
+CANCEL_RATE = {1: 0.30, 2: 0.40, 3: 0.50}  # 年契約の違約率（1年30%/2年40%/3年50%）
+
+
+def _contract_overview(f_code):
+    """施設の契約状態＋（該当時）解約違約金を計算して返す。表示専用・DB変更なし。pricing-rebuild-v1"""
+    from datetime import datetime as _dt, timezone as _tz
+    out = {
+        "plan": "free", "plan_label": "無料", "payment_type": None,
+        "contract_term": 0, "contract_start": None, "contract_end": None,
+        "expires_at": None, "trial_ends_at": None,
+        "in_trial": False, "trial_days_left": None, "is_monitor": False,
+        "monthly_price": None, "cancel_kind": "none",
+        "remaining_months": 0, "penalty": 0, "penalty_rate": 0, "note": "",
+    }
+    try:
+        supabase = get_supabase()
+        res = supabase.table("facilities").select(
+            "plan,payment_type,contract_term,contract_start,contract_end,expires_at,trial_ends_at,is_monitor"
+        ).eq("facility_code", f_code).execute()
+        if not res.data:
+            return out
+        f = res.data[0]
+        now = _dt.now(_tz.utc)
+        plan = f.get("plan") or "free"
+        out["plan"] = plan
+        out["plan_label"] = PLAN_LABELS.get(plan, plan)
+        out["payment_type"] = f.get("payment_type")
+        out["contract_term"] = int(f.get("contract_term") or 0)
+        out["contract_start"] = (f.get("contract_start") or "")[:10] or None
+        out["contract_end"] = (f.get("contract_end") or "")[:10] or None
+        out["expires_at"] = (f.get("expires_at") or "")[:10] or None
+        out["trial_ends_at"] = (f.get("trial_ends_at") or "")[:10] or None
+        out["is_monitor"] = bool(f.get("is_monitor"))
+
+        def _parse(d):
+            if not d or str(d) in ("None", ""):
+                return None
+            try:
+                return _dt.fromisoformat(str(d).replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                return None
+
+        te = _parse(f.get("trial_ends_at"))
+        if te and te > now:
+            out["in_trial"] = True
+            out["trial_days_left"] = max(0, (te - now).days)
+
+        # モニター（自社等・永久無料）
+        if out["is_monitor"] or plan == "monitor":
+            out["cancel_kind"] = "monitor"
+            out["note"] = "モニター施設のため料金は発生しません。"
+            return out
+
+        term = out["contract_term"]
+        pay = out["payment_type"]
+        if term >= 1 and pay == "monthly":
+            out["monthly_price"] = PLAN_PRICES.get(plan, {}).get("%dy_m" % term)
+        elif term == 0:
+            out["monthly_price"] = PLAN_PRICES.get(plan, {}).get("monthly")
+
+        # トライアル中は違約金なし
+        if out["in_trial"]:
+            out["cancel_kind"] = "trial"
+            out["note"] = "無料期間中の解約は違約金がかかりません。継続しない場合は無料期間の間に解約してください。"
+            return out
+
+        # 一括前払い（返金なし・満了まで利用可）
+        if pay == "lump" and term >= 1:
+            out["cancel_kind"] = "lump"
+            out["note"] = "一括前払いプランです。契約満了まで利用でき、中途解約による返金はありません（自動更新なし）。"
+            return out
+
+        # 年契約・月払い（違約金あり）
+        if pay == "monthly" and term >= 1:
+            ce = _parse(f.get("contract_end"))
+            rem_m = 0
+            if ce and ce > now:
+                rem_m = ((ce - now).days + 29) // 30  # 残月数（切り上げ）
+            out["remaining_months"] = rem_m
+            rate = CANCEL_RATE.get(term, 0)
+            out["penalty_rate"] = rate
+            mp = out["monthly_price"] or 0
+            out["penalty"] = int(round(rem_m * mp * rate))
+            out["cancel_kind"] = "annual_monthly"
+            out["note"] = ("%d年契約（月払い）です。中途解約には残り%dヶ月分の%d%%（¥%s）の違約金がかかります。"
+                           % (term, rem_m, int(rate * 100), "{:,}".format(out["penalty"])))
+            return out
+
+        # 月払い（コミットなし）
+        if plan in ("starter", "standard", "pro"):
+            out["cancel_kind"] = "monthly"
+            out["note"] = "月払いプランです。いつでも解約でき、違約金はかかりません（当月末で停止）。"
+    except Exception as e:
+        print("[contract] overview error: " + str(e), flush=True)
+    return out
+
+
 @app.route('/pricing')
 @login_required
 def pricing():
@@ -23391,9 +23652,493 @@ def pricing():
     return render_template('pricing.html',
         current_plan=current_plan,
         trial_ends_at=trial_ends_at,
+        contract=_contract_overview(f_code),  # pricing-rebuild-v1
+        is_admin=session.get('admin_authenticated', False),  # pricing-rebuild-v1
         f_code=f_code,
         my_name=session.get('my_name', ''),
     )
+
+
+# pricing-rebuild-v1 : 契約状況＋違約金をJSONで返す（管理者MENUの契約カード等で使用）
+@app.route('/api/contract_state')
+@login_required
+def api_contract_state():
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"error": "not logged in"}), 401
+    return jsonify(_contract_overview(f_code))
+
+
+# pricing-rebuild-v1 : 解約フロー
+#   trial/monthly … 違約金なし → Stripeサブスクを期間末解約（即時反映）
+#   annual_monthly … 違約金あり → cancellation_requests に申請登録＋LINE通知（手動処理）
+#   lump/monitor … 返金なし/対象外の案内のみ
+@app.route('/api/cancel_subscription', methods=['POST'])
+@login_required
+def api_cancel_subscription():
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"error": "not logged in"}), 401
+    # 解約は管理者認証済みのときのみ許可
+    if not session.get("admin_authenticated"):
+        return jsonify({"error": "管理者メニューから操作してください。"}), 403
+
+    data = request.get_json(silent=True) or {}
+    reason = (data.get("reason") or "").strip()
+    my_name = session.get("my_name", "")
+    ov = _contract_overview(f_code)
+    kind = ov.get("cancel_kind")
+    supabase = get_supabase()
+
+    # 申請者（ログイン中の管理者）本人のLINEに確認を返す pricing-rebuild-v1
+    requester_uid = None
+    try:
+        _sres = supabase.table("staffs").select("line_user_id").eq(
+            "facility_code", f_code).eq("staff_name", my_name).eq("is_active", True).execute()
+        if _sres.data:
+            requester_uid = _sres.data[0].get("line_user_id")
+    except Exception:
+        pass
+
+    def _notify_requester(text):
+        if requester_uid:
+            try:
+                line_send_message(requester_uid, [{"type": "text", "text": text}])
+            except Exception:
+                pass
+
+    base_row = {
+        "facility_code": f_code, "plan": ov.get("plan"),
+        "contract_term": ov.get("contract_term"), "payment_type": ov.get("payment_type"),
+        "contract_start": ov.get("contract_start"), "contract_end": ov.get("contract_end"),
+        "remaining_months": ov.get("remaining_months"), "penalty_amount": ov.get("penalty"),
+        "monthly_price": ov.get("monthly_price"),
+        "reason": reason or None, "requested_by": my_name or None,
+    }
+
+    def _log(status, note):
+        try:
+            row = dict(base_row); row["status"] = status; row["note"] = note
+            if status in ("done", "approved", "rejected"):
+                row["processed_at"] = datetime.now(timezone.utc).isoformat()
+            supabase.table("cancellation_requests").insert(row).execute()
+        except Exception as e:
+            print("[cancel] log insert error: " + str(e), flush=True)
+
+    # 違約金なし → その場で期間末解約
+    if kind in ("trial", "monthly"):
+        sub_id = None
+        try:
+            fres = supabase.table("facilities").select("stripe_subscription_id").eq("facility_code", f_code).execute()
+            if fres.data:
+                sub_id = fres.data[0].get("stripe_subscription_id")
+        except Exception:
+            pass
+        if sub_id:
+            try:
+                stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+                stripe.Subscription.modify(sub_id, cancel_at_period_end=True)
+            except Exception as e:
+                print("[cancel] stripe modify error: " + str(e), flush=True)
+                return jsonify({"error": "解約処理に失敗しました。時間をおいて再度お試しください。"}), 500
+            _log("done", "無料期間中に解約（課金なし）" if kind == "trial" else "月払いを期間末で解約")
+            try:
+                line_notify_admin("\n".join([
+                    "【TASUKARU】解約（自己完結・違約金なし）",
+                    "施設: " + f_code,
+                    "区分: " + ("無料期間中" if kind == "trial" else "月払い"),
+                    "理由: " + (reason or "（未記入）"),
+                ]))
+            except Exception:
+                pass
+            end_txt = ov.get("trial_ends_at") if kind == "trial" else ov.get("expires_at")
+            if kind == "trial":
+                msg = "無料期間の終了日（%s）で停止します。無料期間中の料金は発生しません。" % (end_txt or "")
+            else:
+                msg = "現在の期間の終了日（%s）で停止します。違約金はかかりません。" % (end_txt or "")
+            _notify_requester("【TASUKARU】解約を受け付けました\n" + msg)
+            return jsonify({"status": "cancelled", "kind": kind, "message": msg})
+        # サブスクIDが特定できない → 手動確認へ回す
+        _log("pending", "Stripeサブスク未特定・手動確認要")
+        try:
+            line_notify_admin("\n".join([
+                "【TASUKARU】解約申請（サブスク未特定・要確認）",
+                "施設: " + f_code, "区分: " + kind,
+            ]))
+        except Exception:
+            pass
+        _notify_requester("【TASUKARU】解約を受け付けました\n担当者が確認のうえご連絡します。")
+        return jsonify({"status": "requested", "kind": kind,
+                        "message": "解約を受け付けました。担当者が確認のうえご連絡します。"})
+
+    # 違約金あり → 申請登録＋LINE通知（手動処理）
+    if kind == "annual_monthly":
+        try:
+            row = dict(base_row); row["status"] = "pending"; row["note"] = "年契約（月払い）中途解約・違約金あり"
+            supabase.table("cancellation_requests").insert(row).execute()
+        except Exception as e:
+            print("[cancel] request insert error: " + str(e), flush=True)
+            return jsonify({"error": "申請の登録に失敗しました。時間をおいて再度お試しください。"}), 500
+        try:
+            line_notify_admin("\n".join([
+                "【TASUKARU】解約申請（違約金あり）",
+                "施設: " + f_code,
+                "プラン: " + str(ov.get("plan_label")),
+                "契約: %d年・月払い" % (ov.get("contract_term") or 0),
+                "残り: 約%dヶ月" % (ov.get("remaining_months") or 0),
+                "違約金: ¥{:,}".format(ov.get("penalty") or 0),
+                "理由: " + (reason or "（未記入）"),
+                "",
+                "内容を確認し、Stripeで違約金請求・停止処理をしてください。",
+            ]))
+        except Exception:
+            pass
+        _notify_requester("【TASUKARU】解約申請を受け付けました\n"
+                          + "違約金 ¥{:,} の確認後、担当者よりご連絡します。".format(ov.get("penalty") or 0)
+                          + "\n（この時点では解約は確定していません）")
+        return jsonify({"status": "requested", "kind": kind, "penalty": ov.get("penalty") or 0,
+                        "message": "解約申請を受け付けました。違約金¥{:,}の確認後、担当者よりご連絡します。".format(ov.get("penalty") or 0)})
+
+    # 一括前払い（返金なし）／モニター／未契約
+    if kind == "lump":
+        return jsonify({"status": "info", "kind": kind,
+                        "message": "一括前払いプランは契約満了（%s）まで利用でき、中途解約による返金はありません。満了後は自動更新されません。" % (ov.get("contract_end") or "")})
+    if kind == "monitor":
+        return jsonify({"status": "info", "kind": kind, "message": "モニター施設のため料金は発生しません。"})
+    return jsonify({"status": "info", "kind": "none", "message": "現在ご契約中の有料プランはありません。"})
+
+
+# pricing-rebuild-v1 : 期限切れ施設の受け皿（公開ページ・ログイン不要）
+@app.route('/reactivate')
+def reactivate():
+    fc = (request.args.get('fc') or '').strip()
+    return render_template('reactivate.html', fc=fc)
+
+
+@app.route('/api/reactivate_request', methods=['POST'])
+def api_reactivate_request():
+    data = request.get_json(silent=True) or {}
+    fc = (data.get('facility_code') or '').strip()
+    message = (data.get('message') or '').strip()
+    contact = (data.get('contact') or '').strip()
+    if not fc:
+        return jsonify({"error": "施設コードを入力してください。"}), 400
+    fac_name = None
+    try:
+        supabase = get_supabase()
+        fres = supabase.table("facilities").select("facility_name").eq("facility_code", fc).execute()
+        if fres.data:
+            fac_name = fres.data[0].get("facility_name")
+    except Exception:
+        pass
+    # 施設コードの存在有無に関わらず同じ応答（情報漏えい防止）。存在する場合のみ通知。
+    if fac_name is not None:
+        try:
+            line_notify_admin("\n".join([
+                "【TASUKARU】ご利用再開のお申し込み/相談",
+                "施設: " + fc + "（" + (fac_name or "") + "）",
+                "連絡先: " + (contact or "（未記入）"),
+                "内容: " + (message or "（未記入）"),
+            ]))
+        except Exception as e:
+            print("[reactivate] notify error: " + str(e), flush=True)
+    return jsonify({"status": "ok", "message": "受け付けました。担当者より折り返しご連絡します。"})
+
+
+# pricing-rebuild-v1 : 契約リマインド（Cloud Scheduler から毎日1回叩く。token で保護）
+#   トライアル終了 7日前/3日前/当日 → 施設の管理者LINEへ（自動課金の予告＋辞退導線）
+#   年契約 満了 90日前/30日前/7日前 → 施設の管理者LINEへ（更新案内）
+#   年契約 満了 60日前 → 岸本さんへ（更新交渉タイミング）
+@app.route('/api/cron/contract_notices', methods=['GET', 'POST'])
+def api_cron_contract_notices():
+    token = request.args.get('token') or request.headers.get('X-Cron-Token', '')
+    if not token or token != get_secret("CRON_TOKEN"):
+        return jsonify({"error": "forbidden"}), 403
+
+    supabase = get_supabase()
+    today = datetime.now(tokyo_tz).date()
+    base = request.host_url.rstrip("/")
+    sent = {"trial": 0, "contract": 0, "operator": 0}
+
+    def _admin_lines(fc):
+        try:
+            r = supabase.table("staffs").select("line_user_id").eq(
+                "facility_code", fc).eq("is_active", True).execute()
+            return [s.get("line_user_id") for s in (r.data or []) if s.get("line_user_id")]
+        except Exception:
+            return []
+
+    def _dparse(d):
+        if not d or str(d) in ("None", ""):
+            return None
+        try:
+            return datetime.fromisoformat(str(d).replace("Z", "+00:00")).date()
+        except (ValueError, TypeError):
+            try:
+                return datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                return None
+
+    try:
+        res = supabase.table("facilities").select(
+            "facility_code,facility_name,payment_type,contract_term,contract_end,trial_ends_at,is_active,is_monitor"
+        ).eq("is_active", True).execute()
+        facs = res.data or []
+    except Exception as e:
+        print("[cron] fetch error: " + str(e), flush=True)
+        return jsonify({"error": "db"}), 500
+
+    for f in facs:
+        fc = f.get("facility_code")
+        if not fc or f.get("is_monitor"):
+            continue
+
+        # --- トライアル終了リマインド ---
+        te = _dparse(f.get("trial_ends_at"))
+        if te:
+            d = (te - today).days
+            if d in (7, 3, 0):
+                lines = _admin_lines(fc)
+                if lines:
+                    when = "本日" if d == 0 else ("%d日後" % d)
+                    msg = "\n".join([
+                        "【TASUKARU】無料期間終了の" + ("お知らせ（本日）" if d == 0 else "お知らせ"),
+                        "施設: " + (f.get("facility_name") or fc),
+                        "無料期間は%s（%s）で終了します。" % (when, te.isoformat()),
+                        "終了後は選択中のプランで自動的に課金が始まります。",
+                        "このまま継続する場合はお手続き不要です。",
+                        "解約する場合は無料期間の間に：" + base + "/pricing",
+                    ])
+                    for uid in lines:
+                        try:
+                            line_send_message(uid, [{"type": "text", "text": msg}])
+                            sent["trial"] += 1
+                        except Exception:
+                            pass
+
+        # --- 年契約 満了リマインド ---
+        term = int(f.get("contract_term") or 0)
+        ce = _dparse(f.get("contract_end"))
+        if term >= 1 and ce:
+            d = (ce - today).days
+            if d in (90, 30, 7):
+                lines = _admin_lines(fc)
+                if lines:
+                    msg = "\n".join([
+                        "【TASUKARU】契約満了のお知らせ",
+                        "施設: " + (f.get("facility_name") or fc),
+                        "現在の契約は %s（あと%d日）で満了します。" % (ce.isoformat(), d),
+                        "更新・プランのご相談はこちら：" + base + "/pricing",
+                    ])
+                    for uid in lines:
+                        try:
+                            line_send_message(uid, [{"type": "text", "text": msg}])
+                            sent["contract"] += 1
+                        except Exception:
+                            pass
+            if d == 60:
+                try:
+                    line_notify_admin("\n".join([
+                        "【TASUKARU】更新交渉タイミング（満了60日前）",
+                        "施設: " + (f.get("facility_name") or fc) + "（" + fc + "）",
+                        "契約満了: " + ce.isoformat(),
+                    ]))
+                    sent["operator"] += 1
+                except Exception:
+                    pass
+
+    print("[cron] contract_notices sent=%s" % sent, flush=True)
+    return jsonify({"status": "ok", "sent": sent})
+
+
+# pricing-rebuild-v1 : Stripe価格チェック（開発者専用・Secret Keyは表示しない）
+#   21個の STRIPE_PRICE_* が Stripe に正しく登録され、金額・課金種別が想定と一致するか検証
+_PRICE_ID_CACHE = {}  # stripe-price-setup-v1: lookup_key -> price_id
+
+
+def _resolve_price_id(env_key):  # stripe-price-setup-v1
+    """Price ID を解決。環境変数優先、無ければ Stripe の lookup_key から取得（キャッシュ）。
+    これにより STRIPE_PRICE_* を環境変数に入れなくても、作成済み価格を自動で使える。"""
+    try:
+        pid = get_secret(env_key) or ""
+    except Exception:
+        pid = ""
+    if pid:
+        return pid
+    if env_key in _PRICE_ID_CACHE:
+        return _PRICE_ID_CACHE[env_key]
+    try:
+        stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+        r = stripe.Price.list(lookup_keys=[env_key], limit=1)
+        if r.data:
+            _PRICE_ID_CACHE[env_key] = r.data[0].id
+            return r.data[0].id
+    except Exception as e:
+        print("_resolve_price_id error %s: %s" % (env_key, e), flush=True)
+    return ""
+
+
+def _check_stripe_prices():
+    spec = []  # (env_key, plan_label, term_label, expected_amount, expected_mode)
+    for plan_key, plan_label in (("STARTER", "スターター"), ("STANDARD", "スタンダード"), ("PRO", "プロ")):
+        p = PLAN_PRICES.get(plan_key.lower(), {})
+        spec.append(("STRIPE_PRICE_%s_M" % plan_key, plan_label, "月払い(単月)", p.get("monthly"), "recurring"))
+        for y in (1, 2, 3):
+            spec.append(("STRIPE_PRICE_%s_%dY_M" % (plan_key, y), plan_label, "%d年・月払い" % y, p.get("%dy_m" % y), "recurring"))
+            spec.append(("STRIPE_PRICE_%s_%dY_L" % (plan_key, y), plan_label, "%d年・一括" % y, p.get("%dy_l" % y), "one_time"))
+    try:
+        stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+    except Exception:
+        pass
+    out = []
+    for env_key, plan_label, term_label, exp_amount, exp_mode in spec:
+        row = {"env_key": env_key, "plan": plan_label, "term": term_label,
+               "expected_amount": exp_amount, "expected_mode": exp_mode,
+               "price_id": None, "amount": None, "mode": None, "active": None,
+               "ok": False, "issue": ""}
+        pid = None
+        try:
+            pid = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
+        except Exception:
+            pid = None
+        if not pid:
+            row["issue"] = "価格が見つかりません（未作成/未設定）"
+            out.append(row)
+            continue
+        row["price_id"] = pid
+        try:
+            pr = stripe.Price.retrieve(pid)
+            row["amount"] = pr.get("unit_amount")
+            row["active"] = pr.get("active")
+            rec = pr.get("recurring")
+            row["mode"] = "recurring" if rec else "one_time"
+            issues = []
+            if exp_amount is not None and row["amount"] != exp_amount:
+                issues.append("金額不一致(実%s/想定%s)" % (row["amount"], exp_amount))
+            if row["mode"] != exp_mode:
+                issues.append("種別不一致(実%s/想定%s)" % (row["mode"], exp_mode))
+            if rec and rec.get("interval") != "month":
+                issues.append("継続周期が月でない(%s)" % rec.get("interval"))
+            if row["active"] is False:
+                issues.append("price が無効(active=false)")
+            cur = pr.get("currency")
+            if cur and cur != "jpy":
+                issues.append("通貨がjpyでない(%s)" % cur)
+            row["ok"] = (len(issues) == 0)
+            row["issue"] = "／".join(issues)
+        except Exception as e:
+            row["issue"] = "Stripe取得失敗: " + str(e)
+        out.append(row)
+    return out
+
+
+@app.route('/dev/stripe_check')
+@login_required
+def dev_stripe_check():
+    if not session.get("dev_authenticated"):
+        return redirect(url_for("dev_login"))
+    rows = _check_stripe_prices()
+    ok_count = sum(1 for r in rows if r.get("ok"))
+    return render_template("dev_stripe_check.html", rows=rows, ok_count=ok_count, total=len(rows))
+
+
+def _stripe_price_spec():  # stripe-price-setup-v1
+    """21価格の仕様。 _check_stripe_prices と同じ規則で (env_key, plan, plan_label, term, amount, mode)。"""
+    spec = []
+    labels = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ"}
+    for plan in ("starter", "standard", "pro"):
+        P = plan.upper()
+        p = PLAN_PRICES.get(plan, {})
+        spec.append(("STRIPE_PRICE_%s_M" % P, plan, labels[plan], "月払い(単月)", p.get("monthly"), "recurring"))
+        for y in (1, 2, 3):
+            spec.append(("STRIPE_PRICE_%s_%dY_M" % (P, y), plan, labels[plan], "%d年・月払い" % y, p.get("%dy_m" % y), "recurring"))
+            spec.append(("STRIPE_PRICE_%s_%dY_L" % (P, y), plan, labels[plan], "%d年・一括" % y, p.get("%dy_l" % y), "one_time"))
+    return spec
+
+
+def _stripe_find_or_create_product(plan, label):  # stripe-price-setup-v1
+    tag = "tasukaru_plan"
+    try:
+        res = stripe.Product.search(query="metadata['%s']:'%s'" % (tag, plan), limit=1)
+        if getattr(res, "data", None):
+            return res.data[0].id
+    except Exception:
+        try:
+            for pr in stripe.Product.list(limit=100).auto_paging_iter():
+                if (pr.get("metadata") or {}).get(tag) == plan:
+                    return pr.id
+        except Exception:
+            pass
+    prod = stripe.Product.create(name="TASUKARU %s" % label, metadata={tag: plan})
+    return prod.id
+
+
+def _create_stripe_prices():  # stripe-price-setup-v1
+    """21価格を Stripe に冪等に作成し、結果一覧を返す。lookup_key=env_key で重複防止。"""
+    key = ""
+    try:
+        key = get_secret("STRIPE_SECRET_KEY") or ""
+    except Exception:
+        key = ""
+    mode = "live" if key.startswith("sk_live_") else ("test" if (key.startswith("sk_test_") or key.startswith("rk_test_")) else "unknown")
+    if not key:
+        return {"ok": False, "error": "STRIPE_SECRET_KEY が未設定です。先にサーバーの環境変数に設定してください。",
+                "mode": mode, "rows": [], "env_lines": [], "made": 0, "reused": 0, "failed": 0}
+    stripe.api_key = key
+    rows = []
+    env_lines = []
+    made = reused = failed = 0
+    product_ids = {}
+    for env_key, plan, label, term, amount, kind in _stripe_price_spec():
+        row = {"env_key": env_key, "plan": label, "term": term, "amount": amount,
+               "mode": kind, "price_id": None, "status": "", "issue": ""}
+        try:
+            if plan not in product_ids:
+                product_ids[plan] = _stripe_find_or_create_product(plan, label)
+            existing = None
+            try:
+                r = stripe.Price.list(lookup_keys=[env_key], limit=1)
+                if r.data:
+                    existing = r.data[0]
+            except Exception:
+                existing = None
+            if existing:
+                row["price_id"] = existing.id
+                row["status"] = "reused"
+                env_lines.append("%s=%s" % (env_key, existing.id))
+                reused += 1
+            else:
+                params = dict(currency="jpy", unit_amount=amount, product=product_ids[plan],
+                              lookup_key=env_key, transfer_lookup_key=True,
+                              nickname="%s %s" % (label, term),
+                              metadata={"tasukaru_env_key": env_key, "tasukaru_plan": plan, "tasukaru_term": term})
+                if kind == "recurring":
+                    params["recurring"] = {"interval": "month"}
+                price = stripe.Price.create(**params)
+                row["price_id"] = price.id
+                row["status"] = "created"
+                env_lines.append("%s=%s" % (env_key, price.id))
+                made += 1
+        except Exception as e:
+            row["status"] = "failed"
+            row["issue"] = str(e)
+            failed += 1
+        rows.append(row)
+    return {"ok": failed == 0, "mode": mode, "rows": rows, "env_lines": env_lines,
+            "made": made, "reused": reused, "failed": failed}
+
+
+@app.route('/api/dev/create_stripe_prices', methods=['POST'])  # stripe-price-setup-v1
+@login_required
+def api_dev_create_stripe_prices():
+    if not session.get("dev_authenticated"):
+        return jsonify({"ok": False, "error": "dev auth required"}), 403
+    try:
+        result = _create_stripe_prices()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": "作成処理でエラー: %s" % e, "rows": [], "env_lines": []}), 200
+
 
 # --- Stripe 決済セッション作成 ---
 @app.route('/api/stripe/create_checkout', methods=['POST'])
@@ -23427,7 +24172,7 @@ def stripe_create_checkout():
     suffix, checkout_mode = TERM_MAP[term]
 
     env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
-    price_id = get_secret(env_key)
+    price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
     if not price_id:
         return jsonify({"error": "price not configured: " + env_key}), 400
 
@@ -23529,7 +24274,7 @@ def onboard_create_checkout():
         return jsonify({"error": "invalid term: " + term}), 400
     suffix, checkout_mode = TERM_MAP[term]
     env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
-    price_id = get_secret(env_key)
+    price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
     if not price_id:
         return jsonify({"error": "price not configured: " + env_key}), 400
 
@@ -23551,12 +24296,12 @@ def onboard_create_checkout():
             },
             locale="ja",
         )
-        # subscription のときは1ヶ月無料トライアルを付与(初月無課金)
+        # subscription のときは無料トライアルを付与(トライアル中は無課金) pricing-rebuild-v1
         if contact_email:  # onboard-email-v1 : Stripe顧客にもメールを設定
             params["customer_email"] = contact_email
         if checkout_mode == "subscription":
             params["subscription_data"] = {
-                "trial_period_days": 30,
+                "trial_period_days": TRIAL_DAYS,  # 2ヶ月無料トライアル
                 "metadata": {"onboard_id": onboard_id},
             }
         checkout = stripe.checkout.Session.create(**params)
@@ -23564,6 +24309,23 @@ def onboard_create_checkout():
     except Exception as e:
         print("[Onboard] checkout error: " + str(e), flush=True)
         return jsonify({"error": str(e)}), 500
+
+
+# pricing-rebuild-v1 : Stripeサブスクの期間末+猶予を expires_at 用ISOで返す
+def _stripe_sub_expiry(sub_id, grace_days=SUB_GRACE_DAYS):
+    """current_period_end + 猶予日数 をISO文字列で返す（取得失敗時 None）。
+    トライアル中は current_period_end = トライアル終了日 なので、そのまま使える。"""
+    try:
+        if not sub_id:
+            return None
+        sub = stripe.Subscription.retrieve(sub_id)
+        cpe = sub.get("current_period_end")
+        if cpe:
+            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+            return (_dt.fromtimestamp(int(cpe), _tz.utc) + _td(days=grace_days)).isoformat()
+    except Exception as e:
+        print("[Stripe] sub expiry lookup error: " + str(e), flush=True)
+    return None
 
 
 # --- Stripe Webhook ---
@@ -23629,20 +24391,41 @@ def stripe_webhook():
                     print("[Onboard] failed to allocate facility_code", flush=True)
                     return jsonify({"status": "ok"}), 200
                 _ob_now = _ob_dt.now(_ob_tz.utc)
-                # 1ヶ月無料トライアル: 初月はトライアル、有効期限=トライアル終了日
-                trial_end = _ob_now + _ob_td(days=30)
-                supabase.table("facilities").insert({
+                ob_sub_id = session_data.get("subscription")
+                ob_is_lump = ob_term.endswith("_l")  # pricing-rebuild-v1
+                _OB_TERM_YEARS = {"1y_m": 1, "1y_l": 1, "2y_m": 2, "2y_l": 2, "3y_m": 3, "3y_l": 3}
+                ob_term_years = _OB_TERM_YEARS.get(ob_term, 0)
+                _fac_row = {
                     "facility_code": new_code,
                     "facility_name": ob_fac_name,
                     "plan": ob_plan,
                     "is_active": True,
-                    "trial_ends_at": trial_end.isoformat(),
-                    "expires_at": trial_end.isoformat(),
-                    "stripe_subscription_id": session_data.get("subscription"),
+                    "stripe_subscription_id": ob_sub_id,
                     "stripe_customer_id": session_data.get("customer"),
                     "onboard_id": onboard_id,
                     "contact_email": (meta.get("email") or "").strip() or None,  # onboard-email-v1
-                }).execute()
+                    "contract_start": _ob_now.date().isoformat(),
+                    "contract_term": ob_term_years,
+                    "payment_type": "lump" if ob_is_lump else "monthly",
+                }
+                if ob_is_lump:
+                    # 一括前払い: トライアルなし。契約満了まで利用可・自動更新なし・返金なし
+                    _OB_TERM_DAYS = {"1y_l": 365, "2y_l": 730, "3y_l": 1095}
+                    _ob_end = _ob_now + _ob_td(days=_OB_TERM_DAYS.get(ob_term, 365))
+                    _fac_row["trial_ends_at"] = None
+                    _fac_row["expires_at"] = _ob_end.isoformat()
+                    _fac_row["contract_end"] = _ob_end.date().isoformat()
+                else:
+                    # subscription(月払い/年契約月払い): 2ヶ月トライアル。
+                    # expires_at=サブスク期間末+猶予(トライアル中は=トライアル終了日+猶予)
+                    trial_end = _ob_now + _ob_td(days=TRIAL_DAYS)
+                    _fac_row["trial_ends_at"] = trial_end.isoformat()
+                    _fac_row["expires_at"] = _stripe_sub_expiry(ob_sub_id) or (
+                        trial_end + _ob_td(days=SUB_GRACE_DAYS)).isoformat()
+                    if ob_term_years:
+                        _fac_row["contract_end"] = (
+                            _ob_now + _ob_td(days=365 * ob_term_years)).date().isoformat()
+                supabase.table("facilities").insert(_fac_row).execute()
                 # 管理者職員を作成(パスワードは未設定=空。初回設定リンクで本人が設定する)
                 setup_token = _ob_secrets.token_urlsafe(32)
                 setup_exp = (_ob_now + _ob_td(hours=24)).isoformat()
@@ -23695,7 +24478,7 @@ def stripe_webhook():
             try:
                 supabase = get_supabase()
                 from datetime import datetime, timedelta, timezone
-                # 契約期間から有効期限を算出（月払い単月=30日、年契約=年数ぶん）
+                # 契約満了日を算出（違約金/通知の基準）
                 TERM_DAYS = {
                     "monthly": 30,
                     "1y_m": 365, "1y_l": 365,
@@ -23708,17 +24491,27 @@ def stripe_webhook():
                 # 契約年数（違約金計算等で参照）
                 TERM_YEARS = {"1y_m": 1, "1y_l": 1, "2y_m": 2, "2y_l": 2, "3y_m": 3, "3y_l": 3}
                 contract_term_years = TERM_YEARS.get(term, 0)
-                payment_type = "lump" if term.endswith("_l") else "monthly"
+                is_lump = term.endswith("_l")
+                payment_type = "lump" if is_lump else "monthly"
+                sub_id = session_data.get("subscription")
+                # pricing-rebuild-v1 : アクセス期限
+                #   一括=満了日 / subscription=期間末+猶予（invoice.paidで毎期延長）
+                if is_lump:
+                    expires_iso = contract_end.isoformat()
+                else:
+                    expires_iso = _stripe_sub_expiry(sub_id) or (
+                        (contract_end if term == "monthly"
+                         else now + timedelta(days=30 + SUB_GRACE_DAYS)).isoformat())
 
                 update_data = {
                     "is_active": True,
                     "plan": plan,
-                    "expires_at": contract_end.isoformat(),
+                    "expires_at": expires_iso,
                     "contract_start": now.date().isoformat(),
                     "contract_end": contract_end.date().isoformat(),
                     "contract_term": contract_term_years,
                     "payment_type": payment_type,
-                    "stripe_subscription_id": session_data.get("subscription"),
+                    "stripe_subscription_id": sub_id,
                     "stripe_customer_id": session_data.get("customer"),
                 }
                 supabase.table("facilities").update(update_data).eq("facility_code", f_code).execute()
@@ -23735,6 +24528,26 @@ def stripe_webhook():
                 )
             except Exception as e:
                 print(f"[Stripe webhook] DB update error: {e}", flush=True)
+
+    elif event["type"] == "invoice.paid":
+        # pricing-rebuild-v1 : 継続課金の成功（毎月/更新/トライアル明け）→ アクセス期限を延長
+        inv = event["data"]["object"]
+        try:
+            inv_sub_id = inv.get("subscription") if isinstance(inv, dict) else None
+        except Exception:
+            inv_sub_id = None
+        if inv_sub_id:
+            try:
+                supabase = get_supabase()
+                new_exp = _stripe_sub_expiry(inv_sub_id)
+                if new_exp:
+                    supabase.table("facilities").update({
+                        "is_active": True,
+                        "expires_at": new_exp,
+                    }).eq("stripe_subscription_id", inv_sub_id).execute()
+                    print(f"[Stripe] invoice.paid → expires extended (sub {inv_sub_id})", flush=True)
+            except Exception as e:
+                print(f"[Stripe webhook] invoice.paid error: {e}", flush=True)
 
     elif event["type"] == "customer.subscription.deleted":
         # サブスク解約時
@@ -25228,6 +26041,9 @@ def admin_meetings():
     ok, f_code, my_name = _meetings_gate_ok()
     if not ok:
         return redirect(url_for("admin"))
+    _blk = _plan_block_redirect("pro")  # plan-enforce-v1: プロ機能。既存の meetings_enabled と AND
+    if _blk:
+        return _blk
     return render("admin_meetings.html")
 # --- /meetings-page-route-v1 ---
 

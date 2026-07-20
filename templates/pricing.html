@@ -53,6 +53,29 @@
 .cancellation-note { background:#fff8e1; border:1px solid #fdd835; border-radius:10px; padding:10px 14px; margin-top:1rem; font-size:0.75rem; color:#5f4b00; }
 .cancellation-note strong { display:block; margin-bottom:4px; }
 
+/* 契約状況パネル（明朗会計 pricing-rebuild-v1） */
+.contract-box { background:#fff; border:1.5px solid #dadce0; border-radius:14px; padding:14px 16px; margin:0 0 1.2rem; }
+.contract-title { font-size:0.9rem; font-weight:800; color:#202124; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+.contract-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:5px 0; border-top:1px solid #f1f3f4; font-size:0.82rem; }
+.contract-row:first-of-type { border-top:none; }
+.contract-row span { color:#5f6368; flex:0 0 auto; }
+.contract-row b { color:#202124; text-align:right; }
+.contract-row.penalty b { color:#ea4335; font-size:0.95rem; }
+.contract-note { margin-top:10px; font-size:0.76rem; line-height:1.6; color:#5f4b00; background:#fff8e1; border:1px solid #fdd835; border-radius:10px; padding:9px 12px; }
+.contract-note.trial { color:#0b6b3a; background:#e8f5e9; border-color:#4caf50; }
+
+/* 解約UI pricing-rebuild-v1 */
+.cxl-open-btn { background:#fff; color:#ea4335; border:1.5px solid #ea4335; border-radius:9px; padding:7px 14px; font-size:0.8rem; font-weight:700; cursor:pointer; }
+.cxl-open-btn:active { background:#fdeceb; }
+.cxl-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:10000; padding:16px; }
+.cxl-box { background:#fff; border-radius:16px; padding:18px; max-width:420px; width:100%; box-shadow:0 8px 30px rgba(0,0,0,0.25); }
+.cxl-title { font-size:1rem; font-weight:800; color:#202124; margin-bottom:10px; }
+.cxl-box p { font-size:0.85rem; line-height:1.7; color:#3c4043; margin:0 0 10px; }
+.cxl-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+.cxl-cancel { background:#f1f3f4; color:#5f6368; border:none; border-radius:9px; padding:9px 16px; font-size:0.85rem; font-weight:700; cursor:pointer; }
+.cxl-confirm { background:#ea4335; color:#fff; border:none; border-radius:9px; padding:9px 16px; font-size:0.85rem; font-weight:700; cursor:pointer; }
+.cxl-confirm:disabled { opacity:0.6; cursor:default; }
+
 /* 成功・キャンセルバナー */
 .stripe-banner { border-radius:12px; padding:12px 16px; margin-bottom:1rem; font-size:0.85rem; font-weight:700; display:flex; align-items:center; gap:8px; }
 .stripe-banner.success { background:#e8f5e9; color:#2e7d32; border:1.5px solid #4caf50; }
@@ -62,7 +85,7 @@
 <div class="pricing-wrap">
     <div class="pricing-header">
         <h1>プランを選択</h1>
-        <p>1ヶ月間は無料でお試しいただけます</p>
+        <p>2ヶ月間は無料でお試しいただけます</p>
     </div>
 
     {% if request.args.get('stripe') == 'success' %}
@@ -90,6 +113,39 @@
     </div>
     {% endif %}
 
+    {# 契約状況パネル（明朗会計 pricing-rebuild-v1） #}
+    {% if contract and contract.plan and contract.plan != 'free' %}
+    <div class="contract-box">
+        <div class="contract-title"><span class="material-symbols-outlined" style="font-size:19px;color:#1a73e8;">receipt_long</span>現在の契約状況</div>
+        <div class="contract-row"><span>プラン</span><b>{{ contract.plan_label }}</b></div>
+        {% if contract.in_trial %}
+        <div class="contract-row"><span>無料期間</span><b>残り{{ contract.trial_days_left }}日（{{ contract.trial_ends_at }}まで）</b></div>
+        <div class="contract-note trial">無料期間の終了後、選択中のプランで<b>自動的に課金</b>が始まります。継続しない場合は<b>無料期間の間に</b>解約してください。</div>
+        {% elif contract.cancel_kind == 'annual_monthly' %}
+        <div class="contract-row"><span>契約</span><b>{{ contract.contract_term }}年契約・月払い　¥{{ "{:,}".format(contract.monthly_price) }}/月</b></div>
+        <div class="contract-row"><span>契約期間</span><b>{{ contract.contract_start }} 〜 {{ contract.contract_end }}</b></div>
+        <div class="contract-row"><span>残り</span><b>約{{ contract.remaining_months }}ヶ月</b></div>
+        <div class="contract-row penalty"><span>今解約した場合の違約金</span><b>¥{{ "{:,}".format(contract.penalty) }}</b></div>
+        <div class="contract-note">{{ contract.note }}</div>
+        {% elif contract.cancel_kind == 'lump' %}
+        <div class="contract-row"><span>契約</span><b>{{ contract.contract_term }}年契約・一括前払い</b></div>
+        <div class="contract-row"><span>利用期限</span><b>{{ contract.contract_end }} まで</b></div>
+        <div class="contract-note">{{ contract.note }}</div>
+        {% elif contract.cancel_kind == 'monthly' %}
+        <div class="contract-row"><span>契約</span><b>月払い{% if contract.monthly_price %}　¥{{ "{:,}".format(contract.monthly_price) }}/月{% endif %}</b></div>
+        <div class="contract-note">{{ contract.note }}</div>
+        {% elif contract.cancel_kind == 'monitor' %}
+        <div class="contract-row"><span>区分</span><b>モニター（無料）</b></div>
+        <div class="contract-note trial">{{ contract.note }}</div>
+        {% endif %}
+        {% if is_admin and contract.cancel_kind in ['trial','monthly','annual_monthly','lump'] %}
+        <div style="margin-top:12px;text-align:right;">
+            <button type="button" class="cxl-open-btn" onclick="openCancelModal()">{% if contract.cancel_kind == 'lump' %}解約について{% else %}解約する{% endif %}</button>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
     <!-- 契約期間タブ -->
     <div class="term-tabs" id="term-tabs">
         <div class="term-tab active" data-term="monthly" onclick="selectTerm('monthly')">月払い</div>
@@ -114,10 +170,11 @@
                 <ul class="plan-features">
                     <li><span class="material-symbols-outlined">check</span>スタッフ最大5名</li>
                     <li><span class="material-symbols-outlined">check</span>AI記録 月100件</li>
-                    <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
-                    <li><span class="material-symbols-outlined">check</span>1ヶ月無料トライアル</li>
+                    <li><span class="material-symbols-outlined">check</span>モニタリング報告書</li>
+                    <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
+                    <li class="no"><span class="material-symbols-outlined">close</span>送迎表</li>
                     <li class="no"><span class="material-symbols-outlined">close</span>CSV取込・OCR</li>
-                    <li class="no"><span class="material-symbols-outlined">close</span>LINE通知</li>
+                    <li class="no"><span class="material-symbols-outlined">close</span>連絡帳（LINE連携）</li>
                 </ul>
                 <button class="plan-btn {% if current_plan == 'starter' %}plan-btn-current{% else %}plan-btn-outline{% endif %}"
                     onclick="startCheckout('starter')" id="btn-starter"
@@ -143,11 +200,12 @@
                 <ul class="plan-features">
                     <li><span class="material-symbols-outlined">check</span>スタッフ最大15名</li>
                     <li><span class="material-symbols-outlined">check</span>AI記録 月500件</li>
-                    <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
+                    <li><span class="material-symbols-outlined">check</span>モニタリング報告書</li>
+                    <li><span class="material-symbols-outlined">check</span>送迎表</li>
                     <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
-                    <li><span class="material-symbols-outlined">check</span>LINE通知</li>
-                    <li><span class="material-symbols-outlined">check</span>1ヶ月無料トライアル</li>
-                    <li class="no"><span class="material-symbols-outlined">close</span>事業間資金移動</li>
+                    <li><span class="material-symbols-outlined">check</span>連絡帳（LINE連携）</li>
+                    <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
+                    <li class="no"><span class="material-symbols-outlined">close</span>タイムカード・議事録・アセスメント・ICF</li>
                 </ul>
                 <button class="plan-btn {% if current_plan == 'standard' %}plan-btn-current{% else %}plan-btn-primary{% endif %}"
                     onclick="startCheckout('standard')" id="btn-standard"
@@ -172,11 +230,15 @@
                 <ul class="plan-features">
                     <li><span class="material-symbols-outlined">check</span>スタッフ無制限</li>
                     <li><span class="material-symbols-outlined">check</span>AI記録 無制限</li>
-                    <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
+                    <li><span class="material-symbols-outlined">check</span>モニタリング報告書</li>
+                    <li><span class="material-symbols-outlined">check</span>送迎表</li>
                     <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
-                    <li><span class="material-symbols-outlined">check</span>LINE通知</li>
-                    <li><span class="material-symbols-outlined">check</span>事業間資金移動</li>
-                    <li><span class="material-symbols-outlined">check</span>1ヶ月無料トライアル</li>
+                    <li><span class="material-symbols-outlined">check</span>連絡帳（LINE連携）</li>
+                    <li><span class="material-symbols-outlined">check</span>タイムカード</li>
+                    <li><span class="material-symbols-outlined">check</span>担当者会議の議事録作成</li>
+                    <li><span class="material-symbols-outlined">check</span>アセスメントシート作成</li>
+                    <li><span class="material-symbols-outlined">check</span>ICF（生活機能の分類）</li>
+                    <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
                 </ul>
                 <button class="plan-btn {% if current_plan == 'pro' %}plan-btn-current{% else %}plan-btn-outline{% endif %}"
                     onclick="startCheckout('pro')" id="btn-pro"
@@ -250,6 +312,16 @@ function updatePrices() {
     });
 }
 
+// pricing-rebuild-v1 : alert撤去（Chrome拡張が止まるため）→ 画面内トースト
+function pricingToast(msg) {
+    try { if (typeof showToast === 'function') { showToast(msg); return; } } catch(_e) {}
+    var t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#323232;color:#fff;padding:12px 18px;border-radius:10px;font-size:0.85rem;font-weight:700;z-index:9999;max-width:90%;text-align:center;box-shadow:0 3px 12px rgba(0,0,0,0.3);';
+    document.body.appendChild(t);
+    setTimeout(function(){ try { t.remove(); } catch(_e){} }, 4000);
+}
+
 async function startCheckout(plan) {
     var btn = document.getElementById('btn-' + plan);
     if (btn) { btn.disabled = true; btn.textContent = '処理中...'; }
@@ -264,13 +336,75 @@ async function startCheckout(plan) {
         if (data.url) {
             window.location.href = data.url;
         } else {
-            alert('エラー: ' + (data.error || '決済URLの取得に失敗しました'));
+            pricingToast('エラー: ' + (data.error || '決済URLの取得に失敗しました'));
             if (btn) { btn.disabled = false; btn.textContent = 'このプランで始める'; }
         }
     } catch(e) {
-        alert('エラーが発生しました: ' + e);
+        pricingToast('エラーが発生しました: ' + e);
         if (btn) { btn.disabled = false; btn.textContent = 'このプランで始める'; }
     }
+}
+</script>
+
+{# 解約モーダル pricing-rebuild-v1 #}
+<div id="cancel-modal" class="cxl-overlay" style="display:none;">
+    <div class="cxl-box">
+        <div class="cxl-title">解約手続き</div>
+        <div id="cxl-body"></div>
+        <div id="cxl-reason-wrap" style="display:none;">
+            <label style="font-size:0.78rem;color:#5f6368;">差し支えなければ理由をお聞かせください（任意）</label>
+            <textarea id="cxl-reason" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #e0e0e0;border-radius:8px;padding:8px;font-size:0.85rem;margin-top:4px;"></textarea>
+        </div>
+        <div id="cxl-msg" style="font-size:0.82rem;margin-top:8px;min-height:18px;font-weight:700;"></div>
+        <div class="cxl-actions">
+            <button type="button" class="cxl-cancel" onclick="closeCancelModal()">閉じる</button>
+            <button type="button" id="cxl-confirm" class="cxl-confirm" onclick="submitCancel()" style="display:none;">解約する</button>
+        </div>
+    </div>
+</div>
+<script>
+window.__contract = {{ contract|tojson }};
+function openCancelModal(){
+    var c = window.__contract || {};
+    var body=document.getElementById('cxl-body');
+    var rw=document.getElementById('cxl-reason-wrap');
+    var cb=document.getElementById('cxl-confirm');
+    document.getElementById('cxl-msg').textContent='';
+    document.getElementById('cxl-reason').value='';
+    rw.style.display='none'; cb.style.display='none'; cb.disabled=false; cb.textContent='解約する';
+    var k=c.cancel_kind, html='';
+    if(k==='trial'){
+        html='<p>無料期間中の解約です。<b>料金は発生しません。</b>無料期間の終了日（'+(c.trial_ends_at||'')+'）まではご利用いただけ、その後の自動課金は行われません。よろしいですか？</p>';
+        rw.style.display='block'; cb.style.display='inline-flex';
+    } else if(k==='monthly'){
+        html='<p>月払いプランの解約です。違約金はかかりません。現在の期間の終了日（'+(c.expires_at||'')+'）まで利用でき、その後停止します。よろしいですか？</p>';
+        rw.style.display='block'; cb.style.display='inline-flex';
+    } else if(k==='annual_monthly'){
+        html='<p>'+c.contract_term+'年契約（月払い）の中途解約です。残り約'+c.remaining_months+'ヶ月分の違約金として<b style="color:#ea4335;">¥'+((c.penalty||0).toLocaleString())+'</b>がかかります。</p><p>「解約を申請する」を押すと申請が送信され、担当者が内容を確認のうえご連絡します（この時点では確定しません）。</p>';
+        rw.style.display='block'; cb.style.display='inline-flex'; cb.textContent='解約を申請する';
+    } else if(k==='lump'){
+        html='<p>一括前払いプランです。契約満了（'+(c.contract_end||'')+'）まで利用でき、<b>中途解約による返金はありません。</b>満了後は自動更新されません。</p>';
+    } else {
+        html='<p>現在ご契約中の有料プランはありません。</p>';
+    }
+    body.innerHTML=html;
+    document.getElementById('cancel-modal').style.display='flex';
+}
+function closeCancelModal(){ document.getElementById('cancel-modal').style.display='none'; }
+async function submitCancel(){
+    var cb=document.getElementById('cxl-confirm'), msg=document.getElementById('cxl-msg');
+    var orig=cb.textContent; cb.disabled=true; cb.textContent='処理中...';
+    try{
+        var res=await fetch('/api/cancel_subscription',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({reason:document.getElementById('cxl-reason').value||''})});
+        var d=await res.json();
+        if(res.ok && (d.status==='cancelled'||d.status==='requested'||d.status==='info')){
+            msg.style.color='#0b6b3a'; msg.textContent=d.message||'受け付けました';
+            cb.style.display='none';
+            setTimeout(function(){ location.reload(); }, 3000);
+        } else {
+            msg.style.color='#c5221f'; msg.textContent=(d.error||'処理に失敗しました'); cb.disabled=false; cb.textContent=orig;
+        }
+    }catch(e){ msg.style.color='#c5221f'; msg.textContent='通信エラー: '+e; cb.disabled=false; cb.textContent=orig; }
 }
 </script>
 {% endblock %}

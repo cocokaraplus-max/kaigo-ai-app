@@ -158,6 +158,14 @@
     <div id="logo-text" class="logo-text" style="display:none">TASUKARU</div>
 </div>
 
+{# トライアル自動課金お知らせバナー pricing-rebuild-v1 #}
+{% if contract and contract.in_trial %}
+<a href="{{ url_for('pricing') }}" style="display:flex;align-items:center;gap:8px;text-decoration:none;background:#e8f5e9;border:1.5px solid #4caf50;border-radius:12px;padding:10px 14px;margin-bottom:1rem;color:#0b6b3a;font-size:0.8rem;line-height:1.5;font-weight:600;">
+  <span class="material-symbols-outlined" style="font-size:20px;flex-shrink:0;">schedule</span>
+  <span>無料期間は残り{{ contract.trial_days_left }}日（{{ contract.trial_ends_at }}まで）。終了後は選択中のプランで<b>自動的に課金</b>が始まります。継続しない場合はタップして無料期間の間に解約してください。</span>
+</a>
+{% endif %}
+
 <div class="user-info" style="display:flex;align-items:center;gap:10px;">
     <div id="my-icon-btn"
         style="width:44px;height:44px;border-radius:50%;flex-shrink:0;cursor:pointer;overflow:hidden;
@@ -202,6 +210,9 @@
    margin:4px 0 14px;background:#2f6b5e;border-radius:12px;text-decoration:none;color:#fff;
    font-weight:800;font-size:1rem;">
   <span class="material-symbols-outlined">schedule</span>タイムカードで打刻する
+  {% if contract and contract.in_trial and not contract.is_monitor and contract.plan not in ['free','pro','monitor'] %}
+  <span style="background:#7c4dff;color:#fff;font-size:.6rem;font-weight:800;border-radius:999px;
+    padding:2px 7px;letter-spacing:.02em;">PRO</span>{% endif %}{# plan-gating-v1: 体験中のみ #}
 </a>
 <script>
 (function(){
