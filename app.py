@@ -2156,6 +2156,9 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
     state = _facility_plan_state(supabase, f_code)
     rank = state["rank"]
     in_trial = state["in_trial"]
+    # plan-gating-v1: 無料(free)・モニター施設は「永久無料」扱いとしてバッジを出さない
+    #   （どちらの方法で無料にしてもバッジが出っ放しにならないようにする安全網）。
+    plan_exempt = state["plan"] in ("free", "monitor")
 
     out = []
     for it in MENU_ITEMS:
@@ -2173,7 +2176,7 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         #   バッジは「体験中のみ」表示する（有料運用に入ったら邪魔になるため出さない）。
         #   locked は enforcement 用のフラグで、体験外のときだけ立てる（表示はしない）。
         tier = it.get("tier")
-        if tier and rank < TIER_RANK.get(tier, 0):
+        if tier and not plan_exempt and rank < TIER_RANK.get(tier, 0):
             if in_trial:
                 item["badge"] = TIER_BADGE.get(tier)
                 item["tier"] = tier
