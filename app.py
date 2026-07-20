@@ -2265,6 +2265,7 @@ def top():
         my_icon_image_url=my_icon_image_url,
         my_color=staff_color(my_name),
         my_initial=staff_initial(my_name),
+        contract=_contract_overview(f_code),  # pricing-rebuild-v1
     )
 
 # ===== record-check-v1 : 記録の充足チェック =====
@@ -23503,6 +23504,16 @@ def pricing():
         f_code=f_code,
         my_name=session.get('my_name', ''),
     )
+
+
+# pricing-rebuild-v1 : 契約状況＋違約金をJSONで返す（管理者MENUの契約カード等で使用）
+@app.route('/api/contract_state')
+@login_required
+def api_contract_state():
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"error": "not logged in"}), 401
+    return jsonify(_contract_overview(f_code))
 
 # --- Stripe 決済セッション作成 ---
 @app.route('/api/stripe/create_checkout', methods=['POST'])
