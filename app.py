@@ -2021,6 +2021,8 @@ def register():
 # メニューの定義。ボトムナビ(base.html)は当面ハードコードのままなので、
 # 新しい導線を足したらここにも1行足すこと（いずれ base.html をここから描く）。
 #   need: 表示条件。None=全員 / 'ledger' / 'rec_expense' / 'dev'
+#   tier: プラン下限。None=全プラン / 'standard' / 'pro'。plan-gating-v1
+#     体験中(in_trial)は上位機能も開放しつつ badge を付ける。トライアル外の強制は将来対応(enforcement)。
 MENU_ITEMS = [   # top-grid-v1
     {"href": "/input",          "icon": "edit_note",              "label": "記録入力",       "need": None},
     {"href": "/daily_view",     "icon": "calendar_month",         "label": "ケース記録",     "need": None},
@@ -2029,14 +2031,14 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/monitoring",     "icon": "monitoring",             "label": "モニタリング",   "need": None},
     {"href": "/patient-info",  "icon": "person_book",            "label": "利用者情報",     "need": None},  # patient-hub-v1
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
-    {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None},
-    {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None},
+    {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None, "tier": "standard"},
+    {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None, "tier": "standard"},
     {"href": "/fitness",        "icon": "fitness_center",         "label": "体力・体重",     "need": None},
     {"href": "/life_check",     "icon": "checklist",              "label": "生活機能CHECK",  "need": None},
     {"href": "/calendar",       "icon": "calendar_month",         "label": "カレンダー",     "need": None},
     {"href": "/assessment",     "icon": "assignment",             "label": "評価",           "need": None},
     {"href": "/print_output",   "icon": "print",                  "label": "書類出力",       "need": None},
-    {"href": "/admin/meetings", "icon": "groups",                 "label": "会議記録",       "need": None},
+    {"href": "/admin/meetings", "icon": "groups",                 "label": "会議記録",       "need": None, "tier": "pro"},
     {"href": "/tasks",          "icon": "task_alt",               "label": "タスク",         "need": None},
     {"href": "/board",          "icon": "campaign",               "label": "掲示板",         "need": None},
     {"href": "/ledger",         "icon": "account_balance",        "label": "出納帳",         "need": "ledger"},
@@ -2048,6 +2050,17 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/dev",            "icon": "code",                   "label": "開発者",         "need": "dev"},
     {"href": "/manual",         "icon": "menu_book",              "label": "ガイド",         "need": None},
 ]
+
+# plan-gating-v1: プラン順位。上位ほど数値が大きい。free=未契約、monitor=自社等(全機能相当)。
+PLAN_RANK = {"free": 0, "starter": 1, "standard": 2, "pro": 3, "monitor": 99}
+# 各 tier に必要な順位と、体験中に見せるバッジ表記。
+TIER_RANK = {"standard": 2, "pro": 3}
+TIER_BADGE = {"standard": "スタンダード", "pro": "PRO"}
+
+
+def _plan_rank(plan):  # plan-gating-v1
+    return PLAN_RANK.get((plan or "free").lower(), 0)
+
 
 STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden",
                       "drawer_pos")   # 受け付けるキーはこれだけ
@@ -2074,6 +2087,33 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
     except Exception:
         can_photo = False
 
+    # plan-gating-v1: 施設プランと体験期間を判定。
+    #   体験中(in_trial)は上位機能も表示（開放）し、プランを上回る項目に badge を付ける。
+    #   体験外でプランを上回る項目は locked=True を付ける（強制ブロックは将来の enforcement で使う。
+    #   現状は base.html 側でバッジ表示のみに留め、アクセスは従来どおり通す）。
+    plan = "free"
+    in_trial = False
+    try:
+        pr = (supabase.table("facilities")
+              .select("plan,trial_ends_at,is_monitor")
+              .eq("facility_code", f_code).execute())
+        if pr.data:
+            row = pr.data[0]
+            plan = row.get("plan") or "free"
+            if row.get("is_monitor"):
+                plan = "monitor"  # 自社等・全機能相当
+            te = row.get("trial_ends_at")
+            if te:
+                try:
+                    ted = datetime.fromisoformat(str(te).replace("Z", "+00:00"))
+                    if ted > datetime.now(timezone.utc):
+                        in_trial = True
+                except (ValueError, TypeError):
+                    pass
+    except Exception as e:
+        print("_menu_items_visible plan lookup error: %s" % e, flush=True)
+    rank = _plan_rank(plan)
+
     out = []
     for it in MENU_ITEMS:
         need = it.get("need")
@@ -2085,7 +2125,14 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
             continue
         if need == "dev" and not is_dev:
             continue
-        out.append({"href": it["href"], "icon": it["icon"], "label": it["label"]})
+        item = {"href": it["href"], "icon": it["icon"], "label": it["label"]}
+        # plan-gating-v1: プラン下限を上回る（＝この施設のプランに含まれない）機能に印を付ける。
+        tier = it.get("tier")
+        if tier and rank < TIER_RANK.get(tier, 0):
+            item["badge"] = TIER_BADGE.get(tier)
+            item["tier"] = tier
+            item["locked"] = (not in_trial)  # 体験中は開放、体験外は本来ブロック対象
+        out.append(item)
     return out
 
 

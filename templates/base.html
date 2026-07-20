@@ -906,6 +906,15 @@ body.nav-editing {
     line-height: 1.4; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(16,24,40,.3); }
   .dw-badge.on { display: block; }
 
+  /* plan-gating-v1: プラン下限バッジ。件数バッジ(右上)と重ならないよう左上に置く。 */
+  .dw-plan-badge { position: absolute; top: -6px; left: -6px;
+    color: #fff; font-size: .52rem; font-weight: 800;
+    border-radius: 999px; padding: 1px 5px; line-height: 1.45;
+    border: 2px solid #fff; box-shadow: 0 1px 3px rgba(16,24,40,.3);
+    white-space: nowrap; letter-spacing: .02em; pointer-events: none; }
+  .dw-plan-badge.tier-pro { background: #7c4dff; }        /* プロ専用 */
+  .dw-plan-badge.tier-standard { background: #1a73e8; }   /* スタンダード以上 */
+
   /* --- app-drawer-edit-v1: 自由配置・フォルダ・編集モード --- */
   .dw-cell { position: relative; min-height: 76px; border-radius: 14px; }
   .dw-cell.empty { }
@@ -1495,6 +1504,10 @@ body.nav-editing {
   // app-drawer-color-v1: 色はインラインで当てる（CSS の data-href 規則は既定色の定義には使わない）
   function appHtml(m, idx, inFolder) {
     var c = colorOf(m.href);
+    // plan-gating-v1: プラン下限バッジ（体験中に上位機能へ「PRO」「スタンダード」を表示）
+    var planBadge = m.badge
+      ? '<span class="dw-plan-badge tier-' + (m.tier || 'pro') + '">' + esc(m.badge) + '</span>'
+      : '';
     return '<div class="dw-app" role="button" tabindex="0" draggable="false"' +
       ' data-idx="' + idx + '" data-href="' + m.href + '"' +
       (inFolder ? ' data-in-folder="1"' : '') + '>' +
@@ -1503,6 +1516,7 @@ body.nav-editing {
           '<button class="dw-paint" data-paint="' + m.href + '" style="background:' + c + '"></button>' +
           // drawer-badge-v1: 件数の器。中身は dwSetBadge() が入れる。
           '<span class="dw-badge" data-badge="' + m.href + '"></span>' +
+          planBadge +
         '</span>' +
         '<span class="dw-label">' + esc(m.label) + '</span>' +
       '</div>';
