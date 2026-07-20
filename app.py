@@ -23501,6 +23501,7 @@ def pricing():
         current_plan=current_plan,
         trial_ends_at=trial_ends_at,
         contract=_contract_overview(f_code),  # pricing-rebuild-v1
+        is_admin=session.get('admin_authenticated', False),  # pricing-rebuild-v1
         f_code=f_code,
         my_name=session.get('my_name', ''),
     )
@@ -23514,6 +23515,123 @@ def api_contract_state():
     if not f_code:
         return jsonify({"error": "not logged in"}), 401
     return jsonify(_contract_overview(f_code))
+
+
+# pricing-rebuild-v1 : 解約フロー
+#   trial/monthly … 違約金なし → Stripeサブスクを期間末解約（即時反映）
+#   annual_monthly … 違約金あり → cancellation_requests に申請登録＋LINE通知（手動処理）
+#   lump/monitor … 返金なし/対象外の案内のみ
+@app.route('/api/cancel_subscription', methods=['POST'])
+@login_required
+def api_cancel_subscription():
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"error": "not logged in"}), 401
+    # 解約は管理者認証済みのときのみ許可
+    if not session.get("admin_authenticated"):
+        return jsonify({"error": "管理者メニューから操作してください。"}), 403
+
+    data = request.get_json(silent=True) or {}
+    reason = (data.get("reason") or "").strip()
+    my_name = session.get("my_name", "")
+    ov = _contract_overview(f_code)
+    kind = ov.get("cancel_kind")
+    supabase = get_supabase()
+
+    base_row = {
+        "facility_code": f_code, "plan": ov.get("plan"),
+        "contract_term": ov.get("contract_term"), "payment_type": ov.get("payment_type"),
+        "contract_start": ov.get("contract_start"), "contract_end": ov.get("contract_end"),
+        "remaining_months": ov.get("remaining_months"), "penalty_amount": ov.get("penalty"),
+        "monthly_price": ov.get("monthly_price"),
+        "reason": reason or None, "requested_by": my_name or None,
+    }
+
+    def _log(status, note):
+        try:
+            row = dict(base_row); row["status"] = status; row["note"] = note
+            if status in ("done", "approved", "rejected"):
+                row["processed_at"] = datetime.now(timezone.utc).isoformat()
+            supabase.table("cancellation_requests").insert(row).execute()
+        except Exception as e:
+            print("[cancel] log insert error: " + str(e), flush=True)
+
+    # 違約金なし → その場で期間末解約
+    if kind in ("trial", "monthly"):
+        sub_id = None
+        try:
+            fres = supabase.table("facilities").select("stripe_subscription_id").eq("facility_code", f_code).execute()
+            if fres.data:
+                sub_id = fres.data[0].get("stripe_subscription_id")
+        except Exception:
+            pass
+        if sub_id:
+            try:
+                stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+                stripe.Subscription.modify(sub_id, cancel_at_period_end=True)
+            except Exception as e:
+                print("[cancel] stripe modify error: " + str(e), flush=True)
+                return jsonify({"error": "解約処理に失敗しました。時間をおいて再度お試しください。"}), 500
+            _log("done", "無料期間中に解約（課金なし）" if kind == "trial" else "月払いを期間末で解約")
+            try:
+                line_notify_admin("\n".join([
+                    "【TASUKARU】解約（自己完結・違約金なし）",
+                    "施設: " + f_code,
+                    "区分: " + ("無料期間中" if kind == "trial" else "月払い"),
+                    "理由: " + (reason or "（未記入）"),
+                ]))
+            except Exception:
+                pass
+            end_txt = ov.get("trial_ends_at") if kind == "trial" else ov.get("expires_at")
+            if kind == "trial":
+                msg = "無料期間の終了日（%s）で停止します。無料期間中の料金は発生しません。" % (end_txt or "")
+            else:
+                msg = "現在の期間の終了日（%s）で停止します。違約金はかかりません。" % (end_txt or "")
+            return jsonify({"status": "cancelled", "kind": kind, "message": msg})
+        # サブスクIDが特定できない → 手動確認へ回す
+        _log("pending", "Stripeサブスク未特定・手動確認要")
+        try:
+            line_notify_admin("\n".join([
+                "【TASUKARU】解約申請（サブスク未特定・要確認）",
+                "施設: " + f_code, "区分: " + kind,
+            ]))
+        except Exception:
+            pass
+        return jsonify({"status": "requested", "kind": kind,
+                        "message": "解約を受け付けました。担当者が確認のうえご連絡します。"})
+
+    # 違約金あり → 申請登録＋LINE通知（手動処理）
+    if kind == "annual_monthly":
+        try:
+            row = dict(base_row); row["status"] = "pending"; row["note"] = "年契約（月払い）中途解約・違約金あり"
+            supabase.table("cancellation_requests").insert(row).execute()
+        except Exception as e:
+            print("[cancel] request insert error: " + str(e), flush=True)
+            return jsonify({"error": "申請の登録に失敗しました。時間をおいて再度お試しください。"}), 500
+        try:
+            line_notify_admin("\n".join([
+                "【TASUKARU】解約申請（違約金あり）",
+                "施設: " + f_code,
+                "プラン: " + str(ov.get("plan_label")),
+                "契約: %d年・月払い" % (ov.get("contract_term") or 0),
+                "残り: 約%dヶ月" % (ov.get("remaining_months") or 0),
+                "違約金: ¥{:,}".format(ov.get("penalty") or 0),
+                "理由: " + (reason or "（未記入）"),
+                "",
+                "内容を確認し、Stripeで違約金請求・停止処理をしてください。",
+            ]))
+        except Exception:
+            pass
+        return jsonify({"status": "requested", "kind": kind, "penalty": ov.get("penalty") or 0,
+                        "message": "解約申請を受け付けました。違約金¥{:,}の確認後、担当者よりご連絡します。".format(ov.get("penalty") or 0)})
+
+    # 一括前払い（返金なし）／モニター／未契約
+    if kind == "lump":
+        return jsonify({"status": "info", "kind": kind,
+                        "message": "一括前払いプランは契約満了（%s）まで利用でき、中途解約による返金はありません。満了後は自動更新されません。" % (ov.get("contract_end") or "")})
+    if kind == "monitor":
+        return jsonify({"status": "info", "kind": kind, "message": "モニター施設のため料金は発生しません。"})
+    return jsonify({"status": "info", "kind": "none", "message": "現在ご契約中の有料プランはありません。"})
 
 # --- Stripe 決済セッション作成 ---
 @app.route('/api/stripe/create_checkout', methods=['POST'])

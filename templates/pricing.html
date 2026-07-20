@@ -64,6 +64,18 @@
 .contract-note { margin-top:10px; font-size:0.76rem; line-height:1.6; color:#5f4b00; background:#fff8e1; border:1px solid #fdd835; border-radius:10px; padding:9px 12px; }
 .contract-note.trial { color:#0b6b3a; background:#e8f5e9; border-color:#4caf50; }
 
+/* 解約UI pricing-rebuild-v1 */
+.cxl-open-btn { background:#fff; color:#ea4335; border:1.5px solid #ea4335; border-radius:9px; padding:7px 14px; font-size:0.8rem; font-weight:700; cursor:pointer; }
+.cxl-open-btn:active { background:#fdeceb; }
+.cxl-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.45); display:flex; align-items:center; justify-content:center; z-index:10000; padding:16px; }
+.cxl-box { background:#fff; border-radius:16px; padding:18px; max-width:420px; width:100%; box-shadow:0 8px 30px rgba(0,0,0,0.25); }
+.cxl-title { font-size:1rem; font-weight:800; color:#202124; margin-bottom:10px; }
+.cxl-box p { font-size:0.85rem; line-height:1.7; color:#3c4043; margin:0 0 10px; }
+.cxl-actions { display:flex; justify-content:flex-end; gap:8px; margin-top:14px; }
+.cxl-cancel { background:#f1f3f4; color:#5f6368; border:none; border-radius:9px; padding:9px 16px; font-size:0.85rem; font-weight:700; cursor:pointer; }
+.cxl-confirm { background:#ea4335; color:#fff; border:none; border-radius:9px; padding:9px 16px; font-size:0.85rem; font-weight:700; cursor:pointer; }
+.cxl-confirm:disabled { opacity:0.6; cursor:default; }
+
 /* 成功・キャンセルバナー */
 .stripe-banner { border-radius:12px; padding:12px 16px; margin-bottom:1rem; font-size:0.85rem; font-weight:700; display:flex; align-items:center; gap:8px; }
 .stripe-banner.success { background:#e8f5e9; color:#2e7d32; border:1.5px solid #4caf50; }
@@ -125,6 +137,11 @@
         {% elif contract.cancel_kind == 'monitor' %}
         <div class="contract-row"><span>区分</span><b>モニター（無料）</b></div>
         <div class="contract-note trial">{{ contract.note }}</div>
+        {% endif %}
+        {% if is_admin and contract.cancel_kind in ['trial','monthly','annual_monthly','lump'] %}
+        <div style="margin-top:12px;text-align:right;">
+            <button type="button" class="cxl-open-btn" onclick="openCancelModal()">{% if contract.cancel_kind == 'lump' %}解約について{% else %}解約する{% endif %}</button>
+        </div>
         {% endif %}
     </div>
     {% endif %}
@@ -320,6 +337,68 @@ async function startCheckout(plan) {
         pricingToast('エラーが発生しました: ' + e);
         if (btn) { btn.disabled = false; btn.textContent = 'このプランで始める'; }
     }
+}
+</script>
+
+{# 解約モーダル pricing-rebuild-v1 #}
+<div id="cancel-modal" class="cxl-overlay" style="display:none;">
+    <div class="cxl-box">
+        <div class="cxl-title">解約手続き</div>
+        <div id="cxl-body"></div>
+        <div id="cxl-reason-wrap" style="display:none;">
+            <label style="font-size:0.78rem;color:#5f6368;">差し支えなければ理由をお聞かせください（任意）</label>
+            <textarea id="cxl-reason" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #e0e0e0;border-radius:8px;padding:8px;font-size:0.85rem;margin-top:4px;"></textarea>
+        </div>
+        <div id="cxl-msg" style="font-size:0.82rem;margin-top:8px;min-height:18px;font-weight:700;"></div>
+        <div class="cxl-actions">
+            <button type="button" class="cxl-cancel" onclick="closeCancelModal()">閉じる</button>
+            <button type="button" id="cxl-confirm" class="cxl-confirm" onclick="submitCancel()" style="display:none;">解約する</button>
+        </div>
+    </div>
+</div>
+<script>
+window.__contract = {{ contract|tojson }};
+function openCancelModal(){
+    var c = window.__contract || {};
+    var body=document.getElementById('cxl-body');
+    var rw=document.getElementById('cxl-reason-wrap');
+    var cb=document.getElementById('cxl-confirm');
+    document.getElementById('cxl-msg').textContent='';
+    document.getElementById('cxl-reason').value='';
+    rw.style.display='none'; cb.style.display='none'; cb.disabled=false; cb.textContent='解約する';
+    var k=c.cancel_kind, html='';
+    if(k==='trial'){
+        html='<p>無料期間中の解約です。<b>料金は発生しません。</b>無料期間の終了日（'+(c.trial_ends_at||'')+'）まではご利用いただけ、その後の自動課金は行われません。よろしいですか？</p>';
+        rw.style.display='block'; cb.style.display='inline-flex';
+    } else if(k==='monthly'){
+        html='<p>月払いプランの解約です。違約金はかかりません。現在の期間の終了日（'+(c.expires_at||'')+'）まで利用でき、その後停止します。よろしいですか？</p>';
+        rw.style.display='block'; cb.style.display='inline-flex';
+    } else if(k==='annual_monthly'){
+        html='<p>'+c.contract_term+'年契約（月払い）の中途解約です。残り約'+c.remaining_months+'ヶ月分の違約金として<b style="color:#ea4335;">¥'+((c.penalty||0).toLocaleString())+'</b>がかかります。</p><p>「解約を申請する」を押すと申請が送信され、担当者が内容を確認のうえご連絡します（この時点では確定しません）。</p>';
+        rw.style.display='block'; cb.style.display='inline-flex'; cb.textContent='解約を申請する';
+    } else if(k==='lump'){
+        html='<p>一括前払いプランです。契約満了（'+(c.contract_end||'')+'）まで利用でき、<b>中途解約による返金はありません。</b>満了後は自動更新されません。</p>';
+    } else {
+        html='<p>現在ご契約中の有料プランはありません。</p>';
+    }
+    body.innerHTML=html;
+    document.getElementById('cancel-modal').style.display='flex';
+}
+function closeCancelModal(){ document.getElementById('cancel-modal').style.display='none'; }
+async function submitCancel(){
+    var cb=document.getElementById('cxl-confirm'), msg=document.getElementById('cxl-msg');
+    var orig=cb.textContent; cb.disabled=true; cb.textContent='処理中...';
+    try{
+        var res=await fetch('/api/cancel_subscription',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'include',body:JSON.stringify({reason:document.getElementById('cxl-reason').value||''})});
+        var d=await res.json();
+        if(res.ok && (d.status==='cancelled'||d.status==='requested'||d.status==='info')){
+            msg.style.color='#0b6b3a'; msg.textContent=d.message||'受け付けました';
+            cb.style.display='none';
+            setTimeout(function(){ location.reload(); }, 3000);
+        } else {
+            msg.style.color='#c5221f'; msg.textContent=(d.error||'処理に失敗しました'); cb.disabled=false; cb.textContent=orig;
+        }
+    }catch(e){ msg.style.color='#c5221f'; msg.textContent='通信エラー: '+e; cb.disabled=false; cb.textContent=orig; }
 }
 </script>
 {% endblock %}
