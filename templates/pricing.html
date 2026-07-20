@@ -53,6 +53,17 @@
 .cancellation-note { background:#fff8e1; border:1px solid #fdd835; border-radius:10px; padding:10px 14px; margin-top:1rem; font-size:0.75rem; color:#5f4b00; }
 .cancellation-note strong { display:block; margin-bottom:4px; }
 
+/* 契約状況パネル（明朗会計 pricing-rebuild-v1） */
+.contract-box { background:#fff; border:1.5px solid #dadce0; border-radius:14px; padding:14px 16px; margin:0 0 1.2rem; }
+.contract-title { font-size:0.9rem; font-weight:800; color:#202124; margin-bottom:10px; display:flex; align-items:center; gap:6px; }
+.contract-row { display:flex; justify-content:space-between; align-items:baseline; gap:10px; padding:5px 0; border-top:1px solid #f1f3f4; font-size:0.82rem; }
+.contract-row:first-of-type { border-top:none; }
+.contract-row span { color:#5f6368; flex:0 0 auto; }
+.contract-row b { color:#202124; text-align:right; }
+.contract-row.penalty b { color:#ea4335; font-size:0.95rem; }
+.contract-note { margin-top:10px; font-size:0.76rem; line-height:1.6; color:#5f4b00; background:#fff8e1; border:1px solid #fdd835; border-radius:10px; padding:9px 12px; }
+.contract-note.trial { color:#0b6b3a; background:#e8f5e9; border-color:#4caf50; }
+
 /* 成功・キャンセルバナー */
 .stripe-banner { border-radius:12px; padding:12px 16px; margin-bottom:1rem; font-size:0.85rem; font-weight:700; display:flex; align-items:center; gap:8px; }
 .stripe-banner.success { background:#e8f5e9; color:#2e7d32; border:1.5px solid #4caf50; }
@@ -87,6 +98,34 @@
             {% elif current_plan == 'monitor' %}モニター
             {% else %}{{ current_plan }}{% endif %}
         </span>
+    </div>
+    {% endif %}
+
+    {# 契約状況パネル（明朗会計 pricing-rebuild-v1） #}
+    {% if contract and contract.plan and contract.plan != 'free' %}
+    <div class="contract-box">
+        <div class="contract-title"><span class="material-symbols-outlined" style="font-size:19px;color:#1a73e8;">receipt_long</span>現在の契約状況</div>
+        <div class="contract-row"><span>プラン</span><b>{{ contract.plan_label }}</b></div>
+        {% if contract.in_trial %}
+        <div class="contract-row"><span>無料期間</span><b>残り{{ contract.trial_days_left }}日（{{ contract.trial_ends_at }}まで）</b></div>
+        <div class="contract-note trial">無料期間の終了後、選択中のプランで<b>自動的に課金</b>が始まります。継続しない場合は<b>無料期間の間に</b>解約してください。</div>
+        {% elif contract.cancel_kind == 'annual_monthly' %}
+        <div class="contract-row"><span>契約</span><b>{{ contract.contract_term }}年契約・月払い　¥{{ "{:,}".format(contract.monthly_price) }}/月</b></div>
+        <div class="contract-row"><span>契約期間</span><b>{{ contract.contract_start }} 〜 {{ contract.contract_end }}</b></div>
+        <div class="contract-row"><span>残り</span><b>約{{ contract.remaining_months }}ヶ月</b></div>
+        <div class="contract-row penalty"><span>今解約した場合の違約金</span><b>¥{{ "{:,}".format(contract.penalty) }}</b></div>
+        <div class="contract-note">{{ contract.note }}</div>
+        {% elif contract.cancel_kind == 'lump' %}
+        <div class="contract-row"><span>契約</span><b>{{ contract.contract_term }}年契約・一括前払い</b></div>
+        <div class="contract-row"><span>利用期限</span><b>{{ contract.contract_end }} まで</b></div>
+        <div class="contract-note">{{ contract.note }}</div>
+        {% elif contract.cancel_kind == 'monthly' %}
+        <div class="contract-row"><span>契約</span><b>月払い{% if contract.monthly_price %}　¥{{ "{:,}".format(contract.monthly_price) }}/月{% endif %}</b></div>
+        <div class="contract-note">{{ contract.note }}</div>
+        {% elif contract.cancel_kind == 'monitor' %}
+        <div class="contract-row"><span>区分</span><b>モニター（無料）</b></div>
+        <div class="contract-note trial">{{ contract.note }}</div>
+        {% endif %}
     </div>
     {% endif %}
 

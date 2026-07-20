@@ -23377,6 +23377,110 @@ def line_notify_admin(message):
         return False
     return line_send_message(admin_line_id, [{"type": "text", "text": message}])
 
+# pricing-rebuild-v1 : 契約時の割引後価格表（違約金計算・表示用。pricing.html の PRICES と一致させること）
+PLAN_PRICES = {
+    "starter":  {"monthly": 5980,  "1y_m": 4780,  "1y_l": 57400,  "2y_m": 3880,  "2y_l": 93300,  "3y_m": 2990,  "3y_l": 107600},
+    "standard": {"monthly": 12800, "1y_m": 10240, "1y_l": 122800, "2y_m": 8320,  "2y_l": 199700, "3y_m": 6400,  "3y_l": 230400},
+    "pro":      {"monthly": 24800, "1y_m": 19840, "1y_l": 238100, "2y_m": 16120, "2y_l": 387100, "3y_m": 12400, "3y_l": 446400},
+}
+PLAN_LABELS = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ", "monitor": "モニター", "free": "無料"}
+CANCEL_RATE = {1: 0.30, 2: 0.40, 3: 0.50}  # 年契約の違約率（1年30%/2年40%/3年50%）
+
+
+def _contract_overview(f_code):
+    """施設の契約状態＋（該当時）解約違約金を計算して返す。表示専用・DB変更なし。pricing-rebuild-v1"""
+    from datetime import datetime as _dt, timezone as _tz
+    out = {
+        "plan": "free", "plan_label": "無料", "payment_type": None,
+        "contract_term": 0, "contract_start": None, "contract_end": None,
+        "expires_at": None, "trial_ends_at": None,
+        "in_trial": False, "trial_days_left": None, "is_monitor": False,
+        "monthly_price": None, "cancel_kind": "none",
+        "remaining_months": 0, "penalty": 0, "penalty_rate": 0, "note": "",
+    }
+    try:
+        supabase = get_supabase()
+        res = supabase.table("facilities").select(
+            "plan,payment_type,contract_term,contract_start,contract_end,expires_at,trial_ends_at,is_monitor"
+        ).eq("facility_code", f_code).execute()
+        if not res.data:
+            return out
+        f = res.data[0]
+        now = _dt.now(_tz.utc)
+        plan = f.get("plan") or "free"
+        out["plan"] = plan
+        out["plan_label"] = PLAN_LABELS.get(plan, plan)
+        out["payment_type"] = f.get("payment_type")
+        out["contract_term"] = int(f.get("contract_term") or 0)
+        out["contract_start"] = (f.get("contract_start") or "")[:10] or None
+        out["contract_end"] = (f.get("contract_end") or "")[:10] or None
+        out["expires_at"] = (f.get("expires_at") or "")[:10] or None
+        out["trial_ends_at"] = (f.get("trial_ends_at") or "")[:10] or None
+        out["is_monitor"] = bool(f.get("is_monitor"))
+
+        def _parse(d):
+            if not d or str(d) in ("None", ""):
+                return None
+            try:
+                return _dt.fromisoformat(str(d).replace("Z", "+00:00"))
+            except (ValueError, TypeError):
+                return None
+
+        te = _parse(f.get("trial_ends_at"))
+        if te and te > now:
+            out["in_trial"] = True
+            out["trial_days_left"] = max(0, (te - now).days)
+
+        # モニター（自社等・永久無料）
+        if out["is_monitor"] or plan == "monitor":
+            out["cancel_kind"] = "monitor"
+            out["note"] = "モニター施設のため料金は発生しません。"
+            return out
+
+        term = out["contract_term"]
+        pay = out["payment_type"]
+        if term >= 1 and pay == "monthly":
+            out["monthly_price"] = PLAN_PRICES.get(plan, {}).get("%dy_m" % term)
+        elif term == 0:
+            out["monthly_price"] = PLAN_PRICES.get(plan, {}).get("monthly")
+
+        # トライアル中は違約金なし
+        if out["in_trial"]:
+            out["cancel_kind"] = "trial"
+            out["note"] = "無料期間中の解約は違約金がかかりません。継続しない場合は無料期間の間に解約してください。"
+            return out
+
+        # 一括前払い（返金なし・満了まで利用可）
+        if pay == "lump" and term >= 1:
+            out["cancel_kind"] = "lump"
+            out["note"] = "一括前払いプランです。契約満了まで利用でき、中途解約による返金はありません（自動更新なし）。"
+            return out
+
+        # 年契約・月払い（違約金あり）
+        if pay == "monthly" and term >= 1:
+            ce = _parse(f.get("contract_end"))
+            rem_m = 0
+            if ce and ce > now:
+                rem_m = ((ce - now).days + 29) // 30  # 残月数（切り上げ）
+            out["remaining_months"] = rem_m
+            rate = CANCEL_RATE.get(term, 0)
+            out["penalty_rate"] = rate
+            mp = out["monthly_price"] or 0
+            out["penalty"] = int(round(rem_m * mp * rate))
+            out["cancel_kind"] = "annual_monthly"
+            out["note"] = ("%d年契約（月払い）です。中途解約には残り%dヶ月分の%d%%（¥%s）の違約金がかかります。"
+                           % (term, rem_m, int(rate * 100), "{:,}".format(out["penalty"])))
+            return out
+
+        # 月払い（コミットなし）
+        if plan in ("starter", "standard", "pro"):
+            out["cancel_kind"] = "monthly"
+            out["note"] = "月払いプランです。いつでも解約でき、違約金はかかりません（当月末で停止）。"
+    except Exception as e:
+        print("[contract] overview error: " + str(e), flush=True)
+    return out
+
+
 @app.route('/pricing')
 @login_required
 def pricing():
@@ -23395,6 +23499,7 @@ def pricing():
     return render_template('pricing.html',
         current_plan=current_plan,
         trial_ends_at=trial_ends_at,
+        contract=_contract_overview(f_code),  # pricing-rebuild-v1
         f_code=f_code,
         my_name=session.get('my_name', ''),
     )
