@@ -24016,6 +24016,105 @@ def dev_stripe_check():
     ok_count = sum(1 for r in rows if r.get("ok"))
     return render_template("dev_stripe_check.html", rows=rows, ok_count=ok_count, total=len(rows))
 
+
+def _stripe_price_spec():  # stripe-price-setup-v1
+    """21価格の仕様。 _check_stripe_prices と同じ規則で (env_key, plan, plan_label, term, amount, mode)。"""
+    spec = []
+    labels = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ"}
+    for plan in ("starter", "standard", "pro"):
+        P = plan.upper()
+        p = PLAN_PRICES.get(plan, {})
+        spec.append(("STRIPE_PRICE_%s_M" % P, plan, labels[plan], "月払い(単月)", p.get("monthly"), "recurring"))
+        for y in (1, 2, 3):
+            spec.append(("STRIPE_PRICE_%s_%dY_M" % (P, y), plan, labels[plan], "%d年・月払い" % y, p.get("%dy_m" % y), "recurring"))
+            spec.append(("STRIPE_PRICE_%s_%dY_L" % (P, y), plan, labels[plan], "%d年・一括" % y, p.get("%dy_l" % y), "one_time"))
+    return spec
+
+
+def _stripe_find_or_create_product(plan, label):  # stripe-price-setup-v1
+    tag = "tasukaru_plan"
+    try:
+        res = stripe.Product.search(query="metadata['%s']:'%s'" % (tag, plan), limit=1)
+        if getattr(res, "data", None):
+            return res.data[0].id
+    except Exception:
+        try:
+            for pr in stripe.Product.list(limit=100).auto_paging_iter():
+                if (pr.get("metadata") or {}).get(tag) == plan:
+                    return pr.id
+        except Exception:
+            pass
+    prod = stripe.Product.create(name="TASUKARU %s" % label, metadata={tag: plan})
+    return prod.id
+
+
+def _create_stripe_prices():  # stripe-price-setup-v1
+    """21価格を Stripe に冪等に作成し、結果一覧を返す。lookup_key=env_key で重複防止。"""
+    key = ""
+    try:
+        key = get_secret("STRIPE_SECRET_KEY") or ""
+    except Exception:
+        key = ""
+    mode = "live" if key.startswith("sk_live_") else ("test" if (key.startswith("sk_test_") or key.startswith("rk_test_")) else "unknown")
+    if not key:
+        return {"ok": False, "error": "STRIPE_SECRET_KEY が未設定です。先にサーバーの環境変数に設定してください。",
+                "mode": mode, "rows": [], "env_lines": [], "made": 0, "reused": 0, "failed": 0}
+    stripe.api_key = key
+    rows = []
+    env_lines = []
+    made = reused = failed = 0
+    product_ids = {}
+    for env_key, plan, label, term, amount, kind in _stripe_price_spec():
+        row = {"env_key": env_key, "plan": label, "term": term, "amount": amount,
+               "mode": kind, "price_id": None, "status": "", "issue": ""}
+        try:
+            if plan not in product_ids:
+                product_ids[plan] = _stripe_find_or_create_product(plan, label)
+            existing = None
+            try:
+                r = stripe.Price.list(lookup_keys=[env_key], limit=1)
+                if r.data:
+                    existing = r.data[0]
+            except Exception:
+                existing = None
+            if existing:
+                row["price_id"] = existing.id
+                row["status"] = "reused"
+                env_lines.append("%s=%s" % (env_key, existing.id))
+                reused += 1
+            else:
+                params = dict(currency="jpy", unit_amount=amount, product=product_ids[plan],
+                              lookup_key=env_key, transfer_lookup_key=True,
+                              nickname="%s %s" % (label, term),
+                              metadata={"tasukaru_env_key": env_key, "tasukaru_plan": plan, "tasukaru_term": term})
+                if kind == "recurring":
+                    params["recurring"] = {"interval": "month"}
+                price = stripe.Price.create(**params)
+                row["price_id"] = price.id
+                row["status"] = "created"
+                env_lines.append("%s=%s" % (env_key, price.id))
+                made += 1
+        except Exception as e:
+            row["status"] = "failed"
+            row["issue"] = str(e)
+            failed += 1
+        rows.append(row)
+    return {"ok": failed == 0, "mode": mode, "rows": rows, "env_lines": env_lines,
+            "made": made, "reused": reused, "failed": failed}
+
+
+@app.route('/api/dev/create_stripe_prices', methods=['POST'])  # stripe-price-setup-v1
+@login_required
+def api_dev_create_stripe_prices():
+    if not session.get("dev_authenticated"):
+        return jsonify({"ok": False, "error": "dev auth required"}), 403
+    try:
+        result = _create_stripe_prices()
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"ok": False, "error": "作成処理でエラー: %s" % e, "rows": [], "env_lines": []}), 200
+
+
 # --- Stripe 決済セッション作成 ---
 @app.route('/api/stripe/create_checkout', methods=['POST'])
 def stripe_create_checkout():

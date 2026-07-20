@@ -294,6 +294,69 @@
     </div>
 </div>
 
+<!-- Stripe価格セットアップ (stripe-price-setup-v1) -->
+<div class="dev-section">
+    <div class="dev-section-title">
+        <span class="material-symbols-outlined">payments</span>
+        Stripe価格セットアップ（21種を一括作成）
+    </div>
+    <div class="dev-section-body">
+        <div style="font-size:0.82rem;color:#5f6368;line-height:1.7;margin-bottom:12px;">
+            3プラン×7契約＝<b>21種類の価格をStripeにまとめて作成</b>します。<br>
+            先に <b>STRIPE_SECRET_KEY</b>（まずはテストキー <code>sk_test_…</code>）をサーバーの環境変数に設定してください。<br>
+            何度押しても価格は重複しません（重複は自動で再利用）。
+        </div>
+        <button class="btn" id="stripe-create-btn" style="background:#635bff;color:#fff;border:none;width:100%;"
+                onclick="createStripePrices()">
+            <span class="material-symbols-outlined" style="color:#fff;">bolt</span>
+            Stripe価格を一括作成する
+        </button>
+        <div id="stripe-create-result" style="display:none;margin-top:12px;font-size:0.82rem;"></div>
+        <div style="margin-top:10px;">
+            <a href="/dev/stripe_check" style="font-size:0.82rem;color:#1a73e8;">→ 作成後は /dev/stripe_check で「正常 21/21」を確認</a>
+        </div>
+    </div>
+</div>
+<script>
+async function createStripePrices(){
+    var btn = document.getElementById('stripe-create-btn');
+    var box = document.getElementById('stripe-create-result');
+    if(!confirm('Stripeに価格を作成します。設定中のキーが本番(sk_live_)の場合は本番に作成されます。よろしいですか？')) return;
+    btn.disabled = true;
+    var orig = btn.innerHTML;
+    btn.innerHTML = '作成中…（少し時間がかかります）';
+    box.style.display = 'block';
+    box.style.color = '#5f6368';
+    box.textContent = 'Stripeに問い合わせ中…';
+    try{
+        var res = await fetch('/api/dev/create_stripe_prices', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'include'});
+        var data = await res.json();
+        if(!data.ok && data.error){
+            box.style.color = '#c5221f';
+            box.innerHTML = '⚠ ' + escapeHtmlDev(data.error);
+        }else{
+            var modeTxt = data.mode === 'live' ? '本番(LIVE)' : (data.mode === 'test' ? 'テスト(TEST)' : '不明');
+            var lines = (data.env_lines||[]).join('\n');
+            box.style.color = '#202124';
+            box.innerHTML =
+                '<div style="margin-bottom:8px;">接続モード: <b>' + modeTxt + '</b>　'
+                + '作成 <b>' + data.made + '</b> / 再利用 <b>' + data.reused + '</b> / 失敗 <b style="color:'
+                + (data.failed? '#c5221f':'#188038') + '">' + data.failed + '</b>（合計 ' + (data.made+data.reused) + '）</div>'
+                + '<div style="margin-bottom:6px;color:#5f6368;">↓ この21行を Cloud Run の環境変数に設定してください（設定後 /dev/stripe_check で確認）</div>'
+                + '<textarea readonly style="width:100%;height:150px;font-family:monospace;font-size:12px;padding:8px;border:1px solid #dadce0;border-radius:8px;" id="stripe-env-lines">' + escapeHtmlDev(lines) + '</textarea>'
+                + '<button class="btn" style="margin-top:8px;background:#1a73e8;color:#fff;border:none;" onclick="(function(){var t=document.getElementById(\'stripe-env-lines\');t.select();document.execCommand(\'copy\');})()">21行をコピー</button>';
+        }
+    }catch(e){
+        box.style.color = '#c5221f';
+        box.textContent = '通信エラー: ' + e;
+    }finally{
+        btn.disabled = false;
+        btn.innerHTML = orig;
+    }
+}
+function escapeHtmlDev(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+</script>
+
 <!-- 直近のアクティビティ -->
 <div class="dev-section">
     <div class="dev-section-title">
