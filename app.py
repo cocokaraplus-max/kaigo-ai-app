@@ -23953,6 +23953,31 @@ def api_cron_contract_notices():
 
 # pricing-rebuild-v1 : Stripe価格チェック（開発者専用・Secret Keyは表示しない）
 #   21個の STRIPE_PRICE_* が Stripe に正しく登録され、金額・課金種別が想定と一致するか検証
+_PRICE_ID_CACHE = {}  # stripe-price-setup-v1: lookup_key -> price_id
+
+
+def _resolve_price_id(env_key):  # stripe-price-setup-v1
+    """Price ID を解決。環境変数優先、無ければ Stripe の lookup_key から取得（キャッシュ）。
+    これにより STRIPE_PRICE_* を環境変数に入れなくても、作成済み価格を自動で使える。"""
+    try:
+        pid = get_secret(env_key) or ""
+    except Exception:
+        pid = ""
+    if pid:
+        return pid
+    if env_key in _PRICE_ID_CACHE:
+        return _PRICE_ID_CACHE[env_key]
+    try:
+        stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+        r = stripe.Price.list(lookup_keys=[env_key], limit=1)
+        if r.data:
+            _PRICE_ID_CACHE[env_key] = r.data[0].id
+            return r.data[0].id
+    except Exception as e:
+        print("_resolve_price_id error %s: %s" % (env_key, e), flush=True)
+    return ""
+
+
 def _check_stripe_prices():
     spec = []  # (env_key, plan_label, term_label, expected_amount, expected_mode)
     for plan_key, plan_label in (("STARTER", "スターター"), ("STANDARD", "スタンダード"), ("PRO", "プロ")):
@@ -23973,11 +23998,11 @@ def _check_stripe_prices():
                "ok": False, "issue": ""}
         pid = None
         try:
-            pid = get_secret(env_key)
+            pid = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
         except Exception:
             pid = None
         if not pid:
-            row["issue"] = "環境変数が未設定"
+            row["issue"] = "価格が見つかりません（未作成/未設定）"
             out.append(row)
             continue
         row["price_id"] = pid
@@ -24147,7 +24172,7 @@ def stripe_create_checkout():
     suffix, checkout_mode = TERM_MAP[term]
 
     env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
-    price_id = get_secret(env_key)
+    price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
     if not price_id:
         return jsonify({"error": "price not configured: " + env_key}), 400
 
@@ -24249,7 +24274,7 @@ def onboard_create_checkout():
         return jsonify({"error": "invalid term: " + term}), 400
     suffix, checkout_mode = TERM_MAP[term]
     env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
-    price_id = get_secret(env_key)
+    price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
     if not price_id:
         return jsonify({"error": "price not configured: " + env_key}), 400
 
