@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stripe価格チェック - TASUKARU 開発者</title>
+<style>
+* { box-sizing:border-box; }
+body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN",sans-serif; background:#f1f3f4; color:#202124; padding:16px; }
+.wrap { max-width:900px; margin:0 auto; }
+h1 { font-size:1.15rem; font-weight:800; margin:6px 0 4px; }
+.sub { font-size:0.82rem; color:#5f6368; margin-bottom:14px; }
+.summary { display:inline-block; font-size:0.9rem; font-weight:800; padding:8px 14px; border-radius:10px; margin-bottom:14px; }
+.summary.ok { background:#e6f4ea; color:#137333; }
+.summary.ng { background:#fce8e6; color:#c5221f; }
+table { width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; font-size:0.8rem; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+th, td { padding:9px 10px; text-align:left; border-bottom:1px solid #f1f3f4; white-space:nowrap; }
+th { background:#f8f9fa; font-weight:700; color:#5f6368; font-size:0.75rem; position:sticky; top:0; }
+tr.ng td { background:#fef7f6; }
+.badge { display:inline-block; padding:2px 8px; border-radius:9px; font-size:0.72rem; font-weight:800; }
+.badge.ok { background:#e6f4ea; color:#137333; }
+.badge.ng { background:#fce8e6; color:#c5221f; }
+.mono { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:0.72rem; color:#5f6368; }
+.amt-ng { color:#c5221f; font-weight:800; }
+.issue { color:#c5221f; font-size:0.74rem; white-space:normal; }
+.scroll { overflow-x:auto; }
+a.back { display:inline-block; margin-top:16px; font-size:0.85rem; color:#1a73e8; text-decoration:none; }
+.note { font-size:0.76rem; color:#5f6368; margin-top:14px; line-height:1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Stripe 価格チェック</h1>
+  <div class="sub">21個の <span class="mono">STRIPE_PRICE_*</span> がStripeに正しく登録され、金額・課金種別が想定と一致するかを確認します（Secret Keyは表示しません）。</div>
+
+  {% if ok_count == total %}
+  <div class="summary ok">✅ すべて正常（{{ ok_count }}/{{ total }}）</div>
+  {% else %}
+  <div class="summary ng">⚠️ 要確認 {{ total - ok_count }}件（正常 {{ ok_count }}/{{ total }}）</div>
+  {% endif %}
+
+  <div class="scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>状態</th><th>プラン</th><th>契約</th><th>環境変数</th><th>Price ID</th>
+        <th>金額(実/想定)</th><th>種別(実/想定)</th><th>問題</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="{{ 'ok' if r.ok else 'ng' }}">
+        <td>{% if r.ok %}<span class="badge ok">OK</span>{% else %}<span class="badge ng">NG</span>{% endif %}</td>
+        <td>{{ r.plan }}</td>
+        <td>{{ r.term }}</td>
+        <td class="mono">{{ r.env_key }}</td>
+        <td class="mono">{{ r.price_id or '—' }}</td>
+        <td>
+          <span class="{{ '' if (r.amount == r.expected_amount) else 'amt-ng' }}">{{ '¥{:,}'.format(r.amount) if r.amount is not none else '—' }}</span>
+          <span style="color:#9aa0a6;"> / ¥{{ '{:,}'.format(r.expected_amount) if r.expected_amount is not none else '—' }}</span>
+        </td>
+        <td>
+          {{ r.mode or '—' }}<span style="color:#9aa0a6;"> / {{ r.expected_mode }}</span>
+        </td>
+        <td class="issue">{{ r.issue }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    「種別」の <span class="mono">recurring</span> は毎月課金（月払い・年契約の月払い）、<span class="mono">one_time</span> は一括前払いを表します。金額はStripe側の <span class="mono">unit_amount</span>（円）です。NG行は、環境変数が未設定・Price未登録・金額や種別が想定と違う、のいずれかです。
+  </div>
+
+  <a class="back" href="/dev_menu">← 開発者メニューに戻る</a>
+</div>
+</body>
+</html>

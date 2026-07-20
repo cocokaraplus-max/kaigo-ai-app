@@ -23837,6 +23837,72 @@ def api_cron_contract_notices():
     print("[cron] contract_notices sent=%s" % sent, flush=True)
     return jsonify({"status": "ok", "sent": sent})
 
+
+# pricing-rebuild-v1 : Stripe価格チェック（開発者専用・Secret Keyは表示しない）
+#   21個の STRIPE_PRICE_* が Stripe に正しく登録され、金額・課金種別が想定と一致するか検証
+def _check_stripe_prices():
+    spec = []  # (env_key, plan_label, term_label, expected_amount, expected_mode)
+    for plan_key, plan_label in (("STARTER", "スターター"), ("STANDARD", "スタンダード"), ("PRO", "プロ")):
+        p = PLAN_PRICES.get(plan_key.lower(), {})
+        spec.append(("STRIPE_PRICE_%s_M" % plan_key, plan_label, "月払い(単月)", p.get("monthly"), "recurring"))
+        for y in (1, 2, 3):
+            spec.append(("STRIPE_PRICE_%s_%dY_M" % (plan_key, y), plan_label, "%d年・月払い" % y, p.get("%dy_m" % y), "recurring"))
+            spec.append(("STRIPE_PRICE_%s_%dY_L" % (plan_key, y), plan_label, "%d年・一括" % y, p.get("%dy_l" % y), "one_time"))
+    try:
+        stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+    except Exception:
+        pass
+    out = []
+    for env_key, plan_label, term_label, exp_amount, exp_mode in spec:
+        row = {"env_key": env_key, "plan": plan_label, "term": term_label,
+               "expected_amount": exp_amount, "expected_mode": exp_mode,
+               "price_id": None, "amount": None, "mode": None, "active": None,
+               "ok": False, "issue": ""}
+        pid = None
+        try:
+            pid = get_secret(env_key)
+        except Exception:
+            pid = None
+        if not pid:
+            row["issue"] = "環境変数が未設定"
+            out.append(row)
+            continue
+        row["price_id"] = pid
+        try:
+            pr = stripe.Price.retrieve(pid)
+            row["amount"] = pr.get("unit_amount")
+            row["active"] = pr.get("active")
+            rec = pr.get("recurring")
+            row["mode"] = "recurring" if rec else "one_time"
+            issues = []
+            if exp_amount is not None and row["amount"] != exp_amount:
+                issues.append("金額不一致(実%s/想定%s)" % (row["amount"], exp_amount))
+            if row["mode"] != exp_mode:
+                issues.append("種別不一致(実%s/想定%s)" % (row["mode"], exp_mode))
+            if rec and rec.get("interval") != "month":
+                issues.append("継続周期が月でない(%s)" % rec.get("interval"))
+            if row["active"] is False:
+                issues.append("price が無効(active=false)")
+            cur = pr.get("currency")
+            if cur and cur != "jpy":
+                issues.append("通貨がjpyでない(%s)" % cur)
+            row["ok"] = (len(issues) == 0)
+            row["issue"] = "／".join(issues)
+        except Exception as e:
+            row["issue"] = "Stripe取得失敗: " + str(e)
+        out.append(row)
+    return out
+
+
+@app.route('/dev/stripe_check')
+@login_required
+def dev_stripe_check():
+    if not session.get("dev_authenticated"):
+        return redirect(url_for("dev_login"))
+    rows = _check_stripe_prices()
+    ok_count = sum(1 for r in rows if r.get("ok"))
+    return render_template("dev_stripe_check.html", rows=rows, ok_count=ok_count, total=len(rows))
+
 # --- Stripe 決済セッション作成 ---
 @app.route('/api/stripe/create_checkout', methods=['POST'])
 def stripe_create_checkout():
