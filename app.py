@@ -1844,7 +1844,8 @@ def login():
                             except (ValueError, TypeError):
                                 expires = None
                         if expires is not None and expires < datetime.now(timezone.utc):
-                            error = "この施設コードの有効期限が切れています。"
+                            # pricing-rebuild-v1 : 行き止まりにせず、再開の受け皿ページへ誘導
+                            return redirect(url_for("reactivate", fc=f_code))
                         else:
                             import hashlib
                             def verify_password(pw, hashed):
@@ -23632,6 +23633,43 @@ def api_cancel_subscription():
     if kind == "monitor":
         return jsonify({"status": "info", "kind": kind, "message": "モニター施設のため料金は発生しません。"})
     return jsonify({"status": "info", "kind": "none", "message": "現在ご契約中の有料プランはありません。"})
+
+
+# pricing-rebuild-v1 : 期限切れ施設の受け皿（公開ページ・ログイン不要）
+@app.route('/reactivate')
+def reactivate():
+    fc = (request.args.get('fc') or '').strip()
+    return render_template('reactivate.html', fc=fc)
+
+
+@app.route('/api/reactivate_request', methods=['POST'])
+def api_reactivate_request():
+    data = request.get_json(silent=True) or {}
+    fc = (data.get('facility_code') or '').strip()
+    message = (data.get('message') or '').strip()
+    contact = (data.get('contact') or '').strip()
+    if not fc:
+        return jsonify({"error": "施設コードを入力してください。"}), 400
+    fac_name = None
+    try:
+        supabase = get_supabase()
+        fres = supabase.table("facilities").select("facility_name").eq("facility_code", fc).execute()
+        if fres.data:
+            fac_name = fres.data[0].get("facility_name")
+    except Exception:
+        pass
+    # 施設コードの存在有無に関わらず同じ応答（情報漏えい防止）。存在する場合のみ通知。
+    if fac_name is not None:
+        try:
+            line_notify_admin("\n".join([
+                "【TASUKARU】ご利用再開のお申し込み/相談",
+                "施設: " + fc + "（" + (fac_name or "") + "）",
+                "連絡先: " + (contact or "（未記入）"),
+                "内容: " + (message or "（未記入）"),
+            ]))
+        except Exception as e:
+            print("[reactivate] notify error: " + str(e), flush=True)
+    return jsonify({"status": "ok", "message": "受け付けました。担当者より折り返しご連絡します。"})
 
 # --- Stripe 決済セッション作成 ---
 @app.route('/api/stripe/create_checkout', methods=['POST'])

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ご利用の再開 - TASUKARU</title>
+<style>
+* { box-sizing: border-box; }
+body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif; background:#f1f3f4; color:#202124; }
+.wrap { max-width:460px; margin:0 auto; padding:24px 16px 40px; }
+.logo { text-align:center; font-size:1.3rem; font-weight:800; color:#1a73e8; margin:8px 0 18px; }
+.card { background:#fff; border-radius:16px; padding:22px 20px; box-shadow:0 2px 10px rgba(0,0,0,0.06); }
+h1 { font-size:1.05rem; font-weight:800; margin:0 0 8px; }
+.lead { font-size:0.85rem; line-height:1.7; color:#5f6368; margin:0 0 18px; }
+label { display:block; font-size:0.8rem; font-weight:700; color:#3c4043; margin:14px 0 5px; }
+input, textarea { width:100%; border:1.5px solid #e0e0e0; border-radius:10px; padding:11px 12px; font-size:0.9rem; font-family:inherit; }
+input:focus, textarea:focus { outline:none; border-color:#1a73e8; }
+.hint { font-size:0.74rem; color:#9aa0a6; margin-top:4px; }
+.cta { width:100%; margin-top:20px; padding:13px; border:none; border-radius:12px; background:#1a73e8; color:#fff; font-size:0.95rem; font-weight:700; cursor:pointer; }
+.cta:disabled { opacity:0.6; cursor:default; }
+.msg { margin-top:12px; font-size:0.85rem; font-weight:700; min-height:20px; text-align:center; }
+.done { text-align:center; padding:14px 4px; }
+.done .material-symbols-outlined { font-size:44px; color:#34a853; }
+.back { display:block; text-align:center; margin-top:18px; font-size:0.82rem; color:#1a73e8; text-decoration:none; }
+.note-box { background:#fff8e1; border:1px solid #fdd835; border-radius:10px; padding:11px 13px; font-size:0.78rem; line-height:1.6; color:#5f4b00; margin-bottom:16px; }
+</style>
+<link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Outlined" rel="stylesheet">
+</head>
+<body>
+<div class="wrap">
+  <div class="logo">TASUKARU</div>
+  <div class="card" id="form-card">
+    <h1>ご利用期間が終了しています</h1>
+    <p class="lead">この施設コードは無料期間または契約期間が終了しています。続けてご利用いただくには、下記から再開のお申し込み・ご相談をお送りください。担当者より折り返しご連絡します。</p>
+    <div class="note-box">すでにお支払い済みなのに表示される場合も、こちらからご連絡ください。行き違いを確認いたします。</div>
+
+    <label for="fc">施設コード</label>
+    <input type="text" id="fc" value="{{ fc }}" placeholder="施設コードを入力">
+
+    <label for="contact">ご連絡先（電話番号またはメール）</label>
+    <input type="text" id="contact" placeholder="例: 090-1234-5678 / info@example.com">
+
+    <label for="message">ご要望・ご質問（任意）</label>
+    <textarea id="message" rows="3" placeholder="例: スタンダードプランで再開したい／料金について相談したい など"></textarea>
+
+    <button class="cta" id="submit-btn" onclick="submitReactivate()">再開を申し込む・相談する</button>
+    <div class="msg" id="msg"></div>
+    <a class="back" href="/login">ログイン画面に戻る</a>
+  </div>
+
+  <div class="card done" id="done-card" style="display:none;">
+    <span class="material-symbols-outlined">check_circle</span>
+    <h1 style="margin-top:8px;">受け付けました</h1>
+    <p class="lead" id="done-msg" style="margin-bottom:0;">担当者より折り返しご連絡します。</p>
+    <a class="back" href="/login">ログイン画面に戻る</a>
+  </div>
+</div>
+
+<script>
+async function submitReactivate(){
+  var btn = document.getElementById('submit-btn');
+  var msg = document.getElementById('msg');
+  var fc  = (document.getElementById('fc').value || '').trim();
+  var contact = (document.getElementById('contact').value || '').trim();
+  var message = (document.getElementById('message').value || '').trim();
+  msg.textContent = '';
+  if (!fc) { msg.style.color = '#c5221f'; msg.textContent = '施設コードを入力してください。'; return; }
+  btn.disabled = true; btn.textContent = '送信中...';
+  try {
+    var res = await fetch('/api/reactivate_request', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({facility_code: fc, contact: contact, message: message})
+    });
+    var d = await res.json();
+    if (res.ok && d.status === 'ok') {
+      document.getElementById('done-msg').textContent = d.message || '担当者より折り返しご連絡します。';
+      document.getElementById('form-card').style.display = 'none';
+      document.getElementById('done-card').style.display = 'block';
+      window.scrollTo(0, 0);
+    } else {
+      msg.style.color = '#c5221f'; msg.textContent = d.error || '送信に失敗しました。時間をおいて再度お試しください。';
+      btn.disabled = false; btn.textContent = '再開を申し込む・相談する';
+    }
+  } catch(e) {
+    msg.style.color = '#c5221f'; msg.textContent = '通信エラーが発生しました。時間をおいて再度お試しください。';
+    btn.disabled = false; btn.textContent = '再開を申し込む・相談する';
+  }
+}
+</script>
+</body>
+</html>
