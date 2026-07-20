@@ -571,11 +571,12 @@ async function updateDiscount(facilityCode) {
         const data = await res.json();
         if (data.status === 'success') {
             const label = rate === '0' ? '割引なし' : (parseFloat(rate) * 100) + '%割引';
-            alert('✅ ' + facilityCode + ' を「' + label + '」' + (until ? '（' + until + 'まで）' : '（無期限）') + 'に更新しました');
+            var extra = (data.stripe && data.stripe.message) ? '｜' + data.stripe.message : '';
+            devToast('✅ ' + facilityCode + ' を「' + label + '」' + (until ? '（' + until + 'まで）' : '（無期限）') + 'に更新' + extra);
         } else {
-            alert('更新失敗: ' + (data.message || ''));
+            devToast('更新失敗: ' + (data.message || ''));
         }
-    } catch(e) { alert('エラー: ' + e); }
+    } catch(e) { devToast('エラー: ' + e); }
 }
 
 async function editExpiry(facilityCode, currentExpiry) {

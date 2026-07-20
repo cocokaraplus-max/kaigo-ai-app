@@ -12115,6 +12115,42 @@ def api_dev_toggle_monitor():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# pricing-rebuild-v1 : dev割引変更時、課金中サブスクにクーポンを適用/解除（次回請求から反映）
+#   クーポンは duration=forever のものを想定（継続割引）。0% は割引解除。
+def _sync_discount_to_subscription(supabase, facility_code, rate):
+    try:
+        fres = supabase.table("facilities").select(
+            "stripe_subscription_id,payment_type").eq("facility_code", facility_code).execute()
+        if not fres.data:
+            return {"applied": False, "message": "施設が見つかりません"}
+        sub_id = fres.data[0].get("stripe_subscription_id")
+        pay = fres.data[0].get("payment_type")
+        if not sub_id:
+            return {"applied": False, "message": "Stripeサブスクなし（新規契約時に反映されます）"}
+        if pay == "lump":
+            return {"applied": False, "message": "一括前払いのため既存請求への割引反映はありません"}
+        stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+        if not rate:
+            try:
+                stripe.Subscription.delete_discount(sub_id)
+            except Exception as e:
+                return {"applied": False, "message": "割引解除に失敗: " + str(e)}
+            return {"applied": True, "message": "既存サブスクの割引を解除しました"}
+        coupon_map = {0.2: "STRIPE_COUPON_20", 0.3: "STRIPE_COUPON_30", 0.5: "STRIPE_COUPON_50"}
+        coupon_env = coupon_map.get(round(float(rate), 2))
+        coupon_id = get_secret(coupon_env) if coupon_env else None
+        if not coupon_id:
+            return {"applied": False, "message": "クーポン未設定: " + str(coupon_env)}
+        try:
+            stripe.Subscription.modify(sub_id, coupon=coupon_id)
+        except Exception as e:
+            return {"applied": False, "message": "割引適用に失敗: " + str(e)}
+        return {"applied": True,
+                "message": "既存サブスクに%d%%割引を適用しました（次回請求から反映）" % int(rate * 100)}
+    except Exception as e:
+        return {"applied": False, "message": str(e)}
+
+
 @app.route('/api/dev/update_discount', methods=['POST'])
 @login_required
 def api_dev_update_discount():
@@ -12137,7 +12173,9 @@ def api_dev_update_discount():
         update_data = {"discount_rate": rate, "discount_until": until if until else None}
         supabase = get_supabase()
         supabase.table("facilities").update(update_data).eq("facility_code", facility_code).execute()
-        return jsonify({"status": "success"})
+        # pricing-rebuild-v1 : 課金中なら既存サブスクにもクーポンを適用/解除（次回請求から反映）
+        stripe_result = _sync_discount_to_subscription(supabase, facility_code, rate)
+        return jsonify({"status": "success", "stripe": stripe_result})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
