@@ -36,6 +36,10 @@ app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 app.config['SESSION_COOKIE_SECURE'] = True  # HTTPS only (Cloud Run is always HTTPS)
 app.config['SESSION_REFRESH_EACH_REQUEST'] = True
 
+# ===== 料金・トライアル設定（pricing-rebuild-v1）=====
+TRIAL_DAYS = 60        # 無料トライアル日数（2ヶ月）
+SUB_GRACE_DAYS = 3     # サブスク更新時のアクセス猶予日数（決済リトライ中の即ロック防止）
+
 @app.before_request
 def make_session_permanent():
     from flask import session
@@ -23551,12 +23555,12 @@ def onboard_create_checkout():
             },
             locale="ja",
         )
-        # subscription のときは1ヶ月無料トライアルを付与(初月無課金)
+        # subscription のときは無料トライアルを付与(トライアル中は無課金) pricing-rebuild-v1
         if contact_email:  # onboard-email-v1 : Stripe顧客にもメールを設定
             params["customer_email"] = contact_email
         if checkout_mode == "subscription":
             params["subscription_data"] = {
-                "trial_period_days": 30,
+                "trial_period_days": TRIAL_DAYS,  # 2ヶ月無料トライアル
                 "metadata": {"onboard_id": onboard_id},
             }
         checkout = stripe.checkout.Session.create(**params)
@@ -23564,6 +23568,23 @@ def onboard_create_checkout():
     except Exception as e:
         print("[Onboard] checkout error: " + str(e), flush=True)
         return jsonify({"error": str(e)}), 500
+
+
+# pricing-rebuild-v1 : Stripeサブスクの期間末+猶予を expires_at 用ISOで返す
+def _stripe_sub_expiry(sub_id, grace_days=SUB_GRACE_DAYS):
+    """current_period_end + 猶予日数 をISO文字列で返す（取得失敗時 None）。
+    トライアル中は current_period_end = トライアル終了日 なので、そのまま使える。"""
+    try:
+        if not sub_id:
+            return None
+        sub = stripe.Subscription.retrieve(sub_id)
+        cpe = sub.get("current_period_end")
+        if cpe:
+            from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+            return (_dt.fromtimestamp(int(cpe), _tz.utc) + _td(days=grace_days)).isoformat()
+    except Exception as e:
+        print("[Stripe] sub expiry lookup error: " + str(e), flush=True)
+    return None
 
 
 # --- Stripe Webhook ---
@@ -23629,20 +23650,41 @@ def stripe_webhook():
                     print("[Onboard] failed to allocate facility_code", flush=True)
                     return jsonify({"status": "ok"}), 200
                 _ob_now = _ob_dt.now(_ob_tz.utc)
-                # 1ヶ月無料トライアル: 初月はトライアル、有効期限=トライアル終了日
-                trial_end = _ob_now + _ob_td(days=30)
-                supabase.table("facilities").insert({
+                ob_sub_id = session_data.get("subscription")
+                ob_is_lump = ob_term.endswith("_l")  # pricing-rebuild-v1
+                _OB_TERM_YEARS = {"1y_m": 1, "1y_l": 1, "2y_m": 2, "2y_l": 2, "3y_m": 3, "3y_l": 3}
+                ob_term_years = _OB_TERM_YEARS.get(ob_term, 0)
+                _fac_row = {
                     "facility_code": new_code,
                     "facility_name": ob_fac_name,
                     "plan": ob_plan,
                     "is_active": True,
-                    "trial_ends_at": trial_end.isoformat(),
-                    "expires_at": trial_end.isoformat(),
-                    "stripe_subscription_id": session_data.get("subscription"),
+                    "stripe_subscription_id": ob_sub_id,
                     "stripe_customer_id": session_data.get("customer"),
                     "onboard_id": onboard_id,
                     "contact_email": (meta.get("email") or "").strip() or None,  # onboard-email-v1
-                }).execute()
+                    "contract_start": _ob_now.date().isoformat(),
+                    "contract_term": ob_term_years,
+                    "payment_type": "lump" if ob_is_lump else "monthly",
+                }
+                if ob_is_lump:
+                    # 一括前払い: トライアルなし。契約満了まで利用可・自動更新なし・返金なし
+                    _OB_TERM_DAYS = {"1y_l": 365, "2y_l": 730, "3y_l": 1095}
+                    _ob_end = _ob_now + _ob_td(days=_OB_TERM_DAYS.get(ob_term, 365))
+                    _fac_row["trial_ends_at"] = None
+                    _fac_row["expires_at"] = _ob_end.isoformat()
+                    _fac_row["contract_end"] = _ob_end.date().isoformat()
+                else:
+                    # subscription(月払い/年契約月払い): 2ヶ月トライアル。
+                    # expires_at=サブスク期間末+猶予(トライアル中は=トライアル終了日+猶予)
+                    trial_end = _ob_now + _ob_td(days=TRIAL_DAYS)
+                    _fac_row["trial_ends_at"] = trial_end.isoformat()
+                    _fac_row["expires_at"] = _stripe_sub_expiry(ob_sub_id) or (
+                        trial_end + _ob_td(days=SUB_GRACE_DAYS)).isoformat()
+                    if ob_term_years:
+                        _fac_row["contract_end"] = (
+                            _ob_now + _ob_td(days=365 * ob_term_years)).date().isoformat()
+                supabase.table("facilities").insert(_fac_row).execute()
                 # 管理者職員を作成(パスワードは未設定=空。初回設定リンクで本人が設定する)
                 setup_token = _ob_secrets.token_urlsafe(32)
                 setup_exp = (_ob_now + _ob_td(hours=24)).isoformat()
@@ -23695,7 +23737,7 @@ def stripe_webhook():
             try:
                 supabase = get_supabase()
                 from datetime import datetime, timedelta, timezone
-                # 契約期間から有効期限を算出（月払い単月=30日、年契約=年数ぶん）
+                # 契約満了日を算出（違約金/通知の基準）
                 TERM_DAYS = {
                     "monthly": 30,
                     "1y_m": 365, "1y_l": 365,
@@ -23708,17 +23750,27 @@ def stripe_webhook():
                 # 契約年数（違約金計算等で参照）
                 TERM_YEARS = {"1y_m": 1, "1y_l": 1, "2y_m": 2, "2y_l": 2, "3y_m": 3, "3y_l": 3}
                 contract_term_years = TERM_YEARS.get(term, 0)
-                payment_type = "lump" if term.endswith("_l") else "monthly"
+                is_lump = term.endswith("_l")
+                payment_type = "lump" if is_lump else "monthly"
+                sub_id = session_data.get("subscription")
+                # pricing-rebuild-v1 : アクセス期限
+                #   一括=満了日 / subscription=期間末+猶予（invoice.paidで毎期延長）
+                if is_lump:
+                    expires_iso = contract_end.isoformat()
+                else:
+                    expires_iso = _stripe_sub_expiry(sub_id) or (
+                        (contract_end if term == "monthly"
+                         else now + timedelta(days=30 + SUB_GRACE_DAYS)).isoformat())
 
                 update_data = {
                     "is_active": True,
                     "plan": plan,
-                    "expires_at": contract_end.isoformat(),
+                    "expires_at": expires_iso,
                     "contract_start": now.date().isoformat(),
                     "contract_end": contract_end.date().isoformat(),
                     "contract_term": contract_term_years,
                     "payment_type": payment_type,
-                    "stripe_subscription_id": session_data.get("subscription"),
+                    "stripe_subscription_id": sub_id,
                     "stripe_customer_id": session_data.get("customer"),
                 }
                 supabase.table("facilities").update(update_data).eq("facility_code", f_code).execute()
@@ -23735,6 +23787,26 @@ def stripe_webhook():
                 )
             except Exception as e:
                 print(f"[Stripe webhook] DB update error: {e}", flush=True)
+
+    elif event["type"] == "invoice.paid":
+        # pricing-rebuild-v1 : 継続課金の成功（毎月/更新/トライアル明け）→ アクセス期限を延長
+        inv = event["data"]["object"]
+        try:
+            inv_sub_id = inv.get("subscription") if isinstance(inv, dict) else None
+        except Exception:
+            inv_sub_id = None
+        if inv_sub_id:
+            try:
+                supabase = get_supabase()
+                new_exp = _stripe_sub_expiry(inv_sub_id)
+                if new_exp:
+                    supabase.table("facilities").update({
+                        "is_active": True,
+                        "expires_at": new_exp,
+                    }).eq("stripe_subscription_id", inv_sub_id).execute()
+                    print(f"[Stripe] invoice.paid → expires extended (sub {inv_sub_id})", flush=True)
+            except Exception as e:
+                print(f"[Stripe webhook] invoice.paid error: {e}", flush=True)
 
     elif event["type"] == "customer.subscription.deleted":
         # サブスク解約時

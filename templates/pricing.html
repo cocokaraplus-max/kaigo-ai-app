@@ -62,7 +62,7 @@
 <div class="pricing-wrap">
     <div class="pricing-header">
         <h1>プランを選択</h1>
-        <p>1ヶ月間は無料でお試しいただけます</p>
+        <p>2ヶ月間は無料でお試しいただけます</p>
     </div>
 
     {% if request.args.get('stripe') == 'success' %}
@@ -115,7 +115,7 @@
                     <li><span class="material-symbols-outlined">check</span>スタッフ最大5名</li>
                     <li><span class="material-symbols-outlined">check</span>AI記録 月100件</li>
                     <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
-                    <li><span class="material-symbols-outlined">check</span>1ヶ月無料トライアル</li>
+                    <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
                     <li class="no"><span class="material-symbols-outlined">close</span>CSV取込・OCR</li>
                     <li class="no"><span class="material-symbols-outlined">close</span>LINE通知</li>
                 </ul>
@@ -146,7 +146,7 @@
                     <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
                     <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
                     <li><span class="material-symbols-outlined">check</span>LINE通知</li>
-                    <li><span class="material-symbols-outlined">check</span>1ヶ月無料トライアル</li>
+                    <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
                     <li class="no"><span class="material-symbols-outlined">close</span>事業間資金移動</li>
                 </ul>
                 <button class="plan-btn {% if current_plan == 'standard' %}plan-btn-current{% else %}plan-btn-primary{% endif %}"
@@ -176,7 +176,7 @@
                     <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
                     <li><span class="material-symbols-outlined">check</span>LINE通知</li>
                     <li><span class="material-symbols-outlined">check</span>事業間資金移動</li>
-                    <li><span class="material-symbols-outlined">check</span>1ヶ月無料トライアル</li>
+                    <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
                 </ul>
                 <button class="plan-btn {% if current_plan == 'pro' %}plan-btn-current{% else %}plan-btn-outline{% endif %}"
                     onclick="startCheckout('pro')" id="btn-pro"
@@ -250,6 +250,16 @@ function updatePrices() {
     });
 }
 
+// pricing-rebuild-v1 : alert撤去（Chrome拡張が止まるため）→ 画面内トースト
+function pricingToast(msg) {
+    try { if (typeof showToast === 'function') { showToast(msg); return; } } catch(_e) {}
+    var t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#323232;color:#fff;padding:12px 18px;border-radius:10px;font-size:0.85rem;font-weight:700;z-index:9999;max-width:90%;text-align:center;box-shadow:0 3px 12px rgba(0,0,0,0.3);';
+    document.body.appendChild(t);
+    setTimeout(function(){ try { t.remove(); } catch(_e){} }, 4000);
+}
+
 async function startCheckout(plan) {
     var btn = document.getElementById('btn-' + plan);
     if (btn) { btn.disabled = true; btn.textContent = '処理中...'; }
@@ -264,11 +274,11 @@ async function startCheckout(plan) {
         if (data.url) {
             window.location.href = data.url;
         } else {
-            alert('エラー: ' + (data.error || '決済URLの取得に失敗しました'));
+            pricingToast('エラー: ' + (data.error || '決済URLの取得に失敗しました'));
             if (btn) { btn.disabled = false; btn.textContent = 'このプランで始める'; }
         }
     } catch(e) {
-        alert('エラーが発生しました: ' + e);
+        pricingToast('エラーが発生しました: ' + e);
         if (btn) { btn.disabled = false; btn.textContent = 'このプランで始める'; }
     }
 }
