@@ -23539,6 +23539,23 @@ def api_cancel_subscription():
     kind = ov.get("cancel_kind")
     supabase = get_supabase()
 
+    # 申請者（ログイン中の管理者）本人のLINEに確認を返す pricing-rebuild-v1
+    requester_uid = None
+    try:
+        _sres = supabase.table("staffs").select("line_user_id").eq(
+            "facility_code", f_code).eq("staff_name", my_name).eq("is_active", True).execute()
+        if _sres.data:
+            requester_uid = _sres.data[0].get("line_user_id")
+    except Exception:
+        pass
+
+    def _notify_requester(text):
+        if requester_uid:
+            try:
+                line_send_message(requester_uid, [{"type": "text", "text": text}])
+            except Exception:
+                pass
+
     base_row = {
         "facility_code": f_code, "plan": ov.get("plan"),
         "contract_term": ov.get("contract_term"), "payment_type": ov.get("payment_type"),
@@ -23588,6 +23605,7 @@ def api_cancel_subscription():
                 msg = "無料期間の終了日（%s）で停止します。無料期間中の料金は発生しません。" % (end_txt or "")
             else:
                 msg = "現在の期間の終了日（%s）で停止します。違約金はかかりません。" % (end_txt or "")
+            _notify_requester("【TASUKARU】解約を受け付けました\n" + msg)
             return jsonify({"status": "cancelled", "kind": kind, "message": msg})
         # サブスクIDが特定できない → 手動確認へ回す
         _log("pending", "Stripeサブスク未特定・手動確認要")
@@ -23598,6 +23616,7 @@ def api_cancel_subscription():
             ]))
         except Exception:
             pass
+        _notify_requester("【TASUKARU】解約を受け付けました\n担当者が確認のうえご連絡します。")
         return jsonify({"status": "requested", "kind": kind,
                         "message": "解約を受け付けました。担当者が確認のうえご連絡します。"})
 
@@ -23623,6 +23642,9 @@ def api_cancel_subscription():
             ]))
         except Exception:
             pass
+        _notify_requester("【TASUKARU】解約申請を受け付けました\n"
+                          + "違約金 ¥{:,} の確認後、担当者よりご連絡します。".format(ov.get("penalty") or 0)
+                          + "\n（この時点では解約は確定していません）")
         return jsonify({"status": "requested", "kind": kind, "penalty": ov.get("penalty") or 0,
                         "message": "解約申請を受け付けました。違約金¥{:,}の確認後、担当者よりご連絡します。".format(ov.get("penalty") or 0)})
 
