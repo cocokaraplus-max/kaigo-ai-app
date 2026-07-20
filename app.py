@@ -2104,7 +2104,7 @@ def _tier_ok(state, tier):  # plan-gating-v1
 #   既定 False（＝ブロックしない・バッジ表示のみ。体験開放と同じ見た目のまま）。
 #   DEVで各施設の plan 値を検証してから True にすると、tier を満たさない施設は
 #   該当ページで /pricing に誘導される（体験中・モニターは常に許可。既存の施設別トグルとは AND）。
-PLAN_ENFORCE = False
+PLAN_ENFORCE = True   # ← DEV検証用に一時的にTrue。検証後Falseへ戻すこと（本番マージ時は必ずFalse）
 
 
 def _plan_block_redirect(tier):  # plan-enforce-v1
