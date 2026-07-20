@@ -24008,20 +24008,20 @@ def _check_stripe_prices():
         row["price_id"] = pid
         try:
             pr = stripe.Price.retrieve(pid)
-            row["amount"] = pr.get("unit_amount")
-            row["active"] = pr.get("active")
-            rec = pr.get("recurring")
+            row["amount"] = getattr(pr, "unit_amount", None)
+            row["active"] = getattr(pr, "active", None)
+            rec = getattr(pr, "recurring", None)
             row["mode"] = "recurring" if rec else "one_time"
             issues = []
             if exp_amount is not None and row["amount"] != exp_amount:
                 issues.append("金額不一致(実%s/想定%s)" % (row["amount"], exp_amount))
             if row["mode"] != exp_mode:
                 issues.append("種別不一致(実%s/想定%s)" % (row["mode"], exp_mode))
-            if rec and rec.get("interval") != "month":
-                issues.append("継続周期が月でない(%s)" % rec.get("interval"))
+            if rec and getattr(rec, "interval", None) != "month":
+                issues.append("継続周期が月でない(%s)" % getattr(rec, "interval", None))
             if row["active"] is False:
                 issues.append("price が無効(active=false)")
-            cur = pr.get("currency")
+            cur = getattr(pr, "currency", None)
             if cur and cur != "jpy":
                 issues.append("通貨がjpyでない(%s)" % cur)
             row["ok"] = (len(issues) == 0)
@@ -24065,7 +24065,7 @@ def _stripe_find_or_create_product(plan, label):  # stripe-price-setup-v1
     except Exception:
         try:
             for pr in stripe.Product.list(limit=100).auto_paging_iter():
-                if (pr.get("metadata") or {}).get(tag) == plan:
+                if getattr(getattr(pr, "metadata", None), tag, None) == plan:
                     return pr.id
         except Exception:
             pass
@@ -24319,7 +24319,7 @@ def _stripe_sub_expiry(sub_id, grace_days=SUB_GRACE_DAYS):
         if not sub_id:
             return None
         sub = stripe.Subscription.retrieve(sub_id)
-        cpe = sub.get("current_period_end")
+        cpe = getattr(sub, "current_period_end", None)
         if cpe:
             from datetime import datetime as _dt, timedelta as _td, timezone as _tz
             return (_dt.fromtimestamp(int(cpe), _tz.utc) + _td(days=grace_days)).isoformat()
