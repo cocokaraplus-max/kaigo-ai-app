@@ -2062,6 +2062,69 @@ def _plan_rank(plan):  # plan-gating-v1
     return PLAN_RANK.get((plan or "free").lower(), 0)
 
 
+def _facility_plan_state(supabase, f_code):  # plan-gating-v1
+    """施設のプラン状態を1回のDB照会で返す（バッジ判定と enforcement の共有元）。
+    返り値: {plan, rank, in_trial, is_monitor}。"""
+    state = {"plan": "free", "rank": 0, "in_trial": False, "is_monitor": False}
+    try:
+        pr = (supabase.table("facilities")
+              .select("plan,trial_ends_at,is_monitor")
+              .eq("facility_code", f_code).execute())
+        if pr.data:
+            row = pr.data[0]
+            plan = row.get("plan") or "free"
+            state["is_monitor"] = bool(row.get("is_monitor"))
+            if state["is_monitor"]:
+                plan = "monitor"  # 自社等・全機能相当
+            state["plan"] = plan
+            te = row.get("trial_ends_at")
+            if te:
+                try:
+                    ted = datetime.fromisoformat(str(te).replace("Z", "+00:00"))
+                    if ted > datetime.now(timezone.utc):
+                        state["in_trial"] = True
+                except (ValueError, TypeError):
+                    pass
+    except Exception as e:
+        print("_facility_plan_state error: %s" % e, flush=True)
+    state["rank"] = _plan_rank(state["plan"])
+    return state
+
+
+def _tier_ok(state, tier):  # plan-gating-v1
+    """この施設のプランで tier 機能を『契約上』使えるか。体験中・モニターは常に可。"""
+    if not tier:
+        return True
+    if state.get("in_trial") or state.get("is_monitor"):
+        return True
+    return state.get("rank", 0) >= TIER_RANK.get(tier, 0)
+
+
+# plan-enforce-v1: プラン階層による強制アクセス制御のキルスイッチ。
+#   既定 False（＝ブロックしない・バッジ表示のみ。体験開放と同じ見た目のまま）。
+#   DEVで各施設の plan 値を検証してから True にすると、tier を満たさない施設は
+#   該当ページで /pricing に誘導される（体験中・モニターは常に許可。既存の施設別トグルとは AND）。
+PLAN_ENFORCE = False
+
+
+def _plan_block_redirect(tier):  # plan-enforce-v1
+    """PLAN_ENFORCE 有効時、tier を満たさない施設を /pricing へ誘導する。
+    満たす／フラグ無効／未ログインなら None を返し、呼び出し側は通常処理を続ける。"""
+    if not PLAN_ENFORCE or not tier:
+        return None
+    try:
+        f_code = session.get("f_code")
+        if not f_code:
+            return None
+        state = _facility_plan_state(get_supabase(), f_code)
+        if _tier_ok(state, tier):
+            return None
+        return redirect(url_for("pricing"))
+    except Exception as e:
+        print("_plan_block_redirect error: %s" % e, flush=True)
+        return None  # 判定に失敗したら安全側（通す）
+
+
 STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden",
                       "drawer_pos")   # 受け付けるキーはこれだけ
 
@@ -2087,32 +2150,12 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
     except Exception:
         can_photo = False
 
-    # plan-gating-v1: 施設プランと体験期間を判定。
+    # plan-gating-v1: 施設プランと体験期間を判定（共有ヘルパー）。
     #   体験中(in_trial)は上位機能も表示（開放）し、プランを上回る項目に badge を付ける。
-    #   体験外でプランを上回る項目は locked=True を付ける（強制ブロックは将来の enforcement で使う。
-    #   現状は base.html 側でバッジ表示のみに留め、アクセスは従来どおり通す）。
-    plan = "free"
-    in_trial = False
-    try:
-        pr = (supabase.table("facilities")
-              .select("plan,trial_ends_at,is_monitor")
-              .eq("facility_code", f_code).execute())
-        if pr.data:
-            row = pr.data[0]
-            plan = row.get("plan") or "free"
-            if row.get("is_monitor"):
-                plan = "monitor"  # 自社等・全機能相当
-            te = row.get("trial_ends_at")
-            if te:
-                try:
-                    ted = datetime.fromisoformat(str(te).replace("Z", "+00:00"))
-                    if ted > datetime.now(timezone.utc):
-                        in_trial = True
-                except (ValueError, TypeError):
-                    pass
-    except Exception as e:
-        print("_menu_items_visible plan lookup error: %s" % e, flush=True)
-    rank = _plan_rank(plan)
+    #   体験外でプランを上回る項目は locked=True（enforcement 用の印。表示は従来どおり通す）。
+    state = _facility_plan_state(supabase, f_code)
+    rank = state["rank"]
+    in_trial = state["in_trial"]
 
     out = []
     for it in MENU_ITEMS:
@@ -3990,6 +4033,9 @@ def renraku_print_page():
 @app.route('/renraku')
 @login_required
 def renraku_page():  # renraku-v1
+    _blk = _plan_block_redirect("standard")  # plan-enforce-v1
+    if _blk:
+        return _blk
     return render_template('renraku.html')
 
 
@@ -20291,6 +20337,9 @@ def _soge_planned_times(depart, stops, drive_minutes, settings):  # soge-time-v1
 @login_required
 def soge_week_page():
     """送迎表（曜日別テンプレート）。"""
+    _blk = _plan_block_redirect("standard")  # plan-enforce-v1
+    if _blk:
+        return _blk
     return render("soge_week.html")
 # ===== /soge-week-ui-v1 =====
 
@@ -25851,6 +25900,9 @@ def admin_meetings():
     ok, f_code, my_name = _meetings_gate_ok()
     if not ok:
         return redirect(url_for("admin"))
+    _blk = _plan_block_redirect("pro")  # plan-enforce-v1: プロ機能。既存の meetings_enabled と AND
+    if _blk:
+        return _blk
     return render("admin_meetings.html")
 # --- /meetings-page-route-v1 ---
 
