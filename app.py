@@ -23671,6 +23671,112 @@ def api_reactivate_request():
             print("[reactivate] notify error: " + str(e), flush=True)
     return jsonify({"status": "ok", "message": "受け付けました。担当者より折り返しご連絡します。"})
 
+
+# pricing-rebuild-v1 : 契約リマインド（Cloud Scheduler から毎日1回叩く。token で保護）
+#   トライアル終了 7日前/3日前/当日 → 施設の管理者LINEへ（自動課金の予告＋辞退導線）
+#   年契約 満了 90日前/30日前/7日前 → 施設の管理者LINEへ（更新案内）
+#   年契約 満了 60日前 → 岸本さんへ（更新交渉タイミング）
+@app.route('/api/cron/contract_notices', methods=['GET', 'POST'])
+def api_cron_contract_notices():
+    token = request.args.get('token') or request.headers.get('X-Cron-Token', '')
+    if not token or token != get_secret("CRON_TOKEN"):
+        return jsonify({"error": "forbidden"}), 403
+
+    supabase = get_supabase()
+    today = datetime.now(tokyo_tz).date()
+    base = request.host_url.rstrip("/")
+    sent = {"trial": 0, "contract": 0, "operator": 0}
+
+    def _admin_lines(fc):
+        try:
+            r = supabase.table("staffs").select("line_user_id").eq(
+                "facility_code", fc).eq("is_active", True).execute()
+            return [s.get("line_user_id") for s in (r.data or []) if s.get("line_user_id")]
+        except Exception:
+            return []
+
+    def _dparse(d):
+        if not d or str(d) in ("None", ""):
+            return None
+        try:
+            return datetime.fromisoformat(str(d).replace("Z", "+00:00")).date()
+        except (ValueError, TypeError):
+            try:
+                return datetime.strptime(str(d)[:10], "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                return None
+
+    try:
+        res = supabase.table("facilities").select(
+            "facility_code,facility_name,payment_type,contract_term,contract_end,trial_ends_at,is_active,is_monitor"
+        ).eq("is_active", True).execute()
+        facs = res.data or []
+    except Exception as e:
+        print("[cron] fetch error: " + str(e), flush=True)
+        return jsonify({"error": "db"}), 500
+
+    for f in facs:
+        fc = f.get("facility_code")
+        if not fc or f.get("is_monitor"):
+            continue
+
+        # --- トライアル終了リマインド ---
+        te = _dparse(f.get("trial_ends_at"))
+        if te:
+            d = (te - today).days
+            if d in (7, 3, 0):
+                lines = _admin_lines(fc)
+                if lines:
+                    when = "本日" if d == 0 else ("%d日後" % d)
+                    msg = "\n".join([
+                        "【TASUKARU】無料期間終了の" + ("お知らせ（本日）" if d == 0 else "お知らせ"),
+                        "施設: " + (f.get("facility_name") or fc),
+                        "無料期間は%s（%s）で終了します。" % (when, te.isoformat()),
+                        "終了後は選択中のプランで自動的に課金が始まります。",
+                        "このまま継続する場合はお手続き不要です。",
+                        "解約する場合は無料期間の間に：" + base + "/pricing",
+                    ])
+                    for uid in lines:
+                        try:
+                            line_send_message(uid, [{"type": "text", "text": msg}])
+                            sent["trial"] += 1
+                        except Exception:
+                            pass
+
+        # --- 年契約 満了リマインド ---
+        term = int(f.get("contract_term") or 0)
+        ce = _dparse(f.get("contract_end"))
+        if term >= 1 and ce:
+            d = (ce - today).days
+            if d in (90, 30, 7):
+                lines = _admin_lines(fc)
+                if lines:
+                    msg = "\n".join([
+                        "【TASUKARU】契約満了のお知らせ",
+                        "施設: " + (f.get("facility_name") or fc),
+                        "現在の契約は %s（あと%d日）で満了します。" % (ce.isoformat(), d),
+                        "更新・プランのご相談はこちら：" + base + "/pricing",
+                    ])
+                    for uid in lines:
+                        try:
+                            line_send_message(uid, [{"type": "text", "text": msg}])
+                            sent["contract"] += 1
+                        except Exception:
+                            pass
+            if d == 60:
+                try:
+                    line_notify_admin("\n".join([
+                        "【TASUKARU】更新交渉タイミング（満了60日前）",
+                        "施設: " + (f.get("facility_name") or fc) + "（" + fc + "）",
+                        "契約満了: " + ce.isoformat(),
+                    ]))
+                    sent["operator"] += 1
+                except Exception:
+                    pass
+
+    print("[cron] contract_notices sent=%s" % sent, flush=True)
+    return jsonify({"status": "ok", "sent": sent})
+
 # --- Stripe 決済セッション作成 ---
 @app.route('/api/stripe/create_checkout', methods=['POST'])
 def stripe_create_checkout():
