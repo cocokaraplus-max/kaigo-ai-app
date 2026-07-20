@@ -170,10 +170,11 @@
                 <ul class="plan-features">
                     <li><span class="material-symbols-outlined">check</span>スタッフ最大5名</li>
                     <li><span class="material-symbols-outlined">check</span>AI記録 月100件</li>
-                    <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
+                    <li><span class="material-symbols-outlined">check</span>モニタリング報告書</li>
                     <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
+                    <li class="no"><span class="material-symbols-outlined">close</span>送迎表</li>
                     <li class="no"><span class="material-symbols-outlined">close</span>CSV取込・OCR</li>
-                    <li class="no"><span class="material-symbols-outlined">close</span>LINE通知</li>
+                    <li class="no"><span class="material-symbols-outlined">close</span>連絡帳（LINE連携）</li>
                 </ul>
                 <button class="plan-btn {% if current_plan == 'starter' %}plan-btn-current{% else %}plan-btn-outline{% endif %}"
                     onclick="startCheckout('starter')" id="btn-starter"
@@ -199,11 +200,12 @@
                 <ul class="plan-features">
                     <li><span class="material-symbols-outlined">check</span>スタッフ最大15名</li>
                     <li><span class="material-symbols-outlined">check</span>AI記録 月500件</li>
-                    <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
+                    <li><span class="material-symbols-outlined">check</span>モニタリング報告書</li>
+                    <li><span class="material-symbols-outlined">check</span>送迎表</li>
                     <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
-                    <li><span class="material-symbols-outlined">check</span>LINE通知</li>
+                    <li><span class="material-symbols-outlined">check</span>連絡帳（LINE連携）</li>
                     <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
-                    <li class="no"><span class="material-symbols-outlined">close</span>事業間資金移動</li>
+                    <li class="no"><span class="material-symbols-outlined">close</span>タイムカード・議事録・アセスメント・ICF</li>
                 </ul>
                 <button class="plan-btn {% if current_plan == 'standard' %}plan-btn-current{% else %}plan-btn-primary{% endif %}"
                     onclick="startCheckout('standard')" id="btn-standard"
@@ -228,10 +230,14 @@
                 <ul class="plan-features">
                     <li><span class="material-symbols-outlined">check</span>スタッフ無制限</li>
                     <li><span class="material-symbols-outlined">check</span>AI記録 無制限</li>
-                    <li><span class="material-symbols-outlined">check</span>出納帳（基本）</li>
+                    <li><span class="material-symbols-outlined">check</span>モニタリング報告書</li>
+                    <li><span class="material-symbols-outlined">check</span>送迎表</li>
                     <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
-                    <li><span class="material-symbols-outlined">check</span>LINE通知</li>
-                    <li><span class="material-symbols-outlined">check</span>事業間資金移動</li>
+                    <li><span class="material-symbols-outlined">check</span>連絡帳（LINE連携）</li>
+                    <li><span class="material-symbols-outlined">check</span>タイムカード</li>
+                    <li><span class="material-symbols-outlined">check</span>担当者会議の議事録作成</li>
+                    <li><span class="material-symbols-outlined">check</span>アセスメントシート作成</li>
+                    <li><span class="material-symbols-outlined">check</span>ICF（生活機能の分類）</li>
                     <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
                 </ul>
                 <button class="plan-btn {% if current_plan == 'pro' %}plan-btn-current{% else %}plan-btn-outline{% endif %}"
