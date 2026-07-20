@@ -14875,6 +14875,13 @@ def timecard_bootstrap():
             return jsonify({"status": "ok", "registered": True,
                             "enabled": False,
                             "message": "この施設ではタイムカード機能が有効になっていません。"})
+        # plan-enforce-v1: タイムカードはプロ機能。強制制御(PLAN_ENFORCE)が有効な間は
+        #   プラン未満だと使わせない（体験中・モニターは _tier_ok 側で常に許可。timecard_enabled との AND）。
+        #   既定は PLAN_ENFORCE=False のためこの分岐は通らず、従来どおり動作する。
+        if PLAN_ENFORCE and not _tier_ok(_facility_plan_state(supabase, f_code), "pro"):
+            return jsonify({"status": "ok", "registered": True,
+                            "enabled": False,
+                            "message": "タイムカードはプロプランの機能です。ご利用にはプランのアップグレードが必要です。"})
         # 施設名
         fac_name = f_code
         try:
@@ -14925,6 +14932,9 @@ def timecard_punch():
         f_code = dev.get("facility_code")
         if not _tc_facility_enabled(supabase, f_code):
             return jsonify({"status": "error", "message": "タイムカード機能が無効です。"}), 403
+        # plan-enforce-v1: プロ機能。強制制御が有効な間はプラン未満だと打刻不可（体験中・モニターは許可）。
+        if PLAN_ENFORCE and not _tier_ok(_facility_plan_state(supabase, f_code), "pro"):
+            return jsonify({"status": "error", "message": "タイムカードはプロプランの機能です。"}), 403
         if punch_type not in _TC_PUNCH_TYPES:
             return jsonify({"status": "error", "message": "打刻種別が不正です。"}), 400
         if not staff_name:
