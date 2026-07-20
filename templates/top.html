@@ -210,9 +210,9 @@
    margin:4px 0 14px;background:#2f6b5e;border-radius:12px;text-decoration:none;color:#fff;
    font-weight:800;font-size:1rem;">
   <span class="material-symbols-outlined">schedule</span>タイムカードで打刻する
-  {% if contract and not contract.is_monitor and contract.plan not in ['pro','monitor'] %}
+  {% if contract and contract.in_trial and not contract.is_monitor and contract.plan not in ['pro','monitor'] %}
   <span style="background:#7c4dff;color:#fff;font-size:.6rem;font-weight:800;border-radius:999px;
-    padding:2px 7px;letter-spacing:.02em;">PRO</span>{% endif %}{# plan-gating-v1 #}
+    padding:2px 7px;letter-spacing:.02em;">PRO</span>{% endif %}{# plan-gating-v1: 体験中のみ #}
 </a>
 <script>
 (function(){

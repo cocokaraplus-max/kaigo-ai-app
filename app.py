@@ -2169,12 +2169,16 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         if need == "dev" and not is_dev:
             continue
         item = {"href": it["href"], "icon": it["icon"], "label": it["label"]}
-        # plan-gating-v1: プラン下限を上回る（＝この施設のプランに含まれない）機能に印を付ける。
+        # plan-gating-v1: プラン下限を上回る（この施設のプランに含まれない）機能。
+        #   バッジは「体験中のみ」表示する（有料運用に入ったら邪魔になるため出さない）。
+        #   locked は enforcement 用のフラグで、体験外のときだけ立てる（表示はしない）。
         tier = it.get("tier")
         if tier and rank < TIER_RANK.get(tier, 0):
-            item["badge"] = TIER_BADGE.get(tier)
-            item["tier"] = tier
-            item["locked"] = (not in_trial)  # 体験中は開放、体験外は本来ブロック対象
+            if in_trial:
+                item["badge"] = TIER_BADGE.get(tier)
+                item["tier"] = tier
+            else:
+                item["locked"] = True
         out.append(item)
     return out
 
