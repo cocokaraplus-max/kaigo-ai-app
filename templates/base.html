@@ -4274,5 +4274,30 @@ function ttResetLang() {
 }
 </script>
 <script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
+<script>
+/* 災害記録用 名簿キャッシュ app-roster-cache-v1 (Capacitorアプリ内のみ・6時間毎) */
+(function(){
+  try{
+    if(!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())) return;
+    var P = Capacitor.Plugins && Capacitor.Plugins.Preferences;
+    if(!P) return;
+    setTimeout(async function(){
+      try{
+        var last = await P.get({key:'dr_roster_at'});
+        var now = Date.now();
+        if(last && last.value && (now - parseInt(last.value,10) < 21600000)) return;
+        var res = await fetch('/api/patients_cache', {credentials:'same-origin'});
+        if(!res.ok) return;
+        var data = await res.json();
+        var names = (data.patients||[]).map(function(x){ return x.user_name; }).filter(Boolean);
+        if(names.length){
+          await P.set({key:'dr_roster', value: JSON.stringify(names)});
+          await P.set({key:'dr_roster_at', value: String(now)});
+        }
+      }catch(e){}
+    }, 4000);
+  }catch(e){}
+})();
+</script>
 </body>
 </html>
