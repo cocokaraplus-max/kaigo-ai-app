@@ -2675,14 +2675,18 @@ window.saveRecheckSchedule = async function(pid, vitalId) {
         const section = document.getElementById(`recheck-section-${pid}`);
         if (section) section.querySelectorAll('.recheck-quick-btn').forEach(b => b.classList.remove('active'));
         await loadRecheckSchedules(pid);
-        if (typeof nativeScheduleRecheck === 'function') nativeScheduleRecheck({ id: result.id, scheduled_at: scheduledDate.toISOString(), user_name: userName, note: note, is_completed: false });
-        // .icsファイル生成 + ダウンロード(一覧再取得が終わってから最後に実行)
-        downloadICS({
-            scheduled_at: scheduledDate.toISOString(),
-            user_name: userName,
-            note: note,
-            patient_id: pid,
-        });
+        if (typeof _rcIsNative === 'function' && _rcIsNative()) {
+            // アプリ内: ネイティブ通知を予約(完了を待つ)。.icsカレンダーは出さない
+            await nativeScheduleRecheck({ id: result.id, scheduled_at: scheduledDate.toISOString(), user_name: userName, note: note, is_completed: false });
+        } else {
+            // ブラウザ: 従来通り .ics をダウンロード
+            downloadICS({
+                scheduled_at: scheduledDate.toISOString(),
+                user_name: userName,
+                note: note,
+                patient_id: pid,
+            });
+        }
     } catch (e) {
         alert('通信エラー: ' + e.message);
     }
