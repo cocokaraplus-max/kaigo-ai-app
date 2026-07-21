@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <!-- PWA設定 -->
     <link rel="manifest" href="/static/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -72,7 +72,7 @@
             -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
             /* nav-hide-v1: ナビの高さ + 指がかかる余白。ナビを隠すと自動で詰まる。 */
-            padding: 1.5rem 1.2rem calc(var(--nav-h) + max(58px, env(safe-area-inset-bottom) + 40px));
+            padding: calc(1.5rem + env(safe-area-inset-top)) 1.2rem calc(var(--nav-h) + max(58px, env(safe-area-inset-bottom) + 40px));
             position: relative;
             z-index: 0;
         }
@@ -261,7 +261,7 @@ body.nav-editing {
 }
 /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
-            position: fixed; top: 16px; right: 16px;
+            position: fixed; top: calc(16px + env(safe-area-inset-top)); right: 16px;
             display: flex; flex-direction: row; gap: 8px;
             z-index: 1000; pointer-events: auto;
             width: auto; align-items: center;
@@ -439,14 +439,14 @@ body.nav-editing {
 <body>
 
 <!-- オフラインバナー -->
-<div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#ff6f00;color:#fff;text-align:center;padding:8px 12px;font-size:0.82rem;font-weight:700;">
+<div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#ff6f00;color:#fff;text-align:center;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;font-size:0.82rem;font-weight:700;">
     <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">wifi_off</span>
     オフラインです｜保存した記録はネット接続後に自動送信されます
     <button onclick="openDisasterMode()" style="margin-left:8px;background:#fff;color:#ff6f00;border:none;border-radius:6px;padding:2px 8px;font-size:0.75rem;font-weight:700;cursor:pointer;">災害モード</button>
 </div>
 
 <!-- 同期完了バナー -->
-<div id="sync-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#34a853;color:#fff;text-align:center;padding:8px 12px;font-size:0.82rem;font-weight:700;">
+<div id="sync-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#34a853;color:#fff;text-align:center;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;font-size:0.82rem;font-weight:700;">
     <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">sync</span>
     オフライン記録を同期しました
 </div>
@@ -755,7 +755,7 @@ body.nav-editing {
     })();
     </script>
 
-    <div style="position:fixed;top:16px;left:16px;z-index:1000;" id="goal-check-fab-area">
+    <div style="position:fixed;top:calc(16px + env(safe-area-inset-top));left:16px;z-index:1000;" id="goal-check-fab-area">
         <button class="settings-fab" id="goal-check-btn" onclick="openGoalCheckModal()" title="目標期限確認" style="display:none;">
             <span class="material-symbols-outlined">assignment_late</span>
         </button>
