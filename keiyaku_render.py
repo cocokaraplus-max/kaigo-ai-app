@@ -860,7 +860,8 @@ def render_keiyaku(F, st):
         _cw('第四章　契約者の義務等', art["11"]) +
         _cw('第五章　損害賠償', art["12"]) + art["13"] + art["14"] +
         _cw('第六章　契約の終了', art["15"]) + art["16"] + art["17"] + art["18"] +
-        _cw('第七章　その他', art["19"]) + art["20"] + art["21"] + art["22"]
+        _cw('第七章　その他', art["19"]) + art["20"] + art["21"]
+        # 第22条は署名エリアと一緒に .signwrap で束ねる（keiyaku-pagebreak-v2）ため、ここには入れない。
     )
 
     # keiyaku-sign-v1: 押印は廃止したので「署名押印」→「署名」。
@@ -885,7 +886,10 @@ def render_keiyaku(F, st):
     head = f'''<div class="doc-title">{jname} 利用契約書</div>
 <div class="doc-sub">地域密着型通所介護</div>'''
 
-    return _localize(F, st, '<div class="paper">' + head + chapters + sign + '</div>')   # keiyaku-yobo-v2
+    # keiyaku-pagebreak-v2: 第22条＋署名エリアを1ブロックにまとめ、入りきらなければ両方まとめて次ページへ。
+    # （署名の途中で代理人欄などが切れるのを確実に防ぐ。合計高さは1ページ未満なので必ず収まる）
+    signwrap = '<div class="signwrap">' + art["22"] + sign + '</div>'
+    return _localize(F, st, '<div class="paper">' + head + chapters + signwrap + '</div>')   # keiyaku-yobo-v2
 
 
 # ===== 印刷用CSS（wkhtmltopdf向け: @page margin 0、余白は .page-pad で実寸） =====
@@ -903,6 +907,8 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 .ch{font-weight:700;font-size:11.5pt;text-align:center;background:#eef3f1;padding:2mm 0;margin:3.5mm 0 2.5mm;letter-spacing:1px;page-break-after:avoid}
 /* keiyaku-pagebreak-v1: 章タイトル＋直後の第1条をひとかたまりで送る（章だけ前ページ末に残さない） */
 .chwrap{page-break-inside:avoid}
+/* keiyaku-pagebreak-v2: 第22条＋署名エリアをまとめて送る（署名の途中で切れさせない） */
+.signwrap{page-break-inside:avoid}
 .sec{margin:0 0 3mm;page-break-inside:avoid}
 .sec-h{font-weight:700;font-size:10pt;border-left:4px solid #2f6b5e;padding-left:6px;margin:0 0 1.5mm;page-break-after:avoid}
 .tokki-sec .tokki-item{margin:0 0 2mm;page-break-inside:avoid}
