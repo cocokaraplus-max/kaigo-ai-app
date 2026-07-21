@@ -848,14 +848,19 @@ def render_keiyaku(F, st):
     for n in art:
         art[n] = _ov(F, f"keiyaku_art{n}", art[n])
 
+    # keiyaku-pagebreak-v1: 章タイトルが前ページ末に取り残されないよう、
+    # 章タイトルと直後の第1条を .chwrap（分割禁止）で1ブロックに束ねる。
+    # （wkhtmltopdf は .ch の page-break-after:avoid を無視するため、この方式で確実に効かせる）
+    def _cw(title, first):
+        return f'<div class="chwrap"><div class="ch">{title}</div>{first}</div>'
     chapters = (
-        '<div class="ch">第一章　総則</div>' + art["1"] + art["2"] + art["3"] + art["4"] + art["5"] +
-        '<div class="ch">第二章　サービスの利用と料金の支払い</div>' + art["6"] + art["7"] + art["8"] +
-        '<div class="ch">第三章　事業所の義務等</div>' + art["9"] + art["10"] +
-        '<div class="ch">第四章　契約者の義務等</div>' + art["11"] +
-        '<div class="ch">第五章　損害賠償</div>' + art["12"] + art["13"] + art["14"] +
-        '<div class="ch">第六章　契約の終了</div>' + art["15"] + art["16"] + art["17"] + art["18"] +
-        '<div class="ch">第七章　その他</div>' + art["19"] + art["20"] + art["21"] + art["22"]
+        _cw('第一章　総則', art["1"]) + art["2"] + art["3"] + art["4"] + art["5"] +
+        _cw('第二章　サービスの利用と料金の支払い', art["6"]) + art["7"] + art["8"] +
+        _cw('第三章　事業所の義務等', art["9"]) + art["10"] +
+        _cw('第四章　契約者の義務等', art["11"]) +
+        _cw('第五章　損害賠償', art["12"]) + art["13"] + art["14"] +
+        _cw('第六章　契約の終了', art["15"]) + art["16"] + art["17"] + art["18"] +
+        _cw('第七章　その他', art["19"]) + art["20"] + art["21"] + art["22"]
     )
 
     # keiyaku-sign-v1: 押印は廃止したので「署名押印」→「署名」。
@@ -896,6 +901,8 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 .doc-title{text-align:center;font-weight:700;font-size:15pt;margin:0 0 2mm}
 .doc-sub{text-align:center;font-size:10.5pt;margin:0 0 5mm}
 .ch{font-weight:700;font-size:11.5pt;text-align:center;background:#eef3f1;padding:2mm 0;margin:3.5mm 0 2.5mm;letter-spacing:1px;page-break-after:avoid}
+/* keiyaku-pagebreak-v1: 章タイトル＋直後の第1条をひとかたまりで送る（章だけ前ページ末に残さない） */
+.chwrap{page-break-inside:avoid}
 .sec{margin:0 0 3mm;page-break-inside:avoid}
 .sec-h{font-weight:700;font-size:10pt;border-left:4px solid #2f6b5e;padding-left:6px;margin:0 0 1.5mm;page-break-after:avoid}
 .tokki-sec .tokki-item{margin:0 0 2mm;page-break-inside:avoid}
@@ -937,7 +944,8 @@ body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",s
 .ptab.fee .wari{background:#dfeae6;font-weight:700;white-space:nowrap;border-top:2px solid #555}
 .ptab.fee .kai{white-space:nowrap;background:#f7f6f3}
 .ptab.fee td:not(.wari):not(.kai){text-align:right;white-space:nowrap}
-.sign{margin-top:5mm;font-size:9pt}
+/* keiyaku-pagebreak-v1: 署名エリア全体を分割禁止にし、日付だけが前ページに取り残されるのを防ぐ（高さは1ページ未満なので、まとまって次ページへ送られる） */
+.sign{margin-top:5mm;font-size:9pt;page-break-inside:avoid}
 
 .sign-block p{margin:0 0 1.5mm}
 /* keiyaku-fix-v1: 署名欄は手書きするので、行の高さに余裕を持たせる */
