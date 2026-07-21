@@ -1800,6 +1800,78 @@ def api_patients_cache():
     except Exception as e:
         return jsonify({"patients": [], "error": str(e)})
 
+# app-disaster-sync-v1 : 災害記録(端末内 dr_records)をSupabaseへ一括同期
+_DR_STATUS_LABELS = {"s0": "無事", "s1": "要観察", "s2": "要救急", "s3": "避難済", "s4": "不明"}
+
+@app.route('/api/disaster_records/sync', methods=['POST'])
+@login_required
+def api_disaster_records_sync():
+    """災害安否記録の一括同期。
+    端末Preferencesの dr_records（名前→{status,note,at,recorder}）をPOSTで受け取り、
+    disaster_records テーブルへ挿入する。成功したらクライアント側で該当分をクリアする想定。
+    ログイン済みセッション認証（@login_required）なのでトークン不要。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    try:
+        data = request.get_json(silent=True) or {}
+        recs = data.get("records") or {}
+        if not isinstance(recs, dict):
+            return jsonify({"status": "error", "message": "invalid records"}), 400
+    except Exception:
+        return jsonify({"status": "error", "message": "invalid params"}), 400
+
+    if not recs:
+        return jsonify({"status": "success", "inserted": 0})
+
+    # 名前→patient_int_id マップ（名寄せ補強。取得失敗しても続行）
+    name_to_pid = {}
+    try:
+        for p in get_patients(supabase, f_code):
+            nm = p.get("user_name")
+            if nm:
+                name_to_pid[nm] = p.get("patient_int_id")
+    except Exception:
+        pass
+
+    rows = []
+    for name, r in recs.items():
+        if not isinstance(r, dict):
+            continue
+        status = r.get("status")
+        if not status:
+            continue  # 未記録（status無し）はスキップ
+        row = {
+            "facility_code": f_code,
+            "patient_name": name,
+            "status": status,
+            "status_label": _DR_STATUS_LABELS.get(status, status),
+            "note": (r.get("note") or ""),
+            "recorded_by": (r.get("recorder") or my_name or ""),
+        }
+        pid = name_to_pid.get(name)
+        if pid is not None:
+            row["patient_int_id"] = pid
+        # recorded_at のパース（不正・空なら省略しDB default=now()に委ねる）
+        rec_at = r.get("at")
+        if rec_at:
+            try:
+                row["recorded_at"] = datetime.fromisoformat(
+                    str(rec_at).replace("Z", "+00:00")
+                ).isoformat()
+            except Exception:
+                pass
+        rows.append(row)
+
+    if not rows:
+        return jsonify({"status": "success", "inserted": 0})
+
+    try:
+        supabase.table("disaster_records").insert(rows).execute()
+        return jsonify({"status": "success", "inserted": len(rows)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/')
 def index():
     if session.get("f_code"):

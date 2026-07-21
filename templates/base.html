@@ -4299,5 +4299,60 @@ function ttResetLang() {
   }catch(e){}
 })();
 </script>
+<script>
+/* 災害記録 自動同期 app-disaster-sync-v1
+   Capacitorアプリ内かつオンライン時に、端末の dr_records を /api/disaster_records/sync へ一括POSTし、
+   成功したら端末側をクリアする（記録者名 dr_recorder は残す）。ブラウザ利用者は何もしない。 */
+(function(){
+  try{
+    if(!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())) return;
+    var P = Capacitor.Plugins && Capacitor.Plugins.Preferences;
+    if(!P) return;
+    async function isOnline(){
+      try{
+        if(Capacitor.Plugins.Network){ var s = await Capacitor.Plugins.Network.getStatus(); return !!s.connected; }
+      }catch(e){}
+      return navigator.onLine;
+    }
+    var _syncing = false;
+    async function syncNow(){
+      if(_syncing) return;
+      _syncing = true;
+      try{
+        if(!(await isOnline())) return;
+        var g = await P.get({key:'dr_records'});
+        if(!g || !g.value) return;
+        var recs = {};
+        try{ recs = JSON.parse(g.value) || {}; }catch(e){ return; }
+        // status付きの記録が1件でもあれば送信対象
+        var has = Object.keys(recs).some(function(k){ return recs[k] && recs[k].status; });
+        if(!has) return;
+        var res = await fetch('/api/disaster_records/sync', {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({records: recs})
+        });
+        if(!res.ok) return;
+        var data = await res.json();
+        if(data && data.status === 'success'){
+          // 同期成功 → 端末の記録をクリア（次の災害に備える。記録者名は保持）
+          await P.set({key:'dr_records', value: JSON.stringify({})});
+          try{ localStorage.removeItem('dr_records'); }catch(e){}
+        }
+      }catch(e){}
+      finally{ _syncing = false; }
+    }
+    setTimeout(syncNow, 6000);
+    // 電波が戻ったタイミングでも同期を試みる
+    try{
+      if(Capacitor.Plugins.Network){
+        Capacitor.Plugins.Network.addListener('networkStatusChange', function(st){
+          if(st && st.connected){ setTimeout(syncNow, 1500); }
+        });
+      }
+    }catch(e){}
+  }catch(e){}
+})();
+</script>
 </body>
 </html>
