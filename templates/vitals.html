@@ -2601,6 +2601,33 @@ window.setQuickRecheckTime = function(pid, minutes) {
     }
 };
 
+// ===== ネイティブ通知連携(Capacitorアプリ内でのみ動作) app-native-recheck-v1 =====
+function _rcIsNative(){ return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+function _rcLN(){ return (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.LocalNotifications : null; }
+function _rcNotifId(rid){ var n = Math.abs(parseInt(rid, 10)) % 2000000000; return n || 1; }
+async function _rcEnsurePerm(){ var ln=_rcLN(); if(!ln) return false; try{ var pm=await ln.checkPermissions(); if(!pm || pm.display!=='granted'){ pm=await ln.requestPermissions(); } return !!(pm && pm.display==='granted'); }catch(e){ return false; } }
+async function nativeScheduleRecheck(s){
+    if(!_rcIsNative()) return; var ln=_rcLN(); if(!ln||!s) return;
+    try{
+        if(s.is_completed){ return nativeCancelRecheck(s.id); }
+        var at=new Date(s.scheduled_at);
+        if(isNaN(at.getTime())) return;
+        if(at.getTime() < Date.now()-60000) return;
+        if(!(await _rcEnsurePerm())) return;
+        var who=s.user_name||'利用者';
+        var note=s.note?('（'+s.note+'）'):'';
+        await ln.schedule({notifications:[{ id:_rcNotifId(s.id), title:'再検査の時間です', body:who+' さんの再検査です'+note, schedule:{at:at, allowWhileIdle:true}, sound:'default' }]});
+    }catch(e){ console.warn('nativeScheduleRecheck error', e); }
+}
+async function nativeCancelRecheck(rid){
+    if(!_rcIsNative()) return; var ln=_rcLN(); if(!ln) return;
+    try{ await ln.cancel({notifications:[{id:_rcNotifId(rid)}]}); }catch(e){}
+}
+function nativeSyncRechecks(list){
+    if(!_rcIsNative() || !Array.isArray(list)) return;
+    list.forEach(function(s){ if(s.is_completed) nativeCancelRecheck(s.id); else nativeScheduleRecheck(s); });
+}
+
 // 再検査予約を保存(API)+ .icsダウンロード
 window.saveRecheckSchedule = async function(pid, vitalId) {
     // ユーザー操作のタイミングでアラーム音のautoplay制限を解除
@@ -2648,6 +2675,7 @@ window.saveRecheckSchedule = async function(pid, vitalId) {
         const section = document.getElementById(`recheck-section-${pid}`);
         if (section) section.querySelectorAll('.recheck-quick-btn').forEach(b => b.classList.remove('active'));
         await loadRecheckSchedules(pid);
+        if (typeof nativeScheduleRecheck === 'function') nativeScheduleRecheck({ id: result.id, scheduled_at: scheduledDate.toISOString(), user_name: userName, note: note, is_completed: false });
         // .icsファイル生成 + ダウンロード(一覧再取得が終わってから最後に実行)
         downloadICS({
             scheduled_at: scheduledDate.toISOString(),
@@ -2723,6 +2751,7 @@ window.loadRecheckSchedules = async function(pid) {
         // この利用者の分だけフィルタ(API側はfacility_code単位なのでクライアント側で絞る)
         const mine = all.filter(s => String(s.patient_id) === String(pid));
         renderRecheckSchedules(pid, mine);
+        if (typeof nativeSyncRechecks === 'function') nativeSyncRechecks(mine);
     } catch (e) {
         listEl.innerHTML = `<div class="recheck-existing-empty">取得エラー: ${e.message}</div>`;
     }
@@ -2785,6 +2814,7 @@ window.completeRecheckSchedule = async function(rid, pid) {
             return;
         }
         await loadRecheckSchedules(pid);
+        if (typeof nativeCancelRecheck === 'function') nativeCancelRecheck(rid);
     } catch (e) {
         alert('通信エラー: ' + e.message);
     }
@@ -2801,6 +2831,7 @@ window.deleteRecheckSchedule = async function(rid, pid) {
             return;
         }
         await loadRecheckSchedules(pid);
+        if (typeof nativeCancelRecheck === 'function') nativeCancelRecheck(rid);
     } catch (e) {
         alert('通信エラー: ' + e.message);
     }
@@ -2837,6 +2868,7 @@ async function checkRecheckAlarms() {
     try {
         const res = await fetch(`/api/recheck_schedule?date=${encodeURIComponent(dateStr)}&only_pending=true`);
         const data = await res.json();
+        if (typeof nativeSyncRechecks === 'function') nativeSyncRechecks(data.schedules || []);
         const now = Date.now();
         const due = (data.schedules || []).filter(s => {
             if (s.is_completed) return false;
