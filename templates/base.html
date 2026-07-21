@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <!-- PWA設定 -->
     <link rel="manifest" href="/static/manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -38,6 +38,29 @@
         }
 
         :root { --page-max-width: 480px; }
+
+        /* nav-hide-v1: ボトムナビの高さは、これまで各画面に固定値で直書きされていた
+           （131 / 136 / 140 / 152 / 200 / 220px …）。ナビを隠すと下部UIが「跡地」に浮くので、
+           **共通の --nav-h に寄せる**。実測は measureNav() の1か所だけ。隠すと 0px が入る。
+           既存の画面別変数（--rk-nav-h 等）は、値が入っていなければこれを既定にする。 */
+        /* nav-hide-v3: ナビを隠すと bottom:0 がホームインジケータ帯に食い込み、
+           下部の固定バーが「下すぎて」指が届かない・隠れる。
+           JS は実測値を --nav-raw に入れ、ここで安全な下限（セーフエリア + 10px）を噛ませる。
+           env() は JS の setProperty では書けないので、この二段構えにしている。 */
+        :root {
+          /* nav-remove-v1: バーを廃止したので既定は 0。JS が測っても 0 になる。
+             下限（セーフエリア + 10px）は下の max() が担保する。 */
+          --nav-raw: 0px;
+          --nav-h: max(var(--nav-raw), calc(env(safe-area-inset-bottom, 0px) + 10px));
+          --rk-nav-h: var(--nav-h);
+          --kk-nav-h: var(--nav-h);
+          --tc-nav-h: var(--nav-h);
+          --lc-nav-h: var(--nav-h);
+          --dw-nav-h: var(--nav-h);
+        }
+        /* 隠すのは CSS で。インラインの style.display='' でナビを復活させる箇所が
+           あちこちにある（設定モーダル・ベル・掲示板・タスク）ので、!important で勝つ。 */
+        body.nav-off .bottom-nav { display: none !important; }
         .page-wrapper {
             max-width: var(--page-max-width);
             width: 100%;
@@ -48,7 +71,8 @@
             overflow-x: hidden;
             -webkit-overflow-scrolling: touch;
             border-top: 3px solid #1a73e8;
-            padding: 1.5rem 1.2rem max(12rem, calc(env(safe-area-inset-bottom) + 9rem));
+            /* nav-hide-v1: ナビの高さ + 指がかかる余白。ナビを隠すと自動で詰まる。 */
+            padding: calc(1.5rem + env(safe-area-inset-top)) 1.2rem calc(var(--nav-h) + max(58px, env(safe-area-inset-bottom) + 40px));
             position: relative;
             z-index: 0;
         }
@@ -237,7 +261,7 @@ body.nav-editing {
 }
 /* ★ 右上固定ボタン（page-wrapper外） */
         .top-fab-area {
-            position: fixed; top: 16px; right: 16px;
+            position: fixed; top: calc(16px + env(safe-area-inset-top)); right: 16px;
             display: flex; flex-direction: row; gap: 8px;
             z-index: 1000; pointer-events: auto;
             width: auto; align-items: center;
@@ -415,14 +439,14 @@ body.nav-editing {
 <body>
 
 <!-- オフラインバナー -->
-<div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#ff6f00;color:#fff;text-align:center;padding:8px 12px;font-size:0.82rem;font-weight:700;">
+<div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#ff6f00;color:#fff;text-align:center;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;font-size:0.82rem;font-weight:700;">
     <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">wifi_off</span>
     オフラインです｜保存した記録はネット接続後に自動送信されます
     <button onclick="openDisasterMode()" style="margin-left:8px;background:#fff;color:#ff6f00;border:none;border-radius:6px;padding:2px 8px;font-size:0.75rem;font-weight:700;cursor:pointer;">災害モード</button>
 </div>
 
 <!-- 同期完了バナー -->
-<div id="sync-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#34a853;color:#fff;text-align:center;padding:8px 12px;font-size:0.82rem;font-weight:700;">
+<div id="sync-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#34a853;color:#fff;text-align:center;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;font-size:0.82rem;font-weight:700;">
     <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">sync</span>
     オフライン記録を同期しました
 </div>
@@ -475,15 +499,7 @@ body.nav-editing {
 </div>
 
     {% if session.get('f_code') %}
-    <!-- ナビ編集完了バー -->
-    <div class="nav-edit-bar" id="nav-edit-bar">
-        <span class="nav-edit-bar-label">✏️ メニューを並び替え</span>
-        <div class="nav-edit-bar-actions">
-            <button class="nav-edit-bar-reset" id="nav-edit-reset-btn" type="button">初期状態</button>
-            <button class="nav-edit-bar-done" id="nav-edit-done-btn" type="button">完了</button>
-        </div>
-    </div>
-    <!-- ナビ編集完了バー -->
+    <!-- nav-remove-v1: 「ナビ編集完了バー」は下のメニューバーの並び替え用だった。バーごと廃止。 -->
     <!-- 設定モーダル -->
     <!-- 設定モーダル -->
     <!-- ★ 設定モーダル -->
@@ -613,65 +629,139 @@ body.nav-editing {
                 </div>
             </div>
 
-            <!-- メニュータップ時のスクロール設定 -->
+            <!-- nav-remove-v1: 下のメニューバーを廃止したので、その設定（タップ時の動作・並び順・
+                 バーを隠す）も一緒に外した。メニューの操作は引き出しに一本化。 -->
+
+            <!-- app-drawer-v1: 引き出しメニューの向き（利き手）。個人ごとにDBへ保存する -->
             <div class="setting-section">
                 <div class="setting-section-label">
-                    <span class="material-symbols-outlined">swap_vert</span>メニュータップ時の動作
-                </div>
-                <div class="setting-row-toggle">
-                    <div class="setting-row-info">
-                        <div class="setting-row-name">ページトップへ移動</div>
-                        <div class="setting-row-desc">メニューをタップした時に画面を先頭に戻す</div>
-                    </div>
-                    <label class="toggle-switch">
-                        <input type="checkbox" id="nav-scroll-top-toggle">
-                        <span class="toggle-slider"></span>
-                    </label>
-                </div>
-            </div>
-            <!-- メニュー並び順 -->
-            <div class="setting-section">
-                <div class="setting-section-label">
-                    <span class="material-symbols-outlined">menu</span>メニュー並び順
-                </div>
-                <button id="start-nav-edit-btn" style="width:100%;padding:14px;background:#1a73e8;color:#fff;border:none;border-radius:12px;font-weight:800;font-size:0.92rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
-                    <span class="material-symbols-outlined" style="font-size:18px;">open_with</span>並び替えモードを開始
-                </button>
-            </div>
-            <!-- ナビカラー -->
-            <div class="setting-section">
-                <div class="setting-section-label">
-                    <span class="material-symbols-outlined">palette</span>ナビカラー
+                    <span class="material-symbols-outlined">apps</span>メニューの引き出し
                 </div>
                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-                    <div>
-                        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:6px;">通常時の色</div>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <input type="color" id="nav-color-normal" value="#5f6368" style="width:40px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:2px;">
-                            <span style="font-size:0.75rem;color:#5f6368;" id="nav-color-normal-label">#5f6368</span>
-                        </div>
-                    </div>
-                    <div>
-                        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:6px;">選択時の色</div>
-                        <div style="display:flex;align-items:center;gap:8px;">
-                            <input type="color" id="nav-color-active" value="#1a73e8" style="width:40px;height:36px;border:none;border-radius:8px;cursor:pointer;padding:2px;">
-                            <span style="font-size:0.75rem;color:#5f6368;" id="nav-color-active-label">#1a73e8</span>
-                        </div>
-                    </div>
+                    <button class="dw-side-btn" data-side="left" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        左から
+                    </button>
+                    <button class="dw-side-btn" data-side="right" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        右から
+                    </button>
+                    <button class="dw-side-btn" data-side="top" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        上から
+                    </button>
+                    <button class="dw-side-btn" data-side="bottom" style="padding:12px;border-radius:12px;border:1.5px solid #e0e0e0;background:#fff;font-weight:800;font-size:0.85rem;cursor:pointer;">
+                        下から
+                    </button>
                 </div>
-                <div style="margin-top:10px;display:flex;gap:8px;">
-                    <button onclick="applyNavColors()" style="flex:1;padding:10px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.82rem;cursor:pointer;">適用</button>
-                    <button onclick="resetNavColors()" style="flex:1;padding:10px;background:#f1f3f4;color:#5f6368;border:none;border-radius:10px;font-weight:700;font-size:0.82rem;cursor:pointer;">リセット</button>
+                <div style="font-size:0.72rem;color:#5f6368;margin-top:8px;">
+                    端の取っ手を引く／タップするとアイコン一覧が開きます。利き手に合わせて選んでください。
+                    <b>取っ手は長押しすると、端に沿って好きな位置に動かせます</b>（保存ボタンなどと重なるときに逃がしてください）。
+                    アイコンの配置と取っ手の位置は<b>向きごとに別々に覚えます</b>。
                 </div>
+            </div>
+
+            <!-- translation-v1: 翻訳機能ON/OFF -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">translate</span>外国語スタッフ向け翻訳機能
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">
+                    <div>
+                        <div style="font-size:0.85rem;font-weight:700;color:#202124;">翻訳レンズ・翻訳入力を使う</div>
+                        <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">外国語スタッフが使う機能です。不要な場合はOFFにしてください。</div>
+                    </div>
+                    <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:12px;">
+                        <input type="checkbox" id="tt-enabled-toggle" onchange="ttToggleEnabled(this.checked)"
+                               style="opacity:0;width:0;height:0;">
+                        <span id="tt-enabled-slider" style="position:absolute;inset:0;border-radius:24px;background:#ccc;cursor:pointer;transition:.2s;"></span>
+                        <span id="tt-enabled-knob" style="position:absolute;left:2px;top:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
+                    </label>
+                </div>
+                <!-- translation-v1: 言語選択ボタン（翻訳ONのときだけ表示） -->
+                <div id="tt-settings-lang-row" style="display:none;">
+                    <button id="tt-settings-lang-btn" onclick="ttLensToggle()" style="
+                        display:flex;align-items:center;gap:8px;width:100%;
+                        padding:10px 14px;border-radius:10px;border:1.5px solid #1a73e8;
+                        background:#e8f0fe;color:#1a73e8;font-weight:700;font-size:0.85rem;cursor:pointer;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">translate</span>
+                        <span id="tt-settings-lang-label">言語を選択する</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- nav-remove-v1: 「ナビカラー」は下のメニューバーの配色設定だったので廃止。
+                 代わりに、バーにしか無かった **ログアウト** をここへ移す。
+                 引き出しは MENU_ITEMS から作るが、そこにログアウトは入っていない。 -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">logout</span>ログアウト
+                </div>
+                <form method="POST" action="/logout">
+                    <button type="submit" style="width:100%;padding:14px;background:#fce8e6;color:#ea4335;border:none;border-radius:12px;font-weight:800;font-size:0.92rem;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">logout</span>ログアウトする
+                    </button>
+                </form>
             </div>
         </div>
     </div>
-    <div style="position:fixed;top:16px;left:16px;z-index:1000;" id="goal-check-fab-area">
+    <!-- nav-remove-v1: 「メニューバーを隠す」トグルの JS は、バーごと廃止したので削除。
+         個人設定 nav_hidden は読まなくなった（DB に残っていても無害）。 -->
+
+    <script>
+    // app-drawer-v1: 引き出しの向き（利き手）。保存は個人設定（DB）。その場で反映する。
+    (function () {
+      var btns = document.querySelectorAll('.dw-side-btn');
+      if (!btns.length) return;
+
+      function paint(cur) {
+        btns.forEach(function (b) {
+          var on = (b.dataset.side === cur);
+          b.style.background = on ? '#1a73e8' : '#fff';
+          b.style.color = on ? '#fff' : '#202124';
+          b.style.borderColor = on ? '#1a73e8' : '#e0e0e0';
+        });
+      }
+      // drawer-side-paint-v1: ここは body.dataset.drawerSide を読んでいたが、そこに値を書くのは
+      // ページ下部の引き出し JS。この時点ではまだ空で、必ず 'right' に落ちていた（表示だけのウソ）。
+      // 真の値はサーバが持っているので、そこを起点にする。
+      var SIDE_FROM_SERVER = '{{ drawer_side or "right" }}';
+
+      function currentSide() {
+        var dw = document.getElementById('appDrawer');       // DOM が出来ていればこれが最も確か
+        return (dw && dw.dataset.side) || document.body.dataset.drawerSide || SIDE_FROM_SERVER;
+      }
+      // 向きを変えたときなど、外からも塗り直せるようにしておく
+      window.dwPaintSideBtns = function () { paint(currentSide()); };
+
+      paint(SIDE_FROM_SERVER);                                // まず、いま分かっている値で塗る
+      document.addEventListener('DOMContentLoaded', window.dwPaintSideBtns);   // 出来上がったら塗り直す
+
+      btns.forEach(function (b) {
+        b.onclick = async function () {
+          var v = b.dataset.side;
+          paint(v);
+          document.body.dataset.drawerSide = v;      // 再読み込みせずに向きを変える
+          var dw = document.getElementById('appDrawer');
+          var hd = document.getElementById('appDrawerHandle');
+          if (dw) dw.dataset.side = v;
+          if (hd) hd.dataset.side = v;
+          if (window.dwSetSide) window.dwSetSide(v);                 // app-drawer-perside-v1: 配置を切替
+          if (window.dwReloadHandlePos) window.dwReloadHandlePos();  // 取っ手の位置もその向きのもの
+          if (window.dwMeasureNav) window.dwMeasureNav();
+          await fetch('/api/me/setting', {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: 'drawer_side', value: v })
+          }).catch(function () {});
+        };
+      });
+    })();
+    </script>
+
+    <div style="position:fixed;top:calc(16px + env(safe-area-inset-top));left:16px;z-index:1000;" id="goal-check-fab-area">
         <button class="settings-fab" id="goal-check-btn" onclick="openGoalCheckModal()" title="目標期限確認" style="display:none;">
             <span class="material-symbols-outlined">assignment_late</span>
         </button>
     </div>
     <div class="top-fab-area" id="top-fab-area">
+        {% block translate_fab %}{% endblock %}<!-- translation-v1: TOPページだけ出す -->
         <button class="settings-fab" id="update-log-btn">
             <span class="material-symbols-outlined">notifications</span>
         </button>
@@ -690,110 +780,1169 @@ body.nav-editing {
     </div>
     {% block above_nav %}{% endblock %}
 
-    {% block bottom_nav %}
     {% if session.get('f_code') %}
-    <nav class="bottom-nav">
-        <a href="/top" class="bottom-nav-item {% block nav_top %}{% endblock %}" onclick="spaNav(event,'/top')">
-            <span class="material-symbols-outlined">home</span>
-            TOP
-        </a>
-        <a href="/input" class="bottom-nav-item {% block nav_input %}{% endblock %}" onclick="spaNav(event,'/input')">
-            <span class="material-symbols-outlined">edit_note</span>
-            記録入力
-        </a>
-        <a href="/daily_view" class="bottom-nav-item {% block nav_daily %}{% endblock %}" onclick="spaNav(event,'/daily_view')">
-            <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
-                <span class="material-symbols-outlined">calendar_month</span>
-                <span id="daily-badge" style="display:none;position:absolute;top:-4px;right:-6px;background:#ea4335;color:#fff;font-size:0.55rem;font-weight:800;border-radius:10px;padding:1px 4px;min-width:14px;text-align:center;line-height:1.4;">0</span>
-            </div>
-            ケース記録
-        </a>
-        <a href="/monitoring" class="bottom-nav-item {% block nav_monitoring %}{% endblock %}" onclick="spaNav(event,'/monitoring')">
-            <span class="material-symbols-outlined">monitoring</span>
-            モニタリング
-        </a>
-        <a href="/vitals" class="bottom-nav-item {% block nav_vitals %}{% endblock %}" onclick="spaNav(event,'/vitals')">
-            <span class="material-symbols-outlined">monitor_heart</span>
-            バイタル
-        </a>
-        <a href="/renraku" class="bottom-nav-item {% block nav_renraku %}{% endblock %}" onclick="spaNav(event,'/renraku')"><!-- nav-renraku-v1 -->
-            <span class="material-symbols-outlined">menu_book</span>
-            連絡帳
-        </a>
-        <a href="/fitness" class="bottom-nav-item {% block nav_fitness %}{% endblock %}" onclick="spaNav(event,'/fitness')">
-            <span class="material-symbols-outlined">fitness_center</span>
-            体力・体重
-        </a>
-        <a href="/life_check" class="bottom-nav-item {% block nav_life_check %}{% endblock %}" onclick="spaNav(event,'/life_check')">
-            <span class="material-symbols-outlined">checklist</span>
-            生活機能<br>CHECK
-        </a>
-        <!-- nav-life-check-v1 -->
-        <a href="/calendar" class="bottom-nav-item {% block nav_calendar %}{% endblock %}" onclick="spaNav(event,'/calendar')">
-            <span class="material-symbols-outlined">calendar_month</span>
-            カレンダー
-        </a>
+<!-- ===== app-drawer-v1 : アイコン一覧の引き出し（全画面） =====
+     ボトムナビに入り切らない導線の受け皿。端のスワイプ、または取っ手のタップで開く。
+     出る端は個人設定（利き手）。 -->
+<style>
+  /* 取っ手。細いピル。触れる範囲は見た目より広くする（指は太い） */
+  /* nav-hide-v3: 取っ手の位置は --dw-pos（端に沿った 0〜100%）。長押しでずらせる。
+     下から出す設定だと、画面下中央は各画面の操作バー（保存・印刷・LINE送信・合計）の指定席で、
+     取っ手がそこに重なっていた。ずらせるようにして逃がす。 */
+  #appDrawerHandle { position: fixed; top: var(--dw-pos, 46%); width: 26px; height: 64px; z-index: 2400;
+    background: rgba(32,33,36,.62); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    color: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer;
+    box-shadow: 0 6px 18px rgba(16,24,40,.22); opacity: .55;
+    transition: opacity .2s ease, transform .2s cubic-bezier(.22,.9,.3,1); }
+  #appDrawerHandle:hover, #appDrawerHandle:active { opacity: 1; }
+  /* app-drawer-edgefix-v1: 端ぴったりに置くと OS の「戻る」帯と重なる。8px 内側に逃がす。
+     touch-action:none で、この上の指の動きはブラウザに渡さない（戻る・スクロールを起こさない）。 */
+  /* app-drawer-width-v1: アプリは --page-max-width の中央カラム。
+     PCでブラウザ幅いっぱいに出ないよう、引き出し・背景・取っ手をカラムの中に収める。
+     --dw-gap = カラムの外側の余白（スマホでは 0 になる）。 */
+  :root { --dw-gap: max(0px, calc((100vw - var(--page-max-width, 480px)) / 2)); }
 
-        <a href="/assessment" class="bottom-nav-item {% block nav_assessment %}{% endblock %}" onclick="spaNav(event,'/assessment')">
-            <span class="material-symbols-outlined">assignment</span>
-            評価
-        </a>
-        <a href="/print_output" class="bottom-nav-item {% block nav_print_output %}{% endblock %}" onclick="spaNav(event,'/print_output')">
-            <span class="material-symbols-outlined">print</span>
-            書類出力
-        </a>
-        <a href="/admin/meetings" class="bottom-nav-item {% block nav_meetings %}{% endblock %}"><!-- nav-meetings-v1 -->
-            <span class="material-symbols-outlined">groups</span>
-            記録・<br>ICF分類
-        </a>
-        <a href="/tasks" class="bottom-nav-item {% block nav_tasks %}{% endblock %}" onclick="spaNav(event,'/tasks')">
-            <span class="material-symbols-outlined">task_alt</span>
-            タスク
-        </a>
-        <a href="/board" class="bottom-nav-item {% block nav_chat %}{% endblock %}" onclick="spaNav(event,'/board')">
-            <div style="position:relative;display:inline-flex;align-items:center;justify-content:center;">
-                <span class="material-symbols-outlined">campaign</span>
-                <span id="chat-badge" style="display:none;position:absolute;top:-4px;right:-6px;background:#ea4335;color:#fff;font-size:0.55rem;font-weight:800;border-radius:10px;padding:1px 4px;min-width:14px;text-align:center;line-height:1.4;">0</span>
-            </div>
-            掲示板
-        </a>
-        {% if can_ledger %}
-        <a href="/ledger" class="bottom-nav-item" onclick="spaNav(event,'/ledger')">
-            <span class="material-symbols-outlined">account_balance</span>
-            出納帳
-        </a>
-        {% endif %}
-        <a href="/birthday" class="bottom-nav-item {% block nav_birthday %}{% endblock %}" onclick="spaNav(event,'/birthday')">
-            <span class="material-symbols-outlined">cake</span>
-            誕生日
-        </a>
-        <a href="/numerology" class="bottom-nav-item {% block nav_numerology %}{% endblock %}" onclick="spaNav(event,'/numerology')">
-            <span class="material-symbols-outlined">auto_awesome</span>
-            数秘
-        </a>
-        <a href="/admin" class="bottom-nav-item {% block nav_admin %}{% endblock %}" onclick="spaNav(event,'/admin')">
-            <span class="material-symbols-outlined">admin_panel_settings</span>
-            管理者<br>MENU
-        </a>
-        {% if is_dev_user %}
-        <a href="/dev" class="bottom-nav-item">
-            <span class="material-symbols-outlined">code</span>
-            開発者
-        </a>
-        {% endif %}
-        <a href="/manual" class="bottom-nav-item {% block nav_manual %}{% endblock %}" onclick="spaNav(event,'/manual')">
-            <span class="material-symbols-outlined">menu_book</span>
-            ガイド
-        </a>
-        <form method="POST" action="/logout" style="display:contents;">
-            <button type="submit" class="bottom-nav-item logout-item">
-                <span class="material-symbols-outlined">logout</span>
-                ログアウト
-            </button>
-        </form>
-    </nav>
-    {% endif %}
-    {% endblock %}
+  /* app-drawer-4way-v1: 8px では、指が OS の端ジェスチャー帯（およそ端から20px）に
+     かかることがあり「戻る」が出た。指の置き所で当たり外れが出るので、帯の外まで逃がす。 */
+  #appDrawerHandle { touch-action: none; }
+  #appDrawerHandle[data-side="right"] { right: calc(var(--dw-gap) + 18px); border-radius: 14px; }
+  #appDrawerHandle[data-side="left"]  { left:  calc(var(--dw-gap) + 18px); border-radius: 14px; }
+  /* 上下は横向きの取っ手。上は通知センター、下はボトムナビとホームバーを避ける
+     （--dw-nav-h は JS の実測値。端末差があるので固定値は使わない）。 */
+  #appDrawerHandle[data-side="top"], #appDrawerHandle[data-side="bottom"] {
+    top: auto; left: calc(var(--dw-gap) + (100% - var(--dw-gap) * 2) * 0);   /* 下で JS が left を入れる */
+    transform: translateX(-50%);
+    width: 64px; height: 26px; border-radius: 14px; }
+  #appDrawerHandle.moving { opacity: 1; transform: scale(1.08); box-shadow: 0 10px 26px rgba(16,24,40,.35); }
+  #appDrawerHandle[data-side="top"].moving, #appDrawerHandle[data-side="bottom"].moving {
+    transform: translateX(-50%) scale(1.08); }
+  #appDrawerHandle[data-side="top"]    { top: 18px; }
+  #appDrawerHandle[data-side="bottom"] { bottom: calc(var(--dw-nav-h, 0px) + 14px); }
+  #appDrawerHandle[data-side="top"]:active    { transform: translateX(-50%) translateY(3px); }
+  #appDrawerHandle[data-side="bottom"]:active { transform: translateX(-50%) translateY(-3px); }
+  #appDrawerHandle[data-side="right"]:active { transform: translateX(-3px); }
+  #appDrawerHandle[data-side="left"]:active  { transform: translateX(3px); }
+  #appDrawerHandle .material-symbols-outlined { font-size: 18px; }
+  #appDrawerHandle.hide { opacity: 0; pointer-events: none; }
+
+  /* 背景はぼかす。黒ベタより奥行きが出る */
+  #appDrawerMask { position: fixed; top: 0; bottom: 0;
+    left: var(--dw-gap); right: var(--dw-gap); z-index: 2500;   /* app-drawer-width-v1 */
+    background: rgba(16,24,40,.28); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    opacity: 0; pointer-events: none; transition: opacity .24s ease; }
+  #appDrawerMask.on { opacity: 1; pointer-events: auto; }
+
+  /* 引き出し本体。指で引っぱっている間は transition を切って指に追従させる（.drag） */
+  #appDrawer { position: fixed; top: 0; bottom: 0; width: min(86vw, 380px); z-index: 2600;
+    background: rgba(255,255,255,.96); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    box-shadow: 0 0 40px rgba(16,24,40,.28); display: flex; flex-direction: column;
+    transition: transform .34s cubic-bezier(.22,.9,.3,1); will-change: transform; }
+  /* app-drawer-width-v1: カラムの端に貼り付く。幅もカラムを超えない。 */
+  #appDrawer { width: min(86vw, 380px, calc(var(--page-max-width, 480px) - 24px)); }
+  /* app-drawer-offscreen-v1: 閉じる位置は「自分の幅 + カラム外の余白 + 少し」。
+     102% だけだと、PC のようにカラム外の余白（--dw-gap）が引き出しより広い画面で、
+     閉じた引き出しが余白に居座って見えていた（スマホは gap=0 なので出なかった）。 */
+  #appDrawer[data-side="right"] { right: var(--dw-gap);
+    transform: translateX(calc(100% + var(--dw-gap) + 24px));
+    border-radius: 22px 0 0 22px; }
+  #appDrawer[data-side="left"]  { left: var(--dw-gap);
+    transform: translateX(calc(-100% - var(--dw-gap) - 24px));
+    border-radius: 0 22px 22px 0; }
+  /* app-drawer-4way-v1: 上下から出すときは横幅いっぱい（ボトムシート風）。
+     下はボトムナビの上に着地させる。 */
+  #appDrawer[data-side="top"], #appDrawer[data-side="bottom"] {
+    left: var(--dw-gap); right: var(--dw-gap); width: auto; top: auto; bottom: auto;
+    height: min(72vh, 620px); }
+  /* 上下は縦方向に余白が無いので自分の幅ぶんでよいが、下はボトムナビの高さぶん余分に逃がす */
+  #appDrawer[data-side="top"] { top: 0; transform: translateY(-102%);
+    border-radius: 0 0 22px 22px; }
+  #appDrawer[data-side="bottom"] { bottom: var(--dw-nav-h, 0px);
+    transform: translateY(calc(100% + var(--dw-nav-h, 0px) + 24px));
+    border-radius: 22px 22px 0 0; }
+  #appDrawer.on { transform: translate(0, 0); }
+  #appDrawer.drag { transition: none; }
+
+  /* app-drawer-2stage-v1: 半開き。引き出しの大きさは変えず、見せる量だけを半分にする。
+     右から出すなら右半分を画面外に逃がす → 手前の2列が画面に入る。 */
+  #appDrawer.half[data-side="right"]  { transform: translateX(50%); }
+  #appDrawer.half[data-side="left"]   { transform: translateX(-50%); }
+  #appDrawer.half[data-side="bottom"] { transform: translateY(50%); }
+  #appDrawer.half[data-side="top"]    { transform: translateY(-50%); }
+
+  /* 頭のスイッチ（もう1段ひらく / 半分に戻す） */
+  /* app-drawer-2stage-off-v1: 2段階は廃止。頭のスイッチは出さない。 */
+  .dw-expand { display: none !important; }
+  .dw-expand-off { border: none; background: #e8f0fe; color: #1a73e8; border-radius: 999px;
+    width: 34px; height: 34px; font-size: 1rem; font-weight: 900; cursor: pointer; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform .2s cubic-bezier(.22,.9,.3,1); }
+  #appDrawer.half .dw-expand .material-symbols-outlined { transform: rotate(180deg); }
+  .dw-expand .material-symbols-outlined { font-size: 20px; transition: transform .2s ease; }
+
+  /* 半開きのときは、隠れている側の列を薄くしておく（続きがあることが分かる） */
+  #appDrawer.half .dw-body { opacity: 1; }
+
+  .dw-head { display: flex; align-items: center; gap: 8px; padding: 16px 16px 12px;
+    border-bottom: 1px solid #eceff3; font-weight: 800; }
+  .dw-close { margin-left: auto; border: none; background: #f1f3f4; color: #5f6368;
+    border-radius: 999px; width: 32px; height: 32px; cursor: pointer; line-height: 1; }
+  .dw-body { padding: 16px 12px 28px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .dw-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px 6px; }
+  .dw-app { display: flex; flex-direction: column; align-items: center; gap: 5px;
+    text-decoration: none; color: #202124; -webkit-tap-highlight-color: transparent; }
+  .dw-ic { width: 52px; height: 52px; border-radius: 15px; display: flex; align-items: center;
+    justify-content: center; background: #1a73e8; color: #fff;
+    transition: transform .12s cubic-bezier(.22,.9,.3,1), box-shadow .12s ease;
+    box-shadow: 0 3px 8px rgba(16,24,40,.16); }
+  .dw-ic .material-symbols-outlined { font-size: 27px; }
+  .dw-app:active .dw-ic { transform: scale(.88); box-shadow: 0 1px 3px rgba(16,24,40,.18); }
+  .dw-label { font-size: .66rem; font-weight: 700; line-height: 1.2; text-align: center;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+
+  /* drawer-badge-v1: 未読・未完了の件数。ナビを隠していても気づけるように。 */
+  .dw-badge { position: absolute; top: -5px; right: -5px; display: none;
+    background: #ea4335; color: #fff; font-size: .58rem; font-weight: 800;
+    border-radius: 999px; min-width: 16px; padding: 1px 4px; text-align: center;
+    line-height: 1.4; border: 2px solid #fff; box-shadow: 0 1px 3px rgba(16,24,40,.3); }
+  .dw-badge.on { display: block; }
+
+  /* plan-gating-v1: プラン下限バッジ。件数バッジ(右上)と重ならないよう左上に置く。 */
+  .dw-plan-badge { position: absolute; top: -6px; left: -6px;
+    color: #fff; font-size: .52rem; font-weight: 800;
+    border-radius: 999px; padding: 1px 5px; line-height: 1.45;
+    border: 2px solid #fff; box-shadow: 0 1px 3px rgba(16,24,40,.3);
+    white-space: nowrap; letter-spacing: .02em; pointer-events: none; }
+  .dw-plan-badge.tier-pro { background: #7c4dff; }        /* プロ専用 */
+  .dw-plan-badge.tier-standard { background: #1a73e8; }   /* スタンダード以上 */
+
+  /* --- app-drawer-edit-v1: 自由配置・フォルダ・編集モード --- */
+  .dw-cell { position: relative; min-height: 76px; border-radius: 14px; }
+  .dw-cell.empty { }
+  /* 編集中は空きマスが薄く見える（どこに置けるか分かるように） */
+  #appDrawer.edit .dw-cell.empty { background: rgba(26,115,232,.06);
+    outline: 1px dashed rgba(26,115,232,.35); outline-offset: -3px; }
+  #appDrawer.edit .dw-cell.hot { background: rgba(26,115,232,.18); }
+
+  /* app-drawer-folder-v1: フォルダの中身が見えるように、実アイコンを最大4つ並べる */
+  .dw-folder .dw-ic { background: rgba(95,99,104,.16); padding: 4px; }
+  .dw-fold-mini { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+    gap: 3px; width: 100%; height: 100%; }
+  .dw-fold-mini i { border-radius: 5px; display: flex; align-items: center; justify-content: center;
+    color: #fff; overflow: hidden; }
+  .dw-fold-mini i.none { background: rgba(255,255,255,.45); }
+  .dw-fold-mini .material-symbols-outlined { font-size: 13px; line-height: 1; }
+  .dw-fold-more { position: absolute; right: -2px; top: -2px; background: #202124; color: #fff;
+    font-size: .56rem; font-weight: 800; border-radius: 999px; padding: 1px 5px;
+    box-shadow: 0 1px 3px rgba(16,24,40,.3); }
+  .dw-app .dw-ic { position: relative; }
+
+  /* app-drawer-edit-v2: iOS は長押しで選択・拡大鏡・コンテキストメニューを出し、
+     そのまま指をOSが握ってしまう（pointermove の preventDefault では止まらない）。
+     編集中のアイコンは、ブラウザのジェスチャーを一切受け付けないようにする。 */
+  .dw-app { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none;
+    -webkit-user-drag: none; cursor: pointer; }
+  .dw-app img, .dw-app span { -webkit-user-drag: none; }
+  #appDrawer.edit .dw-app, #appDrawer.edit .dw-cell { touch-action: none; }
+  #appDrawer.edit .dw-body { overscroll-behavior: contain; }
+
+  /* プルプル。iPhoneのホーム画面の「編集中」と同じ気分 */
+  #appDrawer.edit .dw-app { animation: dwWig .28s ease-in-out infinite alternate; }
+  #appDrawer.edit .dw-app:nth-child(2n) { animation-delay: .09s; }
+  @keyframes dwWig {
+    from { transform: rotate(-1.1deg); }
+    to   { transform: rotate(1.1deg); }
+  }
+  #appDrawer.edit .dw-app.dragging { opacity: .35; animation: none; }
+  .dw-ghost { position: fixed; z-index: 3200; pointer-events: none; opacity: .95;
+    transform: translate(-50%, -50%) scale(1.12); filter: drop-shadow(0 8px 18px rgba(16,24,40,.35)); }
+
+  /* app-drawer-color-v1: 編集中だけ出る「色」ボタンと、その場に出るパレット */
+  /* app-drawer-paint-hit-v1: 見た目は小さいまま、当たり判定だけ 44px に広げる。
+     20px は指の接地面より小さく、しかも編集中はアイコンごと揺れているので外しやすかった。 */
+  .dw-paint { position: absolute; top: -6px; right: 2px; width: 20px; height: 20px;
+    border-radius: 999px; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(16,24,40,.35);
+    display: none; cursor: pointer; padding: 0; z-index: 6; touch-action: none; }
+  .dw-paint::after {                    /* 透明な当たり枠（iOS の目安 44px） */
+    content: ''; position: absolute; top: 50%; left: 50%;
+    width: 44px; height: 44px; transform: translate(-50%, -50%);
+    border-radius: 999px; }
+  #appDrawer.edit .dw-paint { display: block; }
+  /* 色ボタンを触っている間はプルプルを止める（狙いがぶれるため） */
+  #appDrawer.edit .dw-app.painting { animation: none; }
+  .dw-cell { }
+  .dw-pal { position: fixed; z-index: 3300; background: #fff; border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(16,24,40,.28); padding: 10px; display: none; }
+  .dw-pal.on { display: block; }
+  .dw-pal-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+  .dw-pal-grid button { width: 26px; height: 26px; border-radius: 999px; border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(16,24,40,.25); cursor: pointer; padding: 0; }
+  .dw-pal-foot { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+  .dw-pal-foot input[type=color] { width: 34px; height: 30px; border: none; padding: 0;
+    border-radius: 8px; cursor: pointer; background: none; }
+  .dw-pal-foot button { flex: 1; border: none; border-radius: 8px; background: #f1f3f4;
+    color: #5f6368; font-weight: 800; font-size: .74rem; padding: 8px; cursor: pointer; }
+
+  .dw-editbar { display: none; gap: 8px; padding: 10px 12px 0; }
+  #appDrawer.edit .dw-editbar { display: flex; }
+  .dw-editbar button { flex: 1; padding: 10px; border: none; border-radius: 10px;
+    font-weight: 800; font-size: .82rem; cursor: pointer; }
+  .dw-editbar .done { background: #1a73e8; color: #fff; }
+  .dw-editbar .reset { background: #f1f3f4; color: #5f6368; }
+  .dw-hint { font-size: .68rem; color: #9aa3b2; padding: 8px 12px 0; display: none; }
+  #appDrawer.edit .dw-hint { display: block; }
+
+  /* フォルダの中身 */
+  .dw-fold-view { position: absolute; inset: 0; z-index: 5; background: rgba(255,255,255,.98);
+    backdrop-filter: blur(10px); display: none; flex-direction: column; }
+  .dw-fold-view.on { display: flex; animation: dwFold .22s cubic-bezier(.22,.9,.3,1) both; }
+  @keyframes dwFold { from { opacity: 0; transform: scale(.92); } to { opacity: 1; transform: none; } }
+  .dw-fold-head { display: flex; align-items: center; gap: 8px; padding: 14px 14px 10px;
+    border-bottom: 1px solid #eceff3; }
+  .dw-fold-head input { flex: 1; min-width: 0; border: 1px solid #e0e0e0; border-radius: 10px;
+    padding: 8px 10px; font-size: .92rem; font-weight: 800; font-family: inherit; }
+  .dw-fold-body { padding: 16px 12px; overflow-y: auto; }
+  /* app-drawer-folder-v2: フォルダから外に戻す動線。常に出す。 */
+  .dw-out { margin-top: 5px; font-size: .62rem; color: #1a73e8; font-weight: 800;
+    background: #e8f0fe; border: none; border-radius: 8px; padding: 4px 8px; cursor: pointer; }
+  .dw-fold-note { font-size: .68rem; color: #9aa3b2; padding: 10px 14px 0; }
+  .dw-fold-foot { padding: 10px 14px 18px; }
+  .dw-fold-foot button { width: 100%; padding: 11px; border: none; border-radius: 10px;
+    background: #f1f3f4; color: #5f6368; font-weight: 800; font-size: .82rem; cursor: pointer; }
+
+  /* 開いたときにアイコンが少しずつ立ち上がる。奥から手前に出てくる感じ。
+     開くたびに再生したいので、.on が付いた時に animation を当て直す。 */
+  #appDrawer.on:not(.edit) .dw-app { animation: dwPop .34s cubic-bezier(.22,1.2,.36,1) both; }
+  @keyframes dwPop {
+    from { opacity: 0; transform: translateY(10px) scale(.86); }
+    to   { opacity: 1; transform: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #appDrawer, #appDrawerMask, #appDrawerHandle { transition: none; }
+    #appDrawer.on .dw-app { animation: none; }
+  }
+  /* 性格ごとに色を分ける（記録＝青／やりとり＝紫／お金＝緑／管理＝グレー／その他＝橙） */
+  .dw-app[data-href="/tasks"] .dw-ic, .dw-app[data-href="/board"] .dw-ic,
+  .dw-app[data-href="/admin/meetings"] .dw-ic { background: #7c4dff; }
+  .dw-app[data-href="/ledger"] .dw-ic, .dw-app[data-href="/rec_expense"] .dw-ic { background: #2f6b5e; }
+  .dw-app[data-href="/admin"] .dw-ic, .dw-app[data-href="/dev"] .dw-ic,
+  .dw-app[data-href="/manual"] .dw-ic { background: #5f6368; }
+  .dw-app[data-href="/birthday"] .dw-ic, .dw-app[data-href="/numerology"] .dw-ic { background: #e8710a; }
+</style>
+
+<div id="appDrawerHandle" data-side="{{ drawer_side }}" title="メニュー">
+  <span class="material-symbols-outlined">apps</span>
+</div>
+<div id="appDrawerMask"></div>
+<div id="appDrawer" data-side="{{ drawer_side }}">
+  <div class="dw-head">
+    <!-- app-drawer-2stage-v1: 頭のスイッチ。半開き ⇔ 全開 -->
+    <button class="dw-expand" id="dwExpand" title="もう1段ひらく">
+      <span class="material-symbols-outlined">chevron_left</span>
+    </button>
+    <span class="material-symbols-outlined" style="font-size:20px;color:#1a73e8;">apps</span>
+    メニュー
+    <button class="dw-close" id="appDrawerClose">✕</button>
+  </div>
+  <div class="dw-editbar">
+    <button class="done" id="dwDone">完了</button>
+    <button class="reset" id="dwReset">並びをリセット</button>
+  </div>
+  <div class="dw-hint">アイコンを長押ししてドラッグ。空いたマスに置けます。アイコンの上に置くと入れ替わります。右上の丸で色を変えられます。</div>
+  <div class="dw-body">
+    <div class="dw-grid" id="dwGrid"></div>
+  </div>
+
+  <!-- app-disaster-drill-v1: アプリ内のみ表示。オンライン中でも訓練用にオフライン災害記録ページを開く。
+       グリッド(dwGrid)は再描画で中身が消えるため、その外側（この位置）に固定で置く。 -->
+  <div id="dwDisasterDrill" style="display:none;padding:10px 12px calc(12px + env(safe-area-inset-bottom));border-top:1px solid #f1f3f4;">
+    <button type="button" onclick="dwOpenDisasterDrill()"
+      style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;background:#fff8e1;border:1.5px solid #ff6f00;border-radius:12px;color:#e65100;font-weight:800;font-size:0.9rem;cursor:pointer;">
+      <span class="material-symbols-outlined" style="font-size:20px;">emergency</span>
+      災害記録（訓練）
+    </button>
+    <div style="text-align:center;font-size:0.7rem;color:#9aa0a6;margin-top:6px;">オフラインでも使える災害記録ページを開きます</div>
+  </div>
+
+  <!-- app-drawer-color-v1: 色パレット -->
+  <div class="dw-pal" id="dwPal">
+    <div class="dw-pal-grid" id="dwPalGrid"></div>
+    <div class="dw-pal-foot">
+      <input type="color" id="dwPalCustom" title="自由な色">
+      <button id="dwPalReset">既定に戻す</button>
+    </div>
+  </div>
+
+  <!-- フォルダは app-drawer-simplify-v1 で廃止（重ね表示で出し入れが直感に反したため）。
+       JS から参照しているので DOM は残すが、開くことはない。 -->
+  <div class="dw-fold-view" id="dwFoldView" hidden style="display:none !important;">
+    <div class="dw-fold-head">
+      <button class="dw-close" id="dwFoldBack" style="margin:0;">←</button>
+      <input id="dwFoldName" maxlength="20" placeholder="フォルダ名">
+    </div>
+    <div class="dw-fold-note">タップで開きます。「取り出す」でフォルダの外（空いたマス）に戻せます。</div>
+    <div class="dw-fold-body"><div class="dw-grid" id="dwFoldGrid"></div></div>
+    <div class="dw-fold-foot"><button id="dwFoldUndo">フォルダを解除（中身を全部そとに出す）</button></div>
+  </div>
+</div>
+
+<script>
+  // app-drawer-edit-v1: メニュー定義（サーバが「その人に見せてよいもの」だけ渡している）
+  window.DW_ITEMS = {{ drawer_items | tojson }};
+  window.DW_LAYOUT_RAW = {{ drawer_layout | tojson }};
+</script>
+
+<script>
+// app-drawer-v1
+(function () {
+  var dw = document.getElementById('appDrawer'),
+      mask = document.getElementById('appDrawerMask'),
+      handle = document.getElementById('appDrawerHandle'),
+      closeBtn = document.getElementById('appDrawerClose');
+  if (!dw) return;
+
+  document.body.dataset.drawerSide = dw.dataset.side;
+
+  function side() { return dw.dataset.side || 'right'; }
+  // app-drawer-4way-v1: 左右は x 軸、上下は y 軸。「開く量」を測る長さも切り替わる。
+  function vertical() { var s = side(); return s === 'top' || s === 'bottom'; }
+  function W() {
+    var r = dw.getBoundingClientRect();
+    return (vertical() ? r.height : r.width) || 320;
+  }
+  // ボトムナビの高さを実測して CSS 変数に入れる（端末差があるので固定値は使わない）
+  // nav-hide-v1: ここが --nav-h の唯一の実測点。
+  //  ・隠している / DOMに無い → 0px（下部UIが跡地に浮かない）
+  //  ・画面別の変数（--rk-nav-h 等）は :root で --nav-h を既定にしてあるので、
+  //    各画面のJSが値を入れなければ、これがそのまま効く。
+  function measureNav() {
+    var nav = document.querySelector('.bottom-nav');
+    var hidden = document.body.classList.contains('nav-off');
+    var h = (nav && !hidden) ? Math.round(nav.getBoundingClientRect().height) : 0;
+    // nav-hide-v3: 生の実測値だけ入れる。安全な下限（セーフエリア）は CSS 側で噛ませる。
+    document.documentElement.style.setProperty('--nav-raw', h + 'px');
+    document.documentElement.style.setProperty('--dw-nav-h', h + 'px');
+  }
+  window.dwMeasureNav = measureNav;
+  measureNav();
+  window.addEventListener('resize', measureNav);
+  window.addEventListener('orientationchange', function () { setTimeout(measureNav, 200); });
+  function buzz(ms) { try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) {} }
+
+  // アイコンを1つずつ遅らせて立ち上げる（開くたびに再生されるよう毎回入れ直す）
+  var apps = dw.querySelectorAll('.dw-app');
+  function stagger() {
+    apps.forEach(function (a, i) {
+      a.style.animation = 'none';
+      void a.offsetWidth;                       // 再生し直すためのリフロー
+      a.style.animation = '';
+      a.style.animationDelay = (18 * i) + 'ms';
+    });
+  }
+
+  // app-drawer-2stage-v1: 閉 / 半開き / 全開 の3段階。
+  //   half … 見せる量だけ半分（手前の2列が押せる）
+  //   full … 全部出る
+  // app-drawer-2stage-off-v1: 半開きは廃止。開くときは常に全開。
+  function open() {
+    endDrag();
+    stagger();
+    dw.classList.add('on');
+    dw.classList.remove('half');
+    mask.classList.add('on');
+    handle.classList.add('hide');               // 開いている間は取っ手を引っ込める
+    buzz(12);
+  }
+  function close() {
+    endDrag();
+    dw.classList.remove('on');
+    dw.classList.remove('half');
+    mask.classList.remove('on');
+    handle.classList.remove('hide');
+  }
+  function isHalf() { return dw.classList.contains('half'); }
+
+  // 頭のスイッチ: 半開き ⇔ 全開
+  var expandBtn = document.getElementById('dwExpand');
+  if (expandBtn) {
+    expandBtn.onclick = function () {
+      dw.classList.toggle('half');
+      if (!isHalf()) stagger();                 // 全開にしたときは並びを立ち上げ直す
+      buzz(10);
+    };
+  }
+  function endDrag() { dw.classList.remove('drag'); dw.style.transform = ''; mask.style.opacity = ''; }
+
+  // 指の位置に追従させる。0=閉じ、1=開き。
+  // p は 0(閉) 〜 1(全開)。半開き(0.5)はこの途中の位置そのもの。
+  function follow(p) {
+    p = Math.max(0, Math.min(1, p));
+    dw.classList.remove('half');   // 指で引いている間は inline transform が正
+    var s = side();
+    var sign = (s === 'right' || s === 'bottom') ? 1 : -1;   // 画面の外へ逃げる向き
+    var off = (1 - p) * W() * sign;
+    dw.style.transform = vertical()
+      ? ('translateY(' + off + 'px)')
+      : ('translateX(' + off + 'px)');
+    mask.style.opacity = String(p);
+  }
+
+  // 指の移動量を「引き出しを開く向き」の量に直す
+  function inwardOf(dx, dy) {
+    var s = side();
+    if (s === 'right')  return -dx;
+    if (s === 'left')   return dx;
+    if (s === 'bottom') return -dy;
+    return dy;                       // top
+  }
+  function crossOf(dx, dy) { return vertical() ? Math.abs(dx) : Math.abs(dy); }
+
+  closeBtn.onclick = close;
+  mask.onclick = close;
+  // 中の導線を押したら閉じる処理は、グリッドを描き直す側（app-drawer-edit-v2）が持つ。
+  // ここで付けても、描き直した瞬間にリスナごと消えてしまう。
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
+
+  // ---- app-drawer-edgefix-v1: 取っ手を引いて開く ----
+  // 画面の端からのスワイプは OS の「戻る」に取られる（Webからは止められない）。
+  // そこで、取っ手の上で始まった指の動きだけを拾う。touch-action:none と preventDefault で
+  // ブラウザのジェスチャーには渡さない。タップだけでも開く。
+  var SNAP = 0.35;
+  var hx = 0, hy = 0, hdrag = false, hid = null;
+
+  // ---- nav-hide-v3 / app-drawer-perside-v1 ----
+  // 取っ手の位置（端に沿った 0〜100%）。**向きごと**に覚える。長押しでつまんで動かせる。
+  var POS_DEF = { left: 46, right: 46, top: 50, bottom: 50 };
+  var posBySide = (function () {
+    var raw = {{ drawer_pos | tojson }};
+    var o = {};
+    try { o = raw ? JSON.parse(raw) : {}; } catch (e) { o = {}; }
+    if (typeof o === 'number') {                    // 旧形式（数値1つ）は今の向きに引き継ぐ
+      var one = o; o = {}; o[side()] = one;
+    }
+    if (!o || typeof o !== 'object') o = {};
+    return o;
+  })();
+  function posOf(s) {
+    var v = Number(posBySide[s]);
+    if (!isFinite(v)) v = POS_DEF[s] || 46;
+    return Math.max(6, Math.min(94, v));
+  }
+  var pos = posOf(side());
+  var moveTimer = null, moving = false;
+
+  function applyPos() {
+    var vert = vertical();
+    if (vert) {
+      // 上下の引き出し → 取っ手は左右に動く。カラムの中に収める。
+      handle.style.top = '';
+      handle.style.left = 'calc(var(--dw-gap) + (100vw - var(--dw-gap) * 2) * ' + (pos / 100) + ')';
+      document.documentElement.style.setProperty('--dw-pos', '');
+    } else {
+      handle.style.left = '';
+      handle.style.top = pos + '%';
+    }
+  }
+  function savePos() {
+    posBySide[side()] = Math.round(pos);           // app-drawer-perside-v1: 向きごとに覚える
+    fetch('/api/me/setting', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'drawer_pos', value: JSON.stringify(posBySide) })
+    }).catch(function () {});
+  }
+  // 向きが変わったら、その向きの位置を読み直す
+  window.dwReloadHandlePos = function () { pos = posOf(side()); applyPos(); };
+  applyPos();
+  window.dwApplyHandlePos = applyPos;
+
+  handle.addEventListener('pointerdown', function (e) {
+    if (dw.classList.contains('on')) return;
+    e.preventDefault();
+    hx = e.clientX; hy = e.clientY; hdrag = false; hid = e.pointerId;
+    try { handle.setPointerCapture(hid); } catch (err) {}
+
+    // 長押し → 取っ手そのものを動かすモード（引き出しは開かない）
+    clearTimeout(moveTimer);
+    moveTimer = setTimeout(function () {
+      moving = true;
+      handle.classList.add('moving');
+      try { if (navigator.vibrate) navigator.vibrate(16); } catch (err) {}
+    }, 400);
+  });
+
+  handle.addEventListener('pointermove', function (e) {
+    if (hid === null || e.pointerId !== hid || dw.classList.contains('on')) return;
+    e.preventDefault();
+    var dx = e.clientX - hx, dy = e.clientY - hy;
+
+    // nav-hide-v3: 移動モード中は、端に沿って取っ手だけを動かす
+    if (moving) {
+      if (vertical()) {
+        var w = window.innerWidth || 1;
+        pos = Math.max(6, Math.min(94, (e.clientX / w) * 100));
+      } else {
+        var h = window.innerHeight || 1;
+        pos = Math.max(6, Math.min(94, (e.clientY / h) * 100));
+      }
+      applyPos();
+      return;
+    }
+
+    var inward = inwardOf(dx, dy), cross = crossOf(dx, dy);
+    if (!hdrag) {
+      clearTimeout(moveTimer);      // 動かし始めたら「長押し」は成立させない
+      if (cross > 24 && cross > inward) return;   // 引き出す向きと違う方へ動いている
+      if (inward < 6) return;
+      hdrag = true;
+      dw.classList.add('drag');
+      mask.classList.add('on');
+      mask.style.opacity = '0';
+      stagger();
+    }
+    follow(inward / W());
+  });
+
+  function handleUp(e) {
+    if (hid === null) return;
+    clearTimeout(moveTimer);
+    var dx = (e && e.clientX != null) ? (e.clientX - hx) : 0;
+    var dy = (e && e.clientY != null) ? (e.clientY - hy) : 0;
+    var inward = inwardOf(dx, dy);
+    try { handle.releasePointerCapture(hid); } catch (err) {}
+    hid = null;
+
+    if (moving) {                              // nav-hide-v3: 位置を決めて離した
+      moving = false;
+      handle.classList.remove('moving');
+      savePos();
+      return;
+    }
+    if (!hdrag) { open(); return; }            // 動かさず離した＝タップ → そのまま全開
+    hdrag = false;
+    dw.classList.remove('drag');
+    dw.style.transform = '';
+    mask.style.opacity = '';
+    // app-drawer-2stage-off-v1: 閉じる / 全開 の2択（しきい値 35%）
+    if (inward / W() > SNAP) open(); else close();
+  }
+  handle.addEventListener('pointerup', handleUp);
+  handle.addEventListener('pointercancel', handleUp);
+
+  // ---- 開いているとき、外向きに払うと閉じる（こちらも指に追従） ----
+  // app-drawer-edit-v4: ただし **編集モード中／アイコンをドラッグ中は働かせない**。
+  // アイコンを横に動かすと、この判定が「閉じるスワイプ」と誤解して引き出しごと動いていた。
+  var cx = 0, cy = 0, cdrag = false, cwatch = false;
+  function closeSwipeBlocked() {
+    return dw.classList.contains('edit') || window.dwDragActive === true;
+  }
+  dw.addEventListener('touchstart', function (e) {
+    if (!dw.classList.contains('on') || closeSwipeBlocked()) return;
+    cx = e.touches[0].clientX; cy = e.touches[0].clientY; cwatch = true; cdrag = false;
+  }, { passive: true });
+  dw.addEventListener('touchmove', function (e) {
+    if (!cwatch || closeSwipeBlocked()) { cwatch = false; cdrag = false; return; }
+    var dx = e.touches[0].clientX - cx, dy = e.touches[0].clientY - cy;
+    var outward = -inwardOf(dx, dy), cross = crossOf(dx, dy);
+    if (!cdrag) {
+      if (cross > 18 && cross > outward) { cwatch = false; return; }   // 中のスクロール優先
+      if (outward < 8) return;
+      cdrag = true;
+      dw.classList.add('drag');
+    }
+    follow(1 - outward / W());
+  }, { passive: true });
+  dw.addEventListener('touchend', function (e) {
+    if (!cdrag) { cwatch = false; return; }
+    var t = (e.changedTouches && e.changedTouches[0]) || null;
+    var outward = t ? -inwardOf(t.clientX - cx, t.clientY - cy) : 0;
+    dw.classList.remove('drag');
+    dw.style.transform = '';
+    mask.style.opacity = '';
+
+    // app-drawer-2stage-off-v1: 払ったら閉じる（戻したら開いたまま）
+    if (outward / W() > SNAP) { close(); } else { open(); }
+    cwatch = false; cdrag = false;
+  }, { passive: true });
+
+  // 編集中は引き出しごとスワイプで閉じない（ドラッグと喧嘩するため）
+  window.dwIsEditing = function () { return dw.classList.contains('edit'); };
+  window.dwClose = close;   // app-drawer-edit-v2: グリッド側から閉じる
+})();
+</script>
+
+<script>
+// app-drawer-simplify-v1: 引き出しから開いたページは、必ず先頭から見せる。
+(function () {
+  try { if ('scrollRestoration' in history) history.scrollRestoration = 'manual'; } catch (e) {}
+  var flag = null;
+  try { flag = sessionStorage.getItem('dw_scroll_top'); } catch (e) {}
+  if (!flag) return;
+  try { sessionStorage.removeItem('dw_scroll_top'); } catch (e) {}
+  function toTop() { window.scrollTo(0, 0); }
+  toTop();
+  window.addEventListener('load', function () { toTop(); setTimeout(toTop, 0); });
+})();
+</script>
+
+<script>
+// ===== app-drawer-edit-v1 : 自由配置（フォルダは app-drawer-simplify-v1 で廃止） =====
+// レイアウトの形:
+//   { v:1, slots: [ null | {t:'app', href} | {t:'folder', name, items:[href,...]} , ... ] }
+// slots の位置がそのまま画面のマス。null = 空きマス（＝好きな位置に置ける）。
+(function () {
+  var dw = document.getElementById('appDrawer');
+  if (!dw) return;
+  var grid = document.getElementById('dwGrid');
+  var foldView = document.getElementById('dwFoldView');
+  var foldGrid = document.getElementById('dwFoldGrid');
+  var foldName = document.getElementById('dwFoldName');
+  var COLS = 4, TAIL = 4;                 // 末尾に必ず空きマスを4つ残す（置き場所が無くならないように）
+
+  var ITEMS = window.DW_ITEMS || [];
+  var byHref = {};
+  ITEMS.forEach(function (m) { byHref[m.href] = m; });
+  byHref['/top'] = { href: '/top', icon: 'home', label: 'TOP' };
+
+  // app-drawer-perside-v1: 配置は **向きごと**。色は向き共通。
+  //   { v:2, sides:{ right:{slots:[...]}, left:{...}, top:{...}, bottom:{...} }, colors:{href:色} }
+  var SIDES = ['left', 'right', 'top', 'bottom'];
+  var store = loadStore(window.DW_LAYOUT_RAW);
+  var curSide = document.getElementById('appDrawer').dataset.side || 'right';
+  var layout = sideLayout(curSide);
+  var openFolder = -1;                    // 開いているフォルダのスロット番号（フォルダは廃止済み）
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+
+  function defaults() {
+    var slots = [{ t: 'app', href: '/top' }];
+    ITEMS.forEach(function (m) { slots.push({ t: 'app', href: m.href }); });
+    return { v: 1, slots: slots, colors: {} };   // app-drawer-color-v1
+  }
+
+  function parse(raw) {
+    var L = null;
+    try { L = raw ? JSON.parse(raw) : null; } catch (e) { L = null; }
+    if (!L || !L.slots || !L.slots.length) L = defaults();
+
+    // 使える href だけ残す（権限が変わって消えたメニューは落とす）
+    var seen = {};
+    L.slots = L.slots.map(function (s) {
+      if (!s) return null;
+      if (s.t === 'app') {
+        if (!byHref[s.href] || seen[s.href]) return null;
+        seen[s.href] = 1;
+        return { t: 'app', href: s.href };
+      }
+      // app-drawer-simplify-v1: フォルダは廃止。作ってしまったものは中身をほどいて
+      // 普通のアイコンに戻す（消さない）。ほどいた中身は下の「増えた分」で末尾に付く。
+      return null;
+    });
+
+    // 新しく増えたメニューは末尾に足す（勝手に消さない・迷子にしない）
+    var all = ['/top'].concat(ITEMS.map(function (m) { return m.href; }));
+    all.forEach(function (h) { if (!seen[h]) L.slots.push({ t: 'app', href: h }); });
+
+    // app-drawer-color-v1: 個人が付けた色。使えない href のぶんは落とす。
+    var cols = {};
+    Object.keys(L.colors || {}).forEach(function (h) {
+      if (byHref[h] && /^#[0-9a-fA-F]{3,8}$/.test(String(L.colors[h]))) cols[h] = L.colors[h];
+    });
+    L.colors = cols;
+
+    return L;
+  }
+
+  function pad() {
+    while (layout.slots.length % COLS !== 0) layout.slots.push(null);
+    var tail = 0;
+    for (var i = layout.slots.length - 1; i >= 0 && !layout.slots[i]; i--) tail++;
+    while (tail < TAIL) { layout.slots.push(null); tail++; }
+    while (layout.slots.length % COLS !== 0) layout.slots.push(null);
+  }
+
+  // ---- 保存の形（向きごと） ----
+  function loadStore(raw) {
+    var o = null;
+    try { o = raw ? JSON.parse(raw) : null; } catch (e) { o = null; }
+    if (!o || typeof o !== 'object') return { v: 2, sides: {}, colors: {} };
+
+    if (o.v === 2 && o.sides) {
+      o.colors = o.colors || {};
+      return o;
+    }
+    // 旧形式（v1: 全向き共通の1つ）→ 今の向きの配置として引き継ぐ（消さない）
+    var s = document.getElementById('appDrawer').dataset.side || 'right';
+    var st = { v: 2, sides: {}, colors: o.colors || {} };
+    if (o.slots) st.sides[s] = { slots: o.slots };
+    return st;
+  }
+
+  function sideLayout(s) {
+    var raw = (store.sides && store.sides[s]) ? store.sides[s] : null;
+    var L = parse(raw ? JSON.stringify({ v: 1, slots: raw.slots, colors: store.colors }) : '');
+    L.colors = store.colors;              // 色は向き共通（同じアプリが向きで色違いだと混乱する）
+    return L;
+  }
+
+  var saveTimer = null;
+  function save() {
+    store.sides = store.sides || {};
+    store.sides[curSide] = { slots: layout.slots };
+    store.colors = layout.colors || {};
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      fetch('/api/me/setting', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'top_layout', value: JSON.stringify(store) })
+      }).catch(function () {});
+    }, 400);
+  }
+
+  // 向きが変わったら、その向きの配置に描き替える（再読み込み不要）
+  window.dwSetSide = function (s) {
+    if (SIDES.indexOf(s) < 0) return;
+    store.sides = store.sides || {};
+    store.sides[curSide] = { slots: layout.slots };   // 今の向きの配置を確定させてから
+    curSide = s;
+    layout = sideLayout(s);
+    render();
+  };
+
+  // ---------- 描画 ----------
+  // app-drawer-edit-v3: href を付けない。
+  // iOS は「リンク」を長押しするとプレビュー（共有シート）を出し、そこで指を持っていくため、
+  // ドラッグがスムーズにできなかった。href が無ければ iOS はリンクと見なさない。
+  // 遷移はもともと JS 側（spaNav / location.href）でやっているので機能は変わらない。
+  // app-drawer-color-v1: 色はインラインで当てる（CSS の data-href 規則は既定色の定義には使わない）
+  function appHtml(m, idx, inFolder) {
+    var c = colorOf(m.href);
+    // plan-gating-v1: プラン下限バッジ（体験中に上位機能へ「PRO」「スタンダード」を表示）
+    var planBadge = m.badge
+      ? '<span class="dw-plan-badge tier-' + (m.tier || 'pro') + '">' + esc(m.badge) + '</span>'
+      : '';
+    return '<div class="dw-app" role="button" tabindex="0" draggable="false"' +
+      ' data-idx="' + idx + '" data-href="' + m.href + '"' +
+      (inFolder ? ' data-in-folder="1"' : '') + '>' +
+        '<span class="dw-ic" style="background:' + c + '">' +
+          '<span class="material-symbols-outlined">' + m.icon + '</span>' +
+          '<button class="dw-paint" data-paint="' + m.href + '" style="background:' + c + '"></button>' +
+          // drawer-badge-v1: 件数の器。中身は dwSetBadge() が入れる。
+          '<span class="dw-badge" data-badge="' + m.href + '"></span>' +
+          planBadge +
+        '</span>' +
+        '<span class="dw-label">' + esc(m.label) + '</span>' +
+      '</div>';
+  }
+
+  // アイコンの既定色（性格ごとの色分け）。
+  function defaultColorOf(href) {
+    if (href === '/tasks' || href === '/board' || href === '/admin/meetings') return '#7c4dff';
+    if (href === '/ledger' || href === '/rec_expense') return '#2f6b5e';
+    if (href === '/admin' || href === '/dev' || href === '/manual') return '#5f6368';
+    if (href === '/birthday' || href === '/numerology') return '#e8710a';
+    return '#1a73e8';
+  }
+  // app-drawer-color-v1: 個人が指定した色があればそれが勝つ。
+  function colorOf(href) {
+    var c = layout.colors && layout.colors[href];
+    return c || defaultColorOf(href);
+  }
+
+  function folderHtml(f, idx) {
+    var mini = '';
+    for (var i = 0; i < 4; i++) {
+      var h = f.items[i], m = h ? byHref[h] : null;
+      if (m) {
+        mini += '<i style="background:' + colorOf(h) + '">' +
+                  '<span class="material-symbols-outlined">' + m.icon + '</span></i>';
+      } else {
+        mini += '<i class="none"></i>';
+      }
+    }
+    var more = (f.items.length > 4)
+      ? '<span class="dw-fold-more">+' + (f.items.length - 4) + '</span>' : '';
+    return '<div class="dw-app dw-folder" role="button" tabindex="0" draggable="false"' +
+      ' data-idx="' + idx + '" data-folder="1">' +
+        '<span class="dw-ic"><span class="dw-fold-mini">' + mini + '</span>' + more + '</span>' +
+        '<span class="dw-label">' + esc(f.name || 'フォルダ') + '</span>' +
+      '</div>';
+  }
+
+  // drawer-badge-v1: 直近の件数を覚えておき、描き直したあとも当て直す
+  //（グリッドは JS で作り直すので、DOM に直接書いた数字は消えてしまう）
+  window.DW_BADGES = window.DW_BADGES || {};
+  window.dwSetBadge = function (href, count) {
+    window.DW_BADGES[href] = count || 0;
+    applyBadges();
+  };
+  function applyBadges() {
+    document.querySelectorAll('#appDrawer [data-badge]').forEach(function (b) {
+      var n = window.DW_BADGES[b.dataset.badge] || 0;
+      b.textContent = n > 99 ? '99+' : String(n);
+      b.classList.toggle('on', n > 0);
+    });
+  }
+
+  function render() {
+    pad();
+    grid.innerHTML = layout.slots.map(function (s, i) {
+      var inner = '';
+      if (s && s.t === 'app' && byHref[s.href]) inner = appHtml(byHref[s.href], i, false);
+      else if (s && s.t === 'folder') inner = folderHtml(s, i);
+      return '<div class="dw-cell' + (inner ? '' : ' empty') + '" data-cell="' + i + '">' + inner + '</div>';
+    }).join('');
+    bind(grid);
+    applyBadges();          // drawer-badge-v1: 描き直したら件数を当て直す
+  }
+
+  function renderFolder() {
+    var f = layout.slots[openFolder];
+    if (!f || f.t !== 'folder') { closeFolder(); return; }
+    foldName.value = f.name || '';
+    // app-drawer-folder-v2: 「取り出す」は常に出す。
+    // フォルダの中身は引き出しの上に重ねて出しているので、下のマス目は見えない。
+    // つまりドラッグで外に出す動線は成立しない。ボタンで戻す。
+    foldGrid.innerHTML = f.items.map(function (h, i) {
+      var m = byHref[h];
+      if (!m) return '';
+      return '<div class="dw-cell" data-fcell="' + i + '">' + appHtml(m, i, true) +
+        '<button class="dw-out" data-out="' + i + '">取り出す</button>' +
+        '</div>';
+    }).join('');
+    bind(foldGrid);
+  }
+
+  function openFolderAt(i) {
+    return;   // app-drawer-simplify-v1: フォルダは廃止
+  }
+  function closeFolder() {
+    openFolder = -1;
+    foldView.classList.remove('on');
+    render();
+  }
+  document.getElementById('dwFoldBack').onclick = closeFolder;
+  foldName.oninput = function () {
+    var f = layout.slots[openFolder];
+    if (!f) return;
+    f.name = foldName.value.slice(0, 20) || 'フォルダ';
+    save();
+  };
+
+  // ---------- 編集モード ----------
+  function startEdit() {
+    if (dw.classList.contains('edit')) return;
+    dw.classList.add('edit');
+    try { if (navigator.vibrate) navigator.vibrate(18); } catch (e) {}
+    if (openFolder >= 0) renderFolder();
+  }
+  function endEdit() {
+    dw.classList.remove('edit');
+    save();
+    if (openFolder >= 0) renderFolder(); else render();
+  }
+  document.getElementById('dwDone').onclick = endEdit;
+  document.getElementById('dwReset').onclick = function () {
+    if (!confirm('この向きの並びを既定に戻します。よろしいですか？')) return;   // app-drawer-perside-v1
+    var keep = layout.colors || {};
+    layout = defaults();
+    layout.colors = keep;                 // 色は残す（並びだけ戻す）
+    render();
+    save();
+  };
+
+  // ---------- ドラッグ ----------
+  // soge_week.html と同じ作法。元の要素は消さずに薄くする。追従はクローンのゴースト。
+  // 監視は window に付ける（要素ごと消えると pointerup が届かないため）。
+  var drag = null, holdTimer = null;
+
+  // app-drawer-color-v1: パレット
+  var pal = document.getElementById('dwPal');
+  var palGrid = document.getElementById('dwPalGrid');
+  var palCustom = document.getElementById('dwPalCustom');
+  var palTarget = null;
+  var PALETTE = ['#1a73e8', '#4285f4', '#7c4dff', '#a142f4', '#d93025', '#e8710a',
+                 '#f9ab00', '#2f6b5e', '#137333', '#00838f', '#5f6368', '#202124'];
+
+  palGrid.innerHTML = PALETTE.map(function (c) {
+    return '<button data-c="' + c + '" style="background:' + c + '"></button>';
+  }).join('');
+
+  function setColor(href, c) {
+    layout.colors = layout.colors || {};
+    if (c) layout.colors[href] = c; else delete layout.colors[href];
+    render();
+    save();
+  }
+
+  palGrid.querySelectorAll('[data-c]').forEach(function (b) {
+    b.onclick = function () { if (palTarget) setColor(palTarget, b.dataset.c); closePal(); };
+  });
+  palCustom.oninput = function () { if (palTarget) setColor(palTarget, palCustom.value); };
+  document.getElementById('dwPalReset').onclick = function () {
+    if (palTarget) setColor(palTarget, null);
+    closePal();
+  };
+  function openPal(href, x, y) {
+    palTarget = href;
+    palCustom.value = colorOf(href);
+    pal.classList.add('on');
+    var r = pal.getBoundingClientRect();
+    var left = Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8);
+    var top = Math.min(Math.max(8, y + 12), window.innerHeight - r.height - 8);
+    pal.style.left = left + 'px';
+    pal.style.top = top + 'px';
+  }
+  function closePal() { pal.classList.remove('on'); palTarget = null; }
+  document.addEventListener('pointerdown', function (e) {
+    if (!pal.classList.contains('on')) return;
+    if (pal.contains(e.target) || (e.target.closest && e.target.closest('.dw-paint'))) return;
+    closePal();
+  }, true);
+
+  function bind(root) {
+    root.querySelectorAll('[data-paint]').forEach(function (b) {
+      // app-drawer-paint-hit-v1: ボタンの上ではドラッグを始めない。
+      // 外して下のアイコンを掴んでしまうと「押したのに色が出ず、アイコンが動く」になる。
+      var app = b.closest('.dw-app');
+      b.addEventListener('pointerdown', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (app) app.classList.add('painting');      // 触っている間は揺れを止める
+      });
+      var stop = function () { if (app) app.classList.remove('painting'); };
+      b.addEventListener('pointerup', stop);
+      b.addEventListener('pointercancel', stop);
+      b.addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        stop();
+        var r = b.getBoundingClientRect();
+        openPal(b.dataset.paint, r.left + r.width / 2, r.bottom);
+      });
+    });
+    root.querySelectorAll('.dw-app').forEach(function (el) {
+      el.addEventListener('pointerdown', onDown);
+      el.addEventListener('click', onClick);
+      // div にしたので、キーボード操作は自前で拾う
+      el.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); el.click(); }
+      });
+      // app-drawer-edit-v2: 長押しメニュー（画像/リンクの共有シート）を出させない
+      el.addEventListener('contextmenu', function (ev) {
+        if (dw.classList.contains('edit')) ev.preventDefault();
+      });
+    });
+    root.querySelectorAll('[data-out]').forEach(function (b) {
+      b.onclick = function (e) {
+        e.preventDefault(); e.stopPropagation();
+        takeOut(Number(b.dataset.out));
+      };
+    });
+  }
+
+  // app-drawer-edit-v2: グリッドは描き直すので、閉じる処理もここで面倒を見る
+  // （最初に1回だけ付けたリスナは、描き直した瞬間に消えていた＝タップが効かないの真因）
+  function onClick(e) {
+    var el = e.currentTarget;
+    e.preventDefault();
+    if (dw.classList.contains('edit')) return;                            // 編集中は開かない
+    if (el.dataset.folder) { openFolderAt(Number(el.dataset.idx)); return; }
+
+    var href = el.dataset.href;
+    if (!href) return;
+    if (window.dwClose) window.dwClose();          // 引き出しを閉じる
+    // app-drawer-edit-v4: spaNav() は中身が空で、実際の遷移は <a href> 任せだった。
+    // href を外した（iOSのリンクプレビュー対策）ので、ここで自分で飛ぶ。
+    // 同じタブで開く（PWAで target=_blank にすると外部ブラウザになりログインが切れる）。
+    try { document.body.style.overflow = ''; } catch (err) {}
+    // app-drawer-simplify-v1: 引き出しは body の末尾にある。その中のボタンを押したまま遷移すると、
+    // ブラウザが「最後に触っていた位置」を復元しようとして、遷移先が下端まで飛ぶ。
+    // 印を付けておき、次のページで先頭に戻す。
+    try { sessionStorage.setItem('dw_scroll_top', '1'); } catch (err) {}
+    try { el.blur(); } catch (err) {}
+    location.href = href;
+  }
+
+  // app-drawer-edit-v2
+  //  ・編集モードでないとき  … 長押し(450ms)で「プルプル」に入るだけ。動かさない。
+  //    （長押しの瞬間、iOS はもう選択ジェスチャーを始めているので、そのままドラッグさせようとしても
+  //      指をOSに持っていかれる。iPhone のホーム画面も「長押し→プルプル→指を置き直して移動」。）
+  //  ・編集モード中 … 触ってすぐドラッグできる。touch-action:none なので指はこちらが握れる。
+  function onDown(e) {
+    var el = e.currentTarget;
+    var editing = dw.classList.contains('edit');
+
+    // app-drawer-folder-v2: フォルダの中はドラッグしない（下のマス目が隠れていて落とせないため）。
+    // 外に戻すのは「取り出す」ボタン。
+    if (el.dataset.inFolder) return;
+
+    if (editing) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      e.preventDefault();
+      beginDrag(el, e.clientX, e.clientY);
+      return;
+    }
+
+    var sx = e.clientX, sy = e.clientY;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(function () {
+      startEdit();                        // プルプルまで。移動は指を置き直してから
+      cleanup();
+    }, 450);
+
+    function cancel(ev) {
+      if (ev && ev.type === 'pointermove' &&
+          Math.abs(ev.clientX - sx) < 8 && Math.abs(ev.clientY - sy) < 8) return;
+      clearTimeout(holdTimer);
+      cleanup();
+    }
+    function cleanup() {
+      window.removeEventListener('pointermove', cancel);
+      window.removeEventListener('pointerup', cancel);
+      window.removeEventListener('pointercancel', cancel);
+    }
+    window.addEventListener('pointermove', cancel);
+    window.addEventListener('pointerup', cancel);
+    window.addEventListener('pointercancel', cancel);
+  }
+
+  function beginDrag(el, x, y) {
+    var ghost = el.cloneNode(true);
+    ghost.className = 'dw-app dw-ghost';
+    ghost.style.left = x + 'px';
+    ghost.style.top = y + 'px';
+    document.body.appendChild(ghost);
+    el.classList.add('dragging');
+
+    drag = {
+      el: el, ghost: ghost,
+      from: Number(el.dataset.idx),
+      inFolder: !!el.dataset.inFolder,
+      hot: null
+    };
+    window.dwDragActive = true;   // app-drawer-edit-v4: 閉じるスワイプを止める
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    window.addEventListener('blur', onUp);     // 保険。指が外れても固まらない
+  }
+
+  function cellUnder(x, y) {
+    drag.ghost.style.display = 'none';                 // 隠すのはゴーストだけ
+    var t = document.elementFromPoint(x, y);
+    drag.ghost.style.display = '';
+    return t ? t.closest('.dw-cell') : null;
+  }
+
+  function onMove(e) {
+    if (!drag) return;
+    e.preventDefault();
+    drag.ghost.style.left = e.clientX + 'px';
+    drag.ghost.style.top = e.clientY + 'px';
+
+    var cell = cellUnder(e.clientX, e.clientY);
+    if (drag.hot && drag.hot !== cell) drag.hot.classList.remove('hot');
+    if (cell && cell.dataset.cell !== undefined) { cell.classList.add('hot'); drag.hot = cell; }
+    else drag.hot = null;
+  }
+
+  function onUp(e) {
+    if (!drag) return;
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+    window.removeEventListener('pointercancel', onUp);
+    window.removeEventListener('blur', onUp);
+
+    var cell = (e && e.clientX != null) ? cellUnder(e.clientX, e.clientY) : null;
+    if (drag.hot) drag.hot.classList.remove('hot');
+    drag.ghost.remove();
+    drag.el.classList.remove('dragging');
+
+    var from = drag.from, inFolder = drag.inFolder;
+    drag = null;
+    window.dwDragActive = false;   // app-drawer-edit-v4
+
+    if (!cell || cell.dataset.cell === undefined) { render(); return; }   // 枠の外 → 元に戻す
+    var to = Number(cell.dataset.cell);
+    if (inFolder) { renderFolder(); return; }     // app-drawer-folder-v2: 中からは動かさない
+    if (to === from) { render(); return; }
+    dropOn(from, to);
+  }
+
+  // ---------- 置いたときの決まり ----------
+  function dropOn(from, to) {
+    var a = layout.slots[from], b = layout.slots[to];
+    if (!a) { render(); return; }
+
+    // app-drawer-simplify-v1: 空きマスなら移動、アイコンの上なら入れ替え。それだけ。
+    if (!b) {
+      layout.slots[to] = a;
+      layout.slots[from] = null;
+    } else {
+      layout.slots[to] = a;
+      layout.slots[from] = b;
+    }
+    render();
+    save();
+  }
+
+  function firstEmpty() {
+    for (var i = 0; i < layout.slots.length; i++) if (!layout.slots[i]) return i;
+    layout.slots.push(null);
+    return layout.slots.length - 1;
+  }
+
+  function takeOut(i) {                          // フォルダの中 → 外の空きマスへ
+    var f = layout.slots[openFolder];
+    if (!f || f.t !== 'folder') return;
+    var href = f.items.splice(i, 1)[0];
+    layout.slots[firstEmpty()] = { t: 'app', href: href };
+    if (f.items.length === 0) { layout.slots[openFolder] = null; closeFolder(); }
+    else if (f.items.length === 1) {             // 1つだけになったフォルダは畳む（iPhoneと同じ）
+      layout.slots[openFolder] = { t: 'app', href: f.items[0] };
+      closeFolder();
+    } else renderFolder();                        // 続けて出せるよう開いたまま
+    save();
+  }
+
+  // app-drawer-folder-v2: フォルダごと解除（中身を全部そとへ）
+  document.getElementById('dwFoldUndo').onclick = function () {
+    var f = layout.slots[openFolder];
+    if (!f || f.t !== 'folder') return;
+    f.items.forEach(function (h) { layout.slots[firstEmpty()] = { t: 'app', href: h }; });
+    layout.slots[openFolder] = null;
+    closeFolder();
+    save();
+  };
+
+  function moveOutOfFolder(i, to) {              // フォルダの中からドラッグして外に出す
+    var f = layout.slots[openFolder];
+    if (!f || f.t !== 'folder') return;
+    if (!layout.slots[to]) {
+      var href = f.items.splice(i, 1)[0];
+      layout.slots[to] = { t: 'app', href: href };
+      if (f.items.length <= 1) {
+        layout.slots[openFolder] = f.items.length ? { t: 'app', href: f.items[0] } : null;
+        closeFolder();
+      } else renderFolder();
+      save();
+    } else {
+      renderFolder();                            // 空きマス以外には出せない
+    }
+  }
+
+  render();
+})();
+</script>
+{% endif %}
+<!-- ===== /app-drawer-v1 ===== -->
+
+{% block bottom_nav %}
+{# nav-remove-v1: 下のメニューバーを廃止。メニューは引き出し（画面端の取っ手）に一本化した。
+   ・ブロック自体は残す（login.html / register.html が空で上書きしているため）
+   ・ログアウトはユーザー設定の中へ移した
+   ・JS 側のナビ関数（hideBottomNav 等）は tasks.html などから呼ばれているので残してある。
+     どれも .bottom-nav が無ければ何もしない作りになっている。 #}
+{% endblock %}
 
 <script>
 // ========== SPAルーター ==========
@@ -1133,17 +2282,27 @@ function soundPico() {
 }
 
 // タスカル音声
-function soundTasukaru() {
+function soundTasukaru() {  // tasukaru-voice-antichoke2-v1
     if (!window.speechSynthesis) return;
-    window.speechSynthesis.cancel();
-    const utter = new SpeechSynthesisUtterance('タスカル！');
-    utter.lang = 'ja-JP';
-    utter.rate = 1.8;
-    utter.pitch = 1.3;
-    const voices = window.speechSynthesis.getVoices();
-    const jpVoice = voices.find(v => v.lang.includes('ja'));
-    if (jpVoice) utter.voice = jpVoice;
-    window.speechSynthesis.speak(utter);
+    const ss = window.speechSynthesis;
+    // (1) 既に発話中/待機中なら連打とみなし無視(低音化の根本防止)
+    if (ss.speaking || ss.pending) { return; }
+    try { ss.cancel(); } catch (e) {}
+    const _mk = function () {
+        const utter = new SpeechSynthesisUtterance('タスクッ！');
+        utter.lang = 'ja-JP';
+        utter.rate = 1.6;    // 元気に粒立て
+        utter.pitch = 2.0;   // ネズミの甲高さ(0～2の上限)
+        const voices = ss.getVoices();
+        // tasukaru-voice-kyoko-v1: Kyoko(高め素直)を優先。pitch2.0でネズミ声化。
+        const jpVoices = voices.filter(v => v.lang.includes('ja'));
+        const kyoko = jpVoices.find(v => v.name.includes('Kyoko'));
+        const jpVoice = kyoko || jpVoices[0];
+        if (jpVoice) utter.voice = jpVoice;
+        ss.speak(utter);
+    };
+    // (2) cancelの完了を十分待ってからspeak
+    setTimeout(_mk, 150);
 }
 
 // 通知音を鳴らす
@@ -1159,7 +2318,18 @@ window.playNotificationSound = function() {
 let lastUnreadCount = 0;
 let chatPollingTimer = null;
 
+// drawer-badge-v1: タスク（自分あての未完了）。引き出しのバッジ用。
+async function checkTaskCount() {
+    try {
+        const r = await fetch('/api/tasks/open_count');
+        if (!r.ok) return;
+        const d = await r.json();
+        if (window.dwSetBadge) window.dwSetBadge('/tasks', d.count || 0);
+    } catch (e) {}
+}
+
 async function checkUnreadMessages() {
+    checkTaskCount();      // drawer-badge-v1: 同じ周期でタスクも数える
     // Session 32: 掲示板ページでも未読バッジを更新(上タブと下メニューを一致させる)
     try {
         const res = await fetch('/api/board/unread_count');
@@ -1175,6 +2345,7 @@ async function checkUnreadMessages() {
                     badge.style.display = 'none';
                 }
             }
+            if (window.dwSetBadge) window.dwSetBadge('/board', count);   // drawer-badge-v1
             // 新着があったら通知音(掲示板ページ・チャットページ以外で)
             if (count > lastUnreadCount && lastUnreadCount >= 0) {
                 const isOnBoard = location.pathname === '/board';
@@ -1199,6 +2370,7 @@ async function checkUnreadMessages() {
                     db.style.display = 'none';
                 }
             }
+            if (window.dwSetBadge) window.dwSetBadge('/daily_view', c2);   // drawer-badge-v1
             setTimeout(updateMarkAllReadBar, 100);
         }
     } catch(e) {}
@@ -1532,7 +2704,7 @@ function loadNavOrder() {
     // 並び替え対象は href を持つ <a> のみ。TOP とログアウトは固定なので並び替えしない。
     // 保存された href 順に並び替える。保存に存在しない項目は元の位置を維持。
     var items = Array.from(nav.querySelectorAll('a.bottom-nav-item'));
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/dev'];  // nav-renraku-movable-v1
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/soge', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/patient-info', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/rec_expense', '/dev'];  // nav-renraku-movable-v1
     // 各 movable item の現在の参照を取得
     var byHref = {};
     items.forEach(function(el) {
@@ -1603,7 +2775,7 @@ window.startNavEditMode = function() {
     nav.classList.add('edit-mode');
     document.body.classList.add('nav-editing');
     // 各項目を「並び替え可」「固定」に分類
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/dev'];  // nav-renraku-movable-v1
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/soge', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/patient-info', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/rec_expense', '/dev'];  // nav-renraku-movable-v1
     var items = Array.from(nav.querySelectorAll('.bottom-nav-item'));
     items.forEach(function(el) {
         var h = el.getAttribute('href');
@@ -1651,7 +2823,7 @@ window.stopNavEditMode = function() {
     nav.removeEventListener('click', navEditClickBlocker, true);
     nav.removeEventListener('contextmenu', navEditContextMenuBlocker, true);
     // 現在の DOM 順序を保存(href 配列、movable のみ)
-    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/dev'];  // nav-renraku-movable-v1
+    var movableHrefs = ['/input', '/daily_view', '/vitals', '/renraku', '/soge', '/fitness', '/life_check', '/calendar', '/case_records', '/monitoring', '/patient-info', '/assessment', '/print_output', '/admin/meetings', '/tasks', '/board', '/birthday', '/numerology', '/admin', '/manual', '/ledger', '/rec_expense', '/dev'];  // nav-renraku-movable-v1
     var current = Array.from(nav.querySelectorAll('a.bottom-nav-item'))
         .map(function(el) { return el.getAttribute('href'); })
         .filter(function(h) { return movableHrefs.indexOf(h) !== -1; });
@@ -2029,6 +3201,18 @@ window.openSettings = function() {
     var activeEl = document.getElementById('nav-color-active');
     if (normalEl) { normalEl.value = savedNormal; document.getElementById('nav-color-normal-label').textContent = savedNormal; }
     if (activeEl) { activeEl.value = savedActive; document.getElementById('nav-color-active-label').textContent = savedActive; }
+    // 翻訳機能トグル初期化
+    (function() {
+        var tog = document.getElementById('tt-enabled-toggle');
+        var slider = document.getElementById('tt-enabled-slider');
+        var knob = document.getElementById('tt-enabled-knob');
+        var langRow = document.getElementById('tt-settings-lang-row');
+        var enabled = localStorage.getItem('tt_enabled') !== '0';
+        if (tog) tog.checked = enabled;
+        if (slider) slider.style.background = enabled ? '#1a73e8' : '#ccc';
+        if (knob) knob.style.left = enabled ? '22px' : '2px';
+        if (langRow) langRow.style.display = enabled ? '' : 'none';
+    })();
     // パスコードトグル
     var lockEnabled = localStorage.getItem('tasukaru_lock_enabled') === '1';
     var toggle = document.getElementById('passcode-toggle');
@@ -2160,6 +3344,18 @@ document.addEventListener('click', function(e) {
         if (typeof window.resetNavOrder === 'function') window.resetNavOrder();
         return;
     }
+    // sound-preview-order-fix-v1: 試聴ボタンを最優先で処理(親.sound-optより先)
+    if (e.target.closest('#preview-btn, .preview-btn')) {
+        var pBtn = e.target.closest('.preview-btn');
+        if (pBtn) {
+            var snd = pBtn.dataset.preview;
+            if (snd === 'pop') soundPop();
+            else if (snd === 'chime') soundChime();
+            else if (snd === 'pico') soundPico();
+            else if (snd === 'tasukaru') soundTasukaru();
+        }
+        return;
+    }
     if (e.target.closest('.sound-opt')) {
         var opt = e.target.closest('.sound-opt');
         if (e.target.closest('.preview-btn')) return; // 試聴ボタンはここでは処理しない
@@ -2194,17 +3390,6 @@ document.addEventListener('click', function(e) {
             localStorage.setItem('tasukaru_passcode', btoa(p1));
             alert('✅ パスコードを設定しました');
         }, 300);
-        return;
-    }
-    if (e.target.closest('#preview-btn, .preview-btn')) {
-        var pBtn = e.target.closest('.preview-btn');
-        if (pBtn) {
-            var snd = pBtn.dataset.preview;
-            if (snd === 'pop') soundPop();
-            else if (snd === 'chime') soundChime();
-            else if (snd === 'pico') soundPico();
-            else if (snd === 'tasukaru') soundTasukaru();
-        }
         return;
     }
 });
@@ -2243,7 +3428,8 @@ document.addEventListener('input', function(e) {
         var fabArea = document.getElementById('top-fab-area');
         var isTop = window.location.pathname === '/top' || window.location.pathname === '/';
         // TOPのみベル+歯車を表示、それ以外は非表示
-        if (fabArea) fabArea.style.display = isTop ? '' : 'none';
+        // ただし翻訳ボタン（tt-lens-btn, tt-lang-btn）は全ページで表示するためfabArea自体は常に表示
+        if (fabArea) fabArea.style.display = '';
         if (bellBtn) bellBtn.style.display = isTop ? '' : 'none';
         if (gearBtn) gearBtn.style.display = isTop ? '' : 'none';
         // 目標確認ボタンはTOPのみ表示・期限切れなら赤色
@@ -3006,6 +4192,200 @@ async function auRenderTop(){
     }).join("");
   }catch(e){box.innerHTML='<div style="color:#c5221f;">読み込みに失敗しました</div>';}
 }
+</script>
+<!-- translation-v1: 外国人スタッフ向け翻訳入力バー・翻訳レンズ -->
+<script src="/static/tt_input.js"></script>
+<script src="/static/tt_lens.js"></script>
+<!-- translation-v1: Googleウィジェットは非表示で機能だけ使う。言語切替はカスタムボタン経由。 -->
+<style>
+  #tt-translate-widget { position:fixed; top:-200px; left:-200px; width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; }
+  .goog-te-banner-frame, .skiptranslate > span { display:none !important; }
+  body { top:0 !important; }
+  /* 言語ピッカーモーダル */
+  #tt-lang-modal { position:fixed; inset:0; z-index:9800; background:rgba(0,0,0,0.4); display:none; align-items:flex-end; justify-content:center; padding-bottom:env(safe-area-inset-bottom); }
+  #tt-lang-modal.open { display:flex; }
+  #tt-lang-sheet { background:#fff; border-radius:22px 22px 0 0; width:100%; max-width:var(--page-max-width,480px); padding:20px 16px 32px; box-shadow:0 -4px 24px rgba(0,0,0,0.15); }
+  #tt-lang-sheet h3 { font-size:0.92rem; font-weight:800; color:#202124; margin:0 0 14px; text-align:center; }
+  .tt-lang-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .tt-lang-btn { padding:10px 4px; border:1.5px solid #e0e0e0; border-radius:12px; background:#fff; font-size:0.78rem; font-weight:700; color:#202124; cursor:pointer; text-align:center; line-height:1.4; transition:background .12s,border-color .12s; }
+  .tt-lang-btn:active { background:#e8f0fe; border-color:#1a73e8; }
+  .tt-lang-btn.active { background:#e8f0fe; border-color:#1a73e8; color:#1a73e8; }
+  .tt-lang-btn .tt-lang-flag { font-size:1.3rem; display:block; margin-bottom:2px; }
+  .tt-lang-reset { width:100%; margin-top:10px; padding:11px; border:1.5px solid #dadce0; border-radius:12px; background:#f8f9fa; font-size:0.82rem; font-weight:700; color:#5f6368; cursor:pointer; }
+</style>
+<div id="tt-translate-widget"><div id="google_translate_element"></div></div>
+<!-- 翻訳レンズ：言語設定ピッカー -->
+<style>#tt-lang-picker-modal{display:none;}#tt-lang-picker-modal.open{display:flex!important;}</style>
+<div id="tt-lang-picker-modal" onclick="if(event.target===this)document.getElementById('tt-lang-picker-modal').classList.remove('open')"
+     style="position:fixed;inset:0;z-index:9850;background:rgba(0,0,0,0.4);align-items:flex-end;justify-content:center;"
+     class="">
+  <div style="background:#fff;border-radius:22px 22px 0 0;width:100%;max-width:var(--page-max-width,480px);padding:20px 16px 32px;box-shadow:0 -4px 24px rgba(0,0,0,0.15);">
+    <h3 style="font-size:0.92rem;font-weight:800;color:#202124;margin:0 0 6px;text-align:center;">🔍 母国語を選択</h3>
+    <p style="font-size:0.72rem;color:#5f6368;text-align:center;margin:0 0 10px;">選択後、読みたいUI要素をタップすると翻訳されます</p>
+    <!-- このまま使うボタン：言語設定済みのとき表示 -->
+    <button id="tt-lens-keep-btn" onclick="ttLensKeepLang()" style="display:none;width:100%;margin-bottom:10px;padding:12px;border:2px solid #1a73e8;border-radius:12px;background:#e8f0fe;font-size:0.85rem;font-weight:800;color:#1a73e8;cursor:pointer;">このまま使う ▶</button>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+      <button onclick="ttLensPickLang('en')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇺🇸</span>English</button>
+      <button onclick="ttLensPickLang('zh-CN')" style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇨🇳</span>中文</button>
+      <button onclick="ttLensPickLang('ko')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇰🇷</span>한국어</button>
+      <button onclick="ttLensPickLang('vi')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇻🇳</span>Tiếng Việt</button>
+      <button onclick="ttLensPickLang('tl')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇵🇭</span>Filipino</button>
+      <button onclick="ttLensPickLang('id')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇮🇩</span>Indonesia</button>
+      <button onclick="ttLensPickLang('pt')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇧🇷</span>Português</button>
+      <button onclick="ttLensPickLang('es')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇪🇸</span>Español</button>
+      <button onclick="ttLensPickLang('my')"  style="padding:10px 4px;border:1.5px solid #e0e0e0;border-radius:12px;background:#fff;font-size:0.78rem;font-weight:700;cursor:pointer;"><span style="font-size:1.3rem;display:block;margin-bottom:2px;">🇲🇲</span>မြန်မာ</button>
+    </div>
+    <button onclick="ttLensClearLang()" style="width:100%;margin-top:10px;padding:11px;border:1.5px solid #dadce0;border-radius:12px;background:#f8f9fa;font-size:0.82rem;font-weight:700;color:#5f6368;cursor:pointer;">設定をクリア（日本語に戻す）</button>
+  </div>
+</div>
+
+<!-- 言語ピッカーモーダル -->
+<div id="tt-lang-modal" onclick="if(event.target===this)ttCloseLang()">
+  <div id="tt-lang-sheet">
+    <h3>🌐 表示言語を選択</h3>
+    <div class="tt-lang-grid">
+      <button class="tt-lang-btn" onclick="ttSetLang('en')"><span class="tt-lang-flag">🇺🇸</span>English</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('zh-CN')"><span class="tt-lang-flag">🇨🇳</span>中文</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('ko')"><span class="tt-lang-flag">🇰🇷</span>한국어</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('vi')"><span class="tt-lang-flag">🇻🇳</span>Tiếng Việt</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('tl')"><span class="tt-lang-flag">🇵🇭</span>Filipino</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('id')"><span class="tt-lang-flag">🇮🇩</span>Indonesia</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('pt')"><span class="tt-lang-flag">🇧🇷</span>Português</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('es')"><span class="tt-lang-flag">🇪🇸</span>Español</button>
+      <button class="tt-lang-btn" onclick="ttSetLang('th')"><span class="tt-lang-flag">🇹🇭</span>ภาษาไทย</button>
+    </div>
+    <button class="tt-lang-reset" onclick="ttResetLang()">🇯🇵 日本語に戻す</button>
+  </div>
+</div>
+<script>
+function googleTranslateElementInit() {
+  new google.translate.TranslateElement({ pageLanguage:'ja', includedLanguages:'en,zh-CN,zh-TW,ko,vi,tl,id,pt,es,th,my', autoDisplay:false }, 'google_translate_element');
+}
+window.ttToggleEnabled = function(enabled) {
+  var slider = document.getElementById('tt-enabled-slider');
+  var knob = document.getElementById('tt-enabled-knob');
+  if (slider) slider.style.background = enabled ? '#1a73e8' : '#ccc';
+  if (knob) knob.style.left = enabled ? '22px' : '2px';
+  if (typeof window.ttSetEnabled === 'function') window.ttSetEnabled(enabled);
+};
+function ttOpenLang() { document.getElementById('tt-lang-modal').classList.add('open'); }
+function ttCloseLang() { document.getElementById('tt-lang-modal').classList.remove('open'); }
+function ttSetLang(lang) {
+  document.querySelectorAll('.tt-lang-btn').forEach(function(b){ b.classList.remove('active'); });
+  event.currentTarget.classList.add('active');
+  var sel = document.querySelector('.goog-te-combo');
+  if (sel) { sel.value = lang; sel.dispatchEvent(new Event('change')); }
+  setTimeout(ttCloseLang, 300);
+}
+function ttResetLang() {
+  document.querySelectorAll('.tt-lang-btn').forEach(function(b){ b.classList.remove('active'); });
+  var sel = document.querySelector('.goog-te-combo');
+  if (sel) { sel.value = 'ja'; sel.dispatchEvent(new Event('change')); }
+  ttCloseLang();
+}
+</script>
+<script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
+<script>
+/* 災害記録用 名簿キャッシュ app-roster-cache-v1 (Capacitorアプリ内のみ・6時間毎) */
+(function(){
+  try{
+    if(!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())) return;
+    var P = Capacitor.Plugins && Capacitor.Plugins.Preferences;
+    if(!P) return;
+    setTimeout(async function(){
+      try{
+        var last = await P.get({key:'dr_roster_at'});
+        var now = Date.now();
+        if(last && last.value && (now - parseInt(last.value,10) < 21600000)) return;
+        var res = await fetch('/api/patients_cache', {credentials:'same-origin'});
+        if(!res.ok) return;
+        var data = await res.json();
+        var names = (data.patients||[]).map(function(x){ return x.user_name; }).filter(Boolean);
+        if(names.length){
+          await P.set({key:'dr_roster', value: JSON.stringify(names)});
+          await P.set({key:'dr_roster_at', value: String(now)});
+        }
+      }catch(e){}
+    }, 4000);
+  }catch(e){}
+})();
+</script>
+<script>
+/* 災害記録 自動同期 app-disaster-sync-v1
+   Capacitorアプリ内かつオンライン時に、端末の dr_records を /api/disaster_records/sync へ一括POSTし、
+   成功したら端末側をクリアする（記録者名 dr_recorder は残す）。ブラウザ利用者は何もしない。 */
+(function(){
+  try{
+    if(!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform())) return;
+    var P = Capacitor.Plugins && Capacitor.Plugins.Preferences;
+    if(!P) return;
+    async function isOnline(){
+      try{
+        if(Capacitor.Plugins.Network){ var s = await Capacitor.Plugins.Network.getStatus(); return !!s.connected; }
+      }catch(e){}
+      return navigator.onLine;
+    }
+    var _syncing = false;
+    async function syncNow(){
+      if(_syncing) return;
+      _syncing = true;
+      try{
+        if(!(await isOnline())) return;
+        var g = await P.get({key:'dr_records'});
+        if(!g || !g.value) return;
+        var recs = {};
+        try{ recs = JSON.parse(g.value) || {}; }catch(e){ return; }
+        // status付きの記録が1件でもあれば送信対象
+        var has = Object.keys(recs).some(function(k){ return recs[k] && recs[k].status; });
+        if(!has) return;
+        var res = await fetch('/api/disaster_records/sync', {
+          method: 'POST', credentials: 'same-origin',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({records: recs})
+        });
+        if(!res.ok) return;
+        var data = await res.json();
+        if(data && data.status === 'success'){
+          // 同期成功 → 端末の記録をクリア（次の災害に備える。記録者名は保持）
+          await P.set({key:'dr_records', value: JSON.stringify({})});
+          try{ localStorage.removeItem('dr_records'); }catch(e){}
+        }
+      }catch(e){}
+      finally{ _syncing = false; }
+    }
+    setTimeout(syncNow, 6000);
+    // 電波が戻ったタイミングでも同期を試みる
+    try{
+      if(Capacitor.Plugins.Network){
+        Capacitor.Plugins.Network.addListener('networkStatusChange', function(st){
+          if(st && st.connected){ setTimeout(syncNow, 1500); }
+        });
+      }
+    }catch(e){}
+  }catch(e){}
+})();
+</script>
+<script>
+/* app-disaster-drill-v1: アプリ内のみ、引き出しメニューに「災害記録（訓練）」ボタンを出す。
+   オンライン中でもローカルのオフライン災害記録ページ(disaster.html)へ切り替えて訓練できる。
+   ブラウザ利用者には出さない（capacitor://localhost はアプリ内にしか無いため）。 */
+(function(){
+  function isApp(){ return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()); }
+  window.dwOpenDisasterDrill = function(){
+    try{
+      // iOSは capacitor://localhost、Androidは https://localhost で配信される。
+      var isAndroid = !!(window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'android');
+      location.href = (isAndroid ? 'https://localhost/disaster.html' : 'capacitor://localhost/disaster.html');
+    }catch(e){ location.href = 'capacitor://localhost/disaster.html'; }
+  };
+  function reveal(){
+    if(!isApp()) return;
+    var el = document.getElementById('dwDisasterDrill');
+    if(el) el.style.display = 'block';
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', reveal);
+  else reveal();
+})();
 </script>
 </body>
 </html>
