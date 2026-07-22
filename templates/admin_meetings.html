@@ -454,11 +454,17 @@ async function mtgLoadList() {
         + '<span class="material-symbols-outlined mi-icon">groups</span>'
         + '<div class="mi-main"><div class="mi-title">'+title+'</div>'
         + '<div class="mi-date">'+dt+'</div></div>'
+        + '<button class="mtg-del-btn" data-del="'+mid+'" title="削除" style="background:none;border:none;color:#c5221f;cursor:pointer;padding:6px;margin-right:2px;display:flex;align-items:center;">'
+        +   '<span class="material-symbols-outlined" style="font-size:20px;">delete</span></button>'
         + '<span class="material-symbols-outlined" style="color:#c3d3c6;">chevron_right</span></div>';
     }).join('');
     // イベント委譲: onclick属性を使わず引用符問題を回避
     body.querySelectorAll('.mtg-list-item').forEach(el => {
       el.addEventListener('click', () => mtgOpen(el.getAttribute('data-mid')));
+    });
+    // meetings-delete-v1: 削除ボタン（行クリックへ伝播させない）
+    body.querySelectorAll('.mtg-del-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); mtgDelete(btn.getAttribute('data-del')); });
     });
   } catch(e) {
     body.innerHTML = '<div class="mtg-empty">読み込みエラー: '+e+'</div>';
@@ -945,6 +951,16 @@ async function mtgSave() {
     audio_session_id: mtgState.sessionId,
     stickies,
   };
+  // meetings-overwrite-v1: 同日重複を防ぐ。編集中はそのレコードを上書き。新規で同日既存があれば確認。
+  let overwriteId = mtgState.editingMeetingId || null;
+  if (!overwriteId && payload.meeting_date) {
+    const dup = await mtgFindSameDay(payload.patient_id, payload.meeting_date);
+    if (dup) {
+      const ov = confirm('同じ利用者・同じ日（'+payload.meeting_date+'）の記録が既にあります。\n\n［OK］＝その記録に上書き保存\n［キャンセル］＝新しい記録として保存');
+      if (ov) overwriteId = dup.id;
+    }
+  }
+  if (overwriteId) payload.overwrite_id = overwriteId;
   const btn = document.getElementById('mtgSaveBtn');
   btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>保存中...';
   try {
@@ -962,6 +978,34 @@ async function mtgSave() {
   } catch(e) { alert('エラー: '+e); }
   btn.disabled = false;
   btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">save</span>保存';
+}
+
+// meetings-overwrite-v1: 同じ利用者・同じ日の既存会議を探す
+async function mtgFindSameDay(patientId, dateStr) {
+  try {
+    const r = await fetch('/api/meeting/list');
+    const d = await r.json();
+    if (d.status !== 'success') return null;
+    return (d.meetings || []).find(m =>
+      String(m.patient_id||'') === String(patientId||'') &&
+      String(m.meeting_date||'') === String(dateStr||'')
+    ) || null;
+  } catch(e) { return null; }
+}
+
+// meetings-delete-v1: 会議記録を削除（管理者のみ・サーバ側で権限確認）
+async function mtgDelete(mid) {
+  if (!mid) return;
+  if (!confirm('この会議記録を削除します。よろしいですか？（元に戻せません）')) return;
+  try {
+    const r = await fetch('/api/meeting/delete', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ meeting_id: mid })
+    });
+    const d = await r.json();
+    if (d.status === 'success') { mtgLoadList(); }
+    else { alert(d.message || '削除に失敗しました'); }
+  } catch(e) { alert('エラー: '+e); }
 }
 
 // ===== ICFマスタ ヘルパー =====
