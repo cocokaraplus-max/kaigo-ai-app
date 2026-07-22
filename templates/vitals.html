@@ -2690,7 +2690,7 @@ async function rcPermTest(){
         var b = document.createElement('button');
         b.id = 'rc-permtest-btn'; b.type = 'button';
         b.textContent = '🔔 通知を許可 / テスト（初回のみ）';
-        b.style.cssText = 'display:block;width:calc(100% - 24px);margin:10px 12px;padding:12px;background:#e65100;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.9rem;';
+        b.style.cssText = 'display:block;width:calc(100% - 24px);margin:calc(env(safe-area-inset-top, 20px) + 12px) 12px 6px;padding:12px;background:#e65100;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.9rem;position:relative;z-index:5;';
         b.onclick = rcPermTest;
         document.body.insertBefore(b, document.body.firstChild);
     }
