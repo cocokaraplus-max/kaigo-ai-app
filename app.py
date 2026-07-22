@@ -26168,10 +26168,24 @@ def api_meeting_save():
             "status": "confirmed",
             "created_by": my_name,
         }
-        m_res = supabase.table("meetings").insert(m_row).execute()
-        if not (m_res.data and m_res.data[0].get("id")):
-            return jsonify({"status": "error", "message": "会議の保存に失敗しました"}), 500
-        meeting_id = m_res.data[0]["id"]
+        # meetings-overwrite-v1: 同日重複対策。overwrite_id 指定時は既存レコードを更新（旧付箋を入れ替え）。
+        overwrite_id = (data.get("overwrite_id") or "").strip()
+        overwrite_id = overwrite_id if _UUID_RE.match(overwrite_id) else None
+        if overwrite_id:
+            _chk = supabase.table("meetings").select("id").eq("id", overwrite_id).eq("facility_code", f_code).execute()
+            if not _chk.data:
+                overwrite_id = None  # 他施設/不在なら新規INSERTにフォールバック
+        if overwrite_id:
+            _upd = {k: v for k, v in m_row.items() if k not in ("facility_code", "created_by")}
+            supabase.table("meetings").update(_upd).eq("id", overwrite_id).eq("facility_code", f_code).execute()
+            meeting_id = overwrite_id
+            # 旧付箋を全削除してから入れ直す
+            supabase.table("meeting_icf_links").delete().eq("meeting_id", meeting_id).execute()
+        else:
+            m_res = supabase.table("meetings").insert(m_row).execute()
+            if not (m_res.data and m_res.data[0].get("id")):
+                return jsonify({"status": "error", "message": "会議の保存に失敗しました"}), 500
+            meeting_id = m_res.data[0]["id"]
 
         # 付箋を一括insert。icf_codeがマスタに無いものはコードnull(手動メモ付箋)として保存。
         _valid = set()
@@ -26258,6 +26272,31 @@ def api_meeting_get():
             .eq("meeting_id", meeting_id)\
             .order("board_slot").order("sort_order").execute()  # meetings-board-slot-api-v1
         return jsonify({"status": "success", "meeting": meeting, "stickies": lr.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/meeting/delete", methods=["POST"])
+@login_required
+def api_meeting_delete():
+    """会議1件を削除（付箋 meeting_icf_links も併せて削除）。管理者のみ。meetings-delete-v1"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "削除は管理者のみ可能です"}), 403
+        data = request.get_json(silent=True) or {}
+        meeting_id = (data.get("meeting_id") or "").strip()
+        if not _UUID_RE.match(meeting_id):
+            return jsonify({"status": "error", "message": "meeting_id が不正です"}), 400
+        chk = supabase.table("meetings").select("id").eq("id", meeting_id).eq("facility_code", f_code).execute()
+        if not chk.data:
+            return jsonify({"status": "error", "message": "会議が見つかりません"}), 404
+        supabase.table("meeting_icf_links").delete().eq("meeting_id", meeting_id).execute()
+        supabase.table("meetings").delete().eq("id", meeting_id).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 # --- /meetings-save-list-get-v1 ---
