@@ -26172,9 +26172,12 @@ def api_meeting_save():
         overwrite_id = (data.get("overwrite_id") or "").strip()
         overwrite_id = overwrite_id if _UUID_RE.match(overwrite_id) else None
         if overwrite_id:
-            _chk = supabase.table("meetings").select("id").eq("id", overwrite_id).eq("facility_code", f_code).execute()
+            _chk = supabase.table("meetings").select("id,created_by").eq("id", overwrite_id).eq("facility_code", f_code).execute()
             if not _chk.data:
                 overwrite_id = None  # 他施設/不在なら新規INSERTにフォールバック
+            elif (_chk.data[0].get("created_by") or "") != my_name and not is_admin_user(supabase, f_code, my_name):
+                # record-owner-perm-v1: 編集(上書き)は作成者または管理者のみ
+                return jsonify({"status": "error", "message": "編集（上書き）は作成者または管理者のみ可能です"}), 403
         if overwrite_id:
             _upd = {k: v for k, v in m_row.items() if k not in ("facility_code", "created_by")}
             supabase.table("meetings").update(_upd).eq("id", overwrite_id).eq("facility_code", f_code).execute()
@@ -26279,21 +26282,22 @@ def api_meeting_get():
 @app.route("/api/meeting/delete", methods=["POST"])
 @login_required
 def api_meeting_delete():
-    """会議1件を削除（付箋 meeting_icf_links も併せて削除）。管理者のみ。meetings-delete-v1"""
+    """会議1件を削除（付箋 meeting_icf_links も併せて削除）。作成者または管理者のみ。meetings-delete-v1"""
     ok, f_code, my_name = _meetings_gate_ok()
     if not ok:
         return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
     try:
         supabase = get_supabase()
-        if not is_admin_user(supabase, f_code, my_name):
-            return jsonify({"status": "error", "message": "削除は管理者のみ可能です"}), 403
         data = request.get_json(silent=True) or {}
         meeting_id = (data.get("meeting_id") or "").strip()
         if not _UUID_RE.match(meeting_id):
             return jsonify({"status": "error", "message": "meeting_id が不正です"}), 400
-        chk = supabase.table("meetings").select("id").eq("id", meeting_id).eq("facility_code", f_code).execute()
+        chk = supabase.table("meetings").select("id,created_by").eq("id", meeting_id).eq("facility_code", f_code).execute()
         if not chk.data:
             return jsonify({"status": "error", "message": "会議が見つかりません"}), 404
+        # record-owner-perm-v1: 削除は作成者または管理者のみ
+        if (chk.data[0].get("created_by") or "") != my_name and not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "削除は作成者または管理者のみ可能です"}), 403
         supabase.table("meeting_icf_links").delete().eq("meeting_id", meeting_id).execute()
         supabase.table("meetings").delete().eq("id", meeting_id).eq("facility_code", f_code).execute()
         return jsonify({"status": "success"})
@@ -27490,8 +27494,15 @@ def api_staff_minutes_save():
         }
         rec_id = (data.get("id") or "").strip()
         if rec_id and _SM_UUID_RE.match(rec_id):
-            row["updated_at"] = "now()"
-            supabase.table("staff_meetings").update(row)\
+            # record-owner-perm-v1: 編集(更新)は作成者または管理者のみ。作成者は変更しない。
+            _own = supabase.table("staff_meetings").select("created_by").eq("id", rec_id).eq("facility_code", f_code).execute()
+            if not _own.data:
+                return jsonify({"status": "error", "message": "記録が見つかりません"}), 404
+            if (_own.data[0].get("created_by") or "") != my_name and not is_admin_user(supabase, f_code, my_name):
+                return jsonify({"status": "error", "message": "編集は作成者または管理者のみ可能です"}), 403
+            _upd = {k: v for k, v in row.items() if k != "created_by"}
+            _upd["updated_at"] = "now()"
+            supabase.table("staff_meetings").update(_upd)\
                 .eq("id", rec_id).eq("facility_code", f_code).execute()
             return jsonify({"status": "success", "id": rec_id})
         res = supabase.table("staff_meetings").insert(row).execute()
@@ -27555,6 +27566,12 @@ def api_staff_minutes_delete():
         rec_id = (data.get("id") or "").strip()
         if not _SM_UUID_RE.match(rec_id):
             return jsonify({"status": "error", "message": "id が不正です"}), 400
+        # record-owner-perm-v1: 削除は作成者または管理者のみ
+        _own = supabase.table("staff_meetings").select("created_by").eq("id", rec_id).eq("facility_code", f_code).execute()
+        if not _own.data:
+            return jsonify({"status": "error", "message": "記録が見つかりません"}), 404
+        if (_own.data[0].get("created_by") or "") != my_name and not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "削除は作成者または管理者のみ可能です"}), 403
         supabase.table("staff_meetings").delete()\
             .eq("id", rec_id).eq("facility_code", f_code).execute()
         return jsonify({"status": "success"})
