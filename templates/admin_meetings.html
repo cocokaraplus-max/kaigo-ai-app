@@ -274,6 +274,25 @@
           <span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成
         </button>
       </div>
+      <!-- pdf-move-v1: 「議事録PDF」を「議事録を作成」の直後に配置。議事録生成後に表示される。 -->
+      <div class="mtg-pdf-minutes-row" id="mtgPdfMinutes" style="display:none; margin-top:8px;">
+        <div style="font-size:0.75rem; color:#5f7a63; margin-bottom:4px;">議事録レイアウト（8種類から選べます）:</div>
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <select id="mtgStyleSelect" style="flex:1; min-width:180px; padding:7px; border-radius:8px; border:1px solid #cfd8cf; font-size:0.82rem; color:#33453a;">
+            <option value="a">A ｜ スッキリ（表＋見出し）</option>
+            <option value="b">B ｜ ビジネス（決定事項を番号強調）</option>
+            <option value="c">C ｜ フォーマル（公的様式風）</option>
+            <option value="d">D ｜ サイドバー（左に情報帯・高級感）</option>
+            <option value="e">E ｜ カード（決定事項を強調）</option>
+            <option value="f">F ｜ タイムライン（議事を縦に追う）</option>
+            <option value="g">G ｜ エグゼクティブ（格調・モノトーン）</option>
+            <option value="h">H ｜ モダンミニマル（余白・洗練）</option>
+          </select>
+          <button class="mtg-btn sec" style="min-width:130px;" onclick="mtgPdf('minutes', document.getElementById('mtgStyleSelect').value)">
+            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>議事録PDF
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- ステップ3: 議事録 -->
@@ -303,24 +322,6 @@
         <button class="mtg-btn" id="mtgAssessBtn" onclick="mtgAssess()">
           <span class="material-symbols-outlined" style="font-size:20px;">assignment</span>アセスメントを作成
         </button>
-      </div>
-      <div class="mtg-pdf-minutes-row" id="mtgPdfMinutes" style="display:none; margin-top:8px;">
-        <div style="font-size:0.75rem; color:#5f7a63; margin-bottom:4px;">議事録レイアウト（8種類から選べます）:</div>
-        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-          <select id="mtgStyleSelect" style="flex:1; min-width:180px; padding:7px; border-radius:8px; border:1px solid #cfd8cf; font-size:0.82rem; color:#33453a;">
-            <option value="a">A ｜ スッキリ（表＋見出し）</option>
-            <option value="b">B ｜ ビジネス（決定事項を番号強調）</option>
-            <option value="c">C ｜ フォーマル（公的様式風）</option>
-            <option value="d">D ｜ サイドバー（左に情報帯・高級感）</option>
-            <option value="e">E ｜ カード（決定事項を強調）</option>
-            <option value="f">F ｜ タイムライン（議事を縦に追う）</option>
-            <option value="g">G ｜ エグゼクティブ（格調・モノトーン）</option>
-            <option value="h">H ｜ モダンミニマル（余白・洗練）</option>
-          </select>
-          <button class="mtg-btn sec" style="min-width:130px;" onclick="mtgPdf('minutes', document.getElementById('mtgStyleSelect').value)">
-            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>議事録PDF
-          </button>
-        </div>
       </div>
     </div>
 
@@ -570,12 +571,17 @@ function mtgUpdatePdfButtons() {
 }
 
 // PDF出力(保存済みデータからサーバ生成)
-function mtgPdf(type, style) {
-  if (!mtgState.editingMeetingId) {
-    alert('先に保存してください。PDFは保存された内容から作成されます。');
+async function mtgPdf(type, style) {
+  // pdf-reflect-edits-v1: 押した時点の内容（編集後の議事録/アセスメント/ICF分類）を保存してから生成する。
+  let mid;
+  try {
+    mid = await mtgSave({ silent: true });
+  } catch (e) {
+    alert('PDF生成前の保存でエラー: ' + (e && e.message ? e.message : e));
     return;
   }
-  let url = '/api/meeting/pdf?meeting_id=' + encodeURIComponent(mtgState.editingMeetingId) + '&type=' + type + '&_t=' + Date.now();
+  if (!mid) { alert('保存できませんでした。もう一度お試しください。'); return; }
+  let url = '/api/meeting/pdf?meeting_id=' + encodeURIComponent(mid) + '&type=' + type + '&_t=' + Date.now();
   if (style) url += '&style=' + style;
   window.open(url, '_blank');
 }
@@ -919,7 +925,9 @@ async function mtgClassify() {
 }
 
 // ===== 保存(案X 一括) =====
-async function mtgSave() {
+async function mtgSave(opts) {
+  opts = opts || {};
+  const silent = !!opts.silent;   // silent時: 確認/ボタン演出/完了アラートを出さない（PDF生成前の保存に使う）
   // ボード状態(boardCards)から収集。スロット内の並び順にsort_orderを採番。
   const bySlot = {};
   const stickies = (mtgState.boardCards||[]).map((c) => {
@@ -953,7 +961,7 @@ async function mtgSave() {
   };
   // meetings-overwrite-v1: 同日重複を防ぐ。編集中はそのレコードを上書き。新規で同日既存があれば確認。
   let overwriteId = mtgState.editingMeetingId || null;
-  if (!overwriteId && payload.meeting_date) {
+  if (!overwriteId && payload.meeting_date && !silent) {
     const dup = await mtgFindSameDay(payload.patient_id, payload.meeting_date);
     if (dup) {
       const ov = confirm('同じ利用者・同じ日（'+payload.meeting_date+'）の記録が既にあります。\n\n［OK］＝その記録に上書き保存\n［キャンセル］＝新しい記録として保存');
@@ -962,7 +970,8 @@ async function mtgSave() {
   }
   if (overwriteId) payload.overwrite_id = overwriteId;
   const btn = document.getElementById('mtgSaveBtn');
-  btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>保存中...';
+  if (!silent && btn) { btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>保存中...'; }
+  let savedId = null;
   try {
     const r = await fetch('/api/meeting/save', {
       method:'POST', headers:{'Content-Type':'application/json'},
@@ -972,12 +981,20 @@ async function mtgSave() {
     if (d.status === 'success') {
       // 保存後もこの画面に留まり、PDF出力を可能にする
       if (d.meeting_id) mtgState.editingMeetingId = d.meeting_id;
+      savedId = mtgState.editingMeetingId;
       mtgUpdatePdfButtons();
-      alert('保存しました（付箋 '+d.saved_stickies+'件）。PDF出力ができます。');
-    } else { alert(d.message || '保存に失敗しました'); }
-  } catch(e) { alert('エラー: '+e); }
-  btn.disabled = false;
-  btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">save</span>保存';
+      if (!silent) alert('保存しました（付箋 '+d.saved_stickies+'件）。PDF出力ができます。');
+    } else {
+      if (!silent) { alert(d.message || '保存に失敗しました'); } else { throw new Error(d.message || '保存に失敗しました'); }
+    }
+  } catch(e) {
+    if (!silent) { alert('エラー: '+e); } else { throw e; }
+  }
+  if (!silent && btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">save</span>保存';
+  }
+  return savedId;
 }
 
 // meetings-overwrite-v1: 同じ利用者・同じ日の既存会議を探す
