@@ -898,7 +898,7 @@ _PRINT_CSS = '''
 html,body{margin:0;padding:0}
 *{box-sizing:border-box}
 body{font-family:"Noto Sans CJK JP","Noto Sans JP","Hiragino Kaku Gothic ProN",sans-serif;color:#000;line-height:1.55}
-.page-pad{padding:13mm}
+.page-pad{padding:0 13mm}
 .page-break{page-break-before:always}
 /* keiyaku-duplex-v1: 重説と契約書の間に入れる白紙。両面印刷で裏写りさせないため。 */
 .blank-page{height:100%;color:#fff}
