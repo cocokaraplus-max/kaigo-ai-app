@@ -1052,6 +1052,17 @@ body.nav-editing {
     <div class="dw-grid" id="dwGrid"></div>
   </div>
 
+  <!-- app-disaster-drill-v1: アプリ内のみ表示。オンライン中でも訓練用にオフライン災害記録ページを開く。
+       グリッド(dwGrid)は再描画で中身が消えるため、その外側（この位置）に固定で置く。 -->
+  <div id="dwDisasterDrill" style="display:none;padding:10px 12px calc(12px + env(safe-area-inset-bottom));border-top:1px solid #f1f3f4;">
+    <button type="button" onclick="dwOpenDisasterDrill()"
+      style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;background:#fff8e1;border:1.5px solid #ff6f00;border-radius:12px;color:#e65100;font-weight:800;font-size:0.9rem;cursor:pointer;">
+      <span class="material-symbols-outlined" style="font-size:20px;">emergency</span>
+      災害記録（訓練）
+    </button>
+    <div style="text-align:center;font-size:0.7rem;color:#9aa0a6;margin-top:6px;">オフラインでも使える災害記録ページを開きます</div>
+  </div>
+
   <!-- app-drawer-color-v1: 色パレット -->
   <div class="dw-pal" id="dwPal">
     <div class="dw-pal-grid" id="dwPalGrid"></div>
@@ -4352,6 +4363,28 @@ function ttResetLang() {
       }
     }catch(e){}
   }catch(e){}
+})();
+</script>
+<script>
+/* app-disaster-drill-v1: アプリ内のみ、引き出しメニューに「災害記録（訓練）」ボタンを出す。
+   オンライン中でもローカルのオフライン災害記録ページ(disaster.html)へ切り替えて訓練できる。
+   ブラウザ利用者には出さない（capacitor://localhost はアプリ内にしか無いため）。 */
+(function(){
+  function isApp(){ return !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()); }
+  window.dwOpenDisasterDrill = function(){
+    try{
+      // iOSは capacitor://localhost、Androidは https://localhost で配信される。
+      var isAndroid = !!(window.Capacitor && Capacitor.getPlatform && Capacitor.getPlatform() === 'android');
+      location.href = (isAndroid ? 'https://localhost/disaster.html' : 'capacitor://localhost/disaster.html');
+    }catch(e){ location.href = 'capacitor://localhost/disaster.html'; }
+  };
+  function reveal(){
+    if(!isApp()) return;
+    var el = document.getElementById('dwDisasterDrill');
+    if(el) el.style.display = 'block';
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', reveal);
+  else reveal();
 })();
 </script>
 </body>
