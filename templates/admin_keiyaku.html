@@ -769,7 +769,25 @@ function renderTypeEditor(){
   async function kkPrint(doc){
     if(state.dirty){ await saveSettings(true); }
     const url = `/admin/keiyaku/print?doc=${doc}&type=${encodeURIComponent(state.type)}&wari=${state.wari}`;
-    window.open(url, '_blank');
+    // keiyaku-print-inapp-v1: ブラウザは従来どおり別タブ。
+    //   Capacitorアプリ内は window.open が外部Safariを開きセッション(ログイン)が切れるため、
+    //   同一オリジンでPDFをfetch(cookie付き)→iOSの共有シート(AirPrint/ファイルに保存/メール)で開く。
+    //   共有が使えない環境ではアプリ内で直接表示（外部には飛ばさない）。
+    const isApp = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+    if(!isApp){ window.open(url, '_blank'); return; }
+    try{
+      if(typeof toast === 'function') toast('PDFを作成中…');
+      const res = await fetch(url, { credentials: 'same-origin' });
+      if(!res.ok){ alert('PDFの取得に失敗しました（' + res.status + '）。ログイン状態をご確認ください。'); return; }
+      const blob = await res.blob();
+      const fname = (doc==='juyo' ? '重要事項説明書' : doc==='keiyaku' ? '利用契約書' : '契約書一式') + '.pdf';
+      const file = new File([blob], fname, { type: 'application/pdf' });
+      if(navigator.canShare && navigator.canShare({ files: [file] })){
+        await navigator.share({ files: [file], title: fname });   // → AirPrint・ファイルに保存・メール等
+      } else {
+        location.href = URL.createObjectURL(blob);                // フォールバック: アプリ内で表示
+      }
+    }catch(e){ /* 共有をキャンセルした等は無視 */ }
   }
   $('#kk-print-juyo').onclick    = ()=> kkPrint('juyo');
   $('#kk-print-keiyaku').onclick = ()=> kkPrint('keiyaku');
