@@ -126,6 +126,14 @@
         <button data-area="0">その他</button>
       </div>
     </div>
+    <!-- keiyaku-cityarea-v1: 市町村→級地 自動設定（確定分のみ内蔵・未登録は手動選択にフォールバック） -->
+    <div class="kk-row" style="margin-top:8px;gap:8px;">
+      <input type="text" id="kk-city-input" placeholder="市町村名（例：豊田市）"
+        style="flex:1;min-width:0;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:.9rem;">
+      <button type="button" id="kk-city-apply"
+        style="white-space:nowrap;padding:8px 14px;border:1px solid #2f6b5e;background:#2f6b5e;color:#fff;border-radius:8px;cursor:pointer;font-weight:700;">級地を自動設定</button>
+    </div>
+    <p class="kk-desc" id="kk-city-note" style="margin-top:4px;color:#888;">登録済みの市町村なら級地を自動セット。未登録の市町村は上の級地ボタンから手動で選んでください。</p>
     <p class="kk-desc" id="kk-tanka-note">通所介護（人件費45%）× 3級地（上乗せ15%）= <b>10.68円</b>／単位</p>
   </div>
 
@@ -354,12 +362,12 @@ const KK_HOKENGAI_FIELDS = [
   ['h_pay',      '支払い方法', 'textarea'],
 ];
 
-// keiyaku-seikatsu-v1: 生活支援通所の単位（豊田市 単位数表マスタ A7・令和6年4月〜）
+// keiyaku-seikatsu-v1: 生活支援通所（緩和型）の単位。※市町村ごとに異なる。数値は参考初期値。
 const KK_SEIKATSU_FIELDS = [
-  ['s_w1_soge',   '週1回程度・送迎あり 単位（月）　※豊田市: 1530'],
-  ['s_w1_nosoge', '週1回程度・送迎なし 単位（月）　※豊田市: 1202'],
-  ['s_w2_soge',   '週2回程度・送迎あり 単位（月）　※豊田市: 3002'],
-  ['s_w2_nosoge', '週2回程度・送迎なし 単位（月）　※豊田市: 2359'],
+  ['s_w1_soge',   '週1回程度・送迎あり 単位（月）　※市町村で異なる（参考: 1530）'],
+  ['s_w1_nosoge', '週1回程度・送迎なし 単位（月）　※市町村で異なる（参考: 1202）'],
+  ['s_w2_soge',   '週2回程度・送迎あり 単位（月）　※市町村で異なる（参考: 3002）'],
+  ['s_w2_nosoge', '週2回程度・送迎なし 単位（月）　※市町村で異なる（参考: 2359）'],
 ];
 const KK_SEIKATSU_DEFAULTS = { s_w1_soge:1530, s_w1_nosoge:1202, s_w2_soge:3002, s_w2_nosoge:2359 };
 
@@ -373,8 +381,8 @@ function kkFillSeikatsuDefaults(node){
 // 予防のときに入れてもらう料金。総額は自治体の総合事業単価・加算体系で決まるので、
 // 単位×単価では出せない（現物の重説どおり、加算込みの円を入れてもらう）。
 const KK_YOBO_FIELDS = [
-  ['y1_units',    '要支援1 基本単位（月）　※豊田市: 1798'],
-  ['y2_units',    '要支援2 基本単位（月）　※豊田市: 3621'],
+  ['y1_units',    '要支援1 基本単位（月）　※国の標準値(現行相当): 1798'],
+  ['y2_units',    '要支援2 基本単位（月）　※国の標準値(現行相当): 3621'],
   ['y_add_units', '加算の合計単位（月）　※科学的介護推進40 / 運動器機能向上225 など'],
   ['y1_total',    '要支援1 月額総額（円・空なら自動計算）'],
   ['y2_total',    '要支援2 月額総額（円・空なら自動計算）'],
@@ -382,7 +390,7 @@ const KK_YOBO_FIELDS = [
 
 function kkCategoryOf(t){ return (t && t.category) || 'chiiki'; }
 
-// keiyaku-yobo-default-v1: 予防の既定値（豊田市 単位数表マスタ A6・令和6年4月〜）
+// keiyaku-yobo-default-v1: 予防の既定値（現行相当の国標準値・令和6年4月〜）
 //   基本単位 1,798 / 3,621、加算は科学的介護推進体制 40 のみ。
 //   運動器機能向上(225)・事業所評価(120)は令和6年3月末で終了しており算定できない。
 //   処遇改善は介護と同じ区分（Ⅱロ=12.5%）が自動で乗る。
@@ -424,7 +432,8 @@ function renderTypeEditor(){
           それ以外の加算は<b>予防の体系が別</b>なので（個別機能訓練Ⅰ/Ⅱは算定できず、
           運動器機能向上225・科学的介護推進40 など）、合計単位をここに入れてください。<br>
           総単位 =（基本単位 ＋ 加算単位）×（1＋処遇改善率）／ 総額 = 総単位 × 単価（級地）。<br>
-          現物の重説と1円まで合わせたいときは <b>月額総額（円）</b> に直接入れてください（そちらが優先）。
+          現物の重説と1円まで合わせたいときは <b>月額総額（円）</b> に直接入れてください（そちらが優先）。<br>
+          <b style="color:#c0392b;">※ 基本単位（現行相当）は国の標準値を初期値として入れています。</b>市町村が独自に設定している場合は、お住まいの市町村の単価表で確認・修正してください。
         </div></div>`;
       KK_YOBO_FIELDS.forEach(([k,lab])=>{
         h += `<label class="kk-fld"><span>${lab}</span>
@@ -452,7 +461,8 @@ function renderTypeEditor(){
         <div style="font-size:.76rem;color:#999;margin-bottom:6px;line-height:1.5;">
           単位 × 単価（級地）で総額を出し、<b>1割額を切り上げてから2倍・3倍</b>して
           2割・3割を出します（現物の重説がこの作りです。総額×0.2 だと1円ずれます）。<br>
-          加算はありません。<b>週2回程度は要支援2の方のみ</b>（表に注記が入ります）。
+          加算はありません。<b>週2回程度は要支援2の方のみ</b>（表に注記が入ります）。<br>
+          <b style="color:#c0392b;">※ 生活支援（緩和型）の単位は市町村ごとに異なります。</b>表示の数値は参考初期値なので、お住まいの市町村の単価表で確認・修正してください。
         </div></div>`;
       KK_SEIKATSU_FIELDS.forEach(([k,lab])=>{
         h += `<label class="kk-fld"><span>${lab}</span>
@@ -727,6 +737,24 @@ function renderTypeEditor(){
   document.querySelectorAll('#kk-seg-area button').forEach(b=>{
     b.onclick=()=>{ state.area=Number(b.dataset.area); state.dirty=true; syncSegs(); refreshFee(); };
   });
+  // keiyaku-cityarea-v1: 市町村→級地マスタ（確定分のみ内蔵。豊田市=3級地は検証済み。
+  //   ★追記は必ず公式「地域区分の適用地域（介護）」で確認できたものだけ。未登録は手動選択にフォールバック。）
+  const KK_CITY_AREA = { '豊田市': 3 };
+  { const btn=$('#kk-city-apply'), inp=$('#kk-city-input'), note=$('#kk-city-note');
+    if(btn) btn.onclick=()=>{
+      const name=((inp&&inp.value)||'').trim().replace(/[\s　]+/g,'');
+      if(!name){ note.textContent='市町村名を入力してください。'; note.style.color='#c0392b'; return; }
+      if(Object.prototype.hasOwnProperty.call(KK_CITY_AREA,name)){
+        const a=KK_CITY_AREA[name];
+        state.area=a; state.dirty=true; syncSegs(); refreshFee();
+        note.innerHTML='<b>'+name+' → '+(a===0?'その他':a+'級地')+'（確定）</b>を設定しました。単価に反映されます。';
+        note.style.color='#127a3d';
+      } else {
+        note.innerHTML='<b>'+name+'</b> は級地データ未登録です。上の級地ボタンから手動で選択してください（自事業所の級地は市の通知でご確認を）。';
+        note.style.color='#c0392b';
+      }
+    };
+  }
   document.querySelectorAll('#kk-pv-wari button').forEach(b=>{
     b.onclick=()=>{
       state.wari=Number(b.dataset.wari);
