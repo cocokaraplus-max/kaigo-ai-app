@@ -2603,7 +2603,17 @@ window.setQuickRecheckTime = function(pid, minutes) {
 
 // ===== ネイティブ通知連携(Capacitorアプリ内でのみ動作) app-native-recheck-v1 =====
 function _rcIsNative(){ return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
-function _rcLN(){ return (window.Capacitor && window.Capacitor.Plugins) ? window.Capacitor.Plugins.LocalNotifications : null; }
+function _rcLN(){
+    // app-recheck-remotefix-v1: リモート表示(DEV/PROD)のページでは Plugins.LocalNotifications が
+    //   未定義になりがち。その場合は registerPlugin でネイティブへ橋渡しして掴む。
+    if(!window.Capacitor) return null;
+    var P = window.Capacitor.Plugins;
+    if(P && P.LocalNotifications) return P.LocalNotifications;
+    if(typeof window.Capacitor.registerPlugin === 'function'){
+        try{ return window.Capacitor.registerPlugin('LocalNotifications'); }catch(e){}
+    }
+    return null;
+}
 function _rcNotifId(rid){ var n = Math.abs(parseInt(rid, 10)) % 2000000000; return n || 1; }
 async function _rcEnsurePerm(){ var ln=_rcLN(); if(!ln) return false; try{ var pm=await ln.checkPermissions(); if(!pm || pm.display!=='granted'){ pm=await ln.requestPermissions(); } return !!(pm && pm.display==='granted'); }catch(e){ return false; } }
 async function nativeScheduleRecheck(s){
@@ -2627,6 +2637,37 @@ function nativeSyncRechecks(list){
     if(!_rcIsNative() || !Array.isArray(list)) return;
     list.forEach(function(s){ if(s.is_completed) nativeCancelRecheck(s.id); else nativeScheduleRecheck(s); });
 }
+
+// app-recheck-permtest-v1: アプリ内のみ、通知許可の要求＋15秒テスト通知の診断ボタンを画面上部に出す。
+//   「Settingsの一覧に出ない＝許可未要求」を切り分け＆解決する暫定UI。
+async function rcPermTest(){
+    var L = _rcLN();
+    if(!L){ alert('診断: 通知プラグインが取得できません（bridge未到達）。'); return; }
+    try{
+        var before = await L.checkPermissions();
+        var res = before;
+        if(!before || before.display !== 'granted'){ res = await L.requestPermissions(); }
+        var st = res && res.display;
+        if(st !== 'granted'){ alert('通知が許可されませんでした（状態: ' + st + '）。設定→通知→TASUKARU で許可してください。'); return; }
+        var at = new Date(Date.now() + 15000);
+        await L.schedule({notifications:[{ id: 999001, title:'テスト通知', body:'15秒後テスト：これが出れば通知は正常です', schedule:{ at: at, allowWhileIdle:true }, sound:'default' }]});
+        alert('通知を許可しました。15秒後にテスト通知を予約したので、画面をロックして待ってください。');
+    }catch(e){ alert('診断エラー: ' + (e && e.message ? e.message : e)); }
+}
+(function(){
+    function mount(){
+        if(!_rcIsNative()) return;                       // アプリ内のみ
+        if(document.getElementById('rc-permtest-btn')) return;
+        var b = document.createElement('button');
+        b.id = 'rc-permtest-btn'; b.type = 'button';
+        b.textContent = '🔔 通知を許可 / テスト（初回のみ）';
+        b.style.cssText = 'display:block;width:calc(100% - 24px);margin:10px 12px;padding:12px;background:#e65100;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.9rem;';
+        b.onclick = rcPermTest;
+        document.body.insertBefore(b, document.body.firstChild);
+    }
+    if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+    else mount();
+})();
 
 // 再検査予約を保存(API)+ .icsダウンロード
 window.saveRecheckSchedule = async function(pid, vitalId) {
