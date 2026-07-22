@@ -274,25 +274,6 @@
           <span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成
         </button>
       </div>
-      <!-- pdf-move-v1: 「議事録PDF」を「議事録を作成」の直後に配置。議事録生成後に表示される。 -->
-      <div class="mtg-pdf-minutes-row" id="mtgPdfMinutes" style="display:none; margin-top:8px;">
-        <div style="font-size:0.75rem; color:#5f7a63; margin-bottom:4px;">議事録レイアウト（8種類から選べます）:</div>
-        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-          <select id="mtgStyleSelect" style="flex:1; min-width:180px; padding:7px; border-radius:8px; border:1px solid #cfd8cf; font-size:0.82rem; color:#33453a;">
-            <option value="a">A ｜ スッキリ（表＋見出し）</option>
-            <option value="b">B ｜ ビジネス（決定事項を番号強調）</option>
-            <option value="c">C ｜ フォーマル（公的様式風）</option>
-            <option value="d">D ｜ サイドバー（左に情報帯・高級感）</option>
-            <option value="e">E ｜ カード（決定事項を強調）</option>
-            <option value="f">F ｜ タイムライン（議事を縦に追う）</option>
-            <option value="g">G ｜ エグゼクティブ（格調・モノトーン）</option>
-            <option value="h">H ｜ モダンミニマル（余白・洗練）</option>
-          </select>
-          <button class="mtg-btn sec" style="min-width:130px;" onclick="mtgPdf('minutes', document.getElementById('mtgStyleSelect').value)">
-            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>議事録PDF
-          </button>
-        </div>
-      </div>
     </div>
 
     <!-- ステップ3: 議事録 -->
@@ -317,6 +298,30 @@
       </div>
       <div class="mtg-field">
         <textarea id="mtgMinutes" placeholder="「議事録を作成」で自動生成されます。手直しできます。"></textarea>
+      </div>
+      <!-- pdf-move-v2: 議事録PDFは議事録の直下に置く（議事録生成後に表示） -->
+      <div class="mtg-pdf-minutes-row" id="mtgPdfMinutes" style="display:none; margin-top:8px;">
+        <div style="font-size:0.75rem; color:#5f7a63; margin-bottom:4px;">議事録レイアウト（8種類から選べます）:</div>
+        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <select id="mtgStyleSelect" style="flex:1; min-width:180px; padding:7px; border-radius:8px; border:1px solid #cfd8cf; font-size:0.82rem; color:#33453a;">
+            <option value="a">A ｜ スッキリ（表＋見出し）</option>
+            <option value="b">B ｜ ビジネス（決定事項を番号強調）</option>
+            <option value="c">C ｜ フォーマル（公的様式風）</option>
+            <option value="d">D ｜ サイドバー（左に情報帯・高級感）</option>
+            <option value="e">E ｜ カード（決定事項を強調）</option>
+            <option value="f">F ｜ タイムライン（議事を縦に追う）</option>
+            <option value="g">G ｜ エグゼクティブ（格調・モノトーン）</option>
+            <option value="h">H ｜ モダンミニマル（余白・洗練）</option>
+          </select>
+          <button class="mtg-btn sec" style="min-width:130px;" onclick="mtgPdf('minutes', document.getElementById('mtgStyleSelect').value)">
+            <span class="material-symbols-outlined" style="font-size:18px;">picture_as_pdf</span>議事録PDF
+          </button>
+        </div>
+      </div>
+      <!-- pdf-move-v2: アセスメント作成は上の議事録・文字起こしから作ると分かるように案内を添える -->
+      <div style="font-size:0.74rem; color:#5f7a63; margin:10px 0 4px; display:flex; align-items:center; gap:4px;">
+        <span class="material-symbols-outlined" style="font-size:16px; color:#7a8b80;">south</span>
+        上の「議事録」や文字起こしの内容から、アセスメントを作成します。
       </div>
       <div class="mtg-btn-row">
         <button class="mtg-btn" id="mtgAssessBtn" onclick="mtgAssess()">
