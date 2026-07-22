@@ -14451,9 +14451,9 @@ def admin_keiyaku_print():
             "no-outline": None,
             "quiet": "",
             "disable-smart-shrinking": "",
-            "margin-top": "0",
+            "margin-top": "12mm",
             "margin-right": "0",
-            "margin-bottom": "0",
+            "margin-bottom": "12mm",
             "margin-left": "0",
         }
         wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
