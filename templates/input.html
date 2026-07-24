@@ -765,6 +765,20 @@ window.saveRecord = async function() {
         }
     }
 
+    // icf-suggest-tune-v1: ICF提案を先読み（カテゴリ提案と並行で走らせ、後で待ち時間ゼロ表示）
+    window._icfPreload = null;
+    try {
+        var _icfCat = document.getElementById('selected-category') ? document.getElementById('selected-category').value : '';
+        if (content && content.length >= 6 && _icfCat !== '休み連絡' && _icfCat !== '追加利用連絡') {
+            var _icfP = (window._patientList||[]).find(function(x){return x.value===patientValue;});
+            var _icfUname = _icfP ? _icfP.name : '';
+            if (_icfUname) {
+                window._icfPreload = { uname:_icfUname, content:content,
+                    promise: fetch('/api/patient-hub/icf/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:_icfUname,text:content})}).then(function(r){return r.json();}).catch(function(){return null;}) };
+            }
+        }
+    } catch(e){}
+
     // ===== inp-save-spinner-v1 (A): 押下直後に即グルグル(無反応時間の解消) =====
     var _saveBtn = document.querySelector('.btn-primary[onclick="saveRecord()"]');
     if (_saveBtn) { _saveBtn.disabled = true; _saveBtn.innerHTML = '<span class="material-symbols-outlined" style="animation: inpSpin 1s linear infinite; vertical-align:middle;">sync</span> カテゴリ確認中...'; }
@@ -1623,8 +1637,14 @@ window._icfAfterSave = async function(patientValue, content, category){  /* icf-
   window._icfWillHandleRedirect = true;
   setTimeout(function(){ if(!window._icfModalOpen) window._icfDoRedirectNow(); }, 8000);
   try{
-    var r = await fetch('/api/patient-hub/icf/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:uname,text:content})});
-    var d = await r.json();
+    var d;
+    if(window._icfPreload && window._icfPreload.uname===uname && window._icfPreload.content===content){
+      d = await window._icfPreload.promise;   /* icf-suggest-tune-v1: 先読み結果 */
+    } else {
+      var r = await fetch('/api/patient-hub/icf/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:uname,text:content})});
+      d = await r.json();
+    }
+    window._icfPreload = null;
     if(d && d.status==='success' && d.stickies && d.stickies.length && d.pid){
       window._icfShowModal(d.pid, d.stickies, uname);
       return;
