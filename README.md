@@ -2482,3 +2482,46 @@ git checkout tasukaru-dev
 - ハブの議事録取り込み(`icf/import`)が polarity を読んで利用者ページでも **できない=赤**。
 - 検証(DEV): 分類が polarity を返す(できる/できない判定も的確)／使い捨て会議を保存→取り込みで cannot が赤で入る／ボードのトグルで can↔cannot 反転 を確認。使い捨て会議はDEVでSQL削除。
 - なお `icf/generate`(B・記録からAI生成) も同じ polarity を返し、ボードに追加→保存の運用。A(会議由来)とB(記録由来)の両方から できない=赤 が入る。
+
+---
+
+## 会社インフラ整備（Apple法人登録の準備）＋ 管理者パスワード復旧 2026-07-23  <!-- infra-apple-enroll-2026-07-23 -->
+
+### 0. 本番一括プッシュ（完了）
+- DEV(`tasukaru-dev`)に溜めた**15コミットを本番(`tasukaru`)へcherry-pickでまとめて反映**。本番tip = `dd7f9a2`。
+- 既に本番へcherry-pick済みのkeiyaku系4件(pagebreak-v1/v2, cityarea, margin)は**スキップ**（`git cherry`で判定）。
+- base.htmlの `2d1365c`(壊れ) + `04ca065`(修復) ペアは `cherry-pick -n` で**1コミットに束ねて**適用。
+- 事前に全ファイル3-wayマージ(競合0)で安全確認。diffstat = 511挿入 / 35削除。
+
+### 1. 会社ドメイン & メール（Apple法人登録の必須要件）
+- **ドメイン**: `lifeplusllc.com`（お名前.com、お名前ID 50066893）。ネームサーバー = `01〜04.dnsv.jp`（DNSレコード設定利用のため切替済み）。更新期限 2027/07/22。**自動更新の維持に注意**（切れるとメール/サイト停止）。
+- **メール**: Zoho Mail（Mail ライト 5GB、約¥1,680/年、**日本DC=zoho.jp**）。管理者=`hiro@lifeplusllc.com`。管理コンソール `mailadmin.zoho.jp` / Webメール `mail.zoho.jp`。復旧連絡先=`cocokaraplus@gmail.com`。**受信テスト成功済み**。
+- **お名前.com(dnsv.jpゾーン)に設定済みのDNS**:
+  - TXT(所有権) `zoho-verification=zb86175109.zmverify.zoho.jp`（ホスト=@）
+  - MX `mx.zoho.jp`(10) / `mx2.zoho.jp`(20) / `mx3.zoho.jp`(50)
+  - SPF(TXT) `v=spf1 include:zoho.jp ~all`
+  - A `75.2.60.5`（@、Netlify会社サイト用）
+  - CNAME `www` → `chic-gelato-adeb36.netlify.app`
+  - **DKIM：未設定（任意・後日）** → `mailadmin.zoho.jp` → ドメイン → DKIM で生成しTXT追加。
+- **注意**: MX(受信)とA(サイト)はapexで共存OK。SPFは**1本のみ**（`v=spf1 -all`の重複を作らない）。GoogleパブリックDNS(8.8.8.8)は反映が非常に遅いので、確認はZoho/Netlify側の検証で行う。
+
+### 2. 会社紹介サイト（Apple審査のWebサイト要件）
+- **Netlify**(無料)にHTML1枚をデプロイ。プロジェクト `chic-gelato-adeb36` / URL `chic-gelato-adeb36.netlify.app`。独自ドメイン `lifeplusllc.com`(Primary) + `www`(→primaryへリダイレクト)。
+- 内容: 合同会社LIFE PLUS / 代表 岸本洋幸 / 〒471-0832 愛知県豊田市丸山町7-49-6 / 事業=介護施設向けSaaS「TASUKARU」/ 連絡先 hiro@lifeplusllc.com。
+- Aレコード反映後にNetlifyがSSL自動発行 → `https://lifeplusllc.com` 公開（反映待ち・最大24h）。
+
+### 3. Apple Developer Program（法人登録）— 進行中・残タスク
+- 種別=**法人（Individualではない）**。LIFE PLUS LLC は登記済み合同会社。
+- **D-U-N-S番号 発行済み**（メール受領）。Appleに入れる**法人名・住所はD-U-N-Sの登録表記と完全一致**させること（不一致で審査停止）。発行直後はApple側反映に数日かかる場合あり。
+- 仕事用メール=`hiro@lifeplusllc.com`。$99/年はHIRO本人が決済。
+- **残**: Apple法人フォーム送信 → 審査 → 承認後 **APNs .p8 発行** → 再検査アラームのプッシュ通知実装へ。
+
+### 4. 管理者ログイン/パスワード運用（現場対応で判明・重要）
+- **スタッフのパスワードは SHA-256 ハッシュ保存**（`staffs.password_hash` = `hashlib.sha256(pw).hexdigest()`）。**元パスワードは復元不可＝リセットのみ**。
+- Supabase SQLでのリセット（pgcrypto、アプリのSHA-256と一致）:
+  `update staffs set password_hash = encode(digest('新PW','sha256'),'hex') where facility_code='cocokaraplus-5526' and staff_name='<名前>';`
+- **管理者MENUは admin-2fa-v1: LINE連携必須 + LINEに届く2FAコード**。**LINE未連携アカウント(PC1/PC2等の共有端末アカウント)は管理者MENUに入れない**。
+- 運用: 現場の管理業務は**LINE連携済みの本人アカウント**でログイン（例: `宇佐美友理` を管理者に追加済み）。共有アカウントで他人(例:代表)でログインすると個人カレンダー/タスクが表示される点に注意。
+- **PC1/PC2 は is_active=false で無効化**（論理削除・過去記録は保持）。
+- 参考: パスワード再設定は `/reset_password`(メール) や LINEで「パスワード」送信(setup_token)でも可能。管理者UIに個人PW再設定ボタンは無い（再作成 or SQL）。
+
