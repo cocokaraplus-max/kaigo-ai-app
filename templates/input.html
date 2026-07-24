@@ -919,9 +919,10 @@ window.saveRecord = async function() {
             // ページ先頭にスクロール
             window.scrollTo(0, 0);
 
-            // サーバー指定のリダイレクト先があれば遷移
+            // サーバー指定のリダイレクト先があれば遷移（icf-suggest-redirect-fix-v1: ICF提案が出る時はモーダル閉時に遷移）
             if (data.redirect) {
-                setTimeout(() => { window.location.href = data.redirect; }, 1000);
+                window._icfDoRedirect = function(){ window.location.href = data.redirect; };
+                if (!window._icfWillHandleRedirect) { setTimeout(window._icfDoRedirect, 1000); }
             }
         } else {
             alert(data.message || '保存に失敗しました。もう一度お試しください。');
@@ -1608,20 +1609,31 @@ function escapeAic(s) {
 
 <script>
 /* icf-suggest-from-record-v1 : 保存直後のICF追記提案 */
-window._icfAfterSave = async function(patientValue, content, category){
+window._icfDoRedirectNow = function(){ if(window._icfDoRedirect){ var g=window._icfDoRedirect; window._icfDoRedirect=null; g(); } };
+window._icfAfterSave = async function(patientValue, content, category){  /* icf-suggest-redirect-fix-v1 */
+  window._icfWillHandleRedirect = false; window._icfModalOpen = false;
+  var uname = '';
   try{
     if(!content || content.length < 6) return;
     if(category==='休み連絡' || category==='追加利用連絡') return;
     var p=(window._patientList||[]).find(function(x){return x.value===patientValue;});
-    var uname = p ? p.name : '';
+    uname = p ? p.name : '';
     if(!uname) return;
+  }catch(e){ return; }
+  window._icfWillHandleRedirect = true;
+  setTimeout(function(){ if(!window._icfModalOpen) window._icfDoRedirectNow(); }, 8000);
+  try{
     var r = await fetch('/api/patient-hub/icf/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:uname,text:content})});
     var d = await r.json();
-    if(!d || d.status!=='success' || !d.stickies || !d.stickies.length || !d.pid) return;
-    window._icfShowModal(d.pid, d.stickies, uname);
+    if(d && d.status==='success' && d.stickies && d.stickies.length && d.pid){
+      window._icfShowModal(d.pid, d.stickies, uname);
+      return;
+    }
   }catch(e){}
+  window._icfDoRedirectNow();
 };
 window._icfShowModal = function(pid, stickies, uname){
+  window._icfModalOpen = true;
   function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   var ZL={body:'心身機能',activity:'活動',participation:'参加',environment:'環境',personal:'個人',unsorted:'未分類'};
   var ov=document.createElement('div');
@@ -1644,7 +1656,7 @@ window._icfShowModal = function(pid, stickies, uname){
     +'<button id="icfAdd" style="background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">ICFに追記</button>'
     +'</div></div>';
   document.body.appendChild(ov);
-  function close(){ ov.remove(); }
+  function close(){ ov.remove(); window._icfModalOpen=false; window._icfDoRedirectNow(); }
   ov.querySelector('#icfSkip').onclick=close;
   ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
   ov.querySelector('#icfAdd').onclick=async function(){
