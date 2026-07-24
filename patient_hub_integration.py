@@ -651,6 +651,130 @@ def register_patient_hub_routes(app):
         return jsonify({"status": "success", "stickies": out})
 
     # ==========================================================
+    # icf-suggest-from-record-v1 : 1件のケース記録からICF追記案（新規のみ）を返す
+    # ==========================================================
+    def _icf_dedup_key(code, pol, text):
+        p = "cannot" if pol == "cannot" else "can"
+        c = (str(code).strip() if code else "")
+        return ("c", c, p) if c else ("t", (text or "").strip().lower(), p)
+
+    def _icf_pid_by_name(supabase, f_code, user_name):
+        try:
+            r = (supabase.table("patient_profiles").select("id")
+                 .eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute())
+            return (r.data or [{}])[0].get("id")
+        except Exception:
+            return None
+
+    def _icf_board_keys(supabase, f_code, pid):
+        seen = set()
+        if not pid:
+            return seen
+        try:
+            ex = (supabase.table("patient_icf_stickies").select("icf_code,polarity,text")
+                  .eq("facility_code", f_code).eq("patient_profile_id", str(pid)).execute())
+            for r in (ex.data or []):
+                seen.add(_icf_dedup_key(r.get("icf_code"), r.get("polarity"), r.get("text")))
+        except Exception:
+            pass
+        return seen
+
+    @app.route('/api/patient-hub/icf/suggest', methods=['POST'])
+    @login_required
+    def api_hub_icf_suggest():
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        data = request.json or {}
+        user_name = (data.get("user_name") or "").strip()
+        text = (data.get("text") or "").strip()
+        if not user_name or len(text) < 6:
+            return jsonify({"status": "success", "stickies": [], "pid": None})
+        pid = _icf_pid_by_name(supabase, f_code, user_name)
+        prompt = (
+            "以下は介護施設のある利用者の『1件のケース記録』です。\n"
+            "この記録から、ICF（国際生活機能分類）に追記すべき事実があれば抽出してください。\n"
+            "『できること(can)』も『できないこと/支障(cannot)』も拾います。無ければ空配列。\n"
+            "各項目を次の領域(zone)に分類:\n"
+            "  body=心身機能・身体構造 / activity=活動 / participation=参加\n"
+            "  environment=環境因子 / personal=個人因子\n"
+            "polarity は can か cannot。短い体言止めで1項目1事実。医療診断はしない。最大6項目。\n"
+            "その記録から明確に読み取れる事実だけ。推測や一般論は入れない。\n"
+            "必ず次のJSONのみ返す（説明文禁止）:\n"
+            '{"stickies":[{"zone":"activity","text":"見守りで歩行器歩行","polarity":"can"}]}\n\n'
+            "=== 記録 ===\n" + text[:1500]
+        )
+        try:
+            from utils import get_generative_model
+            model = get_generative_model()
+            resp = model.generate_content(prompt)
+            raw = (resp.text or "").strip()
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            items = _json.loads(m.group())["stickies"] if m else []
+        except Exception as e:
+            return jsonify({"status": "success", "stickies": [], "pid": pid, "note": str(e)})
+        seen = _icf_board_keys(supabase, f_code, pid)
+        _zones = {"body", "activity", "participation", "environment", "personal"}
+        out = []
+        for it in (items or []):
+            txt = (str(it.get("text") or "")).strip()
+            if not txt:
+                continue
+            zone = it.get("zone") if it.get("zone") in _zones else "unsorted"
+            pol = it.get("polarity") if it.get("polarity") in ("can", "cannot") else "can"
+            key = _icf_dedup_key(None, pol, txt)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append({"zone": zone, "text": txt, "polarity": pol})
+        return jsonify({"status": "success", "stickies": out, "pid": pid})
+
+    @app.route('/api/patient-hub/icf/add', methods=['POST'])
+    @login_required
+    def api_hub_icf_add():
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        data = request.json or {}
+        pid = (data.get("pid") or "").strip()
+        stickies = data.get("stickies") or []
+        if not pid:
+            return jsonify({"status": "error", "message": "pid が必要です"}), 400
+        seen = _icf_board_keys(supabase, f_code, pid)
+        base = 0
+        try:
+            mx = (supabase.table("patient_icf_stickies").select("sort_order")
+                  .eq("facility_code", f_code).eq("patient_profile_id", str(pid))
+                  .order("sort_order", desc=True).limit(1).execute())
+            base = int((mx.data or [{}])[0].get("sort_order") or 0) + 1
+        except Exception:
+            base = 0
+        rows = []
+        for s in stickies:
+            txt = (str(s.get("text") or "")).strip()
+            if not txt:
+                continue
+            pol = s.get("polarity") if s.get("polarity") in ("can", "cannot") else None
+            key = _icf_dedup_key(s.get("icf_code"), pol, txt)
+            if key in seen:
+                continue
+            seen.add(key)
+            rows.append({
+                "facility_code": f_code, "patient_profile_id": str(pid),
+                "zone": (s.get("zone") or "unsorted"), "text": txt,
+                "icf_code": (s.get("icf_code") or None),
+                "polarity": pol, "sort_order": base + len(rows),
+            })
+        added = 0
+        if rows:
+            try:
+                supabase.table("patient_icf_stickies").insert(rows).execute()
+                added = len(rows)
+            except Exception as e:
+                return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success", "added": added, "skipped": len(stickies) - added})
+
+    # ==========================================================
     # 性質推測：ケース記録からAIで人となりを生成（キャッシュ上書き）
     # ==========================================================
     @app.route('/api/patient-hub/personality/generate', methods=['POST'])
