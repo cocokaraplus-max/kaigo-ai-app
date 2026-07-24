@@ -781,6 +781,52 @@ def register_patient_hub_routes(app):
         return jsonify({"status": "success", "added": added, "skipped": len(stickies) - added})
 
     # ==========================================================
+    # icf-classify-position-v1 : 各ICF付箋の内容から推奨zone/polarityを返す（貼り位置提案）
+    # ==========================================================
+    @app.route('/api/patient-hub/icf/classify', methods=['POST'])
+    @login_required
+    def api_hub_icf_classify():
+        from app import get_supabase
+        get_supabase()
+        data = request.json or {}
+        items = data.get("items") or []
+        texts = [(str((it or {}).get("text") or "")).strip() for it in items]
+        if not any(texts):
+            return jsonify({"status": "success", "items": []})
+        _zones = {"body", "activity", "participation", "environment", "personal"}
+        numbered = "\n".join("%d: %s" % (i, t) for i, t in enumerate(texts) if t)
+        prompt = (
+            "次の各ICF付箋の内容を、ICF（国際生活機能分類）の領域に分類してください。\n"
+            "領域(zone): body=心身機能・身体構造 / activity=活動 / participation=参加 / environment=環境因子 / personal=個人因子\n"
+            "polarity: can(できる/良好) か cannot(できない/支障)。判断できなければ can。\n"
+            "各付箋について最も適切な領域を1つだけ。番号(i)は入力のまま。必ず次のJSONのみ返す（説明文禁止）:\n"
+            '{"items":[{"i":0,"zone":"activity","polarity":"can"}]}\n\n'
+            "=== 付箋 ===\n" + numbered
+        )
+        try:
+            from utils import get_generative_model
+            model = get_generative_model()
+            resp = model.generate_content(prompt)
+            raw = (resp.text or "").strip()
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            parsed = _json.loads(m.group())["items"] if m else []
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"AI分類失敗: {e}"}), 500
+        out = []
+        for it in (parsed or []):
+            try:
+                i = int(it.get("i"))
+            except Exception:
+                continue
+            if i < 0 or i >= len(texts) or not texts[i]:
+                continue
+            zone = it.get("zone") if it.get("zone") in _zones else None
+            pol = it.get("polarity") if it.get("polarity") in ("can", "cannot") else None
+            if zone:
+                out.append({"i": i, "zone": zone, "polarity": pol})
+        return jsonify({"status": "success", "items": out})
+
+    # ==========================================================
     # 性質推測：ケース記録からAIで人となりを生成（キャッシュ上書き）
     # ==========================================================
     @app.route('/api/patient-hub/personality/generate', methods=['POST'])
