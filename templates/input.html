@@ -1646,13 +1646,13 @@ window._icfAfterSave = async function(patientValue, content, category){  /* icf-
     }
     window._icfPreload = null;
     if(d && d.status==='success' && d.stickies && d.stickies.length && d.pid){
-      window._icfShowModal(d.pid, d.stickies, uname);
+      window._icfShowModal(d.pid, d.stickies, uname, category);
       return;
     }
   }catch(e){}
   window._icfDoRedirectNow();
 };
-window._icfShowModal = function(pid, stickies, uname){
+window._icfShowModal = function(pid, stickies, uname, label){  /* icf-suggest-3choice-v1 */
   window._icfModalOpen = true;
   function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   var ZL={body:'心身機能',activity:'活動',participation:'参加',environment:'環境',personal:'個人',unsorted:'未分類'};
@@ -1667,30 +1667,45 @@ window._icfShowModal = function(pid, stickies, uname){
       +'<span style="flex:1;font-size:.9rem;color:'+col+';">'+esc(s.text)+'</span>'
       +'<span style="font-size:.7rem;font-weight:700;color:'+col+';flex:0 0 auto;">'+(can?'できる':'できない')+'</span></label>';
   }).join('');
-  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:16px 16px 12px;box-shadow:0 10px 40px rgba(0,0,0,.3);">'
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;padding:16px 16px 12px;box-shadow:0 10px 40px rgba(0,0,0,.3);">'
     +'<div style="font-weight:800;font-size:1rem;margin-bottom:2px;">🩺 ICFに追記しますか？</div>'
-    +'<div style="font-size:.76rem;color:#5f6368;margin-bottom:8px;">'+esc(uname)+'さんの記録から次の項目が読み取れました。追記するものを選んでください。</div>'
-    +'<div style="max-height:46vh;overflow:auto;margin-bottom:10px;">'+rows+'</div>'
-    +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
-    +'<button id="icfSkip" style="background:#fff;color:#5f6368;border:1px solid #dfe3e8;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">今回はしない</button>'
-    +'<button id="icfAdd" style="background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">ICFに追記</button>'
-    +'</div></div>';
+    +'<div style="font-size:.76rem;color:#5f6368;margin-bottom:8px;">'+esc(uname)+'さんの記録から次の項目が読み取れました。</div>'
+    +'<div style="max-height:42vh;overflow:auto;margin-bottom:10px;">'+rows+'</div>'
+    +'<div id="icfFooter"></div></div>';
   document.body.appendChild(ov);
+  var footer=ov.querySelector('#icfFooter');
+  var BS='border-radius:9px;padding:11px 12px;font-weight:800;cursor:pointer;font-size:.95rem;';
   function close(){ ov.remove(); window._icfModalOpen=false; window._icfDoRedirectNow(); }
-  ov.querySelector('#icfSkip').onclick=close;
+  function selected(){ var sel=[]; ov.querySelectorAll('input[type=checkbox]').forEach(function(cb){ if(cb.checked) sel.push(stickies[+cb.getAttribute('data-i')]); }); return sel; }
+  function toast(msg){ var t=document.getElementById('save-toast'); if(t){ var o=t.textContent; t.textContent=msg; t.classList.add('show'); setTimeout(function(){t.classList.remove('show'); t.textContent=o;},2200);} }
+  function renderMain(){
+    footer.innerHTML='<div style="display:flex;flex-direction:column;gap:8px;">'
+      +'<button id="icfAdd" style="'+BS+'background:#1a73e8;color:#fff;border:none;">今すぐ追記</button>'
+      +'<button id="icfHold" style="'+BS+'background:#fff8e1;color:#7a5b1e;border:1px solid #f0e0a0;">保留し後で判断</button>'
+      +'<button id="icfNone" style="'+BS+'background:#fff;color:#5f6368;border:1px solid #dfe3e8;">追記する必要なし</button>'
+      +'</div>';
+    footer.querySelector('#icfHold').onclick=doDefer;
+    footer.querySelector('#icfAdd').onclick=function(){ askConfirm('選んだ項目をICFに追記します。よろしいですか？', doAdd); };
+    footer.querySelector('#icfNone').onclick=function(){ askConfirm('この提案を破棄します。よろしいですか？（迷う場合は「保留し後で判断」を選べます）', close); };
+  }
+  function askConfirm(msg, onYes){
+    footer.innerHTML='<div style="font-size:.88rem;color:#3c4043;margin-bottom:10px;line-height:1.6;">'+esc(msg)+'</div>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      +'<button id="icfBack" style="'+BS+'background:#fff;color:#5f6368;border:1px solid #dfe3e8;">戻る</button>'
+      +'<button id="icfYes" style="'+BS+'background:#1a73e8;color:#fff;border:none;">はい</button></div>';
+    footer.querySelector('#icfBack').onclick=renderMain;
+    footer.querySelector('#icfYes').onclick=onYes;
+  }
+  async function doAdd(){
+    var sel=selected(); if(!sel.length){ close(); return; }
+    try{ var r=await fetch('/api/patient-hub/icf/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stickies:sel})}); var d=await r.json(); close(); if(d&&d.status==='success') toast('ICFに'+(d.added||0)+'件追記しました'); }catch(e){ close(); }
+  }
+  async function doDefer(){
+    var sel=selected(); if(!sel.length){ close(); return; }
+    try{ var r=await fetch('/api/patient-hub/icf/defer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,user_name:uname,stickies:sel,source_label:(label||'')})}); var d=await r.json(); close(); if(d&&d.status==='success') toast((d.deferred||0)+'件を保留にしました'); else toast('保留に失敗しました'); }catch(e){ close(); }
+  }
   ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
-  ov.querySelector('#icfAdd').onclick=async function(){
-    var sel=[];
-    ov.querySelectorAll('input[type=checkbox]').forEach(function(cb){ if(cb.checked) sel.push(stickies[+cb.getAttribute('data-i')]); });
-    if(!sel.length){ close(); return; }
-    try{
-      var r=await fetch('/api/patient-hub/icf/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stickies:sel})});
-      var d=await r.json();
-      close();
-      var t=document.getElementById('save-toast');
-      if(t && d && d.status==='success'){ var o=t.textContent; t.textContent='ICFに'+(d.added||0)+'件追記しました'; t.classList.add('show'); setTimeout(function(){t.classList.remove('show'); t.textContent=o;},2200); }
-    }catch(e){ close(); }
-  };
+  renderMain();
 };
 </script>
 
