@@ -485,19 +485,23 @@ def register_patient_hub_routes(app):
             return jsonify({"status": "error", "message": "利用者が特定できません"}), 400
         user_name = pp.get("user_name")
 
-        # この利用者の直近の担当者会議を1件（meetings.patient_id = patient_profiles.id で紐づく）
+        # A1(icf-accumulate-dedup-v1): 指定担会 or 全担会のICFを既存ボードへ積み上げ（重複スルー）
         meeting_id = (data.get("meeting_id") or "").strip()
         try:
-            if not meeting_id:
-                mq = (supabase.table("meetings").select("id,meeting_date")
-                      .eq("facility_code", f_code).eq("patient_id", str(pid))
-                      .order("meeting_date", desc=True).limit(1).execute())
-                if mq.data:
-                    meeting_id = mq.data[0]["id"]
+            if meeting_id:
+                _mq = (supabase.table("meetings").select("id")
+                       .eq("facility_code", f_code).eq("patient_id", str(pid))
+                       .eq("id", meeting_id).limit(1).execute())
+                meeting_ids = [meeting_id] if _mq.data else []
+            else:
+                _mq = (supabase.table("meetings").select("id,meeting_date")
+                       .eq("facility_code", f_code).eq("patient_id", str(pid))
+                       .order("meeting_date", desc=False).execute())
+                meeting_ids = [m["id"] for m in (_mq.data or [])]
         except Exception:
-            meeting_id = meeting_id
-        if not meeting_id:
-            return jsonify({"status": "success", "added": 0, "message": "取り込める議事録が見つかりません"})
+            meeting_ids = [meeting_id] if meeting_id else []
+        if not meeting_ids:
+            return jsonify({"status": "success", "added": 0, "skipped": 0, "message": "取り込める議事録が見つかりません"})
 
         # 会議の付箋を取り込む → 利用者ページの zone を決める。
         # 優先1: board_slot(配置スロット名: bs/activity/participation/environment/personal/health)
@@ -508,10 +512,27 @@ def register_patient_hub_routes(app):
             "environment": "environment", "personal": "personal", "health": "unsorted",
         }
         COMP_TO_ZONE = {"b": "body", "s": "body", "d": "activity", "e": "environment"}
+        def _pol_norm(p):
+            return "cannot" if p == "cannot" else "can"
+
+        def _dedup_key(code, pol, text):
+            code = (str(code).strip() if code else "")
+            if code:
+                return ("c", code, _pol_norm(pol))
+            return ("t", (text or "").strip().lower(), _pol_norm(pol))
+
         added = 0
+        skipped = 0
         try:
-            lr = (supabase.table("meeting_icf_links").select("*")
-                  .eq("meeting_id", meeting_id).execute())
+            # 既存ボードの重複キー集合（再実行で増やさない） icf-accumulate-dedup-v1
+            seen = set()
+            try:
+                ex = (supabase.table("patient_icf_stickies").select("icf_code,polarity,text")
+                      .eq("facility_code", f_code).eq("patient_profile_id", str(pid)).execute())
+                for r in (ex.data or []):
+                    seen.add(_dedup_key(r.get("icf_code"), r.get("polarity"), r.get("text")))
+            except Exception:
+                pass
             # icf_code→構成要素(b/s/d/e) のフォールバック用
             code_comp = {}
             try:
@@ -521,36 +542,44 @@ def register_patient_hub_routes(app):
             except Exception:
                 pass
             rows = []
-            for i, s in enumerate(lr.data or []):
-                txt = (s.get("source_text") or s.get("note") or "").strip()
-                if not txt:
-                    continue
-                slot = str(s.get("board_slot") or "").strip().lower()
-                comp = str(s.get("board_component") or "").strip().lower()[:1]
-                if slot in SLOT_TO_ZONE:
-                    zone = SLOT_TO_ZONE[slot]
-                elif comp in COMP_TO_ZONE:
-                    zone = COMP_TO_ZONE[comp]
-                else:
-                    c2 = str(code_comp.get(s.get("icf_code"), "")).lower()[:1]
-                    zone = COMP_TO_ZONE.get(c2, "unsorted")
-                _pol = s.get("polarity")
-                rows.append({
-                    "facility_code": f_code,
-                    "patient_profile_id": str(pid),
-                    "zone": zone,
-                    "text": txt,
-                    "icf_code": (s.get("icf_code") or None),
-                    "polarity": (_pol if _pol in ("can", "cannot") else None),
-                    "sort_order": int(s.get("sort_order") or i),
-                    "source_meeting_id": meeting_id,
-                })
+            for mid in meeting_ids:
+                lr = (supabase.table("meeting_icf_links").select("*")
+                      .eq("meeting_id", mid).order("sort_order", desc=False).execute())
+                for i, s in enumerate(lr.data or []):
+                    txt = (s.get("source_text") or s.get("note") or "").strip()
+                    if not txt:
+                        continue
+                    _pol = s.get("polarity")
+                    key = _dedup_key(s.get("icf_code"), _pol, txt)
+                    if key in seen:
+                        skipped += 1
+                        continue
+                    seen.add(key)
+                    slot = str(s.get("board_slot") or "").strip().lower()
+                    comp = str(s.get("board_component") or "").strip().lower()[:1]
+                    if slot in SLOT_TO_ZONE:
+                        zone = SLOT_TO_ZONE[slot]
+                    elif comp in COMP_TO_ZONE:
+                        zone = COMP_TO_ZONE[comp]
+                    else:
+                        c2 = str(code_comp.get(s.get("icf_code"), "")).lower()[:1]
+                        zone = COMP_TO_ZONE.get(c2, "unsorted")
+                    rows.append({
+                        "facility_code": f_code,
+                        "patient_profile_id": str(pid),
+                        "zone": zone,
+                        "text": txt,
+                        "icf_code": (s.get("icf_code") or None),
+                        "polarity": (_pol if _pol in ("can", "cannot") else None),
+                        "sort_order": len(rows),
+                        "source_meeting_id": mid,
+                    })
             if rows:
                 supabase.table("patient_icf_stickies").insert(rows).execute()
                 added = len(rows)
         except Exception as e:
-            return jsonify({"status": "error", "message": f"取り込み失敗: {e}"}), 500
-        return jsonify({"status": "success", "added": added})
+            return jsonify({"status": "error", "message": f"積み上げ失敗: {e}"}), 500
+        return jsonify({"status": "success", "added": added, "skipped": skipped})
 
     # ==========================================================
     # ICF：ケース記録からAIで「できる/できない」付きICF案を生成（保存せず返す）
