@@ -258,6 +258,12 @@
           <div id="viewMeetings"><div class="v-empty">読み込み中…</div></div>
         </div>
 
+        <!-- patient-hub-view-assessment-v1: アセスメント記録（閲覧のみ・月別一覧→タップで内容） -->
+        <div class="v-card">
+          <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">assignment</span>アセスメント記録（月別）</div>
+          <div id="viewAssessments"><div class="v-empty">読み込み中…</div></div>
+        </div>
+
       </div>
 
       <!-- ===== 入力（編集） ===== -->
@@ -558,6 +564,7 @@ const PATIENTS = {{ patients | tojson }};
                 }
                 this.renderView(j);
                 this.loadMeetingRecords();   // patient-hub-view-meetings-v1
+                this.loadAssessments();      // patient-hub-view-assessment-v1
             } catch (e) { /* 表示は空のまま */ }
         },
 
@@ -609,6 +616,93 @@ const PATIENTS = {{ patients | tojson }};
                     ? `<div style="white-space:pre-wrap;font-size:0.82rem;line-height:1.6;color:#3c4043;background:#fafbfc;border:1px solid #eee;border-radius:8px;padding:10px;">${this.esc(mins)}</div>`
                     : `<div class="v-empty">議事録本文は空です。</div>`;
             } catch (e) { body.innerHTML = '<span class="v-empty">読み込みエラー。</span>'; }
+        },
+
+        // patient-hub-view-assessment-v1: アセスメント(patient_evaluations)の月別閲覧（この利用者ぶんを年月降順で表示）
+        async loadAssessments() {
+            const el = document.getElementById("viewAssessments");
+            if (!el) return;
+            const uname = (this.currentPatient && this.currentPatient.user_name)
+                || (this.hubData && this.hubData.profile && this.hubData.profile.user_name) || "";
+            if (!uname) { el.innerHTML = `<div class="v-empty">利用者が特定できません。</div>`; return; }
+            try {
+                const r = await fetch('/api/get_patient_evaluations?sort=year_month_desc&limit=200&user_name=' + encodeURIComponent(uname));
+                const d = await r.json();
+                if (d.status !== 'success') { el.innerHTML = `<div class="v-empty">アセスメントは表示できません。</div>`; return; }
+                const mine = (d.evaluations || []).filter(e => String(e.user_name || '') === String(uname));
+                if (!mine.length) { el.innerHTML = `<div class="v-empty">この利用者のアセスメント記録はまだありません。</div>`; return; }
+                this._assessCache = {};
+                el.innerHTML = mine.map((e, i) => {
+                    this._assessCache[i] = e;
+                    const ym = this.esc(e.year_month || '');
+                    const st = e._status || {};
+                    const col = st.color === 'green' ? '#1e8e3e' : (st.color === 'orange' ? '#e37400' : '#c5221f');
+                    const lbl = this.esc(st.label || '');
+                    const evr = this.esc(e.evaluator_name || '');
+                    return `<div class="asrec-item" data-idx="${i}" style="border:1px solid #e6e8eb;border-radius:10px;padding:9px 11px;margin-bottom:6px;cursor:pointer;display:flex;flex-wrap:wrap;align-items:center;gap:8px;">`
+                        + `<span class="material-symbols-outlined" style="color:#5f6368;font-size:18px;">event_note</span>`
+                        + `<div style="flex:1;min-width:0;"><div style="font-weight:700;font-size:0.85rem;">${ym}</div><div style="font-size:0.76rem;color:#5f6368;">${evr ? '評価者: ' + evr : ''}</div></div>`
+                        + `<span style="font-size:0.68rem;font-weight:700;color:${col};border:1px solid ${col};border-radius:999px;padding:1px 8px;white-space:nowrap;">${lbl}</span>`
+                        + `<span class="material-symbols-outlined asrec-chev" style="color:#c3d3c6;">expand_more</span>`
+                        + `<div class="asrec-body" style="display:none;flex-basis:100%;margin-top:8px;"></div></div>`;
+                }).join('');
+                el.querySelectorAll('.asrec-item').forEach(it => {
+                    it.addEventListener('click', () => this.toggleAssessmentDetail(it));
+                });
+            } catch (e) { el.innerHTML = `<div class="v-empty">読み込みエラー。</div>`; }
+        },
+
+        toggleAssessmentDetail(it) {
+            const body = it.querySelector('.asrec-body');
+            if (!body) return;
+            if (body.style.display !== 'none') { body.style.display = 'none'; return; }
+            const idx = it.getAttribute('data-idx');
+            const ev = this._assessCache ? this._assessCache[idx] : null;
+            body.style.display = 'block';
+            body.innerHTML = ev ? this.renderAssessmentDetail(ev) : '<span class="v-empty">読み込めませんでした。</span>';
+        },
+
+        renderAssessmentDetail(ev) {
+            const row = (label, val) => {
+                const v = (val == null ? '' : String(val)).trim();
+                if (!v) return '';
+                return `<div style="margin-bottom:7px;"><div style="font-size:0.7rem;color:#9aa0a6;font-weight:700;">${this.esc(label)}</div>`
+                    + `<div style="white-space:pre-wrap;font-size:0.82rem;line-height:1.55;color:#3c4043;">${this.esc(v)}</div></div>`;
+            };
+            const goal = (label, st, nw, cont) => {
+                const parts = [];
+                if (st != null && String(st).trim()) parts.push('達成状況: ' + String(st).trim());
+                if (cont != null && String(cont).trim()) parts.push('継続/変更: ' + String(cont).trim());
+                if (nw != null && String(nw).trim()) parts.push('新目標: ' + String(nw).trim());
+                if (!parts.length) return '';
+                return row(label, parts.join('\n'));
+            };
+            let h = `<div style="background:#fafbfc;border:1px solid #eee;border-radius:8px;padding:10px 12px;">`;
+            const meta = [];
+            if (ev.care_classification) meta.push(this.esc(ev.care_classification));
+            if (ev.weight_kg != null && String(ev.weight_kg).trim()) meta.push('体重 ' + this.esc(ev.weight_kg) + 'kg');
+            if (ev.attendance_count != null && String(ev.attendance_count).trim()) meta.push('出席 ' + this.esc(ev.attendance_count) + (ev.attendance_target ? '/' + this.esc(ev.attendance_target) : '') + '回');
+            if (meta.length) h += `<div style="font-size:0.76rem;color:#5f6368;margin-bottom:8px;">${meta.join(' ・ ')}</div>`;
+            h += row('訓練目標', ev.training_goal);
+            h += goal('短期目標', ev.short_goal_status, ev.short_goal_new, ev.short_goal_cont);
+            h += goal('短期目標（心身機能）', ev.short_goal_function_status, ev.short_goal_function_new, ev.short_goal_function_cont);
+            h += goal('短期目標（活動）', ev.short_goal_activity_status, ev.short_goal_activity_new, ev.short_goal_activity_cont);
+            h += goal('短期目標（参加）', ev.short_goal_participation_status, ev.short_goal_participation_new, ev.short_goal_participation_cont);
+            h += goal('長期目標', ev.long_goal_status, ev.long_goal_new, ev.long_goal_cont);
+            h += goal('長期目標（心身機能）', ev.long_goal_function_status, ev.long_goal_function_new, ev.long_goal_function_cont);
+            h += goal('長期目標（活動）', ev.long_goal_activity_status, ev.long_goal_activity_new, ev.long_goal_activity_cont);
+            h += goal('長期目標（参加）', ev.long_goal_participation_status, ev.long_goal_participation_new, ev.long_goal_participation_cont);
+            h += row('訓練による変化', ev.changes_by_training);
+            h += row('課題と原因', ev.issues_and_causes);
+            h += row('特記事項', ev.special_notes);
+            if (ev.new_requests_exist && String(ev.new_requests_exist).trim()) {
+                h += row('新規要望', String(ev.new_requests_exist).trim() + (ev.new_requests_detail ? '：' + ev.new_requests_detail : ''));
+            }
+            h += row('満足度', ev.satisfaction);
+            h += row('サービスの適切性', ev.service_appropriateness);
+            h += row('評価メモ', ev.eval_memo);
+            h += `</div>`;
+            return h;
         },
 
         fillBasicInputs(profile) {
