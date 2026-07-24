@@ -866,6 +866,7 @@ window.saveRecord = async function() {
         const data = await res.json();
 
         if (data.status === 'success') {
+            try { window._icfAfterSave(patientValue, content, (document.getElementById('selected-category')||{}).value||''); } catch(e){}
             // トースト表示
             const toast = document.getElementById('save-toast');
             toast.classList.add('show');
@@ -1603,6 +1604,62 @@ function escapeAic(s) {
     setTimeout(fill, 300);
   }
 })();
+</script>
+
+<script>
+/* icf-suggest-from-record-v1 : 保存直後のICF追記提案 */
+window._icfAfterSave = async function(patientValue, content, category){
+  try{
+    if(!content || content.length < 6) return;
+    if(category==='休み連絡' || category==='追加利用連絡') return;
+    var p=(window._patientList||[]).find(function(x){return x.value===patientValue;});
+    var uname = p ? p.name : '';
+    if(!uname) return;
+    var r = await fetch('/api/patient-hub/icf/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:uname,text:content})});
+    var d = await r.json();
+    if(!d || d.status!=='success' || !d.stickies || !d.stickies.length || !d.pid) return;
+    window._icfShowModal(d.pid, d.stickies, uname);
+  }catch(e){}
+};
+window._icfShowModal = function(pid, stickies, uname){
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  var ZL={body:'心身機能',activity:'活動',participation:'参加',environment:'環境',personal:'個人',unsorted:'未分類'};
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  var rows=stickies.map(function(s,i){
+    var can=s.polarity!=='cannot';
+    var col=can?'#137333':'#c5221f';
+    return '<label style="display:flex;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px solid #f0f0f0;">'
+      +'<input type="checkbox" data-i="'+i+'" checked style="width:18px;height:18px;flex:0 0 auto;">'
+      +'<span style="font-size:.7rem;color:#5f6368;background:#eef1f4;border-radius:6px;padding:1px 7px;flex:0 0 auto;">'+esc(ZL[s.zone]||s.zone)+'</span>'
+      +'<span style="flex:1;font-size:.9rem;color:'+col+';">'+esc(s.text)+'</span>'
+      +'<span style="font-size:.7rem;font-weight:700;color:'+col+';flex:0 0 auto;">'+(can?'できる':'できない')+'</span></label>';
+  }).join('');
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:440px;width:100%;padding:16px 16px 12px;box-shadow:0 10px 40px rgba(0,0,0,.3);">'
+    +'<div style="font-weight:800;font-size:1rem;margin-bottom:2px;">🩺 ICFに追記しますか？</div>'
+    +'<div style="font-size:.76rem;color:#5f6368;margin-bottom:8px;">'+esc(uname)+'さんの記録から次の項目が読み取れました。追記するものを選んでください。</div>'
+    +'<div style="max-height:46vh;overflow:auto;margin-bottom:10px;">'+rows+'</div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
+    +'<button id="icfSkip" style="background:#fff;color:#5f6368;border:1px solid #dfe3e8;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">今回はしない</button>'
+    +'<button id="icfAdd" style="background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">ICFに追記</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  function close(){ ov.remove(); }
+  ov.querySelector('#icfSkip').onclick=close;
+  ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
+  ov.querySelector('#icfAdd').onclick=async function(){
+    var sel=[];
+    ov.querySelectorAll('input[type=checkbox]').forEach(function(cb){ if(cb.checked) sel.push(stickies[+cb.getAttribute('data-i')]); });
+    if(!sel.length){ close(); return; }
+    try{
+      var r=await fetch('/api/patient-hub/icf/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid,stickies:sel})});
+      var d=await r.json();
+      close();
+      var t=document.getElementById('save-toast');
+      if(t && d && d.status==='success'){ var o=t.textContent; t.textContent='ICFに'+(d.added||0)+'件追記しました'; t.classList.add('show'); setTimeout(function(){t.classList.remove('show'); t.textContent=o;},2200); }
+    }catch(e){ close(); }
+  };
+};
 </script>
 
 {% endblock %}
