@@ -372,6 +372,7 @@
           <button class="btn-sub" onclick="window.patientInfoApp.generateIcf()">記録からAIで生成（できる/できない）</button>
           <button class="btn-sub" onclick="window.patientInfoApp.importIcf()">担会からICFを積み上げ</button>
           <button class="btn-sub" onclick="window.patientInfoApp.classifyIcfPositions()">🧭 貼り位置をAIでチェック</button>
+          <button class="btn-sub" onclick="window.patientInfoApp.reviewIcf()">🧹 ICFの見直し（AI）</button>
           <div class="icf-viewtoggle" style="margin-top:10px;">
             <button id="icfViewModel" class="on" onclick="window.patientInfoApp.setIcfView('model')">🗺 モデル図</button>
             <button id="icfViewList" onclick="window.patientInfoApp.setIcfView('list')">≣ リスト</button>
@@ -1039,6 +1040,61 @@ const PATIENTS = {{ patients | tojson }};
                 close();
                 self.renderIcf();
                 self.showSuccess(n + "件を移動しました。内容を確認して「ICF付箋を保存」を押してください。");
+            };
+        },
+
+        // icf-review-delete-v1: ボード＋最近の記録をAI点検し、削除候補を提案
+        async reviewIcf() {
+            if (!this.hubPid) { this.showError("利用者情報を読み込めていません"); return; }
+            if (!this.icfStickies.filter(s => (s.text || "").trim()).length) { this.showError("付箋がありません"); return; }
+            this.showSuccess("AIがICFを見直しています…");
+            try {
+                const uname = (this.hubData && this.hubData.profile && this.hubData.profile.user_name) || (this.currentPatient && this.currentPatient.user_name) || "";
+                const items = this.icfStickies.map(s => ({ text: s.text || "", zone: s.zone || "unsorted", polarity: s.polarity || "can" }));
+                const r = await fetch("/api/patient-hub/icf/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_name: uname, items: items }) });
+                const d = await r.json();
+                if (d.status !== "success") { this.showError(d.message || "見直しできませんでした"); return; }
+                const sugs = (d.items || []).filter(x => this.icfStickies[x.i]);
+                if (!sugs.length) { this.showSuccess("削除候補はありません ✓"); return; }
+                this.showIcfRemoveModal(sugs);
+            } catch (e) { this.showError("エラーが発生しました"); }
+        },
+
+        showIcfRemoveModal(sugs) {
+            const RL = { duplicate: "重複", improved: "状態が改善", outdated: "古い・不要" };
+            const self = this;
+            const ov = document.createElement("div");
+            ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;";
+            const rows = sugs.map(function(g, k) {
+                const s = self.icfStickies[g.i]; if (!s) return "";
+                return '<label style="display:flex;align-items:flex-start;gap:8px;padding:9px 4px;border-bottom:1px solid #f0f0f0;">'
+                    + '<input type="checkbox" data-k="' + k + '" checked style="width:18px;height:18px;flex:0 0 auto;margin-top:2px;">'
+                    + '<div style="flex:1;min-width:0;"><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
+                    + '<span style="font-size:.68rem;font-weight:800;color:#c5221f;background:#fdecea;border-radius:6px;padding:1px 8px;">' + self.esc(RL[g.reason] || "見直し") + '</span>'
+                    + '<span style="font-size:.9rem;color:#3c4043;text-decoration:line-through;">' + self.esc(s.text) + '</span></div>'
+                    + (g.note ? '<div style="font-size:.72rem;color:#9aa0a6;margin-top:3px;">' + self.esc(g.note) + '</div>' : '')
+                    + '</div></label>';
+            }).join("");
+            ov.innerHTML = '<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;padding:16px 16px 12px;box-shadow:0 10px 40px rgba(0,0,0,.3);">'
+                + '<div style="font-weight:800;font-size:1rem;margin-bottom:2px;">🧹 ICFの見直し</div>'
+                + '<div style="font-size:.76rem;color:#5f6368;margin-bottom:8px;">AIが削除を検討すべき付箋を挙げました。削除するものを選んでください（保存するまで反映されません）。</div>'
+                + '<div style="max-height:46vh;overflow:auto;margin-bottom:10px;">' + rows + '</div>'
+                + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+                + '<button id="icfRmSkip" style="background:#fff;color:#5f6368;border:1px solid #dfe3e8;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">このまま</button>'
+                + '<button id="icfRmApply" style="background:#c5221f;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">選択を削除</button>'
+                + '</div></div>';
+            document.body.appendChild(ov);
+            const close = function() { ov.remove(); };
+            ov.querySelector("#icfRmSkip").onclick = close;
+            ov.addEventListener("click", function(e) { if (e.target === ov) close(); });
+            ov.querySelector("#icfRmApply").onclick = function() {
+                const idx = [];
+                ov.querySelectorAll("input[type=checkbox]").forEach(function(cb) { if (cb.checked) { const g = sugs[+cb.getAttribute("data-k")]; if (g) idx.push(g.i); } });
+                close();
+                if (!idx.length) return;
+                idx.sort(function(a, b) { return b - a; }).forEach(function(i) { self.icfStickies.splice(i, 1); });
+                self.renderIcf();
+                self.showSuccess(idx.length + "件を削除しました。内容を確認して「ICF付箋を保存」を押してください。");
             };
         },
 
