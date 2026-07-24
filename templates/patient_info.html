@@ -338,7 +338,7 @@
           </div>
           <div class="goal-section-hint">付箋の <b>⠿</b> をつまんで領域へドラッグすると移動します。各領域の「＋」で追加、文字はタップで直接編集、× で削除。<b style="color:#c5221f;">できない</b>は赤で表示されます。議事録の付箋取り込み・記録からのAI生成もできます。</div>
           <button class="btn-sub" onclick="window.patientInfoApp.generateIcf()">記録からAIで生成（できる/できない）</button>
-          <button class="btn-sub" onclick="window.patientInfoApp.importIcf()">議事録から取り込み</button>
+          <button class="btn-sub" onclick="window.patientInfoApp.importIcf()">担会からICFを積み上げ</button>
           <div id="icfBoard" style="margin-top:10px;"></div>
           <button id="saveIcfBtn" class="btn-primary" style="margin-top:6px;" onclick="window.patientInfoApp.saveIcf()">
             <span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span>ICF付箋を保存
@@ -878,12 +878,13 @@ const PATIENTS = {{ patients | tojson }};
 
         async importIcf() {
             if (!this.hubPid) { this.showError("利用者情報を読み込めていません"); return; }
-            this.showSuccess("議事録の付箋を取り込んでいます…");
+            this.showSuccess("担会のICFを積み上げています…");
             try {
                 const r = await fetch("/api/patient-hub/icf/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pid: this.hubPid }) });
                 const j = await r.json();
                 if (j.status !== "success") throw new Error(j.message || "取り込みに失敗しました");
-                if (j.added) this.showSuccess(`${j.added}件を取り込みました`); else this.showError(j.message || "取り込める付箋がありませんでした");
+                if (j.added) this.showSuccess(`${j.added}件を積み上げました${j.skipped ? `（重複${j.skipped}件はスキップ）` : ""}`);
+                else this.showSuccess(j.skipped ? `新規なし（重複${j.skipped}件はスキップ）` : (j.message || "取り込める付箋がありませんでした"));
                 await this.loadHub(this.currentPatient, true);
                 this.switchTab("input");
             } catch (e) { this.showError(e.message); }
