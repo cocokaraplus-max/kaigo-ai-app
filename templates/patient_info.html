@@ -145,6 +145,38 @@
 .icf-zone.dragover { outline:2px dashed #1a73e8; outline-offset:1px; }
 .icf-vzone { margin-bottom:8px; }
 .icf-vzone .z { font-size:0.72rem; color:#80868b; margin-bottom:3px; }
+/* icf-model-view-v1 : 生活機能モデル図ビュー */
+.icf-viewtoggle{display:inline-flex;border:1px solid #cfe0fb;border-radius:8px;overflow:hidden}
+.icf-viewtoggle button{background:#fff;color:#1a73e8;border:none;padding:5px 12px;font-size:0.76rem;font-weight:700;cursor:pointer}
+.icf-viewtoggle button.on{background:#1a73e8;color:#fff}
+.icfm-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.icfm-reset{background:#fff;color:#1a73e8;border:1.5px solid #1a73e8;border-radius:999px;padding:5px 12px;font-size:0.73rem;font-weight:700;cursor:pointer}
+.icfm-stage{position:relative;background:#fff;border:1px solid #e6e8eb;border-radius:12px;overflow:hidden;touch-action:pan-y}
+.icfm-vp{position:relative;width:100%;overflow:hidden}
+.icfm-canvas{position:absolute;top:0;left:0;width:720px;height:1020px;transform-origin:0 0;transition:transform .45s cubic-bezier(.22,.61,.36,1)}
+.icfm-links{position:absolute;top:0;left:0;width:720px;height:1020px;pointer-events:none}
+.icfm-links line{stroke:#9db4d8;stroke-width:2.4;opacity:.7}
+.icfm-node{position:absolute;border:2px solid #e6e8eb;border-radius:14px;background:#fff;display:flex;flex-direction:column;box-shadow:0 1px 3px rgba(0,0,0,.06);transition:opacity .4s,filter .4s,box-shadow .2s}
+.icfm-node .cap{font-weight:800;font-size:.9rem;padding:7px 9px 5px;display:flex;align-items:center;gap:4px}
+.icfm-node .cap .sp{margin-left:auto;display:flex;gap:5px}
+.icfm-node .cap .icf-add{background:#1a73e8;color:#fff;border:none;border-radius:7px;font-size:.8rem;padding:1px 8px;cursor:pointer;font-weight:700}
+.icfm-node .cap .icfm-zoom{background:rgba(255,255,255,.75);border:1px solid #dfe3e8;border-radius:7px;font-size:.8rem;padding:1px 7px;cursor:pointer}
+.icfm-node .icf-stickies{flex:1;overflow:auto;padding:2px 8px 8px}
+.icfm-node.dragover{box-shadow:0 0 0 3px #1a73e8 inset}
+.icfm-canvas.zoomed .icfm-node{opacity:.25;filter:saturate(.7)}
+.icfm-canvas.zoomed .icfm-node.focus{opacity:1;filter:none;box-shadow:0 6px 22px rgba(0,0,0,.18)}
+.icfm-back{position:absolute;left:10px;top:10px;z-index:6;display:none;background:#1a73e8;color:#fff;border:none;border-radius:999px;padding:7px 13px;font-size:.8rem;font-weight:700;cursor:pointer}
+.icfm-stage.isZoom .icfm-back{display:inline-flex}
+.icfm-health{background:#fff4e5;border-color:#f0bf85}
+.icfm-node.domain{background:#eef4ff;border-color:#b3caf2}
+.icfm-node.factor{background:#eef7f0;border-color:#b6dcc0}
+.icfm-ro{display:inline-flex;align-items:center;background:#fff;border:1px solid #f0d9b0;border-radius:6px;padding:3px 7px;font-size:.78rem;color:#7a5b1e;margin:0 6px 6px 0}
+.icfm-n-health{left:200px;top:16px;width:320px;height:150px}
+.icfm-n-body{left:14px;top:300px;width:222px;height:300px}
+.icfm-n-activity{left:249px;top:300px;width:222px;height:300px}
+.icfm-n-participation{left:484px;top:300px;width:222px;height:300px}
+.icfm-n-env{left:96px;top:720px;width:250px;height:260px}
+.icfm-n-personal{left:374px;top:720px;width:250px;height:260px}
 </style>
 {% endblock %}
 
@@ -339,7 +371,11 @@
           <div class="goal-section-hint">付箋の <b>⠿</b> をつまんで領域へドラッグすると移動します。各領域の「＋」で追加、文字はタップで直接編集、× で削除。<b style="color:#c5221f;">できない</b>は赤で表示されます。議事録の付箋取り込み・記録からのAI生成もできます。</div>
           <button class="btn-sub" onclick="window.patientInfoApp.generateIcf()">記録からAIで生成（できる/できない）</button>
           <button class="btn-sub" onclick="window.patientInfoApp.importIcf()">担会からICFを積み上げ</button>
-          <div id="icfBoard" style="margin-top:10px;"></div>
+          <div class="icf-viewtoggle" style="margin-top:10px;">
+            <button id="icfViewModel" class="on" onclick="window.patientInfoApp.setIcfView('model')">🗺 モデル図</button>
+            <button id="icfViewList" onclick="window.patientInfoApp.setIcfView('list')">≣ リスト</button>
+          </div>
+          <div id="icfBoard" style="margin-top:8px;"></div>
           <button id="saveIcfBtn" class="btn-primary" style="margin-top:6px;" onclick="window.patientInfoApp.saveIcf()">
             <span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span>ICF付箋を保存
           </button>
@@ -537,6 +573,7 @@ const PATIENTS = {{ patients | tojson }};
             if (which === "input") {
                 v.style.display = "none"; i.style.display = "block";
                 tv.classList.remove("active"); ti.classList.add("active");
+                if (this.icfView === "model") this.icfFit();
             } else {
                 v.style.display = "block"; i.style.display = "none";
                 ti.classList.remove("active"); tv.classList.add("active");
@@ -561,7 +598,9 @@ const PATIENTS = {{ patients | tojson }};
                     }));
                     this.renderFamilyEditor();
                     this.icfStickies = (j.icf || []).map(s => ({ zone: s.zone || "unsorted", text: s.text || "", icf_code: s.icf_code || "", polarity: s.polarity || "" }));
-                    this.renderIcfBoard();
+                    this.icfSnapshot = JSON.parse(JSON.stringify(this.icfStickies));
+                    this.icfHealth = (j.profile && j.profile.medical_history) || "";
+                    this.renderIcf();
                 }
                 this.renderView(j);
                 this.loadMeetingRecords();   // patient-hub-view-meetings-v1
@@ -782,6 +821,73 @@ const PATIENTS = {{ patients | tojson }};
         icfStickies: [],
         icfDragInit: false,
         ICF_ZONES: [["body", "心身機能・構造"], ["activity", "活動"], ["participation", "参加"], ["environment", "環境因子"], ["personal", "個人因子"], ["unsorted", "未分類"]],
+        icfView: "model",
+        icfSnapshot: null,
+        icfHealth: "",
+        icfBaseScale: 1,
+        icfZoomed: false,
+        icfGEO: { health:{x:200,y:16,w:320,h:150}, body:{x:14,y:300,w:222,h:300}, activity:{x:249,y:300,w:222,h:300}, participation:{x:484,y:300,w:222,h:300}, environment:{x:96,y:720,w:250,h:260}, personal:{x:374,y:720,w:250,h:260} },
+
+        renderIcf() { if (this.icfView === "list") this.renderIcfBoard(); else this.renderIcfModel(); },
+
+        setIcfView(v) {
+            this.icfView = v;
+            const bm = document.getElementById("icfViewModel"), bl = document.getElementById("icfViewList");
+            if (bm) bm.classList.toggle("on", v === "model");
+            if (bl) bl.classList.toggle("on", v === "list");
+            this.renderIcf();
+        },
+
+        icfChipHTML(z) {
+            return this.icfStickies.map((s, i) => ({ s, i })).filter(o => (o.s.zone || "unsorted") === z).map(o => {
+                const cannot = o.s.polarity === "cannot";
+                return `<div class="icf-sticky ${cannot ? "cannot" : ""}" data-idx="${o.i}"><span class="icf-handle" data-idx="${o.i}">⠿</span><span class="icf-text" contenteditable data-idx="${o.i}">${this.esc(o.s.text)}</span><button class="icf-pol" data-idx="${o.i}">${cannot ? "できない" : "できる"}</button><button class="icf-del" data-idx="${o.i}">×</button></div>`;
+            }).join("");
+        },
+
+        renderIcfModel() {
+            const board = document.getElementById("icfBoard"); if (!board) return;
+            const NODES = [["body","🧠 心身機能","domain","icfm-n-body"],["activity","🚶 活動","domain","icfm-n-activity"],["participation","👥 参加","domain","icfm-n-participation"],["environment","🏠 環境因子","factor","icfm-n-env"],["personal","🧑 個人因子","factor","icfm-n-personal"]];
+            const nodeHTML = (z,label,cls,pos) => `<div class="icfm-node ${cls} ${pos}" data-node="${z}"><div class="cap">${label}<span class="sp"><button class="icf-add" data-zone="${z}">＋</button><button class="icfm-zoom" data-zoom="${z}">🔍</button></span></div><div class="icf-stickies" data-zone="${z}">${this.icfChipHTML(z)}</div></div>`;
+            const healthChips = (this.icfHealth || "").split(/[、,\n・]/).map(t => t.trim()).filter(Boolean).map(t => `<span class="icfm-ro">${this.esc(t)}</span>`).join("") || '<span class="icfm-ro" style="color:#9aa0a6;border-color:#eee;">既往歴 未登録</span>';
+            const healthNode = `<div class="icfm-node icfm-health icfm-n-health" data-node="health"><div class="cap">🩺 健康状態<small style="font-weight:600;color:#7a5b1e;font-size:.64rem;margin-left:4px;">既往歴・閲覧のみ</small><span class="sp"><button class="icfm-zoom" data-zoom="health">🔍</button></span></div><div class="icf-stickies" style="overflow:auto;">${healthChips}</div></div>`;
+            const svg = `<svg class="icfm-links" viewBox="0 0 720 1020" preserveAspectRatio="none"><line x1="360" y1="166" x2="360" y2="300"/><line x1="330" y1="166" x2="150" y2="300"/><line x1="390" y1="166" x2="570" y2="300"/><line x1="236" y1="450" x2="249" y2="450"/><line x1="471" y1="450" x2="484" y2="450"/><line x1="200" y1="720" x2="130" y2="600"/><line x1="250" y1="720" x2="345" y2="600"/><line x1="470" y1="720" x2="380" y2="600"/><line x1="520" y1="720" x2="590" y2="600"/></svg>`;
+            const tray = `<div class="icf-zone unsorted" data-zone="unsorted" style="margin-top:8px;"><div class="icf-zone-h">未分類（⠿で各領域へ移動）<button class="icf-add" data-zone="unsorted">＋</button></div><div class="icf-stickies" data-zone="unsorted">${this.icfChipHTML("unsorted")}</div></div>`;
+            board.innerHTML = `<div class="icfm-toolbar"><span style="font-size:.72rem;color:#5f6368;margin-right:auto;">🔍で領域を拡大／⠿で付箋を移動</span><button class="icfm-reset" data-reset="1">↺ 元に戻す（開いた時の状態）</button></div><div class="icfm-stage" id="icfmStage"><button class="icfm-back" data-back="1">← 全体表示に戻る</button><div class="icfm-vp" id="icfmVp"><div class="icfm-canvas" id="icfmCanvas">${svg}${healthNode}${NODES.map(n => nodeHTML(n[0],n[1],n[2],n[3])).join("")}</div></div></div>${tray}`;
+            if (!this.icfDragInit) this.attachIcfEvents();
+            this.icfFit();
+        },
+
+        icfFit() {
+            const vp = document.getElementById("icfmVp"), cv = document.getElementById("icfmCanvas");
+            if (!vp || !cv) return;
+            const w = vp.clientWidth || 340;
+            this.icfBaseScale = w / 720;
+            vp.style.height = (1020 * this.icfBaseScale) + "px";
+            if (!this.icfZoomed) this.icfOverview();
+        },
+        icfOverview() {
+            const cv = document.getElementById("icfmCanvas"), st = document.getElementById("icfmStage");
+            if (!cv) return;
+            this.icfZoomed = false; cv.classList.remove("zoomed"); if (st) st.classList.remove("isZoom");
+            cv.querySelectorAll(".icfm-node").forEach(n => n.classList.remove("focus"));
+            cv.style.transform = `translate(0px,0px) scale(${this.icfBaseScale})`;
+        },
+        icfZoomTo(key) {
+            const g = this.icfGEO[key], vp = document.getElementById("icfmVp"), cv = document.getElementById("icfmCanvas"), st = document.getElementById("icfmStage");
+            if (!g || !vp || !cv) return;
+            const vw = vp.clientWidth, vh = vp.clientHeight, pad = 0.9;
+            let s = Math.min(vw * pad / g.w, vh * pad / g.h); s = Math.min(s, this.icfBaseScale * 3);
+            const cx = g.x + g.w / 2, cy = g.y + g.h / 2;
+            cv.style.transform = `translate(${vw / 2 - cx * s}px,${vh / 2 - cy * s}px) scale(${s})`;
+            cv.classList.add("zoomed"); if (st) st.classList.add("isZoom");
+            cv.querySelectorAll(".icfm-node").forEach(n => n.classList.toggle("focus", n.dataset.node === key));
+            this.icfZoomed = true;
+        },
+        icfReset(btn) {
+            if (btn.getAttribute("data-armed")) { this.icfStickies = JSON.parse(JSON.stringify(this.icfSnapshot || [])); this.renderIcf(); return; }
+            btn.setAttribute("data-armed", "1"); btn.textContent = "もう一度押すと破棄して戻す";
+        },
 
         renderIcfBoard() {
             const board = document.getElementById("icfBoard"); if (!board) return;
@@ -798,17 +904,21 @@ const PATIENTS = {{ patients | tojson }};
         attachIcfEvents() {
             const board = document.getElementById("icfBoard"); if (!board) return;
             this.icfDragInit = true;
+            window.addEventListener("resize", () => { if (this.icfView === "model") this.icfFit(); });
             board.addEventListener("input", (e) => {
                 const t = e.target.closest(".icf-text");
                 if (t && this.icfStickies[+t.dataset.idx]) this.icfStickies[+t.dataset.idx].text = t.textContent;
             });
             board.addEventListener("click", (e) => {
+                const zb = e.target.closest("[data-zoom]"); if (zb) { this.icfZoomTo(zb.dataset.zoom); return; }
+                const bb = e.target.closest("[data-back]"); if (bb) { this.icfOverview(); return; }
+                const rb = e.target.closest("[data-reset]"); if (rb) { this.icfReset(rb); return; }
                 const del = e.target.closest(".icf-del");
-                if (del) { this.icfStickies.splice(+del.dataset.idx, 1); this.renderIcfBoard(); return; }
+                if (del) { this.icfStickies.splice(+del.dataset.idx, 1); this.renderIcf(); return; }
                 const pol = e.target.closest(".icf-pol");
-                if (pol) { const s = this.icfStickies[+pol.dataset.idx]; if (s) { s.polarity = (s.polarity === "cannot") ? "can" : "cannot"; this.renderIcfBoard(); } return; }
+                if (pol) { const s = this.icfStickies[+pol.dataset.idx]; if (s) { s.polarity = (s.polarity === "cannot") ? "can" : "cannot"; this.renderIcf(); } return; }
                 const add = e.target.closest(".icf-add");
-                if (add) { this.icfStickies.push({ zone: add.dataset.zone, text: "新しい付箋", icf_code: "", polarity: "can" }); this.renderIcfBoard(); return; }
+                if (add) { this.icfStickies.push({ zone: add.dataset.zone, text: "新しい付箋", icf_code: "", polarity: "can" }); this.renderIcf(); return; }
             });
             board.addEventListener("pointerdown", (e) => {
                 const h = e.target.closest(".icf-handle");
@@ -840,7 +950,7 @@ const PATIENTS = {{ patients | tojson }};
                 const el = document.elementFromPoint(u.clientX, u.clientY);
                 const zoneEl = el && el.closest("[data-zone]");
                 if (zoneEl && this.icfStickies[idx]) { this.icfStickies[idx].zone = zoneEl.dataset.zone; }
-                this.renderIcfBoard();
+                this.renderIcf();
             };
             document.addEventListener("pointermove", move);
             document.addEventListener("pointerup", up);
@@ -870,7 +980,7 @@ const PATIENTS = {{ patients | tojson }};
                 const items = j.stickies || [];
                 if (!items.length) { this.showError(j.message || "生成できる項目がありませんでした"); return; }
                 items.forEach(s => this.icfStickies.push({ zone: s.zone || "unsorted", text: s.text || "", icf_code: "", polarity: s.polarity === "cannot" ? "cannot" : "can" }));
-                this.renderIcfBoard();
+                this.renderIcf();
                 this.switchTab("input");
                 this.showSuccess(`ICF案を${items.length}件追加しました。内容を確認して「ICF付箋を保存」を押してください。`);
             } catch (e) { this.showError(e.message); }
