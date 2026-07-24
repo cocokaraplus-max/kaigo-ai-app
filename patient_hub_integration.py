@@ -938,6 +938,72 @@ def register_patient_hub_routes(app):
         return jsonify({"status": "success", "added": added, "resolved": len(ids)})
 
     # ==========================================================
+    # icf-review-delete-v1 : ICF見直し（削除候補）＝ボード＋最近の記録をAI点検
+    # ==========================================================
+    @app.route('/api/patient-hub/icf/review', methods=['POST'])
+    @login_required
+    def api_hub_icf_review():
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        data = request.json or {}
+        user_name = (data.get("user_name") or "").strip()
+        items = data.get("items") or []
+        texts = [(str((it or {}).get("text") or "")).strip() for it in items]
+        pols = [(it or {}).get("polarity") for it in items]
+        if not any(texts):
+            return jsonify({"status": "success", "items": []})
+        recs_text = ""
+        if user_name:
+            try:
+                rr = (supabase.table("records").select("created_at,content")
+                      .eq("facility_code", f_code).eq("user_name", user_name)
+                      .order("created_at", desc=True).limit(60).execute())
+                lines = []
+                for r in (rr.data or []):
+                    c = (r.get("content") or "").replace("\n", " ").strip()
+                    if c:
+                        lines.append(c[:140])
+                recs_text = "\n".join(lines[:60])
+            except Exception:
+                recs_text = ""
+        numbered = "\n".join(
+            "%d: [%s] %s" % (i, ("できない" if pols[i] == "cannot" else "できる"), t)
+            for i, t in enumerate(texts) if t
+        )
+        prompt = (
+            "介護施設の1利用者について、現在のICF付箋一覧と最近のケース記録を渡します。\n"
+            "ICFから【削除を検討すべき付箋】だけを挙げてください。無ければ空配列。\n"
+            "reasonは次のいずれか:\n"
+            "  duplicate=他の付箋とほぼ重複 / improved=最近の記録から状態が変わり不要（例:『できない』が既に『できる』）/ outdated=古い・一過性・不適切で残す価値が低い\n"
+            "慎重に。明確なものだけ。番号(i)は入力のまま。noteに短い理由。必ず次のJSONのみ返す（説明文禁止）:\n"
+            '{"items":[{"i":3,"reason":"improved","note":"最近は入浴を自立して行えており不要"}]}\n\n'
+            "=== 現在のICF付箋 ===\n" + numbered + "\n\n=== 最近の記録 ===\n" + (recs_text or "(なし)")
+        )
+        try:
+            from utils import get_generative_model
+            model = get_generative_model()
+            resp = model.generate_content(prompt)
+            raw = (resp.text or "").strip()
+            m = re.search(r'\{.*\}', raw, re.DOTALL)
+            parsed = _json.loads(m.group())["items"] if m else []
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"AI見直し失敗: {e}"}), 500
+        _reasons = {"duplicate", "improved", "outdated"}
+        out = []
+        for it in (parsed or []):
+            try:
+                i = int(it.get("i"))
+            except Exception:
+                continue
+            if i < 0 or i >= len(texts) or not texts[i]:
+                continue
+            reason = it.get("reason") if it.get("reason") in _reasons else "outdated"
+            note = (str(it.get("note") or "")).strip()[:120]
+            out.append({"i": i, "reason": reason, "note": note})
+        return jsonify({"status": "success", "items": out})
+
+    # ==========================================================
     # 性質推測：ケース記録からAIで人となりを生成（キャッシュ上書き）
     # ==========================================================
     @app.route('/api/patient-hub/personality/generate', methods=['POST'])
