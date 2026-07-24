@@ -2548,6 +2548,119 @@ def record_check():
 # ===== /record-check-v1 =====
 
 
+# ===== monitoring-check-v1 : 月間の記録充足チェック（その月に来所した利用者×カテゴリ別の件数。0件=赤） =====
+@app.route("/monitoring_check")   # monitoring-check-v1
+@login_required
+def monitoring_check():
+    f_code = session["f_code"]
+    my_name = session["my_name"]
+    supabase = get_supabase()
+
+    month_str = (request.args.get("month") or "").strip()
+    try:
+        _y, _m = month_str.split("-")
+        first = datetime(int(_y), int(_m), 1).date()
+    except Exception:
+        first = datetime.now(tokyo_tz).date().replace(day=1)
+    month_str = first.strftime("%Y-%m")
+    if first.month == 12:
+        nextm = datetime(first.year + 1, 1, 1).date()
+    else:
+        nextm = datetime(first.year, first.month + 1, 1).date()
+
+    # --- その月に来所した人（バイタルのある日が1日でもある）。日次と同じ判定の月版 ---
+    try:
+        vres = (supabase.table("vitals").select("patient_id")
+                .eq("facility_code", f_code)
+                .gte("measured_date", first.strftime("%Y-%m-%d"))
+                .lt("measured_date", nextm.strftime("%Y-%m-%d")).execute())
+    except Exception as e:
+        print("monitoring_check vitals error: %s" % e, flush=True)
+        vres = None
+    pids, seen = [], set()
+    for v in ((vres.data if vres else None) or []):
+        pid = str(v.get("patient_id") or "")
+        if pid and pid not in seen:
+            seen.add(pid)
+            pids.append(pid)
+
+    plist = get_patients(supabase, f_code)
+    pmap = dict((str(p["id"]), p) for p in plist)
+    people = []
+    for pid in pids:
+        prof = pmap.get(pid) or {}
+        nm = prof.get("user_name") or ""
+        if not nm:
+            continue
+        people.append({
+            "user_name": nm,
+            "user_kana": prof.get("user_kana") or "",
+            "patient_number": prof.get("patient_number") or "",
+        })
+    people.sort(key=lambda x: (x.get("user_kana") or x.get("user_name") or ""))
+
+    # --- カテゴリ（施設ごと。色と並び順つき） ---
+    cats = []
+    try:
+        cres = (supabase.table("record_categories").select("name,color,sort_order")
+                .eq("facility_code", f_code).order("sort_order").order("id").execute())
+        cats = [{"name": c.get("name") or "", "color": c.get("color") or "#5f6368"}
+                for c in (cres.data or []) if (c.get("name") or "").strip()]
+    except Exception as e:
+        print("monitoring_check categories error: %s" % e, flush=True)
+    if not cats:
+        cats = [{"name": n, "color": "#5f6368"} for n in ("入浴", "食事", "排泄", "その他")]
+    cat_names = [c["name"] for c in cats]
+    if "その他" not in cat_names:
+        cats.append({"name": "その他", "color": "#9aa0a6"})
+        cat_names.append("その他")
+
+    # --- その月の記録（JSTの月境界。records は user_name で突合） ---
+    t_start = tokyo_tz.localize(datetime.combine(first, dt_time.min))
+    t_end = tokyo_tz.localize(datetime.combine(nextm, dt_time.min))
+    counts = {}
+    total_records = 0
+    try:
+        rres = (supabase.table("records").select("user_name,category")
+                .eq("facility_code", f_code)
+                .gte("created_at", t_start.isoformat())
+                .lt("created_at", t_end.isoformat()).execute())
+        for r in (rres.data or []):
+            nm = (r.get("user_name") or "").strip()
+            if not nm:
+                continue
+            cat = (r.get("category") or "その他").strip() or "その他"
+            if cat not in cat_names:
+                cat = "その他"
+            counts.setdefault(nm, {})
+            counts[nm][cat] = counts[nm].get(cat, 0) + 1
+            total_records += 1
+    except Exception as e:
+        print("monitoring_check records error: %s" % e, flush=True)
+
+    rows = []
+    n_gap = 0
+    for p in people:
+        c = counts.get(p["user_name"], {})
+        cells = [c.get(cn, 0) for cn in cat_names]
+        tot = sum(cells)
+        if any(v == 0 for v in cells):
+            n_gap += 1
+        rows.append({
+            "user_name": p["user_name"],
+            "patient_number": p["patient_number"],
+            "cells": cells,
+            "total": tot,
+        })
+
+    month_label = "%d年%d月" % (first.year, first.month)
+    return render("monitoring_check.html", f_code=f_code, my_name=my_name,
+                  month=month_str, month_label=month_label,
+                  cats=cats, rows=rows,
+                  n_people=len(rows), n_gap=n_gap, n_records=total_records)
+# ===== /monitoring-check-v1 =====
+
+
 @app.route('/input', methods=['GET', 'POST'])
 @login_required
 def input_view():

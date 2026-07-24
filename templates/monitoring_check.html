@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}月間 記録充足チェック - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* monitoring-check-v1: その月に来所した利用者 × カテゴリ別の記録件数（月版）。0件=未記入を赤で強調。 */
+.mc-tabs { display:flex; gap:6px; margin-bottom:12px; }
+.mc-tab { flex:1; text-align:center; padding:10px 8px; border-radius:10px; font-size:0.86rem;
+  font-weight:700; color:#5f6368; background:#f1f3f4; text-decoration:none; cursor:pointer; }
+.mc-tab.active { background:#1a73e8; color:#fff; }
+.mc-head { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+.mc-title { font-size:1.05rem; font-weight:800; display:flex; align-items:center; gap:6px; }
+.mc-month { border:1px solid #d6dbe3; border-radius:10px; padding:8px 10px; font-size:0.9rem; font-family:inherit; }
+.mc-sum { display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+.mc-chip { border-radius:999px; padding:6px 12px; font-size:0.8rem; font-weight:800; }
+.mc-chip.ok { background:#e6f4ea; color:#137333; }
+.mc-chip.ng { background:#fce8e6; color:#c5221f; }
+.mc-chip.mut { background:#f1f3f4; color:#5f6368; }
+.mc-lead { font-size:0.8rem; color:#5f6368; line-height:1.6; margin:0 0 12px; }
+.mc-wrap { overflow:auto; border:1px solid #e6ebf2; border-radius:10px; min-width:0;
+  background:#fff; max-height:calc(100vh - 300px); min-height:240px; overscroll-behavior:none; }
+@supports (height:100dvh){ .mc-wrap{ max-height:calc(100dvh - 300px);} }
+table.mc { border-collapse:separate; border-spacing:0; font-size:0.86rem;
+  width:max-content; min-width:100%; table-layout:fixed; }
+table.mc th, table.mc td { border-bottom:1px solid #eef1f5; background:#fff; }
+table.mc td { padding:9px 2px; }
+table.mc thead th { background:#f8fafc; border-bottom:2px solid #e2e8f0;
+  position:sticky; top:0; z-index:2; padding:6px 2px 8px; vertical-align:bottom; text-align:center; }
+table.mc col.cat, table.mc thead th.cat { width:38px; min-width:38px; }
+table.mc .vt { display:flex; justify-content:center; align-items:flex-start;
+  width:100%; height:96px; border-radius:6px; padding:5px 0; box-sizing:border-box; overflow:hidden; }
+table.mc .vt span { writing-mode:vertical-rl; text-orientation:upright;
+  font-size:0.72rem; font-weight:800; letter-spacing:1px; line-height:1.05; }
+table.mc col.tot, table.mc thead th.tot-h { width:38px; min-width:38px; }
+table.mc thead th.tot-h { font-size:0.7rem; color:#5f6368; font-weight:800; }
+table.mc .nm { position:sticky; left:0; z-index:3; font-weight:700; text-align:left;
+  box-shadow:1px 0 0 #eef1f5; width:104px; padding-left:10px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+table.mc thead .nm { z-index:4; font-size:0.7rem; color:#5f6368; }
+table.mc td.num { text-align:center; font-variant-numeric:tabular-nums; font-weight:800; }
+/* 0件（未記入）を赤で強調 */
+table.mc td.zero { background:#fce8e6 !important; color:#c5221f; font-weight:800; }
+table.mc td.tot { text-align:center; font-weight:800; background:#f8fafc; }
+.mc-note { font-size:0.72rem; color:#9aa3b2; margin-top:10px; line-height:1.6; }
+.mc-empty { text-align:center; color:#9aa3b2; padding:36px 0; font-size:0.9rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mc-tabs">
+  <a class="mc-tab" href="/monitoring">
+    <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">monitoring</span>
+    モニタリング文章
+  </a>
+  <span class="mc-tab active">
+    <span class="material-symbols-outlined" style="font-size:18px;vertical-align:middle;">fact_check</span>
+    月間充足チェック
+  </span>
+</div>
+
+<div class="mc-head">
+  <div class="mc-title">
+    <span class="material-symbols-outlined" style="color:#1a73e8;">fact_check</span>月間 記録充足チェック
+  </div>
+  <input type="month" class="mc-month" id="mcMonth" value="{{ month }}">
+</div>
+
+<div class="mc-sum">
+  <span class="mc-chip mut">{{ month_label }}・来所 {{ n_people }}名</span>
+  {% if n_gap > 0 %}
+  <span class="mc-chip ng">未記入カテゴリあり {{ n_gap }}名</span>
+  {% else %}
+  <span class="mc-chip ok">全員 全カテゴリ記録あり</span>
+  {% endif %}
+  <span class="mc-chip mut">記録 {{ n_records }}件</span>
+</div>
+
+<div class="mc-lead">その月に来所した利用者ごとに、カテゴリの記録件数を表示します。<b style="color:#c5221f;">赤いセル（0）＝その月に一度も記録が無いカテゴリ</b>です。</div>
+
+{% if not rows %}
+  <div class="mc-empty">{{ month_label }} に来所した利用者がいません。<br>（バイタルの測定がある人を「来所」としています）</div>
+{% else %}
+<div class="mc-wrap">
+  <table class="mc">
+    <colgroup>
+      <col style="width:104px">
+      {% for c in cats %}<col class="cat">{% endfor %}
+      <col class="tot">
+    </colgroup>
+    <thead>
+      <tr>
+        <th class="nm">利用者</th>
+        {% for c in cats %}
+        <th class="cat" title="{{ c.name }}">
+          <div class="vt" style="background:{{ c.color }}20;">
+            <span style="color:{{ c.color }};">{{ c.name[:6] }}</span>
+          </div>
+        </th>
+        {% endfor %}
+        <th class="tot-h">計</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td class="nm" title="{{ r.user_name }}">{{ r.user_name }}</td>
+        {% for v in r.cells %}
+        <td class="num {% if v == 0 %}zero{% endif %}"
+            style="{% if v != 0 %}background:{{ cats[loop.index0].color }}1c;{% endif %}">{{ v }}</td>
+        {% endfor %}
+        <td class="tot">{{ r.total }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="mc-note">
+  「来所」＝その月にバイタルの測定がある利用者（日次の充足チェックと同じ判定の月版）。<br>
+  カテゴリは管理者MENUで設定したもの。登録に無いカテゴリの記録は「その他」に数えています。
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+document.getElementById('mcMonth').onchange = function () {
+  if (this.value) location.href = '/monitoring_check?month=' + this.value;
+};
+</script>
+{% endblock %}
