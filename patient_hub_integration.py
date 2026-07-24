@@ -827,6 +827,117 @@ def register_patient_hub_routes(app):
         return jsonify({"status": "success", "items": out})
 
     # ==========================================================
+    # icf-pending-queue-v1 : ICF追記の保留キュー（あとでまとめて承認）
+    # ==========================================================
+    @app.route('/api/patient-hub/icf/defer', methods=['POST'])
+    @login_required
+    def api_hub_icf_defer():
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        my = session.get("my_name", "")
+        data = request.json or {}
+        pid = (data.get("pid") or "").strip()
+        user_name = (data.get("user_name") or "").strip() or None
+        stickies = data.get("stickies") or []
+        label = (data.get("source_label") or "").strip() or None
+        if not pid or not stickies:
+            return jsonify({"status": "error", "message": "pid と stickies が必要です"}), 400
+        rows = []
+        for s in stickies:
+            txt = (str((s or {}).get("text") or "")).strip()
+            if not txt:
+                continue
+            pol = s.get("polarity") if s.get("polarity") in ("can", "cannot") else None
+            rows.append({
+                "facility_code": f_code, "patient_profile_id": str(pid),
+                "user_name": user_name, "zone": (s.get("zone") or "unsorted"),
+                "text": txt, "polarity": pol, "icf_code": (s.get("icf_code") or None),
+                "source_label": label, "created_by": my,
+            })
+        saved = 0
+        if rows:
+            try:
+                supabase.table("icf_pending").insert(rows).execute()
+                saved = len(rows)
+            except Exception as e:
+                return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success", "deferred": saved})
+
+    @app.route('/api/patient-hub/icf/pending', methods=['GET'])
+    @login_required
+    def api_hub_icf_pending():
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        try:
+            r = (supabase.table("icf_pending").select("*")
+                 .eq("facility_code", f_code).order("created_at", desc=False).execute())
+            rows = r.data or []
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e), "pending": [], "count": 0}), 500
+        return jsonify({"status": "success", "pending": rows, "count": len(rows)})
+
+    @app.route('/api/patient-hub/icf/pending/resolve', methods=['POST'])
+    @login_required
+    def api_hub_icf_pending_resolve():
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        data = request.json or {}
+        ids = data.get("ids") or []
+        action = (data.get("action") or "").strip()
+        ids = [i for i in ids if isinstance(i, int)]
+        if not ids or action not in ("approve", "reject"):
+            return jsonify({"status": "error", "message": "ids と action(approve/reject) が必要です"}), 400
+        added = 0
+        try:
+            sel = (supabase.table("icf_pending").select("*")
+                   .eq("facility_code", f_code).in_("id", ids).execute())
+            rows = sel.data or []
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        if action == "approve":
+            by_pid = {}
+            for r in rows:
+                by_pid.setdefault(str(r.get("patient_profile_id")), []).append(r)
+            for pid, items in by_pid.items():
+                seen = _icf_board_keys(supabase, f_code, pid)
+                base = 0
+                try:
+                    mx = (supabase.table("patient_icf_stickies").select("sort_order")
+                          .eq("facility_code", f_code).eq("patient_profile_id", pid)
+                          .order("sort_order", desc=True).limit(1).execute())
+                    base = int((mx.data or [{}])[0].get("sort_order") or 0) + 1
+                except Exception:
+                    base = 0
+                ins = []
+                for r in items:
+                    txt = (r.get("text") or "").strip()
+                    pol = r.get("polarity") if r.get("polarity") in ("can", "cannot") else None
+                    key = _icf_dedup_key(r.get("icf_code"), pol, txt)
+                    if not txt or key in seen:
+                        continue
+                    seen.add(key)
+                    ins.append({
+                        "facility_code": f_code, "patient_profile_id": pid,
+                        "zone": (r.get("zone") or "unsorted"), "text": txt,
+                        "icf_code": (r.get("icf_code") or None), "polarity": pol,
+                        "sort_order": base + len(ins),
+                    })
+                if ins:
+                    try:
+                        supabase.table("patient_icf_stickies").insert(ins).execute()
+                        added += len(ins)
+                    except Exception:
+                        pass
+        try:
+            supabase.table("icf_pending").delete().eq("facility_code", f_code).in_("id", ids).execute()
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"削除失敗: {e}"}), 500
+        return jsonify({"status": "success", "added": added, "resolved": len(ids)})
+
+    # ==========================================================
     # 性質推測：ケース記録からAIで人となりを生成（キャッシュ上書き）
     # ==========================================================
     @app.route('/api/patient-hub/personality/generate', methods=['POST'])

@@ -234,6 +234,76 @@
 })();
 </script>
 
+<!-- icf-pending-top-v1: ICF追記 未確認バナー -->
+<div id="icf-pending-banner" onclick="window._icfOpenPending&&window._icfOpenPending()"
+  style="display:none;align-items:center;gap:8px;padding:12px 14px;margin:4px 0 14px;
+  background:#eef4ff;border:1px solid #cfe0fb;border-radius:12px;cursor:pointer;">
+  <span style="font-size:20px;">🩺</span>
+  <span style="font-weight:800;color:#1a4b8f;">ICF追記の未確認</span>
+  <span id="icf-pending-count" style="margin-left:auto;background:#1a73e8;color:#fff;border-radius:999px;padding:2px 11px;font-weight:800;font-size:.85rem;">0件</span>
+  <span class="material-symbols-outlined" style="color:#1a73e8;">chevron_right</span>
+</div>
+<script>
+/* icf-pending-top-v1 */
+(function(){
+  var ZL={body:'心身機能',activity:'活動',participation:'参加',environment:'環境',personal:'個人',unsorted:'未分類'};
+  function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function loadCount(){
+    fetch('/api/patient-hub/icf/pending').then(function(r){return r.json();}).then(function(d){
+      var b=document.getElementById('icf-pending-banner'); if(!b) return;
+      if(d&&d.status==='success'&&(d.count||0)>0){ document.getElementById('icf-pending-count').textContent=(d.count)+'件'; b.style.display='flex'; }
+      else b.style.display='none';
+    }).catch(function(){});
+  }
+  function group(rows){ var g={},order=[]; rows.forEach(function(r){ var k=String(r.patient_profile_id); if(!g[k]){ g[k]={name:r.user_name||'利用者',items:[]}; order.push(k);} g[k].items.push(r); }); return {g:g,order:order}; }
+  window._icfOpenPending=function(){
+    fetch('/api/patient-hub/icf/pending').then(function(r){return r.json();}).then(function(d){
+      if(!d||d.status!=='success') return;
+      var ov=document.createElement('div');
+      ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10000;display:flex;align-items:flex-end;justify-content:center;';
+      var panel=document.createElement('div');
+      panel.style.cssText='background:#fff;border-radius:18px 18px 0 0;max-width:480px;width:100%;max-height:88vh;display:flex;flex-direction:column;';
+      ov.appendChild(panel);
+      function render(rows){
+        var total=rows.length; var gg=group(rows);
+        var bodyHtml=gg.order.map(function(pid){ var grp=gg.g[pid];
+          return '<div style="margin-bottom:14px;"><div style="display:flex;align-items:center;gap:8px;margin:4px 2px 8px;"><span style="font-weight:800;">'+esc(grp.name)+'</span><span style="font-size:.72rem;color:#9aa0a6;">'+grp.items.length+'件</span></div>'
+            + grp.items.map(function(it){ var can=it.polarity!=='cannot'; var col=can?'#137333':'#c5221f';
+              return '<label style="display:flex;align-items:flex-start;gap:9px;border:1px solid #e6e8eb;border-radius:12px;padding:10px 11px;margin-bottom:8px;">'
+                +'<input type="checkbox" class="icfpc" data-id="'+it.id+'" checked style="width:20px;height:20px;flex:0 0 auto;margin-top:2px;">'
+                +'<div style="flex:1;min-width:0;"><div style="display:flex;gap:7px;flex-wrap:wrap;align-items:center;"><span style="font-size:.68rem;color:#5f6368;background:#eef1f4;border-radius:6px;padding:1px 8px;">'+esc(ZL[it.zone]||it.zone)+'</span><span style="font-size:.68rem;font-weight:800;color:'+col+';border:1px solid '+(can?'#a8d5b5':'#f2b8b5')+';border-radius:999px;padding:1px 8px;">'+(can?'できる':'できない')+'</span></div>'
+                +'<div style="font-size:.9rem;font-weight:600;color:#2b3a2f;margin-top:3px;">'+esc(it.text)+'</div>'
+                +(it.source_label?'<div style="font-size:.68rem;color:#9aa0a6;margin-top:2px;">元記録: '+esc(it.source_label)+'</div>':'')
+                +'</div></label>';
+            }).join('') + '</div>';
+        }).join('');
+        panel.innerHTML='<div style="padding:14px 16px;border-bottom:1px solid #f1f3f4;display:flex;align-items:center;gap:8px;"><span style="font-weight:800;font-size:1.05rem;">🩺 ICF追記の確認</span><span style="margin-left:auto;background:#fde7e7;color:#c5221f;border-radius:999px;padding:3px 11px;font-weight:800;font-size:.78rem;">未確認 '+total+'件</span></div>'
+          +'<div style="flex:1;overflow:auto;padding:12px 14px;">'+(total?bodyHtml:'<div style="text-align:center;color:#9aa0a6;padding:50px 20px;">✅ 未確認のICF追記はありません</div>')+'</div>'
+          +'<div style="padding:12px 14px;border-top:1px solid #eee;display:flex;gap:10px;">'
+          +'<button id="icfPClose" style="flex:0 0 auto;background:#fff;color:#5f6368;border:1px solid #dfe3e8;border-radius:14px;padding:12px 14px;font-weight:800;cursor:pointer;">閉じる</button>'
+          +(total?'<button id="icfPRej" style="flex:1;background:#fff;color:#c5221f;border:1.5px solid #f2b8b5;border-radius:14px;padding:12px;font-weight:800;cursor:pointer;">選択を却下</button><button id="icfPApp" style="flex:1;background:#1e8e3e;color:#fff;border:none;border-radius:14px;padding:12px;font-weight:800;cursor:pointer;">選択を承認</button>':'')
+          +'</div>';
+        panel.querySelector('#icfPClose').onclick=function(){ ov.remove(); loadCount(); };
+        function ids(){ var a=[]; panel.querySelectorAll('.icfpc:checked').forEach(function(cb){ a.push(parseInt(cb.getAttribute('data-id'),10)); }); return a; }
+        function resolve(action){ var sel=ids(); if(!sel.length) return;
+          fetch('/api/patient-hub/icf/pending/resolve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:sel,action:action})})
+            .then(function(r){return r.json();}).then(function(){
+              fetch('/api/patient-hub/icf/pending').then(function(r){return r.json();}).then(function(d2){ render((d2&&d2.pending)||[]); });
+            }).catch(function(){});
+        }
+        var ap=panel.querySelector('#icfPApp'), rj=panel.querySelector('#icfPRej');
+        if(ap) ap.onclick=function(){ resolve('approve'); };
+        if(rj) rj.onclick=function(){ resolve('reject'); };
+      }
+      render(d.pending||[]);
+      ov.addEventListener('click',function(e){ if(e.target===ov){ ov.remove(); loadCount(); } });
+      document.body.appendChild(ov);
+    }).catch(function(){});
+  };
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',loadCount); else loadCount();
+})();
+</script>
+
 <!-- app-drawer-v1: TOPのアイコングリッドは撤去。全画面の引き出し（base.html）に移した -->
 
 <!-- ★ ユーザー設定モーダル -->
