@@ -2198,7 +2198,7 @@ def _plan_block_redirect(tier):  # plan-enforce-v1
 
 
 STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden",
-                      "drawer_pos")   # 受け付けるキーはこれだけ
+                      "drawer_pos", "rc_cat_order", "rc_gap_cats")   # 受け付けるキーはこれだけ
 
 
 def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
@@ -2438,6 +2438,42 @@ def top():
         contract=_contract_overview(f_code),  # pricing-rebuild-v1
     )
 
+def _rc_staff_view(supabase, f_code, my_name, cats):  # record-check-view-v1
+    """充足チェックの個人ビュー。並び順(rc_cat_order)と未記入対象(rc_gap_cats)を適用。
+    cats: [{'name','color'}...](sort_order順)。各要素に 'target'(未記入判定の対象か) を付けて、
+    個人の並び順に並べ替えたリストを返す。設定が無ければ元の順・全カテゴリ対象。"""
+    import json as _sv_json
+    order = []
+    try:
+        raw = get_staff_setting(supabase, f_code, my_name, "rc_cat_order")
+        if raw:
+            order = [str(x) for x in _sv_json.loads(raw)]
+    except Exception:
+        order = []
+    ordered, seen = [], set()
+    for nm in order:
+        for c in cats:
+            if c.get("name") == nm and nm not in seen:
+                ordered.append(c)
+                seen.add(nm)
+    for c in cats:
+        if c.get("name") not in seen:
+            ordered.append(c)
+            seen.add(c.get("name"))
+    names = set(c.get("name") for c in cats)
+    target = None
+    try:
+        raw2 = get_staff_setting(supabase, f_code, my_name, "rc_gap_cats")
+        if raw2:
+            lst = [str(x) for x in _sv_json.loads(raw2)]
+            target = set(n for n in lst if n in names)
+    except Exception:
+        target = None
+    for c in ordered:
+        c["target"] = True if target is None else (c.get("name") in target)
+    return ordered
+
+
 # ===== record-check-v1 : 記録の充足チェック =====
 # その日に来ている利用者 × カテゴリ別の記録件数。「来ているのに記録が無い」を見つける。
 
@@ -2497,10 +2533,15 @@ def record_check():
     if not cats:
         cats = [{"name": n, "color": "#5f6368"} for n in ("入浴", "食事", "排泄", "その他")]
     cat_names = [c["name"] for c in cats]
-    has_other = "その他" in cat_names
-    if not has_other:
+    if "その他" not in cat_names:
         cats.append({"name": "その他", "color": "#9aa0a6"})   # 登録に無いカテゴリの受け皿
-        cat_names.append("その他")
+
+    # record-check-view-v1: 個人ごとの並び順(rc_cat_order)と未記入対象(rc_gap_cats)を適用
+    cats = _rc_staff_view(supabase, f_code, my_name, cats)
+    cat_names = [c["name"] for c in cats]
+    import json as _rc_json
+    cats_json = _rc_json.dumps([{"name": c["name"], "target": bool(c.get("target", True))}
+                               for c in cats], ensure_ascii=False)
 
     # --- その日の記録（JSTの日境界。records は patient_id を持たず user_name で突合） ---
     t_start = tokyo_tz.localize(datetime.combine(sel, dt_time.min))
@@ -2525,24 +2566,27 @@ def record_check():
     except Exception as e:
         print("record_check records error: %s" % e, flush=True)
 
+    target_names = set(c["name"] for c in cats if c.get("target", True))
     rows = []
     zero = 0
     for p in people:
         c = counts.get(p["user_name"], {})
         tot = sum(c.values())
-        if tot == 0:
+        has_gap = any((c.get(cn, 0) == 0) for cn in target_names) if target_names else False
+        if has_gap:
             zero += 1
         rows.append({
             "user_name": p["user_name"],
             "patient_number": p["patient_number"],
             "cells": [c.get(cn, 0) for cn in cat_names],
             "total": tot,
+            "has_gap": has_gap,
         })
 
     return render("record_check.html", f_code=f_code, my_name=my_name,
                   date=date_str,
                   date_label=sel.strftime("%-m月%-d日"),
-                  cats=cats, rows=rows,
+                  cats=cats, rows=rows, cats_json=cats_json,
                   n_people=len(rows), n_zero=zero, n_records=total_records)
 
 # ===== /record-check-v1 =====
@@ -2613,7 +2657,13 @@ def monitoring_check():
     cat_names = [c["name"] for c in cats]
     if "その他" not in cat_names:
         cats.append({"name": "その他", "color": "#9aa0a6"})
-        cat_names.append("その他")
+
+    # monitoring-check-view-v1: 個人ごとの並び順(rc_cat_order)と未記入対象(rc_gap_cats)を適用
+    cats = _rc_staff_view(supabase, f_code, my_name, cats)
+    cat_names = [c["name"] for c in cats]
+    import json as _mc_json
+    cats_json = _mc_json.dumps([{"name": c["name"], "target": bool(c.get("target", True))}
+                               for c in cats], ensure_ascii=False)
 
     # --- その月の記録（JSTの月境界。records は user_name で突合） ---
     t_start = tokyo_tz.localize(datetime.combine(first, dt_time.min))
@@ -2638,26 +2688,30 @@ def monitoring_check():
     except Exception as e:
         print("monitoring_check records error: %s" % e, flush=True)
 
+    target_names = set(c["name"] for c in cats if c.get("target", True))
     rows = []
     n_gap = 0
     for p in people:
         c = counts.get(p["user_name"], {})
         cells = [c.get(cn, 0) for cn in cat_names]
         tot = sum(cells)
-        if any(v == 0 for v in cells):
+        has_gap = any((c.get(cn, 0) == 0) for cn in target_names) if target_names else False
+        if has_gap:
             n_gap += 1
         rows.append({
             "user_name": p["user_name"],
             "patient_number": p["patient_number"],
             "cells": cells,
             "total": tot,
+            "has_gap": has_gap,
         })
 
     month_label = "%d年%d月" % (first.year, first.month)
     return render("monitoring_check.html", f_code=f_code, my_name=my_name,
                   month=month_str, month_label=month_label,
-                  cats=cats, rows=rows,
+                  cats=cats, rows=rows, cats_json=cats_json,
                   n_people=len(rows), n_gap=n_gap, n_records=total_records)
+
 # ===== /monitoring-check-v1 =====
 
 

@@ -89,6 +89,21 @@ table.rc tr.none td.num { color:#c5221f; }
 .rc-lead { font-size:0.8rem; color:#5f6368; line-height:1.6; margin:0 0 12px; }
 .rc-empty { text-align:center; color:#9aa3b2; padding:36px 0; font-size:0.9rem; }
 .rc-note { font-size:0.72rem; color:#9aa3b2; margin-top:10px; line-height:1.6; }
+table.rc td.zero-t { background:#fce8e6 !important; color:#c5221f; font-weight:800; }
+table.rc tr.gaprow .nm { color:#c5221f; }
+/* 表示設定パネル(rccfg) */
+.rccfg-bar{margin-bottom:10px;}
+.rccfg-open{font-size:0.8rem;font-weight:700;color:#1a73e8;background:#f0f4ff;border:1.5px solid #c7d2fe;border-radius:999px;padding:7px 14px;cursor:pointer;}
+.rccfg-panel{border:1px solid #e6ebf2;border-radius:12px;background:#fff;padding:12px;margin-bottom:12px;}
+.rccfg-hint{font-size:0.74rem;color:#5f6368;line-height:1.6;margin-bottom:8px;}
+.rccfg-list{list-style:none;margin:0;padding:0;}
+.rccfg-item{display:flex;align-items:center;gap:8px;padding:9px 8px;border:1px solid #eef1f5;border-radius:8px;margin-bottom:6px;background:#fff;touch-action:none;}
+.rccfg-item.drag{opacity:.6;background:#f0f4ff;}
+.rccfg-handle{cursor:grab;color:#9aa3b2;font-size:18px;user-select:none;padding:0 2px;}
+.rccfg-item .nm{flex:1;font-size:0.86rem;font-weight:700;}
+.rccfg-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:6px;}
+.rccfg-cancel,.rccfg-save{font-size:0.82rem;font-weight:700;border-radius:8px;padding:8px 16px;cursor:pointer;border:1.5px solid #dadce0;background:#fff;color:#5f6368;}
+.rccfg-save{background:#1a73e8;color:#fff;border-color:#1a73e8;}
 </style>
 {% endblock %}
 
@@ -123,6 +138,21 @@ table.rc tr.none td.num { color:#c5221f; }
 </div>
 
 {# record-check-vhead-v3: 何のための画面かを1行で。数字の意味が分からないまま眺めることが無いように #}
+<div class="rccfg-bar">
+  <button type="button" class="rccfg-open" id="rccfgOpen">
+    <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">tune</span>
+    表示設定（並び替え・未記入対象）
+  </button>
+</div>
+<div class="rccfg-panel" id="rccfgPanel" style="display:none;">
+  <div class="rccfg-hint">≡ をドラッグして並び替え。チェックした項目だけ「未記入あり」の対象にします（あなた専用の設定）。</div>
+  <ul class="rccfg-list" id="rccfgList"></ul>
+  <div class="rccfg-actions">
+    <button type="button" class="rccfg-cancel" id="rccfgCancel">閉じる</button>
+    <button type="button" class="rccfg-save" id="rccfgSave">保存して反映</button>
+  </div>
+</div>
+
 <div class="rc-lead">この記録充足チェックで、本日の書かれていないカテゴリを確認できます。</div>
 
 {% if not rows %}
@@ -154,12 +184,12 @@ table.rc tr.none td.num { color:#c5221f; }
     </thead>
     <tbody>
       {% for r in rows %}
-      <tr {% if r.total == 0 %}class="none"{% endif %}>
+      <tr {% if r.has_gap %}class="gaprow"{% endif %}>
         <td class="nm" data-user="{{ r.user_name }}" title="この人のケース記録を開く">{{ r.user_name }}</td>
         {% for v in r.cells %}
         {# record-check-vhead-v2: 列ごとにカテゴリ色の帯。0件は薄く（08）、1件以上はやや濃く（1c） #}
-        <td class="num {% if v == 0 %}zero{% endif %}"
-            style="background:{{ cats[loop.index0].color }}{% if v == 0 %}08{% else %}1c{% endif %};"
+        <td class="num {% if v == 0 %}{% if cats[loop.index0].target %}zero-t{% else %}zero{% endif %}{% endif %}"
+            style="{% if v == 0 %}{% if not cats[loop.index0].target %}background:{{ cats[loop.index0].color }}08;{% endif %}{% else %}background:{{ cats[loop.index0].color }}1c;{% endif %}"
             data-user="{{ r.user_name }}" data-cat="{{ cats[loop.index0].name }}" data-n="{{ v }}"
             title="{% if v == 0 %}記録入力へ（利用者を選んだ状態で開きます）{% else %}この人のケース記録を開く{% endif %}">{{ v }}</td>
         {% endfor %}
@@ -213,6 +243,48 @@ document.getElementById('rcDate').onchange = function () {
   document.querySelectorAll('td.nm').forEach(function (td) {
     td.onclick = function () { if (td.dataset.user) toRecords(td.dataset.user); };
   });
+})();
+
+var RC_CATS = {{ cats_json|safe }};
+(function(){
+  var CATS = window.RC_CATS || [];
+  var openBtn=document.getElementById('rccfgOpen'), panel=document.getElementById('rccfgPanel'), list=document.getElementById('rccfgList');
+  if(!openBtn||!panel||!list) return;
+  CATS.forEach(function(c){
+    var li=document.createElement('li'); li.className='rccfg-item'; li.dataset.name=c.name;
+    var h=document.createElement('span'); h.className='rccfg-handle'; h.textContent='☰'; li.appendChild(h);
+    var nm=document.createElement('span'); nm.className='nm'; nm.textContent=c.name; li.appendChild(nm);
+    var lb=document.createElement('label'); lb.style.cssText='display:flex;align-items:center;gap:4px;font-size:0.76rem;color:#5f6368;';
+    var cb=document.createElement('input'); cb.type='checkbox'; cb.className='tgt'; cb.checked=!!c.target;
+    lb.appendChild(cb); lb.appendChild(document.createTextNode('未記入対象')); li.appendChild(lb);
+    list.appendChild(li);
+  });
+  openBtn.onclick=function(){ panel.style.display=(panel.style.display==='none'?'block':'none'); };
+  document.getElementById('rccfgCancel').onclick=function(){ panel.style.display='none'; };
+  var dragEl=null;
+  list.addEventListener('pointerdown',function(e){
+    var h=e.target.closest('.rccfg-handle'); if(!h) return;
+    dragEl=e.target.closest('.rccfg-item'); if(!dragEl) return;
+    dragEl.classList.add('drag'); try{dragEl.setPointerCapture(e.pointerId);}catch(_){} e.preventDefault();
+  });
+  list.addEventListener('pointermove',function(e){
+    if(!dragEl) return;
+    var items=Array.prototype.slice.call(list.querySelectorAll('.rccfg-item')), after=null;
+    for(var i=0;i<items.length;i++){ if(items[i]===dragEl) continue;
+      var r=items[i].getBoundingClientRect(); if(e.clientY<r.top+r.height/2){ after=items[i]; break; } }
+    if(after) list.insertBefore(dragEl,after); else list.appendChild(dragEl);
+  });
+  function endDrag(){ if(dragEl){ dragEl.classList.remove('drag'); dragEl=null; } }
+  list.addEventListener('pointerup',endDrag); list.addEventListener('pointercancel',endDrag);
+  function putSetting(k,v){ return fetch('/api/me/setting',{method:'PUT',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:k,value:v})}); }
+  document.getElementById('rccfgSave').onclick=function(){
+    var items=list.querySelectorAll('.rccfg-item'), order=[], targets=[];
+    items.forEach(function(li){ order.push(li.dataset.name); if(li.querySelector('.tgt').checked) targets.push(li.dataset.name); });
+    var btn=this; btn.disabled=true; btn.textContent='保存中…';
+    Promise.all([putSetting('rc_cat_order',JSON.stringify(order)), putSetting('rc_gap_cats',JSON.stringify(targets))])
+      .then(function(){ location.reload(); })
+      .catch(function(){ btn.disabled=false; btn.textContent='保存して反映'; alert('保存に失敗しました'); });
+  };
 })();
 </script>
 {% endblock %}
