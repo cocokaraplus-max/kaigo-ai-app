@@ -2525,3 +2525,16 @@ git checkout tasukaru-dev
 - **PC1/PC2 は is_active=false で無効化**（論理削除・過去記録は保持）。
 - 参考: パスワード再設定は `/reset_password`(メール) や LINEで「パスワード」送信(setup_token)でも可能。管理者UIに個人PW再設定ボタンは無い（再作成 or SQL）。
 
+
+---
+
+## 充足チェック機能追加（月間版＋職員ごとのカスタム）2026-07-24  <!-- record-check-suite-2026-07-24 -->
+
+- **monitoring-check-v1**: モニタリングに「月間 記録充足チェック」を追加（`/monitoring_check`）。その月に来所(=バイタルあり)した利用者×カテゴリの記録件数を表示、0件=赤。月ピッカーで対象月切替。導線は `monitoring.html` 上部のリンク。テンプレ `monitoring_check.html`。本番反映済み。
+- **record-check-view-v1**: 日次(`/record_check`)・月間(`/monitoring_check`)の両方に「表示設定」パネルを追加。
+  - カテゴリを**職員ごとにドラッグ&ドロップで並び替え**（個人キー `rc_cat_order`）。
+  - 「未記入あり」判定の**対象カテゴリを個人で選択**（個人キー `rc_gap_cats`、チェックしたカテゴリのみ判定・赤強調の対象）。
+  - 保存は `staff_settings`（個人設定 = 他職員に影響しない）経由。`/api/me/setting`（PUT）。`STAFF_SETTING_KEYS` に2キー追加。
+  - 共通ヘルパー `_rc_staff_view(supabase, f_code, my_name, cats)` が並び順と対象フラグ(`target`)を適用。0セルの赤は対象カテゴリのみ、対象外は薄グレー(`zeromut`/`zero`)。
+  - `record_categories`(name,color,sort_order) は施設共通のマスタ。並び順(sort_order)は触らず、表示順だけ個人設定で上書き。
+  - 本番反映済み(cherry-pick `67972bc`)。
