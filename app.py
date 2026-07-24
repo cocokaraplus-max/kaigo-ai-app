@@ -12774,6 +12774,78 @@ def api_goal_check():
         return jsonify({"status": "success", "patients": patients, "goal_changes": goal_changes})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+# goal-link-history-v1: 評価の新目標を基本情報へ反映＋履歴
+@app.route('/api/goal/apply', methods=['POST'])
+@login_required
+def api_goal_apply():
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        my = session.get("my_name", "")
+        supabase = get_supabase()
+        user_name = (data.get("user_name") or "").strip()
+        goals = data.get("goals") or {}
+        year_month = (data.get("year_month") or "").strip() or None
+        if not user_name or not goals:
+            return jsonify({"status": "error", "message": "user_name と goals が必要です"}), 400
+        ALLOWED = {"short_goal", "long_goal",
+                   "short_goal_function", "short_goal_activity", "short_goal_participation",
+                   "long_goal_function", "long_goal_activity", "long_goal_participation"}
+        LABEL = {"short_goal": "短期目標", "long_goal": "長期目標",
+                 "short_goal_function": "短期目標（心身機能）", "short_goal_activity": "短期目標（活動）",
+                 "short_goal_participation": "短期目標（参加）", "long_goal_function": "長期目標（心身機能）",
+                 "long_goal_activity": "長期目標（活動）", "long_goal_participation": "長期目標（参加）"}
+        pr = supabase.table("patient_profiles").select("*").eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute()
+        prof = (pr.data or [None])[0]
+        if not prof:
+            return jsonify({"status": "error", "message": "利用者が見つかりません"}), 404
+        pid = str(prof.get("id"))
+        upd = {}
+        hist = []
+        for field, val in goals.items():
+            if field not in ALLOWED:
+                continue
+            new_v = (str(val) if val is not None else "").strip()
+            old_v = (str(prof.get(field) or "")).strip()
+            if not new_v or new_v == old_v:
+                continue
+            upd[field] = new_v
+            hist.append({"facility_code": f_code, "patient_profile_id": pid, "user_name": user_name,
+                         "field": field, "field_label": LABEL.get(field, field),
+                         "old_value": old_v, "new_value": new_v, "year_month": year_month, "changed_by": my})
+        if not upd:
+            return jsonify({"status": "success", "updated": 0, "message": "変更はありません"})
+        try:
+            supabase.table("patient_profiles").update(upd).eq("facility_code", f_code).eq("user_name", user_name).execute()
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"更新失敗: {e}"}), 500
+        try:
+            if hist:
+                supabase.table("goal_history").insert(hist).execute()
+        except Exception:
+            pass
+        return jsonify({"status": "success", "updated": len(upd)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/goal/history', methods=['GET'])
+@login_required
+def api_goal_history():
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        user_name = (request.args.get("user_name") or "").strip()
+        if not user_name:
+            return jsonify({"status": "success", "history": []})
+        r = (supabase.table("goal_history").select("*")
+             .eq("facility_code", f_code).eq("user_name", user_name)
+             .order("changed_at", desc=True).limit(100).execute())
+        return jsonify({"status": "success", "history": r.data or []})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e), "history": []}), 500
+
+
 @app.route('/api/update_patient_care_level', methods=['POST'])
 @login_required
 def api_update_patient_care_level():

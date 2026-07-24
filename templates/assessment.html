@@ -869,6 +869,13 @@
                     <div id="goal-display-empty" class="eval-field-help">
                         💡 前月の目標が表示されます。利用者を選択してください。
                     </div>
+                    <!-- goal-link-history-v1: 目標変更履歴 -->
+                    <div id="goal-history-box" style="display:none;margin-top:10px;border-top:1px dashed #e0e0e0;padding-top:8px;">
+                        <div style="font-size:0.72rem;font-weight:700;color:#5f6368;margin-bottom:4px;display:flex;align-items:center;gap:4px;">
+                            <span class="material-symbols-outlined" style="font-size:15px;">history</span>目標の履歴
+                        </div>
+                        <div id="goal-history-list"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -2269,6 +2276,7 @@ window.evalSetGoalDisplay = function(initial) {
         var el = document.getElementById(id);
         if (el) el.textContent = fields[id] || '（未設定）';
     });
+    if (window._evalLoadGoalHistory) window._evalLoadGoalHistory();  /* goal-link-history-v1 */
 }
 function evalUpdateSectionBadges(data) {
     // 訓練目標バッジ（表示のみになったため判定スキップ）
@@ -2337,6 +2345,7 @@ window.evalSave = async function() {
         if (result.status === 'success') {
             const modeMsg = result.mode === 'insert' ? '保存しました' : '更新しました';
             showToast(modeMsg, 'success');
+            window._evalMaybeApplyGoals(data);  /* goal-link-history-v1 */
             evalState.lockAcquired = false;
             evalState.currentEvalId = null;
             // フォームをリセット + 利用者選択も解除
@@ -2361,6 +2370,84 @@ window.evalSave = async function() {
         btn.disabled = false;
         label.textContent = '保存する';
     }
+};
+
+// goal-link-history-v1: 評価の新目標を利用者基本情報へ反映する確認モーダル
+window._evalMaybeApplyGoals = function(data){
+  var MAP = [
+    ['short_goal_new','short_goal','短期目標'],
+    ['long_goal_new','long_goal','長期目標'],
+    ['short_goal_function_new','short_goal_function','短期目標（心身機能）'],
+    ['short_goal_activity_new','short_goal_activity','短期目標（活動）'],
+    ['short_goal_participation_new','short_goal_participation','短期目標（参加）'],
+    ['long_goal_function_new','long_goal_function','長期目標（心身機能）'],
+    ['long_goal_activity_new','long_goal_activity','長期目標（活動）'],
+    ['long_goal_participation_new','long_goal_participation','長期目標（参加）']
+  ];
+  var goals={}, list=[];
+  MAP.forEach(function(m){
+    var v=((data[m[0]]!=null?data[m[0]]:'')+'').trim();
+    if(v){ goals[m[1]]=v; list.push({label:m[2], val:v}); }
+  });
+  if(!list.length) return;
+  function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  var uname=data.user_name||'';
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:12000;display:flex;align-items:center;justify-content:center;padding:16px;';
+  var rows=list.map(function(g){
+    return '<div style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'
+      +'<div style="font-size:.7rem;color:#5f6368;font-weight:700;">'+esc(g.label)+'</div>'
+      +'<div style="font-size:.92rem;color:#1a73e8;margin-top:2px;line-height:1.5;">'+esc(g.val)+'</div></div>';
+  }).join('');
+  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;padding:18px 18px 14px;box-shadow:0 10px 40px rgba(0,0,0,.3);">'
+    +'<div style="font-weight:800;font-size:1.02rem;margin-bottom:4px;">利用者基本情報の目標を書き換えますがよろしいですか？</div>'
+    +'<div style="font-size:.78rem;color:#5f6368;margin-bottom:10px;line-height:1.6;">'+esc(uname)+'さんの基本情報の目標を、今回入力した新しい目標に更新します。変更前の内容は履歴に残ります。</div>'
+    +'<div style="max-height:46vh;overflow:auto;margin-bottom:12px;">'+rows+'</div>'
+    +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
+    +'<button id="glNo" style="background:#fff;color:#5f6368;border:1px solid #dfe3e8;border-radius:9px;padding:9px 15px;font-weight:700;cursor:pointer;">いいえ</button>'
+    +'<button id="glYes" style="background:#1a73e8;color:#fff;border:none;border-radius:9px;padding:9px 18px;font-weight:800;cursor:pointer;">はい、書き換える</button>'
+    +'</div></div>';
+  document.body.appendChild(ov);
+  function close(){ ov.remove(); }
+  ov.querySelector('#glNo').onclick=close;
+  ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
+  ov.querySelector('#glYes').onclick=async function(){
+    var y=ov.querySelector('#glYes'); y.disabled=true; y.textContent='更新中…';
+    try{
+      var r=await fetch('/api/goal/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:uname,goals:goals,year_month:(data.year_month||'')})});
+      var d=await r.json(); close();
+      if(d&&d.status==='success') showToast('基本情報の目標を更新しました（'+(d.updated||0)+'件）','success');
+      else showToast((d&&d.message)||'目標の更新に失敗しました','error');
+    }catch(e){ close(); showToast('通信エラーが発生しました','error'); }
+  };
+};
+
+// goal-link-history-v1: 目標変更履歴を「現在の目標」下に表示
+window._evalLoadGoalHistory = async function(){
+  var box=document.getElementById('goal-history-box');
+  var listEl=document.getElementById('goal-history-list');
+  if(!box||!listEl) return;
+  var uname=(evalState.selectedPatient&&evalState.selectedPatient.name)||'';
+  if(!uname){ box.style.display='none'; listEl.innerHTML=''; return; }
+  function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+  function fmt(ts){ if(!ts) return ''; var d=String(ts).slice(0,10); return d; }
+  try{
+    var r=await fetch('/api/goal/history?user_name='+encodeURIComponent(uname));
+    var d=await r.json();
+    var hist=(d&&d.history)||[];
+    if(!hist.length){ box.style.display='none'; listEl.innerHTML=''; return; }
+    listEl.innerHTML=hist.map(function(h){
+      var oldv=(h.old_value||'').trim();
+      return '<div style="font-size:0.76rem;color:#3c4043;padding:6px 0;border-bottom:1px solid #f4f4f4;">'
+        +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:2px;">'
+        +'<span style="font-weight:700;color:#5f6368;">'+esc(h.field_label||h.field||'')+'</span>'
+        +'<span style="color:#9aa0a6;font-size:.68rem;">'+esc(fmt(h.changed_at))+(h.changed_by?(' ・'+esc(h.changed_by)):'')+'</span></div>'
+        +'<div style="color:#137333;">'+esc(h.new_value||'')+'</div>'
+        +(oldv?'<div style="color:#c5221f;text-decoration:line-through;font-size:.72rem;margin-top:1px;">'+esc(oldv)+'</div>':'')
+        +'</div>';
+    }).join('');
+    box.style.display='';
+  }catch(e){ box.style.display='none'; listEl.innerHTML=''; }
 };
 
 // ===========================================================================
