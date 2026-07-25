@@ -2437,7 +2437,7 @@ window._evalLoadGoalHistory = async function(){
     var hist=(d&&d.history)||[];
     if(!hist.length){ box.style.display='none'; listEl.innerHTML=''; return; }
     listEl.innerHTML=hist.map(function(h){
-      var oldv=(h.old_value||'').trim();
+      var oldv=(h.old_value||'').trim(); if(oldv==='None'||oldv==='null'||oldv==='NULL') oldv=''; /* goal-none-normalize-v1 */
       return '<div style="font-size:0.76rem;color:#3c4043;padding:6px 0;border-bottom:1px solid #f4f4f4;">'
         +'<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:2px;">'
         +'<span style="font-weight:700;color:#5f6368;">'+esc(h.field_label||h.field||'')+'</span>'
