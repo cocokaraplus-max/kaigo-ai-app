@@ -12807,6 +12807,8 @@ def api_goal_apply():
                 continue
             new_v = (str(val) if val is not None else "").strip()
             old_v = (str(prof.get(field) or "")).strip()
+            if old_v.lower() in ("none", "null"):  # goal-none-normalize-v1
+                old_v = ""
             if not new_v or new_v == old_v:
                 continue
             upd[field] = new_v
