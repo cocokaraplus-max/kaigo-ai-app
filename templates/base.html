@@ -2512,7 +2512,7 @@ const OFFLINE_DB = 'tasukaru-offline';
 
 function openOfflineDB() {
     return new Promise((resolve, reject) => {
-        const req = indexedDB.open(OFFLINE_DB, 1);
+        const req = indexedDB.open(OFFLINE_DB, 2); // v2: 旧端末で未作成だったcacheストアを補完(disaster-offline-fix)
         req.onupgradeneeded = e => {
             const db = e.target.result;
             if (!db.objectStoreNames.contains('queue'))
@@ -4490,7 +4490,7 @@ function ttResetLang() {
 
   if(typeof window.openDisasterMode==='function'){
     var _o=window.openDisasterMode;
-    window.openDisasterMode=async function(){ var r=await _o.apply(this,arguments); try{ bcpOfflineLoad(); }catch(e){} return r; };
+    window.openDisasterMode=async function(){ var r; try{ r=await _o.apply(this,arguments); }catch(e){} try{ bcpOfflineLoad(); }catch(e2){} return r; };
   }
 })();
 
