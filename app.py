@@ -1876,6 +1876,180 @@ def api_disaster_records_sync():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# ==== app-bcp-v1 : BCPマニュアル（事業所ごと・災害時オフライン閲覧） ====
+BCP_BUCKET = "bcp-manuals"
+_BCP_CATEGORIES = {"災害", "感染症", "その他"}
+_BCP_MAX_BYTES = 30 * 1024 * 1024  # 1ファイル30MBまで
+
+
+def _bcp_admin_guard():
+    """(supabase, f_code, my_name, None) を返す。管理者でなければ最後にエラーレスポンス。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    my_name = session.get("my_name", "")
+    if not f_code:
+        return None, None, None, (jsonify({"status": "error", "message": "未ログイン"}), 401)
+    if not session.get("admin_authenticated", False):
+        return None, None, None, (jsonify({"status": "error", "message": "管理者メニューからの操作が必要です"}), 403)
+    return supabase, f_code, my_name, None
+
+
+@app.route('/api/bcp/list', methods=['GET'])
+@login_required
+def api_bcp_list():
+    """自事業所のBCPマニュアル一覧（全職員が閲覧可）。
+    is_admin は管理操作ボタンの出し分け用にフロントへ返す。"""
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    try:
+        r = (supabase.table("bcp_manuals")
+             .select("id,category,title,file_name,file_size,updated_at")
+             .eq("facility_code", f_code)
+             .order("category").order("updated_at", desc=True).execute())
+        items = r.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({
+        "status": "success",
+        "items": items,
+        "is_admin": session.get("admin_authenticated", False),
+    })
+
+
+@app.route('/api/bcp/upload', methods=['POST'])
+@login_required
+def api_bcp_upload():
+    """BCPマニュアルのアップロード（管理者のみ・自事業所ぶんのみ）。
+    multipart/form-data: file(PDF), category, title"""
+    supabase, f_code, my_name, err = _bcp_admin_guard()
+    if err:
+        return err
+    f = request.files.get("file")
+    category = (request.form.get("category") or "その他").strip()
+    title = (request.form.get("title") or "").strip()
+    if category not in _BCP_CATEGORIES:
+        category = "その他"
+    if not f or not f.filename:
+        return jsonify({"status": "error", "message": "ファイルが選ばれていません"}), 400
+    raw = f.read()
+    if not raw:
+        return jsonify({"status": "error", "message": "空のファイルです"}), 400
+    if len(raw) > _BCP_MAX_BYTES:
+        return jsonify({"status": "error", "message": "ファイルが大きすぎます（30MBまで）"}), 400
+    ext = (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "")
+    is_pdf = raw[:5].startswith(b"%PDF-")
+    is_docx = (raw[:2] == b"PK" and ext in ("docx", "doc"))
+    if not (is_pdf or is_docx):
+        return jsonify({"status": "error", "message": "PDFまたはWord(.docx)ファイルをアップロードしてください"}), 400
+    if is_pdf:
+        ext, ctype = "pdf", "application/pdf"
+    else:
+        ext, ctype = "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    if not title:
+        title = (f.filename.rsplit(".", 1)[0][:120] or "BCPマニュアル")
+
+    new_id = str(uuid.uuid4())
+    path = "%s/%s.%s" % (f_code, new_id, ext)
+    try:
+        supabase.storage.from_(BCP_BUCKET).upload(
+            path=path, file=raw,
+            file_options={"content-type": ctype})
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    try:
+        supabase.table("bcp_manuals").insert({
+            "id": new_id, "facility_code": f_code, "category": category,
+            "title": title, "storage_path": path,
+            "file_name": f.filename[:200], "file_size": len(raw),
+            "uploaded_by": my_name,
+        }).execute()
+    except Exception as e:
+        try:
+            supabase.storage.from_(BCP_BUCKET).remove([path])
+        except Exception:
+            pass
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": new_id})
+
+
+@app.route('/api/bcp/delete', methods=['POST'])
+@login_required
+def api_bcp_delete():
+    """BCPマニュアル削除（管理者のみ・自事業所ぶんのみ）。"""
+    supabase, f_code, my_name, err = _bcp_admin_guard()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    bid = (data.get("id") or "").strip()
+    if not bid:
+        return jsonify({"status": "error", "message": "idがありません"}), 400
+    try:
+        r = (supabase.table("bcp_manuals").select("id,storage_path,facility_code")
+             .eq("id", bid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row:
+        return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+    try:
+        supabase.storage.from_(BCP_BUCKET).remove([row["storage_path"]])
+    except Exception:
+        pass  # Storageに無くてもDBは消す
+    try:
+        (supabase.table("bcp_manuals").delete()
+         .eq("id", bid).eq("facility_code", f_code).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/bcp/file/<bid>', methods=['GET'])
+@login_required
+def api_bcp_file(bid):
+    """BCP PDFの配信（自事業所の職員のみ）。非公開バケットからサーバ経由で返す。
+    オフライン保存用のfetchもこのURLを使う。"""
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    bid = (bid or "").strip()
+    try:
+        r = (supabase.table("bcp_manuals").select("storage_path,file_name,facility_code")
+             .eq("id", bid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row:
+        return ("not found", 404)
+    try:
+        blob = supabase.storage.from_(BCP_BUCKET).download(row["storage_path"])
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    sp = (row.get("storage_path") or "").lower()
+    if sp.endswith(".pdf"):
+        mime = "application/pdf"
+    elif sp.endswith(".docx"):
+        mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    else:
+        mime = "application/octet-stream"
+    import io as _bcp_io
+    from flask import send_file as _bcp_send_file
+    buf = _bcp_io.BytesIO(blob)
+    buf.seek(0)
+    resp = _bcp_send_file(buf, mimetype=mime, as_attachment=False,
+                          download_name=(row.get("file_name") or "bcp"))
+    resp.headers["Cache-Control"] = "private, max-age=86400"
+    return resp
+
+
+@app.route('/admin/bcp')
+@login_required
+def admin_bcp_page():
+    """BCP管理（管理者メニュー）。アップロード・一覧・削除。"""
+    if not session.get("admin_authenticated", False):
+        return redirect(url_for("dev_login"))
+    return render("bcp_admin.html")
+
+
 @app.route('/')
 def index():
     if session.get("f_code"):
