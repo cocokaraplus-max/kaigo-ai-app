@@ -2520,8 +2520,9 @@ function openOfflineDB() {
             if (!db.objectStoreNames.contains('cache'))
                 db.createObjectStore('cache', { keyPath: 'key' });
         };
-        req.onsuccess = e => resolve(e.target.result);
-        req.onerror = reject;
+        req.onblocked = () => reject(new Error('idb blocked'));
+        req.onsuccess = e => { const db = e.target.result; db.onversionchange = () => { try { db.close(); } catch(_) {} }; resolve(db); };
+        req.onerror = () => reject(req.error);
     });
 }
 
