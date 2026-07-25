@@ -188,10 +188,14 @@ def save_line_settings(supabase, f_code, token=None, secret=None, oa_name=None, 
         supabase.table('line_settings').insert(payload).execute()
     return True
 
+_SUPABASE_CLIENT = None  # perf-supabase-client-reuse-v1: 毎回create_clientせず使い回す
 def get_supabase():
-    url = get_secret("SUPABASE_URL").strip()
-    key = get_secret("SUPABASE_KEY").strip()
-    return create_client(url, key)
+    global _SUPABASE_CLIENT
+    if _SUPABASE_CLIENT is None:
+        url = get_secret("SUPABASE_URL").strip()
+        key = get_secret("SUPABASE_KEY").strip()
+        _SUPABASE_CLIENT = create_client(url, key)
+    return _SUPABASE_CLIENT
 
 def send_email(to_email, subject, html_content):
     """SendGridでメール送信"""
