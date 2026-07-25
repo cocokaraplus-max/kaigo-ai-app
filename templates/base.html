@@ -471,6 +471,19 @@ body.nav-editing {
             <div id="offline-patients" style="font-size:0.82rem;color:#5f6368;">読み込み中...</div>
         </div>
 
+        <!-- bcp-offline-v1: BCPマニュアル(オフライン保存/閲覧) -->
+        <div style="margin-bottom:16px;">
+            <div style="font-size:0.85rem;font-weight:700;color:#5f6368;margin-bottom:8px;">
+                <span class="material-symbols-outlined" style="font-size:16px;vertical-align:middle;">menu_book</span>
+                BCPマニュアル（災害・感染症）
+            </div>
+            <div id="bcp-offline-hint" style="display:none;font-size:0.76rem;color:#e65100;background:#fff8e1;border:1px solid #ffe0b2;border-radius:8px;padding:8px 10px;margin-bottom:8px;line-height:1.6;">
+                通信がある今のうちに端末へ保存すると、停電・圏外でも開けます。
+                <button type="button" onclick="bcpSaveAll()" style="display:block;width:100%;margin-top:8px;padding:8px;background:#ff6f00;color:#fff;border:none;border-radius:8px;font-weight:700;cursor:pointer;font-size:0.8rem;">まとめて端末に保存</button>
+            </div>
+            <div id="bcp-offline-list" style="font-size:0.82rem;color:#5f6368;">読み込み中...</div>
+        </div>
+
         <!-- オフライン記録入力 -->
         <div style="background:#fff8e1;border:1.5px solid #ff6f00;border-radius:12px;padding:14px;margin-bottom:16px;">
             <div style="font-size:0.85rem;font-weight:700;color:#e65100;margin-bottom:10px;">
@@ -4386,6 +4399,101 @@ function ttResetLang() {
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', reveal);
   else reveal();
 })();
+</script>
+<script>
+/* bcp-offline-v1 : 災害モード内のBCP閲覧＋端末オフライン保存 */
+(function(){
+  var DBN='tasukaru-bcp', STORE='files';
+  function idb(){ return new Promise(function(res,rej){ var r=indexedDB.open(DBN,1);
+    r.onupgradeneeded=function(e){ var db=e.target.result; if(!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE,{keyPath:'id'}); };
+    r.onsuccess=function(e){res(e.target.result);}; r.onerror=function(){rej(r.error);}; }); }
+  function idbGetAll(){ return idb().then(function(db){ return new Promise(function(res){ var out={}; var tx=db.transaction(STORE,'readonly'); var rq=tx.objectStore(STORE).getAll(); rq.onsuccess=function(e){ (e.target.result||[]).forEach(function(x){out[x.id]=x;}); res(out); }; rq.onerror=function(){res(out);}; }); }); }
+  function idbGet(id){ return idb().then(function(db){ return new Promise(function(res){ var tx=db.transaction(STORE,'readonly'); var rq=tx.objectStore(STORE).get(id); rq.onsuccess=function(e){res(e.target.result||null);}; rq.onerror=function(){res(null);}; }); }); }
+  function idbPut(rec){ return idb().then(function(db){ return new Promise(function(res,rej){ var tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).put(rec); tx.oncomplete=function(){res();}; tx.onerror=function(){rej(tx.error);}; }); }); }
+  function idbDel(id){ return idb().then(function(db){ return new Promise(function(res){ var tx=db.transaction(STORE,'readwrite'); tx.objectStore(STORE).delete(id); tx.oncomplete=function(){res();}; tx.onerror=function(){res();}; }); }); }
+
+  var CAT_ORDER=['災害','感染症','その他'];
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function extOf(nm){ nm=String(nm||''); var i=nm.lastIndexOf('.'); return i>=0?nm.slice(i+1).toLowerCase():''; }
+
+  function openBlob(rec){
+    try{
+      var url=URL.createObjectURL(rec.blob);
+      window.open(url,'_blank');
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 60000);
+    }catch(e){ alert('開けませんでした'); }
+  }
+
+  window.bcpSaveOne=function(id, btn){
+    if(btn){ btn.disabled=true; btn.textContent='保存中...'; }
+    return fetch('/api/bcp/file/'+id,{credentials:'same-origin'})
+      .then(function(r){ if(!r.ok) throw new Error('dl'); return r.blob(); })
+      .then(function(b){ var m=(window.__bcpMeta&&window.__bcpMeta[id])||{}; return idbPut({id:id, title:m.title||'', category:m.category||'その他', file_name:m.file_name||'', ext:extOf(m.file_name), blob:b, savedAt:new Date().toISOString()}); })
+      .then(function(){ bcpOfflineLoad(); })
+      .catch(function(){ if(btn){ btn.disabled=false; btn.textContent='端末に保存'; } alert('保存に失敗しました（通信状態を確認してください）'); });
+  };
+  window.bcpSaveAll=function(){
+    var meta=window.__bcpMeta||{}; var ids=Object.keys(meta); var i=0;
+    (function next(){ if(i>=ids.length){ bcpOfflineLoad(); return; } var id=ids[i++];
+      fetch('/api/bcp/file/'+id,{credentials:'same-origin'}).then(function(r){ return r.ok?r.blob():null; })
+        .then(function(b){ if(b){ var m=meta[id]; return idbPut({id:id,title:m.title||'',category:m.category||'その他',file_name:m.file_name||'',ext:extOf(m.file_name),blob:b,savedAt:new Date().toISOString()}); } })
+        .then(next, next);
+    })();
+  };
+  window.bcpDelOne=function(id){ idbDel(id).then(function(){ bcpOfflineLoad(); }); };
+  window.bcpOpenSaved=function(id){ idbGet(id).then(function(rec){ if(rec&&rec.blob) openBlob(rec); else alert('保存データが見つかりません'); }); };
+
+  window.bcpOfflineLoad=function(){
+    var box=document.getElementById('bcp-offline-list');
+    var hint=document.getElementById('bcp-offline-hint');
+    if(!box) return;
+    var online=navigator.onLine;
+    idbGetAll().then(function(saved){
+      function render(items){
+        window.__bcpMeta={};
+        items.forEach(function(it){ window.__bcpMeta[it.id]={title:it.title,category:it.category,file_name:it.file_name}; });
+        if(!items.length){ box.innerHTML='<div style="color:#9aa0a6;">登録されたマニュアルはありません。</div>'; if(hint)hint.style.display='none'; return; }
+        var anyUnsaved=false;
+        var byCat={}; CAT_ORDER.forEach(function(c){byCat[c]=[];});
+        items.forEach(function(it){ (byCat[it.category]||byCat['その他']).push(it); });
+        var html='';
+        CAT_ORDER.forEach(function(c){ var arr=byCat[c]; if(!arr.length)return;
+          html+='<div style="font-weight:700;color:#ff6f00;font-size:0.78rem;margin:6px 0 4px;">'+c+'</div>';
+          arr.forEach(function(it){ var isSaved=!!saved[it.id]; if(!isSaved) anyUnsaved=true;
+            html+='<div style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #eee;border-radius:8px;margin-bottom:6px;">';
+            html+='<span class="material-symbols-outlined" style="font-size:18px;color:'+(isSaved?'#2e7d32':'#9aa0a6')+';">'+(isSaved?'download_done':'description')+'</span>';
+            html+='<div style="flex:1;min-width:0;"><div style="font-size:0.82rem;font-weight:700;color:#202124;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(it.title||it.file_name)+'</div>';
+            html+='<div style="font-size:0.68rem;color:#9aa0a6;">'+(extOf(it.file_name).toUpperCase()||'FILE')+(isSaved?' ・ 保存済み':'')+'</div></div>';
+            if(isSaved){
+              html+='<button type="button" onclick="bcpOpenSaved(\''+it.id+'\')" style="flex:none;padding:7px 10px;background:#2e7d32;color:#fff;border:none;border-radius:8px;font-size:0.76rem;font-weight:700;cursor:pointer;">開く</button>';
+            } else if(online){
+              html+='<button type="button" onclick="bcpSaveOne(\''+it.id+'\',this)" style="flex:none;padding:7px 10px;background:#ff6f00;color:#fff;border:none;border-radius:8px;font-size:0.76rem;font-weight:700;cursor:pointer;">端末に保存</button>';
+            } else {
+              html+='<span style="flex:none;font-size:0.7rem;color:#c62828;">未保存</span>';
+            }
+            html+='</div>';
+          });
+        });
+        box.innerHTML=html;
+        if(hint) hint.style.display=(online && anyUnsaved)?'block':'none';
+      }
+      if(online){
+        fetch('/api/bcp/list',{credentials:'same-origin'})
+          .then(function(r){ return r.json(); })
+          .then(function(d){ render((d&&d.items)||[]); })
+          .catch(function(){ render(Object.keys(saved).map(function(k){return saved[k];})); });
+      } else {
+        render(Object.keys(saved).map(function(k){return saved[k];}));
+      }
+    });
+  };
+
+  if(typeof window.openDisasterMode==='function'){
+    var _o=window.openDisasterMode;
+    window.openDisasterMode=async function(){ var r=await _o.apply(this,arguments); try{ bcpOfflineLoad(); }catch(e){} return r; };
+  }
+})();
+
 </script>
 </body>
 </html>
