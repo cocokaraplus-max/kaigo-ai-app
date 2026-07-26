@@ -4588,6 +4588,26 @@ function ttResetLang() {
   }
   window.bcpTocJump=function(e,id){ e.preventDefault(); var el=document.getElementById(id); if(el){ el.scrollIntoView({behavior:'smooth',block:'start'}); } return false; };
 
+  function promoteHeadings(bodyEl){
+    var ps=Array.prototype.slice.call(bodyEl.querySelectorAll('p'));
+    ps.forEach(function(p){
+      var raw=(p.textContent||'').trim();
+      if(!raw||raw.length>60) return;
+      var lvl=0;
+      if(/^第[\sⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ0-9０-９一二三四五六七八九十]+\s*章/.test(raw)) lvl=1;
+      else if(/^第[\sⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ0-9０-９一二三四五六七八九十]+\s*節/.test(raw)) lvl=2;
+      else if(/^[（(][0-9０-９]{1,2}[）)]/.test(raw)) lvl=3;
+      else if(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]/.test(raw)) lvl=3;
+      else {
+        var strongOnly=(p.children.length===1 && p.children[0].tagName==='STRONG' && p.children[0].textContent.trim()===raw);
+        var numLead=/^[0-9０-９]{1,2}[　 ．.、]/.test(raw);
+        if((strongOnly||numLead) && raw.length<=30) lvl=2;
+        else if(strongOnly && raw.length<=24) lvl=3;
+      }
+      if(lvl){ var h=document.createElement('h'+lvl); h.innerHTML=p.innerHTML; p.parentNode.replaceChild(h,p); }
+    });
+  }
+
   function markAdditions(bodyEl){
     var ps=bodyEl.querySelectorAll('p');
     ps.forEach(function(p){
@@ -4643,6 +4663,7 @@ function ttResetLang() {
           var w=document.createElement('div'); w.className='bv-tablewrap';
           tb.parentNode.insertBefore(w,tb); w.appendChild(tb);
         });
+        promoteHeadings(body);
         buildTOC(body);
         markAdditions(body);
         document.getElementById('bv-scroll').scrollTop=0;
