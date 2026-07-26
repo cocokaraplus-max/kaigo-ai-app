@@ -125,7 +125,7 @@
     meta.textContent = (ext(it.file_name).toUpperCase()||"FILE") + " ・ " + fmtSize(it.file_size) + (fmtDate(it.updated_at)?(" ・ "+fmtDate(it.updated_at)):"");
     info.appendChild(nm); info.appendChild(meta);
     var acts = document.createElement("div"); acts.className="acts";
-    var view = document.createElement("a"); view.className="bcp-icobtn view"; view.href="/api/bcp/file/"+it.id; view.target="_blank"; view.rel="noopener";
+    var view = document.createElement("button"); view.type="button"; view.className="bcp-icobtn view"; view.onclick=function(){ if(window.bcpViewerOpen){ bcpViewerOpen({title:it.title,category:it.category,fileName:it.file_name,url:"/api/bcp/file/"+it.id,updatedAt:it.updated_at}); } else { window.open("/api/bcp/file/"+it.id,"_blank"); } };
     var vi = document.createElement("span"); vi.className="material-symbols-outlined"; vi.textContent="visibility"; view.appendChild(vi);
     var del = document.createElement("button"); del.className="bcp-icobtn del"; del.onclick=function(){ askDelete(wrap, it); };
     var di = document.createElement("span"); di.className="material-symbols-outlined"; di.textContent="delete"; del.appendChild(di);

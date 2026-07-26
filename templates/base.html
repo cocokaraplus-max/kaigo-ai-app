@@ -4442,7 +4442,7 @@ function ttResetLang() {
     })();
   };
   window.bcpDelOne=function(id){ idbDel(id).then(function(){ bcpOfflineLoad(); }); };
-  window.bcpOpenSaved=function(id){ idbGet(id).then(function(rec){ if(rec&&rec.blob) openBlob(rec); else alert('保存データが見つかりません'); }); };
+  window.bcpOpenSaved=function(id){ idbGet(id).then(function(rec){ if(rec&&rec.blob){ if(window.bcpViewerOpen){ bcpViewerOpen({title:rec.title,category:rec.category,fileName:rec.file_name,blob:rec.blob,updatedAt:rec.savedAt}); } else { openBlob(rec); } } else { alert('保存データが見つかりません'); } }); };
 
   window.bcpOfflineLoad=function(){
     var box=document.getElementById('bcp-offline-list');
@@ -4493,6 +4493,166 @@ function ttResetLang() {
     var _o=window.openDisasterMode;
     window.openDisasterMode=async function(){ var r; try{ r=await _o.apply(this,arguments); }catch(e){} try{ bcpOfflineLoad(); }catch(e2){} return r; };
   }
+})();
+
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.8.0/mammoth.browser.min.js"></script>
+<script>
+/* bcp-viewer-v1 : BCPを洗練されたレイアウトで閲覧するビューア（Word→整形HTML） */
+(function(){
+  if (window.__bcpViewerInit) return;
+  window.__bcpViewerInit = true;
+
+  var CAT_COLOR = { '災害':'#e8590c', '感染症':'#1971c2', 'その他':'#2f9e44' };
+
+  // ---- スタイル注入 ----
+  var css = ''
+  + '#bcp-viewer{position:fixed;inset:0;z-index:11000;background:#eef1ee;display:none;flex-direction:column;font-family:"Noto Sans JP",sans-serif;}'
+  + '#bcp-viewer.on{display:flex;}'
+  + '.bv-top{flex:none;display:flex;align-items:center;gap:10px;background:#fff;border-bottom:1px solid #e3e6e3;padding:10px 14px;box-shadow:0 1px 4px rgba(0,0,0,.05);}'
+  + '.bv-close{border:none;background:#f1f3f1;color:#333;border-radius:9px;padding:8px 12px;font-size:.86rem;font-weight:700;cursor:pointer;font-family:inherit;display:flex;align-items:center;gap:4px;}'
+  + '.bv-top .bv-ttl{flex:1;min-width:0;font-size:.9rem;font-weight:800;color:#1e3a24;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;}'
+  + '.bv-orig{flex:none;font-size:.78rem;color:#2f6b5e;text-decoration:none;font-weight:700;border:1px solid #cfe3dc;border-radius:9px;padding:7px 10px;}'
+  + '.bv-scroll{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:18px 12px 60px;}'
+  + '.bv-paper{max-width:820px;margin:0 auto;background:#fff;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.09);overflow:hidden;}'
+  + '.bv-cover{padding:26px 30px 20px;background:linear-gradient(135deg,#f6faf7,#eef5f0);border-bottom:3px solid var(--bv-accent,#2f9e44);}'
+  + '.bv-chip{display:inline-block;font-size:.72rem;font-weight:800;color:#fff;background:var(--bv-accent,#2f9e44);padding:3px 12px;border-radius:20px;margin-bottom:12px;}'
+  + '.bv-cover h1.bv-doctitle{font-size:1.5rem;font-weight:800;color:#17321f;margin:0 0 8px;line-height:1.4;}'
+  + '.bv-meta{font-size:.76rem;color:#6b7d6f;}'
+  + '.bv-toc{margin:20px 30px 0;padding:14px 16px;background:#f7f9f7;border:1px solid #e6ece7;border-radius:10px;}'
+  + '.bv-toc h4{margin:0 0 8px;font-size:.8rem;font-weight:800;color:#2f6b5e;display:flex;align-items:center;gap:6px;}'
+  + '.bv-toc a{display:block;font-size:.82rem;color:#365; text-decoration:none;padding:4px 0;border-bottom:1px dashed #e6ece7;}'
+  + '.bv-toc a.lv2{padding-left:16px;color:#5a6b5a;font-size:.78rem;}'
+  + '.bv-toc a:last-child{border-bottom:none;}'
+  + '.bv-body{padding:22px 30px 40px;color:#2b2b2b;line-height:1.95;font-size:.94rem;}'
+  + '.bv-body h1{font-size:1.28rem;font-weight:800;color:#17321f;margin:30px 0 12px;padding-bottom:8px;border-bottom:2px solid #d7e6dc;}'
+  + '.bv-body h2{font-size:1.1rem;font-weight:800;color:#1e5e3a;margin:24px 0 10px;padding-left:12px;border-left:5px solid #2f9e44;}'
+  + '.bv-body h3{font-size:1rem;font-weight:700;color:#2b4a35;margin:18px 0 8px;}'
+  + '.bv-body p{margin:0 0 12px;}'
+  + '.bv-body ul,.bv-body ol{margin:0 0 14px;padding-left:1.5em;}'
+  + '.bv-body li{margin:0 0 6px;}'
+  + '.bv-body strong{color:#1e5e3a;}'
+  + '.bv-body a{color:#1971c2;}'
+  + '.bv-tablewrap{overflow-x:auto;margin:0 0 16px;-webkit-overflow-scrolling:touch;}'
+  + '.bv-body table{border-collapse:collapse;width:100%;min-width:420px;font-size:.86rem;}'
+  + '.bv-body th,.bv-body td{border:1px solid #d9e2db;padding:8px 10px;text-align:left;vertical-align:top;}'
+  + '.bv-body th{background:#eef5f0;font-weight:700;color:#1e5e3a;}'
+  + '.bv-body tr:nth-child(even) td{background:#fafcfb;}'
+  + '.bv-body img{max-width:100%;height:auto;border-radius:8px;}'
+  + '.bv-add{background:#fff8e1;border-left:4px solid #f2a900;border-radius:8px;padding:10px 14px;margin:0 0 14px;position:relative;}'
+  + '.bv-add:before{content:"追記";display:inline-block;font-size:.66rem;font-weight:800;color:#fff;background:#f2a900;border-radius:6px;padding:1px 8px;margin-right:8px;vertical-align:middle;}'
+  + '.bv-pdf{width:100%;height:calc(100vh - 150px);border:none;border-radius:10px;}'
+  + '.bv-loading{padding:50px 20px;text-align:center;color:#8a998c;font-size:.9rem;}'
+  + '.bv-err{padding:40px 20px;text-align:center;color:#c0392b;font-size:.9rem;line-height:1.8;}'
+  + '@media(max-width:640px){.bv-cover{padding:20px 18px 16px;}.bv-body{padding:18px 18px 32px;}.bv-toc{margin:16px 18px 0;}.bv-cover h1.bv-doctitle{font-size:1.25rem;}}';
+  var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+
+  // ---- オーバーレイDOM ----
+  var ov = document.createElement('div');
+  ov.id = 'bcp-viewer';
+  ov.innerHTML =
+    '<div class="bv-top">'
+    + '<button class="bv-close" onclick="bcpViewerClose()"><span class="material-symbols-outlined" style="font-size:18px;">arrow_back</span>閉じる</button>'
+    + '<div class="bv-ttl" id="bv-ttl"></div>'
+    + '<a class="bv-orig" id="bv-orig" href="#" target="_blank" rel="noopener">元ファイル</a>'
+    + '</div>'
+    + '<div class="bv-scroll" id="bv-scroll"><div class="bv-paper">'
+    + '<div class="bv-cover" id="bv-cover"></div>'
+    + '<div id="bv-toc-host"></div>'
+    + '<div class="bv-body" id="bv-body"><div class="bv-loading">読み込み中...</div></div>'
+    + '</div></div>';
+  function mount(){ if(!document.getElementById('bcp-viewer')) document.body.appendChild(ov); }
+  if(document.body) mount(); else document.addEventListener('DOMContentLoaded', mount);
+
+  function extOf(nm){ nm=String(nm||''); var i=nm.lastIndexOf('.'); return i>=0?nm.slice(i+1).toLowerCase():''; }
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+
+  window.bcpViewerClose = function(){
+    var v=document.getElementById('bcp-viewer'); if(v) v.classList.remove('on');
+    if(window.__bvBlobUrl){ try{ URL.revokeObjectURL(window.__bvBlobUrl); }catch(e){} window.__bvBlobUrl=null; }
+    document.body.style.overflow='';
+  };
+
+  function buildTOC(bodyEl){
+    var host=document.getElementById('bv-toc-host'); host.innerHTML='';
+    var hs=bodyEl.querySelectorAll('h1,h2');
+    if(hs.length<2){ return; }
+    var html='<div class="bv-toc"><h4><span class="material-symbols-outlined" style="font-size:16px;">list</span>目次</h4>';
+    hs.forEach(function(h,i){
+      var id='bvh'+i; h.id=id;
+      var lv=(h.tagName==='H2')?'lv2':'';
+      html+='<a class="'+lv+'" href="#'+id+'" onclick="return bcpTocJump(event,\''+id+'\')">'+esc(h.textContent)+'</a>';
+    });
+    html+='</div>';
+    host.innerHTML=html;
+  }
+  window.bcpTocJump=function(e,id){ e.preventDefault(); var el=document.getElementById(id); if(el){ el.scrollIntoView({behavior:'smooth',block:'start'}); } return false; };
+
+  function markAdditions(bodyEl){
+    var ps=bodyEl.querySelectorAll('p');
+    ps.forEach(function(p){
+      var t=(p.textContent||'').trim();
+      if(/^[\[【\(（]?\s*追記/.test(t)){ p.classList.add('bv-add'); }
+    });
+  }
+
+  // opts: {title, category, fileName, url?, blob?, updatedAt?}
+  window.bcpViewerOpen = async function(opts){
+    opts=opts||{};
+    mount();
+    var v=document.getElementById('bcp-viewer'); v.classList.add('on');
+    document.body.style.overflow='hidden';
+    var cat=opts.category||'その他'; var color=CAT_COLOR[cat]||CAT_COLOR['その他'];
+    v.style.setProperty('--bv-accent', color);
+    document.getElementById('bv-ttl').textContent = opts.title || opts.fileName || 'BCPマニュアル';
+    var dateStr='';
+    if(opts.updatedAt){ try{ var d=new Date(opts.updatedAt); if(!isNaN(d)) dateStr=d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日 時点'; }catch(e){} }
+    document.getElementById('bv-cover').innerHTML =
+      '<span class="bv-chip">'+esc(cat)+'</span>'
+      +'<h1 class="bv-doctitle">'+esc(opts.title||opts.fileName||'BCPマニュアル')+'</h1>'
+      +'<div class="bv-meta">'+esc(opts.fileName||'')+(dateStr?('　/　'+dateStr):'')+'</div>';
+    document.getElementById('bv-toc-host').innerHTML='';
+    var body=document.getElementById('bv-body');
+    body.innerHTML='<div class="bv-loading">読み込み中...</div>';
+
+    // 元ファイルリンク
+    var origA=document.getElementById('bv-orig');
+    var ext=extOf(opts.fileName);
+    try{
+      var blob=opts.blob;
+      if(!blob){ var r=await fetch(opts.url,{credentials:'same-origin'}); if(!r.ok) throw new Error('http'); blob=await r.blob(); }
+      if(window.__bvBlobUrl){ try{ URL.revokeObjectURL(window.__bvBlobUrl); }catch(e){} }
+      window.__bvBlobUrl=URL.createObjectURL(blob);
+      origA.href=window.__bvBlobUrl; origA.style.display='';
+
+      var ab=await blob.arrayBuffer();
+      var head=new Uint8Array(ab.slice(0,5));
+      var isPdf=(head[0]===0x25&&head[1]===0x50&&head[2]===0x44&&head[3]===0x46); // %PDF
+      var isZip=(head[0]===0x50&&head[1]===0x4B); // PK (docx)
+
+      if(ext==='pdf'||isPdf){
+        body.innerHTML='<iframe class="bv-pdf" src="'+window.__bvBlobUrl+'"></iframe>';
+        return;
+      }
+      if(ext==='docx'||isZip){
+        if(!window.mammoth){ body.innerHTML='<div class="bv-err">整形表示のライブラリを読み込めませんでした。<br>通信環境をご確認のうえ再度お試しください（右上「元ファイル」からは開けます）。</div>'; return; }
+        var result=await window.mammoth.convertToHtml({arrayBuffer:ab});
+        body.innerHTML=result.value||'<div class="bv-err">内容を読み取れませんでした。</div>';
+        body.querySelectorAll('table').forEach(function(tb){
+          if(tb.parentElement && tb.parentElement.classList.contains('bv-tablewrap')) return;
+          var w=document.createElement('div'); w.className='bv-tablewrap';
+          tb.parentNode.insertBefore(w,tb); w.appendChild(tb);
+        });
+        buildTOC(body);
+        markAdditions(body);
+        document.getElementById('bv-scroll').scrollTop=0;
+        return;
+      }
+      body.innerHTML='<div class="bv-err">この形式はプレビューに対応していません。<br>右上の「元ファイル」から開いてください。</div>';
+    }catch(e){
+      body.innerHTML='<div class="bv-err">表示できませんでした。<br>右上の「元ファイル」からお試しください。</div>';
+    }
+  };
 })();
 
 </script>
