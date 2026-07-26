@@ -53,7 +53,7 @@ _UPLOAD_ALLOWED_EXTS = {
     # 音声
     '.m4a', '.mp3', '.wav', '.webm', '.ogg', '.aac', '.mp4',
     # 文書
-    '.pdf',
+    '.pdf', '.docx', '.doc',
     # 表計算
     '.csv', '.xlsx', '.xls',
 }
