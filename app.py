@@ -1877,7 +1877,7 @@ def api_disaster_records_sync():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ==== app-bcp-v1 : BCPマニュアル（事業所ごと・災害時オフライン閲覧） ====
-BCP_BUCKET = "bcp-manuals"
+BCP_BUCKET = "case-photos"  # 既存稼働バケットを流用（新規バケットのRLS設定を回避）。BCPは bcp/ 配下に格納
 _BCP_CATEGORIES = {"災害", "感染症", "その他"}
 _BCP_MAX_BYTES = 30 * 1024 * 1024  # 1ファイル30MBまで
 
@@ -1950,7 +1950,7 @@ def api_bcp_upload():
         title = (f.filename.rsplit(".", 1)[0][:120] or "BCPマニュアル")
 
     new_id = str(uuid.uuid4())
-    path = "%s/%s.%s" % (f_code, new_id, ext)
+    path = "bcp/%s/%s.%s" % (f_code, new_id, ext)
     try:
         supabase.storage.from_(BCP_BUCKET).upload(
             path=path, file=raw,
