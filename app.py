@@ -11394,6 +11394,70 @@ def api_admin_patient_delete():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route('/api/admin/patient/csv_map', methods=['POST'])
+@login_required
+def api_admin_patient_csv_map():
+    """CSV列見出しをAIが利用者項目に自動対応付け（施設ごとの形式差を吸収）。csv-ai-map-v1"""
+    try:
+        data = request.json or {}
+        headers = data.get('headers', []) or []
+        samples = data.get('samples', []) or []
+        if not headers:
+            return jsonify({"status": "error", "message": "見出しがありません"}), 400
+        import json as _json, re as _re
+        from utils import get_generative_model
+        model = get_generative_model()
+        fields_desc = (
+            "patient_number: 利用者番号・カルテNo・ID\n"
+            "user_name: 氏名・利用者氏名・お名前\n"
+            "user_name_kana: ふりがな・カナ・フリガナ\n"
+            "birth_date: 生年月日\n"
+            "gender: 性別\n"
+            "care_level: 介護度・要介護度\n"
+            "postal_code: 郵便番号\n"
+            "address: 住所\n"
+            "certification_start_date: 認定有効期間の開始\n"
+            "certification_end_date: 認定有効期間の終了\n"
+            "support_office: 支援事業所・居宅介護支援事業所\n"
+            "care_manager_name: 担当介護支援専門員・ケアマネ\n"
+            "delegate_office: 委託先事業所\n"
+        )
+        sample_txt = ""
+        for row in (samples or [])[:3]:
+            try:
+                sample_txt += " | ".join([str(c) for c in row]) + "\n"
+            except Exception:
+                pass
+        prompt = (
+            "介護施設の利用者CSVの列見出しを、システム項目に対応付けてください。\n\n"
+            "【システム項目】\n" + fields_desc + "\n"
+            "【CSVの見出し】\n" + _json.dumps(headers, ensure_ascii=False) + "\n\n"
+            "【先頭データ(参考)】\n" + sample_txt + "\n"
+            "各見出しが上のどの項目に当たるかを判定。どれにも当たらない見出しはnull(不要な列は無視)。"
+            "同じ項目に複数該当する場合は最適な1つだけ対応させ他はnull。\n"
+            "次のJSONのみで返答(説明不要): {\"mapping\": {\"見出し名\": \"項目名 or null\"}}"
+        )
+        resp = model.generate_content([prompt])
+        text = (resp.text or "").strip()
+        m = _re.search(r'\{.*\}', text, _re.DOTALL)
+        if not m:
+            return jsonify({"status": "error", "message": "AI応答を解釈できませんでした"}), 500
+        result = _json.loads(m.group())
+        mapping = result.get("mapping", {}) or {}
+        allowed = {"patient_number", "user_name", "user_name_kana", "birth_date",
+                   "gender", "care_level", "postal_code", "address",
+                   "certification_start_date", "certification_end_date",
+                   "support_office", "care_manager_name", "delegate_office"}
+        clean = {}
+        for h, fld in mapping.items():
+            if isinstance(fld, str) and fld in allowed:
+                clean[h] = fld
+        return jsonify({"status": "success", "mapping": clean})
+    except Exception as e:
+        print("csv_map error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/admin/patient/bulk_import', methods=['POST'])
 @login_required
 def api_admin_patient_bulk_import():

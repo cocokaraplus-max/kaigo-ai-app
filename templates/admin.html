@@ -1531,19 +1531,47 @@ const CSV_COL_MAP = {
   '支援事業所':         'support_office',
   '担当介護支援専門員':  'care_manager_name',
   '委託先事業所':       'delegate_office',
+  '利用者氏名':'user_name','お名前':'user_name','名前':'user_name',
+  'フリガナ':'user_name_kana','ふりがな':'user_name_kana','カナ氏名':'user_name_kana',
+  '要介護度':'care_level','介護区分':'care_level',
+  '郵便番号':'postal_code','現住所':'address',
+  '担当ケアマネ':'care_manager_name','ケアマネジャー':'care_manager_name',
+  '居宅介護支援事業所':'support_office','居宅':'support_office',
 };
 
-function parseMamorukunCsv(text) {
+async function resolveCsvColumns(headers, sampleLines) {
+  const eff = {};
+  headers.forEach(h => { if (CSV_COL_MAP[h]) eff[h] = CSV_COL_MAP[h]; });
+  const hasName = Object.values(eff).includes('user_name');
+  const uncovered = headers.filter(h => !eff[h]);
+  if (hasName && uncovered.length === 0) return eff;
+  try {
+    showAdminToast('\U0001F916 AIが列を判定中...');
+    const samples = (sampleLines || []).map(l => l.split(',').map(v => v.trim().replace(/^"|"$/g,'')));
+    const res = await fetch('/api/admin/patient/csv_map', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ headers, samples })
+    });
+    const j = await res.json().catch(() => ({}));
+    if (j && j.status === 'success' && j.mapping) {
+      Object.keys(j.mapping).forEach(h => { if (!eff[h] && j.mapping[h]) eff[h] = j.mapping[h]; });
+    }
+  } catch (e) { /* AI失敗時は静的マップのみで継続 */ }
+  return eff;
+}
+
+async function parseMamorukunCsv(text) {
   const lines = text.split('\n').filter(l => l.trim());
   if (lines.length < 2) { showAdminToast('❌ CSVが空です'); return; }
   const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g,''));
+  const effMap = await resolveCsvColumns(headers, lines.slice(1, 4));
   _csvRecords = [];
   for (let i = 1; i < lines.length; i++) {
     const vals = lines[i].split(',').map(v => v.trim().replace(/^"|"$/g,''));
     if (!vals.some(v => v)) continue;
     const row = { facility_code: FACILITY_CODE, updated_at: new Date().toISOString() };
     headers.forEach((h, idx) => {
-      const field = CSV_COL_MAP[h];
+      const field = effMap[h];
       if (field) {
         let val = vals[idx] || null;
         if (val && field.includes('date')) {
