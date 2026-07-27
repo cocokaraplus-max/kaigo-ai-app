@@ -15,6 +15,14 @@
   .as-bar{position:sticky;top:0;z-index:20;background:#f7faf7;border:1px solid #d8e3d8;border-radius:12px;padding:10px 12px;
     display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
   .as-bar select{flex:1;min-width:180px;padding:10px 12px;border:1px solid #cfd8cf;border-radius:9px;font-size:.92rem;font-family:inherit}
+  .as-pick{flex:1;position:relative;min-width:200px}
+  .as-psearch{width:100%;padding:10px 12px;border:1px solid #cfd8cf;border-radius:9px;font-size:.92rem;font-family:inherit;box-sizing:border-box}
+  .as-cands{display:none;position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid #cfd8cf;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.14);max-height:300px;overflow-y:auto;z-index:40}
+  .as-cands.show{display:block}
+  .as-cand{padding:11px 12px;font-size:.9rem;color:#1e293b;cursor:pointer;border-bottom:1px solid #f0f3f0}
+  .as-cand:last-child{border-bottom:none}
+  .as-cand:active{background:#eef5ef}
+  .as-cand .num{color:#94a3b8;font-size:.78rem;margin-left:6px}
   .as-save{padding:10px 16px;background:#2e7d32;color:#fff;border:none;border-radius:9px;font-weight:800;cursor:pointer;font-family:inherit;font-size:.88rem;display:inline-flex;align-items:center;gap:5px}
   .as-save:disabled{opacity:.5;cursor:default}
   .as-savemsg{font-size:.78rem;color:#2e7d32;min-width:70px}
@@ -58,8 +66,8 @@
 <div class="as-wrap">
   <div class="mtg-tabs">
     <a class="mtg-tab" href="/admin/meetings">担当者会議・ICF</a>
-    <a class="mtg-tab" href="/staff_minutes">勉強会・会議議事録</a>
     <a class="mtg-tab active" href="/admin/assessment_sheet">事前アセスメント</a>
+    <a class="mtg-tab" href="/staff_minutes">勉強会・会議議事録</a>
   </div>
   <div class="as-head">
     <span class="material-symbols-outlined">clinical_notes</span>
@@ -67,7 +75,10 @@
   </div>
 
   <div class="as-bar">
-    <select id="as-patient" onchange="asOnPatientChange()"><option value="">利用者を選択…</option></select>
+    <div class="as-pick">
+      <input type="text" id="as-psearch" class="as-psearch" placeholder="利用者を検索（ひらがな・漢字・番号）" autocomplete="off" oninput="asSearch(this.value)" onfocus="asSearch(this.value)">
+      <div class="as-cands" id="as-cands"></div>
+    </div>
     <button class="as-save" id="as-savebtn" onclick="asSave()" disabled><span class="material-symbols-outlined" style="font-size:18px;">save</span>保存</button>
     <span class="as-savemsg" id="as-savemsg"></span>
   </div>
@@ -352,19 +363,36 @@
     var c=d.chips||{}; CHIP_IDS.forEach(function(id){ chipSet(id, c[id]||''); });
     fillAdl(ADL_ITEMS,'adl',d.adl||{});
     fillAdl(IADL_ITEMS,'iadl',d.iadl||{});
+    growAll();
   }
 
   // ---- 利用者読み込み ----
+  var PATIENTS_LIST=[];
+  function hiraNorm(str){ str=String(str||''); return str.replace(/[\u30a1-\u30f6]/g,function(ch){return String.fromCharCode(ch.charCodeAt(0)-0x60);}).toLowerCase(); }
   function loadPatients(){
     fetch('/api/patients_cache?_t='+Date.now(),{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(j){
-      var arr=(j.patients||j||[]); var sel=el('as-patient');
-      arr.sort(function(a,b){ return (a.user_name||'').localeCompare(b.user_name||'','ja'); });
-      arr.forEach(function(p){ if(p.is_discontinued) return; var o=document.createElement('option'); o.value=p.id; o.textContent=(p.user_name||'(無名)')+(p.patient_number?(' ('+p.patient_number+')'):''); sel.appendChild(o); });
+      var arr=(j.patients||j||[]);
+      PATIENTS_LIST=arr.filter(function(p){return !p.is_discontinued;});
+      PATIENTS_LIST.sort(function(a,b){ return (a.user_name_kana||a.user_name||'').localeCompare(b.user_name_kana||b.user_name||'','ja'); });
     }).catch(function(){});
   }
+  window.asSearch=function(q){
+    var box=el('as-cands'); q=(q||'').trim(); var nq=hiraNorm(q);
+    var list=PATIENTS_LIST;
+    if(nq){ list=PATIENTS_LIST.filter(function(p){
+      return hiraNorm(p.user_name).indexOf(nq)>=0 || hiraNorm(p.user_name_kana).indexOf(nq)>=0 || String(p.patient_number||'').indexOf(q)>=0;
+    }); }
+    list=list.slice(0,60);
+    if(!list.length){ box.innerHTML='<div class="as-cand" style="color:#94a3b8;">該当なし</div>'; box.classList.add('show'); return; }
+    box.innerHTML=list.map(function(p){ return '<div class="as-cand" data-id="'+p.id+'" data-label="'+esc(p.user_name||'')+'">'+esc(p.user_name||'(無名)')+(p.patient_number?'<span class="num">'+esc(p.patient_number)+'</span>':'')+'</div>'; }).join('');
+    box.classList.add('show');
+    box.querySelectorAll('.as-cand[data-id]').forEach(function(c){ c.onclick=function(){ asSelect(c.dataset.id, c.dataset.label); }; });
+  };
 
-  window.asOnPatientChange=function(){
-    var pid=el('as-patient').value;
+  document.addEventListener('click', function(e){ if(!e.target.closest('.as-pick')){ var b=el('as-cands'); if(b) b.classList.remove('show'); } });
+  window.asSelect=function(pid, label){
+    el('as-cands').classList.remove('show');
+    el('as-psearch').value=label||'';
     current.pid=pid; current.dirty=false;
     if(!pid){ el('as-body').style.display='none'; el('as-empty').style.display='block'; el('as-savebtn').disabled=true; return; }
     el('as-empty').style.display='none'; el('as-body').style.display='block';
@@ -394,9 +422,32 @@
   // 変更検知（テキスト系）
   function wireDirty(){ TEXT_IDS.forEach(function(id){ var e=el(id); if(e) e.addEventListener('input', setDirty); }); }
 
+  // ---- 全ての枠を内容に合わせて自動で広げる（長文でも隠れない） ----
+  function autoGrow(elm){ if(!elm) return; elm.style.height='auto'; elm.style.height=(elm.scrollHeight+2)+'px'; }
+  function growAll(){ document.querySelectorAll('#as-body [data-grow]').forEach(autoGrow); }
+  function makeExpandable(){
+    document.querySelectorAll('.as-in, .adl-note').forEach(function(elm){
+      if(elm.tagName==='INPUT' && (elm.getAttribute('type')===null || elm.getAttribute('type')==='text')){
+        var ta=document.createElement('textarea');
+        ta.className=elm.className; if(elm.id) ta.id=elm.id;
+        ta.value=elm.value||''; if(elm.placeholder) ta.placeholder=elm.placeholder;
+        ta.rows=1; ta.setAttribute('data-grow','1'); ta.style.minHeight='0';
+        elm.parentNode.replaceChild(ta, elm);
+      } else if(elm.tagName==='TEXTAREA'){
+        elm.setAttribute('data-grow','1');
+      }
+    });
+    document.querySelectorAll('#as-body [data-grow]').forEach(function(elm){
+      elm.style.overflow='hidden'; elm.style.resize='none';
+      elm.addEventListener('input', function(){ autoGrow(elm); setDirty(); });
+      autoGrow(elm);
+    });
+  }
+
   function init(){
     buildAdl('adl-list', ADL_ITEMS, 'adl');
     buildAdl('iadl-list', IADL_ITEMS, 'iadl');
+    makeExpandable();
     initChips(); wireDirty(); loadPatients();
   }
   if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded', init);

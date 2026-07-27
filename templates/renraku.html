@@ -451,6 +451,7 @@ function rkFillForm(note){
   RK_TRAIN=(RK_ITEMS.training_details&&Array.isArray(RK_ITEMS.training_details))?RK_ITEMS.training_details.map(function(t){return {name:t.name||'',minutes:t.minutes||'',memo:t.memo||''};}):[];
   RK_PLACES=(RK_ITEMS.places&&Array.isArray(RK_ITEMS.places))?RK_ITEMS.places.slice():[];
   rkRenderTrain(); rkUpdateTrainVisibility(); rkRenderPlaces();
+  if(window.rkGrowAll) window.rkGrowAll();
 }
 
 async function rkGenFamily(){
@@ -648,4 +649,18 @@ async function rkLineSend(){
 }
 </script>
 
+<script>
+/* renraku-autogrow-v1 : 連絡帳の本文欄を内容に合わせて自動で広げる（長文でも読める） */
+(function(){
+  function grow(el){ if(!el) return; el.style.height='auto'; el.style.height=(el.scrollHeight+2)+'px'; }
+  window.rkGrowAll=function(){ document.querySelectorAll('.rk-textarea').forEach(grow); };
+  function wire(){
+    document.querySelectorAll('.rk-textarea').forEach(function(t){
+      if(!t.dataset.grown){ t.dataset.grown='1'; t.style.overflow='hidden'; t.addEventListener('input', function(){ grow(t); }); }
+      grow(t);
+    });
+  }
+  if(document.readyState!=='loading') wire(); else document.addEventListener('DOMContentLoaded', wire);
+})();
+</script>
 {% endblock %}
