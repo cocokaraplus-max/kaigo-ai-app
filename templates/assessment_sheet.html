@@ -1,0 +1,405 @@
+{% extends "base.html" %}
+{% block title %}事前アセスメント - TASUKARU{% endblock %}
+{% block extra_style %}
+<style>
+  .as-wrap{max-width:860px;margin:0 auto;padding:12px 12px 120px;font-family:'Noto Sans JP',sans-serif;color:#1e293b}
+  /* 会議タブ共通 */
+  .mtg-tabs{display:flex;border:1.5px solid #2e7d32;border-radius:10px;overflow:hidden;margin-bottom:12px}
+  .mtg-tab{flex:1;text-align:center;padding:10px 6px;font-size:.82rem;font-weight:700;color:#2e7d32;text-decoration:none;background:#fff}
+  .mtg-tab.active{background:#2e7d32;color:#fff}
+  .mtg-tab + .mtg-tab{border-left:1.5px solid #2e7d32}
+  .as-head{display:flex;align-items:center;gap:8px;margin:4px 0 12px}
+  .as-head .material-symbols-outlined{color:#2e7d32;font-size:24px}
+  .as-head .t{font-size:1.05rem;font-weight:800;color:#1e5e26}
+  /* 利用者選択＋保存バー */
+  .as-bar{position:sticky;top:0;z-index:20;background:#f7faf7;border:1px solid #d8e3d8;border-radius:12px;padding:10px 12px;
+    display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .as-bar select{flex:1;min-width:180px;padding:10px 12px;border:1px solid #cfd8cf;border-radius:9px;font-size:.92rem;font-family:inherit}
+  .as-save{padding:10px 16px;background:#2e7d32;color:#fff;border:none;border-radius:9px;font-weight:800;cursor:pointer;font-family:inherit;font-size:.88rem;display:inline-flex;align-items:center;gap:5px}
+  .as-save:disabled{opacity:.5;cursor:default}
+  .as-savemsg{font-size:.78rem;color:#2e7d32;min-width:70px}
+  /* サブタブ ①②フェイス */
+  .as-subtabs{display:flex;gap:6px;background:#eef2ee;padding:4px;border-radius:11px;margin-bottom:14px}
+  .as-subtab{flex:1;border:none;background:transparent;border-radius:8px;padding:9px 4px;font-size:.82rem;font-weight:800;color:#5b6b5b;cursor:pointer;font-family:inherit}
+  .as-subtab.active{background:#fff;color:#1e5e26;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+  .as-panel{display:none}
+  .as-panel.active{display:block}
+  /* セクション */
+  .as-sec{background:#fff;border:1px solid #e2e8e2;border-radius:12px;padding:14px;margin-bottom:12px}
+  .as-sec h3{margin:0 0 10px;font-size:.92rem;font-weight:800;color:#1e5e26;display:flex;align-items:center;gap:6px}
+  .as-sec h3 .material-symbols-outlined{font-size:18px;color:#2e7d32}
+  .as-fld{margin-bottom:10px}
+  .as-fld:last-child{margin-bottom:0}
+  .as-lb{font-size:.74rem;font-weight:700;color:#64748b;display:block;margin-bottom:3px}
+  .as-in{width:100%;padding:9px 11px;border:1px solid #d6ddd6;border-radius:8px;font-size:.9rem;font-family:inherit;box-sizing:border-box;color:#1e293b;background:#fff}
+  textarea.as-in{min-height:60px;resize:vertical;line-height:1.7}
+  .as-row2{display:flex;gap:8px}.as-row2>*{flex:1;min-width:0}
+  .as-row3{display:flex;gap:8px;flex-wrap:wrap}.as-row3>*{flex:1;min-width:110px}
+  /* 選択チップ（在宅/男女など） */
+  .as-chips{display:flex;flex-wrap:wrap;gap:6px}
+  .as-chip{border:1px solid #cfd8cf;background:#fff;color:#475569;border-radius:20px;padding:6px 12px;font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit}
+  .as-chip.on{background:#2e7d32;color:#fff;border-color:#2e7d32}
+  /* ADL/IADL 色分け */
+  .adl-legend{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;font-size:.72rem}
+  .adl-legend span{display:inline-flex;align-items:center;gap:4px;color:#475569}
+  .adl-dot{width:12px;height:12px;border-radius:3px;display:inline-block}
+  .adl-item{display:flex;align-items:center;gap:8px;padding:8px 8px 8px 10px;border:1px solid #ecefec;border-left-width:6px;border-left-color:#d4d9d4;border-radius:8px;margin-bottom:7px;flex-wrap:wrap}
+  .adl-name{flex:0 0 88px;font-size:.84rem;font-weight:700;color:#1e293b}
+  .adl-seg{display:flex;flex:1;min-width:200px;border:1px solid #dfe4df;border-radius:8px;overflow:hidden}
+  .adl-seg button{flex:1;border:none;background:#fff;color:#64748b;font-size:.74rem;font-weight:700;padding:8px 2px;cursor:pointer;font-family:inherit;border-right:1px solid #eef1ee}
+  .adl-seg button:last-child{border-right:none}
+  .adl-seg button.on{color:#fff}
+  .adl-note{flex:1 1 140px;min-width:120px;padding:7px 9px;border:1px solid #e0e5e0;border-radius:7px;font-size:.8rem;font-family:inherit;box-sizing:border-box}
+  .as-hint{font-size:.72rem;color:#94a3b8;margin:2px 0 10px;line-height:1.6}
+  .as-empty{text-align:center;color:#94a3b8;font-size:.9rem;padding:40px 10px}
+</style>
+{% endblock %}
+{% block content %}
+<div class="as-wrap">
+  <div class="mtg-tabs">
+    <a class="mtg-tab" href="/admin/meetings">担当者会議・ICF</a>
+    <a class="mtg-tab" href="/staff_minutes">勉強会・会議議事録</a>
+    <a class="mtg-tab active" href="/admin/assessment_sheet">事前アセスメント</a>
+  </div>
+  <div class="as-head">
+    <span class="material-symbols-outlined">clinical_notes</span>
+    <span class="t">事前アセスメント・フェイスシート</span>
+  </div>
+
+  <div class="as-bar">
+    <select id="as-patient" onchange="asOnPatientChange()"><option value="">利用者を選択…</option></select>
+    <button class="as-save" id="as-savebtn" onclick="asSave()" disabled><span class="material-symbols-outlined" style="font-size:18px;">save</span>保存</button>
+    <span class="as-savemsg" id="as-savemsg"></span>
+  </div>
+
+  <div id="as-body" style="display:none;">
+    <div class="as-subtabs">
+      <button class="as-subtab active" data-sub="s1" onclick="asSub('s1')">アセスメント①</button>
+      <button class="as-subtab" data-sub="s2" onclick="asSub('s2')">アセスメント②</button>
+      <button class="as-subtab" data-sub="face" onclick="asSub('face')">フェイスシート</button>
+    </div>
+
+    <!-- ============ アセスメント① ============ -->
+    <div class="as-panel active" id="panel-s1">
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">badge</span>基本情報</h3>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">作成日</label><input type="date" class="as-in" id="s1_made_date"></div>
+          <div class="as-fld"><label class="as-lb">作成者氏名</label><input class="as-in" id="s1_author"></div>
+        </div>
+        <div class="as-fld"><label class="as-lb">本人氏名</label><input class="as-in" id="s1_name"></div>
+        <div class="as-row3">
+          <div class="as-fld"><label class="as-lb">性別</label><div class="as-chips" data-single id="s1_gender">
+            <button type="button" class="as-chip" data-v="男">男</button><button type="button" class="as-chip" data-v="女">女</button></div></div>
+          <div class="as-fld"><label class="as-lb">生年月日</label><input class="as-in" id="s1_birth" placeholder="例: S14.2.1"></div>
+          <div class="as-fld"><label class="as-lb">年齢</label><input class="as-in" id="s1_age" placeholder="歳"></div>
+        </div>
+      </div>
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">home</span>状況・認定・経済</h3>
+        <div class="as-fld"><label class="as-lb">状況</label><div class="as-chips" data-single id="s1_residence">
+          <button type="button" class="as-chip" data-v="在宅">在宅</button><button type="button" class="as-chip" data-v="入院">入院</button><button type="button" class="as-chip" data-v="入所中">入所中</button></div></div>
+        <div class="as-fld"><div class="as-chips" data-single id="s1_household">
+          <button type="button" class="as-chip" data-v="家族同居">家族同居</button><button type="button" class="as-chip" data-v="独居">独居</button></div></div>
+        <div class="as-fld"><label class="as-lb">住所</label><input class="as-in" id="s1_address"></div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">電話</label><input class="as-in" id="s1_tel"></div>
+          <div class="as-fld"><label class="as-lb">FAX</label><input class="as-in" id="s1_fax"></div>
+        </div>
+        <div class="as-fld"><label class="as-lb">認定情報（要支援/要介護）</label><div class="as-chips" data-single id="s1_care_level">
+          <button type="button" class="as-chip" data-v="要支援1">要支援1</button><button type="button" class="as-chip" data-v="要支援2">要支援2</button>
+          <button type="button" class="as-chip" data-v="要介護1">要介護1</button><button type="button" class="as-chip" data-v="要介護2">要介護2</button>
+          <button type="button" class="as-chip" data-v="要介護3">要介護3</button><button type="button" class="as-chip" data-v="要介護4">要介護4</button>
+          <button type="button" class="as-chip" data-v="要介護5">要介護5</button></div></div>
+        <div class="as-fld"><label class="as-lb">認定期限</label><input class="as-in" id="s1_cert_period" placeholder="令和 年 月 日 〜 令和 年 月 日"></div>
+        <div class="as-fld"><label class="as-lb">経済状況</label><input class="as-in" id="s1_keizai" placeholder="国民年金・厚生年金・障害年金・生活保護 など"></div>
+      </div>
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">meeting_room</span>住宅情報</h3>
+        <div class="as-hint">紙の書式に沿って、各所の状況を記入します。</div>
+        <div class="as-fld"><label class="as-lb">住宅状況</label><input class="as-in" id="s1_jutaku_status" placeholder="一戸建て/二世帯/マンション/集合住宅・自宅/借家・住宅改修 有無"></div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">玄関</label><input class="as-in" id="s1_genkan" placeholder="階段・段差・スロープ・手すり"></div>
+          <div class="as-fld"><label class="as-lb">廊下</label><input class="as-in" id="s1_roka" placeholder="床材・手すり"></div>
+        </div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">階段</label><input class="as-in" id="s1_kaidan" placeholder="有無・手すり"></div>
+          <div class="as-fld"><label class="as-lb">食事場所</label><input class="as-in" id="s1_meal_place" placeholder="ダイニング/ローテーブル/その他"></div>
+        </div>
+        <div class="as-fld"><label class="as-lb">リビング</label><input class="as-in" id="s1_living"></div>
+        <div class="as-fld"><label class="as-lb">キッチン</label><input class="as-in" id="s1_kitchen"></div>
+        <div class="as-fld"><label class="as-lb">寝具</label><input class="as-in" id="s1_bedding" placeholder="布団/固定ベッド/電動ベッド・手すり・配置"></div>
+        <div class="as-fld"><label class="as-lb">浴室・洗面</label><input class="as-in" id="s1_bath" placeholder="浴槽/滑り止めマット/シャワーチェア/リフト/手すり・困っていること"></div>
+        <div class="as-fld"><label class="as-lb">トイレ</label><input class="as-in" id="s1_toilet" placeholder="洋式/和式・手すり有無・状況"></div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">庭</label><input class="as-in" id="s1_garden"></div>
+          <div class="as-fld"><label class="as-lb">ベランダ</label><input class="as-in" id="s1_veranda"></div>
+        </div>
+      </div>
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">schedule</span>一日の過ごし方・その他</h3>
+        <div class="as-fld"><label class="as-lb">一日の過ごし方</label><textarea class="as-in" id="s1_daily" placeholder="6:00 起床 / 7:00 ごはん / …"></textarea></div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">一日の睡眠時間</label><input class="as-in" id="s1_sleep"></div>
+          <div class="as-fld"><label class="as-lb">活動内容</label><input class="as-in" id="s1_activity" placeholder="食事・入浴・趣味・散歩 など"></div>
+        </div>
+        <div class="as-fld"><label class="as-lb">その他</label><textarea class="as-in" id="s1_other"></textarea></div>
+      </div>
+    </div>
+
+    <!-- ============ アセスメント② ============ -->
+    <div class="as-panel" id="panel-s2">
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">health_and_safety</span>体の状態</h3>
+        <div class="as-fld"><label class="as-lb">現在抱えている病気</label><textarea class="as-in" id="s2_illness"></textarea></div>
+        <div class="as-fld"><label class="as-lb">既往歴</label><textarea class="as-in" id="s2_history"></textarea></div>
+        <div class="as-fld"><label class="as-lb">本人が訴える症状</label><input class="as-in" id="s2_symptoms"></div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">おなかの調子</label><input class="as-in" id="s2_bowel" placeholder="便秘/快便/軟便"></div>
+          <div class="as-fld"><label class="as-lb">アレルギー</label><input class="as-in" id="s2_allergy" placeholder="有無・内容"></div>
+        </div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">目の状態</label><input class="as-in" id="s2_eyes" placeholder="視力・眼鏡・症状"></div>
+          <div class="as-fld"><label class="as-lb">耳の状態</label><input class="as-in" id="s2_ears" placeholder="聴力・補聴器・電話"></div>
+        </div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">鼻の状態</label><input class="as-in" id="s2_nose" placeholder="嗅覚"></div>
+          <div class="as-fld"><label class="as-lb">口の状態</label><input class="as-in" id="s2_mouth" placeholder="嚥下・義歯"></div>
+        </div>
+        <div class="as-fld"><label class="as-lb">その他</label><input class="as-in" id="s2_body_other"></div>
+      </div>
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">accessibility_new</span>ADL（日常生活動作）</h3>
+        <div class="adl-legend">
+          <span><i class="adl-dot" style="background:#1a73e8"></i>自立</span>
+          <span><i class="adl-dot" style="background:#12b76a"></i>見守り</span>
+          <span><i class="adl-dot" style="background:#f79009"></i>一部介助</span>
+          <span><i class="adl-dot" style="background:#e5484d"></i>全介助</span>
+        </div>
+        <div class="as-hint">4段階を選ぶと色が付きます。青（自立）→赤（全介助）で、低下している項目がひと目で分かります。</div>
+        <div id="adl-list"></div>
+      </div>
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">home_repair_service</span>IADL（手段的日常生活動作）</h3>
+        <div class="adl-legend">
+          <span><i class="adl-dot" style="background:#1a73e8"></i>自立</span>
+          <span><i class="adl-dot" style="background:#12b76a"></i>見守り</span>
+          <span><i class="adl-dot" style="background:#f79009"></i>一部介助</span>
+          <span><i class="adl-dot" style="background:#e5484d"></i>全介助</span>
+        </div>
+        <div id="iadl-list"></div>
+      </div>
+    </div>
+
+    <!-- ============ フェイスシート ============ -->
+    <div class="as-panel" id="panel-face">
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">contact_page</span>基本・認定</h3>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">記入者名</label><input class="as-in" id="f_writer"></div>
+          <div class="as-fld"><label class="as-lb">所属</label><input class="as-in" id="f_affiliation"></div>
+        </div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">被保険者番号</label><input class="as-in" id="f_hihokensha"></div>
+          <div class="as-fld"><label class="as-lb">確認年月日</label><input type="date" class="as-in" id="f_confirm_date"></div>
+        </div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">認定年月日</label><input type="date" class="as-in" id="f_nintei_date"></div>
+          <div class="as-fld"><label class="as-lb">有効期間</label><input class="as-in" id="f_yuko" placeholder="令和 年 月 〜 令和 年 月"></div>
+        </div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">日常生活自立度</label><input class="as-in" id="f_jiritsudo" placeholder="J/A/B/C・1/2"></div>
+          <div class="as-fld"><label class="as-lb">認知症自立度</label><input class="as-in" id="f_ninchi" placeholder="I/II/IIa/IIb/III/IIIa/IIIb/IV/M"></div>
+        </div>
+      </div>
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">person</span>利用者・主介護者</h3>
+        <div class="as-fld"><label class="as-lb">利用者氏名</label><input class="as-in" id="f_name"></div>
+        <div class="as-row3">
+          <div class="as-fld"><label class="as-lb">性別</label><div class="as-chips" data-single id="f_gender">
+            <button type="button" class="as-chip" data-v="男">男</button><button type="button" class="as-chip" data-v="女">女</button></div></div>
+          <div class="as-fld"><label class="as-lb">生年月日</label><input class="as-in" id="f_birth"></div>
+          <div class="as-fld"><label class="as-lb">年齢</label><input class="as-in" id="f_age"></div>
+        </div>
+        <div class="as-fld"><label class="as-lb">住所</label><input class="as-in" id="f_address"></div>
+        <div class="as-fld"><label class="as-lb">TEL</label><input class="as-in" id="f_tel"></div>
+        <div class="as-fld"><label class="as-lb">主介護者（氏名・住所）</label><input class="as-in" id="f_caregiver"></div>
+        <div class="as-row2">
+          <div class="as-fld"><label class="as-lb">続柄</label><input class="as-in" id="f_caregiver_rel"></div>
+          <div class="as-fld"><label class="as-lb">主介護者TEL</label><input class="as-in" id="f_caregiver_tel"></div>
+        </div>
+      </div>
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">groups</span>家族・課題</h3>
+        <div class="as-fld"><label class="as-lb">生活における課題</label><textarea class="as-in" id="f_life_issues"></textarea></div>
+        <div class="as-fld"><label class="as-lb">家族状況</label><textarea class="as-in" id="f_family" placeholder="氏名・続柄・同別居・職業 など"></textarea></div>
+        <div class="as-fld"><label class="as-lb">家族構成・介護力（周囲の協力）</label><textarea class="as-in" id="f_family_care"></textarea></div>
+      </div>
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">emergency</span>連絡・医療</h3>
+        <div class="as-fld"><label class="as-lb">緊急連絡先（氏名・TEL）</label><input class="as-in" id="f_emergency"></div>
+        <div class="as-fld"><label class="as-lb">急変時の希望連絡先・搬送先希望病院</label><input class="as-in" id="f_transport"></div>
+        <div class="as-fld"><label class="as-lb">主治医氏名</label><input class="as-in" id="f_doctor"></div>
+        <div class="as-fld"><label class="as-lb">経過観察・加療中の疾病と注意点</label><textarea class="as-in" id="f_observation"></textarea></div>
+        <div class="as-fld"><label class="as-lb">服薬（お預かりする服薬と注意点）</label><textarea class="as-in" id="f_medication"></textarea></div>
+      </div>
+      <div class="as-sec">
+        <h3><span class="material-symbols-outlined">favorite</span>趣味・望む生活</h3>
+        <div class="as-fld"><label class="as-lb">趣味・若いころ得意としていたこと・望む生活</label><textarea class="as-in" id="f_hobby"></textarea></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="as-empty" class="as-empty">上で利用者を選ぶと、入力フォームが表示されます。</div>
+</div>
+
+<script>
+(function(){
+  var LEVELS = ['自立','見守り','一部介助','全介助'];
+  var LEVEL_COLOR = {'自立':'#1a73e8','見守り':'#12b76a','一部介助':'#f79009','全介助':'#e5484d'};
+  var ADL_ITEMS = ['食事','排尿','排便','入浴(出入り)','入浴(洗髪・洗身)','整容','更衣','起き上がり','立ち上がり','歩行','移乗'];
+  var IADL_ITEMS = ['掃除','庭の手入れ','料理','買い物','洗濯','ゴミだし','服薬管理','金銭管理','電話対応','来客対応','車の運転','外出'];
+  var current = { pid:'', dirty:false };
+
+  function el(id){ return document.getElementById(id); }
+  function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':String(s)); return d.innerHTML; }
+  function setDirty(){ current.dirty=true; el('as-savebtn').disabled=false; el('as-savemsg').textContent=''; }
+
+  // ---- ADL/IADL 行を生成 ----
+  function buildAdl(hostId, items, keyPrefix){
+    var host = el(hostId); host.innerHTML='';
+    items.forEach(function(name, i){
+      var idbase = keyPrefix+'_'+i;
+      var row = document.createElement('div'); row.className='adl-item'; row.id='row_'+idbase; row.dataset.level='';
+      var nm = document.createElement('div'); nm.className='adl-name'; nm.textContent=name;
+      var seg = document.createElement('div'); seg.className='adl-seg';
+      LEVELS.forEach(function(lv){
+        var b=document.createElement('button'); b.type='button'; b.textContent=lv; b.dataset.level=lv;
+        b.onclick=function(){ setLevel(idbase, lv); setDirty(); };
+        seg.appendChild(b);
+      });
+      var note = document.createElement('input'); note.className='adl-note'; note.id='note_'+idbase;
+      note.placeholder=(keyPrefix==='iadl')?'介助者・備考':'備考';
+      note.oninput=setDirty;
+      row.appendChild(nm); row.appendChild(seg); row.appendChild(note);
+      row.dataset.name=name;
+      host.appendChild(row);
+    });
+  }
+  function setLevel(idbase, lv){
+    var row=el('row_'+idbase); if(!row) return;
+    row.dataset.level=lv;
+    var col=LEVEL_COLOR[lv]||'#d4d9d4';
+    row.style.borderLeftColor=col;
+    row.querySelectorAll('.adl-seg button').forEach(function(b){
+      if(b.dataset.level===lv){ b.classList.add('on'); b.style.background=col; }
+      else { b.classList.remove('on'); b.style.background='#fff'; }
+    });
+  }
+  function collectAdl(items, keyPrefix){
+    var out={};
+    items.forEach(function(name,i){
+      var idbase=keyPrefix+'_'+i; var row=el('row_'+idbase);
+      out[name]={ level: row?row.dataset.level:'', note: (el('note_'+idbase)||{}).value||'' };
+    });
+    return out;
+  }
+  function fillAdl(items, keyPrefix, obj){
+    items.forEach(function(name,i){
+      var idbase=keyPrefix+'_'+i; var rec=(obj&&obj[name])||{};
+      if(rec.level) setLevel(idbase, rec.level); else setLevel(idbase, '');
+      var nt=el('note_'+idbase); if(nt) nt.value=rec.note||'';
+    });
+  }
+
+  // ---- チップ(単一選択) ----
+  function chipVal(id){ var g=el(id); if(!g) return ''; var on=g.querySelector('.as-chip.on'); return on?on.dataset.v:''; }
+  function chipSet(id,val){ var g=el(id); if(!g) return; g.querySelectorAll('.as-chip').forEach(function(b){ b.classList.toggle('on', b.dataset.v===val); }); }
+  function initChips(){
+    document.querySelectorAll('.as-chips[data-single]').forEach(function(g){
+      g.querySelectorAll('.as-chip').forEach(function(b){
+        b.onclick=function(){
+          var was=b.classList.contains('on');
+          g.querySelectorAll('.as-chip').forEach(function(x){x.classList.remove('on');});
+          if(!was) b.classList.add('on');
+          setDirty();
+        };
+      });
+    });
+  }
+
+  // ---- フォームの全項目 ----
+  var TEXT_IDS = ['s1_made_date','s1_author','s1_name','s1_birth','s1_age','s1_address','s1_tel','s1_fax','s1_cert_period','s1_keizai',
+    's1_jutaku_status','s1_genkan','s1_roka','s1_kaidan','s1_meal_place','s1_living','s1_kitchen','s1_bedding','s1_bath','s1_toilet','s1_garden','s1_veranda',
+    's1_daily','s1_sleep','s1_activity','s1_other',
+    's2_illness','s2_history','s2_symptoms','s2_bowel','s2_allergy','s2_eyes','s2_ears','s2_nose','s2_mouth','s2_body_other',
+    'f_writer','f_affiliation','f_hihokensha','f_confirm_date','f_nintei_date','f_yuko','f_jiritsudo','f_ninchi',
+    'f_name','f_birth','f_age','f_address','f_tel','f_caregiver','f_caregiver_rel','f_caregiver_tel',
+    'f_life_issues','f_family','f_family_care','f_emergency','f_transport','f_doctor','f_observation','f_medication','f_hobby'];
+  var CHIP_IDS = ['s1_gender','s1_residence','s1_household','s1_care_level','f_gender'];
+
+  function collect(){
+    var d={ texts:{}, chips:{}, adl:{}, iadl:{} };
+    TEXT_IDS.forEach(function(id){ var e=el(id); if(e) d.texts[id]=e.value; });
+    CHIP_IDS.forEach(function(id){ d.chips[id]=chipVal(id); });
+    d.adl=collectAdl(ADL_ITEMS,'adl');
+    d.iadl=collectAdl(IADL_ITEMS,'iadl');
+    return d;
+  }
+  function fill(d){
+    d=d||{};
+    var t=d.texts||{}; TEXT_IDS.forEach(function(id){ var e=el(id); if(e) e.value=(t[id]!=null?t[id]:''); });
+    var c=d.chips||{}; CHIP_IDS.forEach(function(id){ chipSet(id, c[id]||''); });
+    fillAdl(ADL_ITEMS,'adl',d.adl||{});
+    fillAdl(IADL_ITEMS,'iadl',d.iadl||{});
+  }
+
+  // ---- 利用者読み込み ----
+  function loadPatients(){
+    fetch('/api/patients_cache?_t='+Date.now(),{credentials:'same-origin'}).then(function(r){return r.json();}).then(function(j){
+      var arr=(j.patients||j||[]); var sel=el('as-patient');
+      arr.sort(function(a,b){ return (a.user_name||'').localeCompare(b.user_name||'','ja'); });
+      arr.forEach(function(p){ if(p.is_discontinued) return; var o=document.createElement('option'); o.value=p.id; o.textContent=(p.user_name||'(無名)')+(p.patient_number?(' ('+p.patient_number+')'):''); sel.appendChild(o); });
+    }).catch(function(){});
+  }
+
+  window.asOnPatientChange=function(){
+    var pid=el('as-patient').value;
+    current.pid=pid; current.dirty=false;
+    if(!pid){ el('as-body').style.display='none'; el('as-empty').style.display='block'; el('as-savebtn').disabled=true; return; }
+    el('as-empty').style.display='none'; el('as-body').style.display='block';
+    el('as-savemsg').textContent='読み込み中...';
+    fetch('/api/assessment/load?patient_id='+encodeURIComponent(pid),{credentials:'same-origin'})
+      .then(function(r){return r.json();})
+      .then(function(j){ fill(j.data||{}); el('as-savemsg').textContent=''; el('as-savebtn').disabled=true; current.dirty=false;
+        var u=(j.data&&j.data._updated_at); if(u){ try{var dt=new Date(u); el('as-savemsg').textContent='前回:'+dt.getFullYear()+'/'+(dt.getMonth()+1)+'/'+dt.getDate();}catch(e){} } })
+      .catch(function(){ fill({}); el('as-savemsg').textContent=''; });
+  };
+
+  window.asSave=function(){
+    if(!current.pid) return;
+    var btn=el('as-savebtn'); btn.disabled=true; el('as-savemsg').textContent='保存中...';
+    fetch('/api/assessment/save',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({patient_id:current.pid, data:collect()})})
+      .then(function(r){return r.json();})
+      .then(function(j){ if(j.status==='success'){ el('as-savemsg').textContent='保存しました'; current.dirty=false; } else { el('as-savemsg').textContent='失敗: '+(j.message||''); btn.disabled=false; } })
+      .catch(function(){ el('as-savemsg').textContent='通信エラー'; btn.disabled=false; });
+  };
+
+  window.asSub=function(which){
+    document.querySelectorAll('.as-subtab').forEach(function(b){ b.classList.toggle('active', b.dataset.sub===which); });
+    ['s1','s2','face'].forEach(function(k){ var p=el('panel-'+k); if(p) p.classList.toggle('active', k===which); });
+  };
+
+  // 変更検知（テキスト系）
+  function wireDirty(){ TEXT_IDS.forEach(function(id){ var e=el(id); if(e) e.addEventListener('input', setDirty); }); }
+
+  function init(){
+    buildAdl('adl-list', ADL_ITEMS, 'adl');
+    buildAdl('iadl-list', IADL_ITEMS, 'iadl');
+    initChips(); wireDirty(); loadPatients();
+  }
+  if(document.readyState!=='loading') init(); else document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+{% endblock %}

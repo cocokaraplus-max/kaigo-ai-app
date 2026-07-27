@@ -2251,6 +2251,100 @@ def api_bcp_addendum_delete():
     return jsonify({"status": "success", "items": newitems})
 
 
+# ==== assess-sheet-v1 : 事前アセスメント①②・フェイスシート（利用者ごと・版方式JSON保存） ====
+ASSESS_BUCKET = BCP_BUCKET  # 既存稼働バケット流用（新規作成のみ許可＝版方式で対応）
+
+
+def _assess_vpath(f_code, pid, v):
+    return "assess/%s/%s.v%d.json" % (f_code, pid, v)
+
+
+def _assess_next_version(supabase, f_code, pid):
+    v = 0
+    while v < 3000:
+        try:
+            supabase.storage.from_(ASSESS_BUCKET).download(_assess_vpath(f_code, pid, v))
+            v += 1
+        except Exception:
+            break
+    return v
+
+
+def _assess_load(supabase, f_code, pid):
+    """最新版のアセスメントJSONを読む（上書き不可のため版を重ねる方式）。無ければ空dict。"""
+    import json as _json
+    latest = {}
+    v = 0
+    while v < 3000:
+        try:
+            blob = supabase.storage.from_(ASSESS_BUCKET).download(_assess_vpath(f_code, pid, v))
+            if isinstance(blob, (bytes, bytearray)):
+                blob = blob.decode("utf-8")
+            data = _json.loads(blob)
+            if isinstance(data, dict):
+                latest = data
+            v += 1
+        except Exception:
+            break
+    return latest
+
+
+def _assess_save(supabase, f_code, pid, data):
+    import json as _json
+    v = _assess_next_version(supabase, f_code, pid)
+    payload = _json.dumps(data, ensure_ascii=False).encode("utf-8")
+    supabase.storage.from_(ASSESS_BUCKET).upload(
+        path=_assess_vpath(f_code, pid, v), file=payload,
+        file_options={"content-type": "application/json"})
+    return v
+
+
+@app.route('/admin/assessment_sheet')
+@login_required
+def admin_assessment_sheet():
+    """事前アセスメント①②・フェイスシート 入力ページ（担当者会議タブ内）。"""
+    return render("assessment_sheet.html")
+
+
+@app.route('/api/assessment/load', methods=['GET'])
+@login_required
+def api_assessment_load():
+    """指定利用者の最新アセスメントを返す。"""
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    pid = (request.args.get("patient_id") or "").strip()
+    if not pid:
+        return jsonify({"status": "error", "message": "利用者IDがありません"}), 400
+    try:
+        data = _assess_load(supabase, f_code, pid)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "data": data})
+
+
+@app.route('/api/assessment/save', methods=['POST'])
+@login_required
+def api_assessment_save():
+    """アセスメントを保存（版を重ねる）。"""
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    body = request.get_json(silent=True) or {}
+    pid = (body.get("patient_id") or "").strip()
+    sheet = body.get("data")
+    if not pid:
+        return jsonify({"status": "error", "message": "利用者が選ばれていません"}), 400
+    if not isinstance(sheet, dict):
+        return jsonify({"status": "error", "message": "データがありません"}), 400
+    sheet["_updated_at"] = _bcp_now_iso()
+    sheet["_updated_by"] = my_name
+    try:
+        _assess_save(supabase, f_code, pid, sheet)
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    return jsonify({"status": "success"})
+
+
 @app.route('/admin/bcp')
 @login_required
 def admin_bcp_page():
