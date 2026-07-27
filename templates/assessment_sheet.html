@@ -92,6 +92,16 @@
       <div id="as-ocr-msg" class="as-savemsg" style="display:block;margin-top:8px;"></div>
       <div id="as-ocr-family"></div>
     </div>
+    <div class="as-sec" style="border-color:#ffe0c2;background:#fffaf5;">
+      <h3 style="color:#b3541a;"><span class="material-symbols-outlined" style="color:#f79009;">mic</span>面談を録音して自動入力</h3>
+      <div class="as-hint">利用者やご家族と話しながら録音すると、AIが会話から各項目を聞き取って自動で入れます（内容を確認してから保存してください）。何回でも録音でき、話した項目だけが追記されます。音声は保存されません。</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        <button type="button" id="as-rec-btn" class="as-save" style="background:#f79009;" onclick="asRecToggle()"><span class="material-symbols-outlined" style="font-size:18px;">mic</span>録音を開始</button>
+        <span id="as-rec-timer" style="font-variant-numeric:tabular-nums;font-weight:800;color:#b3541a;display:none;">00:00</span>
+      </div>
+      <div id="as-voice-msg" class="as-savemsg" style="display:block;margin-top:8px;"></div>
+      <div id="as-voice-tr"></div>
+    </div>
     <div class="as-subtabs">
       <button class="as-subtab active" data-sub="s1" onclick="asSub('s1')">アセスメント①</button>
       <button class="as-subtab" data-sub="s2" onclick="asSub('s2')">アセスメント②</button>
@@ -495,6 +505,47 @@
       .then(function(r){return r.json();}).then(function(j){ if(j&&j.status==='success'){ msg.textContent='ジェノグラムに反映しました（利用者情報の「見る」で確認できます）'; msg.style.color='#2e7d32'; } else { msg.textContent='反映失敗: '+((j&&j.message)||''); msg.style.color='#c62828'; } })
       .catch(function(){ msg.textContent='通信エラー'; msg.style.color='#c62828'; });
   };
+  var _rec=null,_recChunks=[],_recTimer=null,_recSecs=0,_recStream=null;
+  function _fmtT(s){ var m=Math.floor(s/60),ss=s%60; return ('0'+m).slice(-2)+':'+('0'+ss).slice(-2); }
+  window.asRecToggle=function(){
+    if(_rec && _rec.state==='recording'){ _rec.stop(); return; }
+    if(!current.pid){ alert('先に利用者を選んでください'); return; }
+    if(!navigator.mediaDevices || !window.MediaRecorder){ alert('この端末では録音に対応していません'); return; }
+    navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+      _recStream=stream; _recChunks=[];
+      var mime=(window.MediaRecorder && MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported('audio/webm'))?'audio/webm':'';
+      _rec = mime ? new MediaRecorder(stream,{mimeType:mime}) : new MediaRecorder(stream);
+      _rec.ondataavailable=function(e){ if(e.data && e.data.size) _recChunks.push(e.data); };
+      _rec.onstop=function(){ _recStop(); };
+      _rec.start();
+      _recSecs=0; var tm=el('as-rec-timer'); tm.style.display='inline'; tm.textContent='00:00';
+      _recTimer=setInterval(function(){ _recSecs++; tm.textContent=_fmtT(_recSecs); },1000);
+      var b=el('as-rec-btn'); b.style.background='#e5484d'; b.innerHTML='<span class="material-symbols-outlined" style="font-size:18px;">stop</span>録音を停止して解析';
+      var msg=el('as-voice-msg'); msg.textContent='録音中... 話し終わったら「停止して解析」を押してください。'; msg.style.color='#b3541a';
+    }).catch(function(){ var msg=el('as-voice-msg'); msg.textContent='マイクにアクセスできませんでした（ブラウザの許可をご確認ください）'; msg.style.color='#c62828'; });
+  };
+  function _recStop(){
+    if(_recTimer){ clearInterval(_recTimer); _recTimer=null; }
+    el('as-rec-timer').style.display='none';
+    var b=el('as-rec-btn'); b.style.background='#f79009'; b.innerHTML='<span class="material-symbols-outlined" style="font-size:18px;">mic</span>録音を開始';
+    if(_recStream){ _recStream.getTracks().forEach(function(t){t.stop();}); _recStream=null; }
+    var blob=new Blob(_recChunks,{type:(_rec&&_rec.mimeType)||'audio/webm'}); _recChunks=[];
+    var msg=el('as-voice-msg');
+    if(!blob.size){ msg.textContent='録音データが空でした。もう一度お試しください。'; msg.style.color='#c62828'; return; }
+    msg.textContent='解析中...（数十秒かかることがあります）'; msg.style.color='#1a73e8';
+    var fd=new FormData(); var ext=(blob.type.indexOf('mp4')>=0?'m4a':'webm'); fd.append('audio', blob, 'interview.'+ext);
+    fetch('/api/assessment/voice',{method:'POST',credentials:'same-origin',body:fd})
+      .then(function(r){return r.json();}).then(function(j){
+        if(!j||j.status!=='success'){ msg.textContent='解析失敗: '+((j&&j.message)||''); msg.style.color='#c62828'; return; }
+        var ex=j.extracted||{}; mergeFill(ex);
+        var n=Object.keys(ex.texts||{}).length+Object.keys(ex.chips||{}).length+Object.keys(ex.adl||{}).length;
+        msg.textContent='解析完了：約'+n+'項目を反映しました。内容を確認して保存してください。'; msg.style.color='#2e7d32';
+        var tr=el('as-voice-tr'); var t=((j.transcript||'')+'').trim();
+        tr.innerHTML = t ? ('<div style="margin-top:8px;padding:8px 10px;border:1px solid #eee;border-radius:8px;background:#fff;font-size:.8rem;color:#444;white-space:pre-wrap;"><b style="color:#666;">聞き取り内容</b><br>'+esc(t)+'</div>') : '';
+        if(ex.family && ex.family.length){ window.__ocrFamily=ex.family; renderOcrFamily(); }
+      }).catch(function(){ msg.textContent='通信エラー'; msg.style.color='#c62828'; });
+  }
+
   function init(){
     buildAdl('adl-list', ADL_ITEMS, 'adl');
     buildAdl('iadl-list', IADL_ITEMS, 'iadl');
