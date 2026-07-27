@@ -435,13 +435,14 @@
   window.asSub=function(which){
     document.querySelectorAll('.as-subtab').forEach(function(b){ b.classList.toggle('active', b.dataset.sub===which); });
     ['s1','s2','face'].forEach(function(k){ var p=el('panel-'+k); if(p) p.classList.toggle('active', k===which); });
+    growAll();
   };
 
   // 変更検知（テキスト系）
   function wireDirty(){ TEXT_IDS.forEach(function(id){ var e=el(id); if(e) e.addEventListener('input', setDirty); }); }
 
   // ---- 全ての枠を内容に合わせて自動で広げる（長文でも隠れない） ----
-  function autoGrow(elm){ if(!elm) return; elm.style.height='auto'; elm.style.height=(elm.scrollHeight+2)+'px'; }
+  function autoGrow(elm){ if(!elm) return; elm.style.height='auto'; elm.style.height=Math.max(elm.scrollHeight+2,40)+'px'; }
   function growAll(){ document.querySelectorAll('#as-body [data-grow]').forEach(autoGrow); }
   function makeExpandable(){
     document.querySelectorAll('.as-in, .adl-note').forEach(function(elm){
@@ -449,7 +450,7 @@
         var ta=document.createElement('textarea');
         ta.className=elm.className; if(elm.id) ta.id=elm.id;
         ta.value=elm.value||''; if(elm.placeholder) ta.placeholder=elm.placeholder;
-        ta.rows=1; ta.setAttribute('data-grow','1'); ta.style.minHeight='0';
+        ta.rows=1; ta.setAttribute('data-grow','1'); ta.style.minHeight='40px';
         elm.parentNode.replaceChild(ta, elm);
       } else if(elm.tagName==='TEXTAREA'){
         elm.setAttribute('data-grow','1');
