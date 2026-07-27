@@ -276,7 +276,7 @@
             <button class="edit-jump" onclick="window.patientInfoApp.switchTab('input')">✏️ 入力へ</button>
           </div>
           <div id="viewGenogram"><div class="v-empty">まだ家族が登録されていません。「入力」タブで追加できます。</div></div>
-          <div class="fam-legend"><span>□ 男性</span><span>○ 女性</span><span>◎ 本人</span><span>✕ 故人</span><span style="color:#1a73e8;">┈ 同居</span></div>
+          <div class="fam-legend"><span>□ 男性</span><span>○ 女性</span><span>◎ 本人</span><span>■ 故人（死）</span><span style="color:#1a73e8;">┈ 同居</span></div>
         </div>
 
         <div class="v-card">
@@ -352,7 +352,7 @@
           <div class="section-title">
             <span class="material-symbols-outlined" style="font-size:20px;">family_history</span>家族構成（家系図）
           </div>
-          <div class="goal-section-hint">家族を追加すると自動で家系図になります。続柄で世代（親・本人・子）を判定し、本人は二重枠、故人は×、同居は点線枠で表示します。上の「家族構成（メモ）」は補足として併用できます。</div>
+          <div class="goal-section-hint">家族を追加すると自動で家系図になります。続柄で世代（親・本人・子）を判定し、本人は二重枠、故人は塗りつぶし＋「死」、同居は点線枠で表示します。上の「家族構成（メモ）」は補足として併用できます。</div>
           <div id="famRows"></div>
           <button class="btn-sub" onclick="window.patientInfoApp.addFamilyRow()">＋ 家族を追加</button>
           <div style="margin-top:12px;">
@@ -1223,18 +1223,18 @@ const PATIENTS = {{ patients | tojson }};
         drawSym(m, x, y) {
             const r = 17; const isSelf = m.is_self || m.relation_role === "self";
             let s = "";
+            const _gfill = m.is_deceased ? "#4b5563" : "#fff";
             if (m.sex === "f") {
-                s += `<circle cx="${x}" cy="${y}" r="${r}" fill="#fff" stroke="#202124" stroke-width="1.5"/>`;
+                s += `<circle cx="${x}" cy="${y}" r="${r}" fill="${_gfill}" stroke="#202124" stroke-width="1.5"/>`;
                 if (isSelf) s += `<circle cx="${x}" cy="${y}" r="${r - 4}" fill="none" stroke="#202124" stroke-width="1.5"/>`;
             } else if (m.sex === "m") {
-                s += `<rect x="${x - r}" y="${y - r}" width="${r * 2}" height="${r * 2}" fill="#fff" stroke="#202124" stroke-width="1.5"/>`;
+                s += `<rect x="${x - r}" y="${y - r}" width="${r * 2}" height="${r * 2}" fill="${_gfill}" stroke="#202124" stroke-width="1.5"/>`;
                 if (isSelf) s += `<rect x="${x - r + 4}" y="${y - r + 4}" width="${(r - 4) * 2}" height="${(r - 4) * 2}" fill="none" stroke="#202124" stroke-width="1.5"/>`;
             } else {
-                s += `<polygon points="${x},${y - r} ${x + r},${y} ${x},${y + r} ${x - r},${y}" fill="#fff" stroke="#202124" stroke-width="1.5"/>`;
+                s += `<polygon points="${x},${y - r} ${x + r},${y} ${x},${y + r} ${x - r},${y}" fill="${_gfill}" stroke="#202124" stroke-width="1.5"/>`;
             }
             if (m.is_deceased) {
-                s += `<line x1="${x - r}" y1="${y - r}" x2="${x + r}" y2="${y + r}" stroke="#c5221f" stroke-width="1.4"/>`;
-                s += `<line x1="${x + r}" y1="${y - r}" x2="${x - r}" y2="${y + r}" stroke="#c5221f" stroke-width="1.4"/>`;
+                s += `<text x="${x}" y="${y + 4}" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">死</text>`;
             }
             const lbl = (m.member_label || "") + (m.age != null && m.age !== "" ? ` ${m.age}` : "");
             s += `<text x="${x}" y="${y + r + 12}" text-anchor="middle" font-size="9.5" fill="#3c4043">${this.esc(lbl)}</text>`;

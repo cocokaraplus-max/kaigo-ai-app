@@ -360,6 +360,31 @@
             </select>
           </div>
 
+          <!-- clh-front-v2: 介護度の適用開始日 -->
+          <div class="form-group" id="clv-from-group" style="display:none;">
+            <label>介護度の適用開始日（変更日）</label>
+            <input type="date" id="care_level_valid_from" name="care_level_valid_from">
+            <div style="font-size:.72rem;color:#888;margin-top:3px;">介護度を変更したときのみ。いつからその介護度かを指定します。</div>
+          </div>
+
+          <!-- clh-front-v2: 認定有効期間を介護度の隣へ -->
+          <div class="form-group span2">
+            <label>認定有効期間</label>
+            <div class="period-group">
+              <input type="date" id="certification_start_date" name="certification_start_date"
+                value="{{ selected.certification_start_date if selected else '' }}">
+              <span>〜</span>
+              <input type="date" id="certification_end_date" name="certification_end_date"
+                value="{{ selected.certification_end_date if selected else '' }}">
+            </div>
+          </div>
+
+          <!-- clh-history-view-v1: 介護度の変更履歴 -->
+          <div class="form-group span2" id="clh-history-group" style="display:none;">
+            <label>介護度の変更履歴</label>
+            <div id="clh-history-list" style="font-size:.82rem;color:#333;"></div>
+          </div>
+
           <div class="form-group">
             <label>氏名<span class="required">*</span></label>
             <input type="text" id="user_name" name="user_name"
@@ -405,16 +430,6 @@
               placeholder="例: 愛知県名古屋市中区...">
           </div>
 
-          <div class="form-group span2">
-            <label>認定有効期間</label>
-            <div class="period-group">
-              <input type="date" id="certification_start_date" name="certification_start_date"
-                value="{{ selected.certification_start_date if selected else '' }}">
-              <span>〜</span>
-              <input type="date" id="certification_end_date" name="certification_end_date"
-                value="{{ selected.certification_end_date if selected else '' }}">
-            </div>
-          </div>
 
           <div class="form-group">
             <label>支援事業所</label>
@@ -817,31 +832,23 @@ async function saveProfile(e) {
 
   try {
     data.id = id || null;
-    // clh-front-v1: 既存利用者で介護度が変わったら変更日を確認
+    // clh-front-v2: 既存利用者で介護度が変わったら適用開始日（カレンダー入力）を送る
     if (id) {
       const careSel = document.getElementById('care_level');
       const origCare = (careSel.getAttribute('data-orig') || '').trim();
       const newCare = (careSel.value || '').trim();
       if (newCare && newCare !== origCare) {
-        const today = new Date().toISOString().slice(0,10);
-        const cs = document.getElementById('certification_start_date');
-        const def = (cs && cs.value) ? cs.value : today;
-        const vf = window.prompt(
-          '\u4ecb\u8b77\u5ea6\u3092\u300c' + (origCare || '\u672a\u8a2d\u5b9a') + '\u300d\u2192\u300c' + newCare + '\u300d\u306b\u5909\u66f4\u3057\u307e\u3059\u3002\n\u3053\u306e\u4ecb\u8b77\u5ea6\u306e\u9069\u7528\u958b\u59cb\u65e5\uff08\u5909\u66f4\u65e5\uff09\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044\u3002',
-          def
-        );
-        if (vf === null) {
-          showToast('\u26a0\ufe0f \u4fdd\u5b58\u3092\u4e2d\u6b62\u3057\u307e\u3057\u305f');
-          return;
-        }
-        const vfTrim = vf.trim();
+        const vfEl = document.getElementById('care_level_valid_from');
+        const vfTrim = ((vfEl && vfEl.value) || '').trim();
         if (!/^\d{4}-\d{2}-\d{2}$/.test(vfTrim)) {
-          showToast('\u274c \u5909\u66f4\u65e5\u306f YYYY-MM-DD \u5f62\u5f0f\u3067\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044');
+          showToast('❌ 介護度の適用開始日を入力してください');
+          const g = document.getElementById('clv-from-group'); if (g) g.style.display = '';
           return;
         }
         data.care_level_valid_from = vfTrim;
       }
     }
+
     const res = await fetch('/api/admin/patient/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -863,6 +870,45 @@ async function saveProfile(e) {
     showToast('❌ 保存に失敗しました: ' + err.message);
   }
 }
+
+// clh-front-v2 / clh-history-view-v1: 介護度の適用開始日UI＋変更履歴表示
+(function(){
+  function _clhToday(){ return new Date().toISOString().slice(0,10); }
+  function _clhFmt(s){ try{ var d=new Date(s); if(isNaN(d)) return s; return d.getFullYear()+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+('0'+d.getDate()).slice(-2);}catch(e){return s;} }
+  function _clhEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  document.addEventListener('DOMContentLoaded', function(){
+    var sel=document.getElementById('care_level');
+    var grp=document.getElementById('clv-from-group');
+    var vf=document.getElementById('care_level_valid_from');
+    if(sel && grp && vf){
+      sel.addEventListener('change', function(){
+        var orig=(sel.getAttribute('data-orig')||'').trim();
+        if((sel.value||'').trim() && sel.value.trim()!==orig){
+          grp.style.display='';
+          if(!vf.value){ var cs=document.getElementById('certification_start_date'); vf.value=(cs&&cs.value)?cs.value:_clhToday(); }
+        } else { grp.style.display='none'; }
+      });
+    }
+    if(window.clhLoadHistory) window.clhLoadHistory();
+  });
+  window.clhLoadHistory=function(){
+    var idEl=document.getElementById('profile-id'); var id=idEl?idEl.value:'';
+    var host=document.getElementById('clh-history-list'); var grp=document.getElementById('clh-history-group');
+    if(!id||!host||!grp) return;
+    fetch('/api/patient/care_level_history?patient_id='+encodeURIComponent(id),{credentials:'same-origin'})
+      .then(function(r){return r.json();}).then(function(j){
+        var items=(j&&j.items)||[];
+        if(!items.length){ grp.style.display='none'; host.innerHTML=''; return; }
+        grp.style.display='';
+        host.innerHTML=items.map(function(it,idx){
+          var cur = idx===0 ? ' <span style="color:#1a73e8;font-weight:700;">(現在)</span>' : '';
+          var rec = it.created_at ? ('<span style="color:#aaa;font-size:.72rem;margin-left:8px;">記録 '+_clhFmt(it.created_at)+'</span>') : '';
+          return '<div style="padding:5px 0;border-bottom:1px solid #eee;"><span style="display:inline-block;min-width:100px;font-weight:700;color:#b3541a;">'+_clhEsc(it.valid_from)+'〜</span> '+_clhEsc(it.care_level)+cur+rec+'</div>';
+        }).join('');
+      }).catch(function(){});
+  };
+})();
+
 
 // 削除
 async function deleteProfile() {

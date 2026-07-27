@@ -2251,6 +2251,395 @@ def api_bcp_addendum_delete():
     return jsonify({"status": "success", "items": newitems})
 
 
+# ==== assess-sheet-v1 : 事前アセスメント①②・フェイスシート（利用者ごと・版方式JSON保存） ====
+ASSESS_BUCKET = BCP_BUCKET  # 既存稼働バケット流用（新規作成のみ許可＝版方式で対応）
+
+
+def _assess_vpath(f_code, pid, v):
+    return "assess/%s/%s.v%d.json" % (f_code, pid, v)
+
+
+def _assess_next_version(supabase, f_code, pid):
+    v = 0
+    while v < 3000:
+        try:
+            supabase.storage.from_(ASSESS_BUCKET).download(_assess_vpath(f_code, pid, v))
+            v += 1
+        except Exception:
+            break
+    return v
+
+
+def _assess_load(supabase, f_code, pid):
+    """最新版のアセスメントJSONを読む（上書き不可のため版を重ねる方式）。無ければ空dict。"""
+    import json as _json
+    latest = {}
+    v = 0
+    while v < 3000:
+        try:
+            blob = supabase.storage.from_(ASSESS_BUCKET).download(_assess_vpath(f_code, pid, v))
+            if isinstance(blob, (bytes, bytearray)):
+                blob = blob.decode("utf-8")
+            data = _json.loads(blob)
+            if isinstance(data, dict):
+                latest = data
+            v += 1
+        except Exception:
+            break
+    return latest
+
+
+def _assess_save(supabase, f_code, pid, data):
+    import json as _json
+    v = _assess_next_version(supabase, f_code, pid)
+    payload = _json.dumps(data, ensure_ascii=False).encode("utf-8")
+    supabase.storage.from_(ASSESS_BUCKET).upload(
+        path=_assess_vpath(f_code, pid, v), file=payload,
+        file_options={"content-type": "application/json"})
+    return v
+
+
+@app.route('/admin/assessment_sheet')
+@login_required
+def admin_assessment_sheet():
+    """事前アセスメント①②・フェイスシート 入力ページ（担当者会議タブ内）。"""
+    return render("assessment_sheet.html")
+
+
+@app.route('/api/assessment/load', methods=['GET'])
+@login_required
+def api_assessment_load():
+    """指定利用者の最新アセスメントを返す。"""
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    pid = (request.args.get("patient_id") or "").strip()
+    if not pid:
+        return jsonify({"status": "error", "message": "利用者IDがありません"}), 400
+    try:
+        data = _assess_load(supabase, f_code, pid)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "data": data})
+
+
+@app.route('/api/assessment/save', methods=['POST'])
+@login_required
+def api_assessment_save():
+    """アセスメントを保存（版を重ねる）。"""
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    body = request.get_json(silent=True) or {}
+    pid = (body.get("patient_id") or "").strip()
+    sheet = body.get("data")
+    if not pid:
+        return jsonify({"status": "error", "message": "利用者が選ばれていません"}), 400
+    if not isinstance(sheet, dict):
+        return jsonify({"status": "error", "message": "データがありません"}), 400
+    sheet["_updated_at"] = _bcp_now_iso()
+    sheet["_updated_by"] = my_name
+    try:
+        _assess_save(supabase, f_code, pid, sheet)
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    return jsonify({"status": "success"})
+
+
+# ===== assess-voice-v1: 面談音声→事前アセスメント自動記録（OCRと同じ項目マッピングを共有） =====
+def _assess_extract_prompt(mode="doc"):
+    if mode == "voice":
+        intro = (
+            "これは介護のスタッフが利用者本人やご家族と面談しながら話している音声、"
+            "または利用者情報を口頭で説明している音声です。"
+            "会話の中で実際に話された情報だけを、次のJSON形式で抽出してください。"
+        )
+        extra = "  \"transcript\":\"会話の全文書き起こし（フィラーは省略）\",\n"
+    else:
+        intro = (
+            "あなたは介護のケアマネジャーが作成した書類（新規ケース紹介票・FAX送信票・"
+            "フェイスシート・事前アセスメント等）を読み取るアシスタントです。"
+            "画像から実際に読み取れる情報だけを、次のJSON形式で返してください。"
+        )
+        extra = ""
+    return (
+        intro +
+        "読み取れない・話されていない項目は空文字\"\"、配列は[]。推測やハルシネーションは禁止。"
+        "生年月日・日付は可能なら西暦YYYY-MM-DD（和暦は西暦へ変換）。\n\n"
+        "{\n" + extra +
+        "  \"氏名\":\"\", \"カナ\":\"\", \"性別\":\"男 か 女 か 空\", \"生年月日\":\"\", \"年齢\":\"\",\n"
+        "  \"被保険者番号\":\"\", \"要介護度\":\"要支援1/要支援2/要介護1/要介護2/要介護3/要介護4/要介護5 のどれか\", \"認定有効期間\":\"\", \"住所\":\"\", \"電話\":\"\",\n"
+        "  \"日常生活自立度\":\"\", \"認知症自立度\":\"\",\n"
+        "  \"主介護者\":\"\", \"主介護者続柄\":\"\", \"主介護者電話\":\"\",\n"
+        "  \"主治医\":\"\", \"疾患名\":\"\", \"既往歴\":\"\", \"服薬\":\"\", \"感染症\":\"\", \"医療的処置\":\"\",\n"
+        "  \"生活課題\":\"\", \"家族構成介護力\":\"\", \"特記事項\":\"\",\n"
+        "  \"ADL\":{\"食事\":\"\",\"排泄\":\"\",\"入浴\":\"\",\"更衣\":\"\",\"起き上がり\":\"\",\"立ち上がり\":\"\",\"歩行\":\"\",\"移乗\":\"\"},\n"
+        "  \"家族\":[ {\"続柄\":\"長女 等\",\"性別\":\"男 か 女\",\"年齢\":\"\",\"同居\":true,\"故人\":false,\"本人\":false} ]\n"
+        "}\n\n"
+        "ADLの各値は 自立/見守り/一部介助/全介助 のいずれか。"
+        "家族構成が語られたら□=男性・○=女性・故人・本人・同居 を判断して\"家族\"に入れる。"
+        "JSON以外は一切出力しないこと。"
+    )
+
+def _assess_normalize(g):
+    def gv(k):
+        v = g.get(k, "")
+        return v.strip() if isinstance(v, str) else v
+    sex_raw = gv("性別")
+    gender = "男" if "男" in str(sex_raw) else ("女" if "女" in str(sex_raw) else "")
+    care = gv("要介護度")
+    def norm_level(v):
+        v = str(v or "")
+        if "全" in v: return "全介助"
+        if "一部" in v: return "一部介助"
+        if "見守" in v: return "見守り"
+        if "自立" in v: return "自立"
+        return ""
+    adl_src = g.get("ADL") or {}
+    adl_map = {"食事": "食事", "入浴": "入浴(出入り)", "更衣": "更衣",
+               "起き上がり": "起き上がり", "立ち上がり": "立ち上がり", "歩行": "歩行", "移乗": "移乗"}
+    adl_out = {}
+    for src, dst in adl_map.items():
+        lv = norm_level(adl_src.get(src))
+        if lv:
+            adl_out[dst] = {"level": lv, "note": ""}
+    haisetsu = norm_level(adl_src.get("排泄"))
+    if haisetsu:
+        adl_out["排尿"] = {"level": haisetsu, "note": ""}
+        adl_out["排便"] = {"level": haisetsu, "note": ""}
+    def role_of(rel, is_self):
+        r = str(rel or "")
+        if is_self or "本人" in r: return "self"
+        if any(x in r for x in ["夫", "妻", "配偶"]): return "spouse"
+        if any(x in r for x in ["父", "母", "親"]): return "parent"
+        if any(x in r for x in ["子", "娘", "息子", "長女", "長男", "次女", "次男", "三女", "三男"]): return "child"
+        if any(x in r for x in ["兄", "姉", "弟", "妹", "きょうだい", "兄弟", "姉妹"]): return "sibling"
+        return "other"
+    fam_out = []
+    for f in (g.get("家族") or []):
+        if not isinstance(f, dict):
+            continue
+        rel = f.get("続柄", "")
+        is_self = bool(f.get("本人"))
+        sx = f.get("性別", "")
+        fam_out.append({
+            "member_label": str(rel or ""),
+            "sex": "m" if "男" in str(sx) else ("f" if "女" in str(sx) else ""),
+            "relation_role": role_of(rel, is_self),
+            "age": str(f.get("年齢", "") or ""),
+            "is_cohabiting": bool(f.get("同居")),
+            "is_deceased": bool(f.get("故人")),
+            "is_self": is_self,
+        })
+    texts = {
+        "s1_name": gv("氏名"), "s1_birth": gv("生年月日"), "s1_age": gv("年齢"),
+        "s1_address": gv("住所"), "s1_tel": gv("電話"), "s1_cert_period": gv("認定有効期間"),
+        "f_hihokensha": gv("被保険者番号"), "f_yuko": gv("認定有効期間"),
+        "f_jiritsudo": gv("日常生活自立度"), "f_ninchi": gv("認知症自立度"),
+        "f_name": gv("氏名"), "f_birth": gv("生年月日"), "f_age": gv("年齢"),
+        "f_address": gv("住所"), "f_tel": gv("電話"),
+        "f_caregiver": gv("主介護者"), "f_caregiver_rel": gv("主介護者続柄"), "f_caregiver_tel": gv("主介護者電話"),
+        "f_doctor": gv("主治医"), "f_life_issues": gv("生活課題"),
+        "f_family_care": gv("家族構成介護力"), "f_observation": gv("特記事項"),
+        "f_medication": gv("服薬"),
+        "s2_illness": gv("疾患名"), "s2_history": gv("既往歴"),
+    }
+    texts = {k: v for k, v in texts.items() if v}
+    chips = {}
+    if gender:
+        chips["s1_gender"] = gender
+        chips["f_gender"] = gender
+    if care:
+        chips["s1_care_level"] = care
+    profile = {
+        "user_name": gv("氏名"), "user_name_kana": gv("カナ"),
+        "gender": gender, "birth_date": gv("生年月日"),
+        "care_level": care, "address": gv("住所"), "tel": gv("電話"),
+    }
+    profile = {k: v for k, v in profile.items() if v}
+    return {"texts": texts, "chips": chips, "adl": adl_out, "iadl": {},
+            "family": fam_out, "profile": profile}
+
+@app.route('/api/assessment/voice', methods=['POST'])
+@login_required
+def api_assessment_voice():
+    """面談音声をAIで解析し、事前アセスメント/フェイスシートの各項目＋家族構成に変換して返す。
+    assess-voice-v1 / 音声は永続保存しない・ハルシネーション禁止（話されていない項目は空）。"""
+    try:
+        import json as _json, re as _re
+        from utils import get_generative_model
+        audio = request.files.get('audio')
+        if not audio:
+            return jsonify({"status": "error", "message": "音声がありません"}), 400
+        filename = (audio.filename or '').lower()
+        audio_bytes = audio.read()
+        if not audio_bytes:
+            return jsonify({"status": "error", "message": "音声データが空です"}), 400
+        if len(audio_bytes) < 2048:
+            return jsonify({"status": "error", "message": "録音が短すぎます。もう一度お話しください。"}), 400
+        ext_mime = {
+            '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.wav': 'audio/wav',
+            '.aac': 'audio/aac', '.ogg': 'audio/ogg', '.webm': 'audio/webm', '.mp4': 'audio/mp4',
+        }
+        mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), 'audio/webm')
+        model = get_generative_model()
+        prompt = _assess_extract_prompt("voice")
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        text = (resp.text or "").strip()
+        m = _re.search(r'\{.*\}', text, _re.DOTALL)
+        if not m:
+            return jsonify({"status": "error", "message": "AIが音声を聞き取れませんでした"}), 500
+        g = _json.loads(m.group())
+        extracted = _assess_normalize(g)
+        transcript = g.get("transcript", "") if isinstance(g, dict) else ""
+        return jsonify({"status": "success", "extracted": extracted, "transcript": transcript})
+    except Exception as e:
+        print("assessment_voice error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/assessment/ocr', methods=['POST'])
+@login_required
+def api_assessment_ocr():
+    """ケアマネ書類（紹介票/FAX/フェイスシート等）の写真をAIで読み取り、
+    事前アセスメント/フェイスシートの各項目＋家族構成(ジェノグラム)に変換して返す。
+    assess-ocr-v1 / ハルシネーション禁止（読めない項目は空）。"""
+    try:
+        data = request.get_json(silent=True) or {}
+        images = data.get('images') or []
+        if not images:
+            return jsonify({"status": "error", "message": "画像がありません"}), 400
+        import json as _json, re as _re
+        from utils import get_generative_model
+        model = get_generative_model()
+        prompt = (
+            "あなたは介護のケアマネジャーが作成した書類（新規ケース紹介票・FAX送信票・"
+            "フェイスシート・事前アセスメント等）を読み取るアシスタントです。"
+            "画像から実際に読み取れる情報だけを、次のJSON形式で返してください。"
+            "読み取れない項目は空文字\"\"、配列は[]。推測やハルシネーションは禁止。"
+            "生年月日・日付は可能なら西暦YYYY-MM-DD（和暦は西暦へ変換）。\n\n"
+            "{\n"
+            "  \"氏名\":\"\", \"カナ\":\"\", \"性別\":\"男 か 女 か 空\", \"生年月日\":\"\", \"年齢\":\"\",\n"
+            "  \"被保険者番号\":\"\", \"要介護度\":\"要支援1/要支援2/要介護1/要介護2/要介護3/要介護4/要介護5 のどれか\", \"認定有効期間\":\"\", \"住所\":\"\", \"電話\":\"\",\n"
+            "  \"日常生活自立度\":\"\", \"認知症自立度\":\"\",\n"
+            "  \"主介護者\":\"\", \"主介護者続柄\":\"\", \"主介護者電話\":\"\",\n"
+            "  \"主治医\":\"\", \"疾患名\":\"\", \"既往歴\":\"\", \"服薬\":\"\", \"感染症\":\"\", \"医療的処置\":\"\",\n"
+            "  \"生活課題\":\"\", \"家族構成介護力\":\"\", \"特記事項\":\"\",\n"
+            "  \"ADL\":{\"食事\":\"\",\"排泄\":\"\",\"入浴\":\"\",\"更衣\":\"\",\"起き上がり\":\"\",\"立ち上がり\":\"\",\"歩行\":\"\",\"移乗\":\"\"},\n"
+            "  \"家族\":[ {\"続柄\":\"長女 等\",\"性別\":\"男 か 女\",\"年齢\":\"\",\"同居\":true,\"故人\":false,\"本人\":false} ]\n"
+            "}\n\n"
+            "ADLの各値は 自立/見守り/一部介助/全介助 のいずれか。"
+            "家族構成図（ジェノグラム）があれば、□=男性・○=女性・塗りつぶし=故人・二重枠=本人・点線囲み=同居 と解釈し、読み取れる人物を\"家族\"に入れる。"
+            "JSON以外は一切出力しないこと。"
+        )
+        parts = []
+        for im in images[:6]:
+            b64 = im.get('data') if isinstance(im, dict) else im
+            mt = (im.get('mime_type') if isinstance(im, dict) else None) or 'image/jpeg'
+            if b64:
+                parts.append({"mime_type": mt, "data": b64})
+        parts.append(prompt)
+        resp = model.generate_content(parts)
+        text = (resp.text or "").strip()
+        m = _re.search(r'\{.*\}', text, _re.DOTALL)
+        if not m:
+            return jsonify({"status": "error", "message": "AIが書類を読み取れませんでした"}), 500
+        g = _json.loads(m.group())
+
+        def gv(k):
+            v = g.get(k, "")
+            return v.strip() if isinstance(v, str) else v
+
+        # --- 性別・介護度の正規化 ---
+        sex_raw = gv("性別")
+        gender = "男" if "男" in str(sex_raw) else ("女" if "女" in str(sex_raw) else "")
+        care = gv("要介護度")
+
+        # --- ADLレベル正規化 ---
+        def norm_level(v):
+            v = str(v or "")
+            if "全" in v: return "全介助"
+            if "一部" in v: return "一部介助"
+            if "見守" in v: return "見守り"
+            if "自立" in v: return "自立"
+            return ""
+        adl_src = g.get("ADL") or {}
+        # ケアマネ書類のADL項目 → 当システムのADL項目へ対応
+        adl_map = {"食事": "食事", "入浴": "入浴(出入り)", "更衣": "更衣",
+                   "起き上がり": "起き上がり", "立ち上がり": "立ち上がり", "歩行": "歩行", "移乗": "移乗"}
+        adl_out = {}
+        for src, dst in adl_map.items():
+            lv = norm_level(adl_src.get(src))
+            if lv:
+                adl_out[dst] = {"level": lv, "note": ""}
+        # 排泄 → 排尿・排便 両方に反映
+        haisetsu = norm_level(adl_src.get("排泄"))
+        if haisetsu:
+            adl_out["排尿"] = {"level": haisetsu, "note": ""}
+            adl_out["排便"] = {"level": haisetsu, "note": ""}
+
+        # --- 家族 → ジェノグラム形式 ---
+        def role_of(rel, is_self):
+            r = str(rel or "")
+            if is_self or "本人" in r: return "self"
+            if any(x in r for x in ["夫", "妻", "配偶"]): return "spouse"
+            if any(x in r for x in ["父", "母", "親"]): return "parent"
+            if any(x in r for x in ["子", "娘", "息子", "長女", "長男", "次女", "次男", "三女", "三男"]): return "child"
+            if any(x in r for x in ["兄", "姉", "弟", "妹", "きょうだい", "兄弟", "姉妹"]): return "sibling"
+            return "other"
+        fam_out = []
+        for f in (g.get("家族") or []):
+            if not isinstance(f, dict):
+                continue
+            rel = f.get("続柄", "")
+            is_self = bool(f.get("本人"))
+            sx = f.get("性別", "")
+            fam_out.append({
+                "member_label": str(rel or ""),
+                "sex": "m" if "男" in str(sx) else ("f" if "女" in str(sx) else ""),
+                "relation_role": role_of(rel, is_self),
+                "age": str(f.get("年齢", "") or ""),
+                "is_cohabiting": bool(f.get("同居")),
+                "is_deceased": bool(f.get("故人")),
+                "is_self": is_self,
+            })
+
+        texts = {
+            "s1_name": gv("氏名"), "s1_birth": gv("生年月日"), "s1_age": gv("年齢"),
+            "s1_address": gv("住所"), "s1_tel": gv("電話"), "s1_cert_period": gv("認定有効期間"),
+            "f_hihokensha": gv("被保険者番号"), "f_yuko": gv("認定有効期間"),
+            "f_jiritsudo": gv("日常生活自立度"), "f_ninchi": gv("認知症自立度"),
+            "f_name": gv("氏名"), "f_birth": gv("生年月日"), "f_age": gv("年齢"),
+            "f_address": gv("住所"), "f_tel": gv("電話"),
+            "f_caregiver": gv("主介護者"), "f_caregiver_rel": gv("主介護者続柄"), "f_caregiver_tel": gv("主介護者電話"),
+            "f_doctor": gv("主治医"), "f_life_issues": gv("生活課題"),
+            "f_family_care": gv("家族構成介護力"), "f_observation": gv("特記事項"),
+            "f_medication": gv("服薬"),
+            "s2_illness": gv("疾患名"), "s2_history": gv("既往歴"),
+        }
+        texts = {k: v for k, v in texts.items() if v}
+        chips = {}
+        if gender:
+            chips["s1_gender"] = gender
+            chips["f_gender"] = gender
+        if care:
+            chips["s1_care_level"] = care
+
+        profile = {
+            "user_name": gv("氏名"), "user_name_kana": gv("カナ"),
+            "gender": gender, "birth_date": gv("生年月日"),
+            "care_level": care, "address": gv("住所"), "tel": gv("電話"),
+        }
+        profile = {k: v for k, v in profile.items() if v}
+
+        return jsonify({"status": "success", "extracted": {
+            "texts": texts, "chips": chips, "adl": adl_out, "iadl": {},
+            "family": fam_out, "profile": profile,
+        }})
+    except Exception as e:
+        print("assessment_ocr error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/admin/bcp')
 @login_required
 def admin_bcp_page():
@@ -13299,6 +13688,35 @@ def api_goal_history():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e), "history": []}), 500
 
+
+@app.route('/api/patient/care_level_history', methods=['GET'])
+@login_required
+def api_patient_care_level_history():
+    """clh-history-view-v1: 指定利用者の介護度変更履歴を返す（適用開始日の降順）。"""
+    try:
+        f_code = session["f_code"]
+        pid = (request.args.get("patient_id") or "").strip()
+        user_name = (request.args.get("user_name") or "").strip()
+        supabase = get_supabase()
+        if not pid and user_name:
+            r = supabase.table("patient_profiles").select("id").eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute()
+            if r.data:
+                pid = r.data[0].get("id")
+        if not pid:
+            return jsonify({"status": "error", "message": "patient_id が必要です"}), 400
+        res = supabase.table("care_level_history") \
+            .select("*") \
+            .eq("facility_code", f_code).eq("patient_id", pid) \
+            .execute()
+        items = res.data or []
+        items.sort(key=lambda h: ((h.get("valid_from") or ""), (h.get("id") or 0)), reverse=True)
+        out = [{"care_level": h.get("care_level") or "",
+                "valid_from": (h.get("valid_from") or "")[:10],
+                "created_at": h.get("created_at") or ""} for h in items]
+        return jsonify({"status": "success", "items": out})
+    except Exception as e:
+        print("care_level_history view error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/update_patient_care_level', methods=['POST'])
 @login_required
