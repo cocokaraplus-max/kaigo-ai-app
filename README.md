@@ -2538,3 +2538,40 @@ git checkout tasukaru-dev
   - 共通ヘルパー `_rc_staff_view(supabase, f_code, my_name, cats)` が並び順と対象フラグ(`target`)を適用。0セルの赤は対象カテゴリのみ、対象外は薄グレー(`zeromut`/`zero`)。
   - `record_categories`(name,color,sort_order) は施設共通のマスタ。並び順(sort_order)は触らず、表示順だけ個人設定で上書き。
   - 本番反映済み(cherry-pick `67972bc`)。
+
+---
+
+## 事前アセスメント（第1〜3段）＋初回BI連携＋介護度履歴＋ICF一本化 2026-07-27  <!-- assess-suite-2026-07-27 -->
+
+本セッションで事前アセスメント一式・介護度まわり・ICF運用を整備し、**2回に分けて本番反映済み**（本番 `eeb0af8` と `4a61721`）。
+
+### 事前アセスメント / フェイスシート（担当者会議の隣タブ）
+- ルート `/admin/assessment_sheet`（`assessment_sheet.html`）。mtg-tabs に「事前アセスメント」タブ（担当者会議のすぐ隣）。サブタブ: アセスメント①/②/フェイスシート/初回BI。
+- 保存/読込: `/api/assessment/save|load`。INSERT専用バケット対策の**バージョンJSON** `assess/<pid>/<pid>.vN.json`（バケットは `case-photos` を流用）。`_assess_vpath/_assess_next_version/_assess_load/_assess_save`。
+- ADL/IADLは4段階色分け（自立=青#1a73e8／見守り=緑#12b76a／一部介助=橙#f79009／全介助=赤#e5484d）。全欄オートグロー（`makeExpandable`/`autoGrow`/`growAll`、サブタブ切替でも `growAll` 再計算）。利用者選択は記録入力と同じ検索ピッカー。
+- **第2段OCR** `/api/assessment/ocr`（`assess-ocr-v1`）: ケアマネ書類の写真をGeminiで読取→各項目・ADL・家族構成・基本プロフィールへ正規化（`_assess_normalize`）。家族はジェノグラムへ（`/api/patient-hub/family/save`）。和暦→西暦。ハルシネーション禁止。
+- **第3段 音声** `/api/assessment/voice`（`assess-voice-v1`）: 面談録音(MediaRecorder/webm)→Gemini音声解析→OCRと同じ`_assess_normalize`で反映＋transcript表示。音声は永続保存しない。プロンプトは `_assess_extract_prompt("doc"/"voice")` で共通化。
+- **聞き取りガイド**（`assess-guide-v1`）: 録音開始で自動オープン。1問ずつ表示＋手動「前へ/次へ」＋進捗、「一覧」切替＆ジャンプ。ADL/IADLの問いは4段階ボタン付きで押すと実アセスメント値を即セット（`guidePick`→`setLevel`）。質問文38問はたたき台（現場で編集可）。
+
+### 初回BI（生活機能チェック/Barthel）の同時入力（`assess-bi-v1`）
+- 事前アセスメント内「初回BI」タブ。ADL重複項目を**対応表で自動反映**（`biApplyFromAssessment`）、BI固有のトイレ動作・階段昇降は「追加で確認」バッジで手入力。合計/100点を自動計算。保存 `/api/save_life_check`（`life_function_checks`、キー=facility_code+patient_id+check_date）→閲覧・修正は生活機能チェック(BI)画面。
+- **4段階→Barthel（見守り=自立寄り）**: 3段階(10/5/0)=自立/見守り→10・一部→5・全→0／2択(5/0)=自立/見守り→5・介助→0／4段階(15/10/5/0 移乗・歩行)=自立→15・見守り→10・一部→5・全→0。入浴は出入り/洗身の重い方を採用。起き上がり/立ち上がりは基本動作(basic_situp_level/basic_standup_level)へ。
+
+### 介護度（適用開始日・変更履歴・評価連携）
+- `patient_profile.html`（`clh-front-v2`）: 介護度変更時に**適用開始日をカレンダー入力**（認定開始日/本日を初期値、旧文字プロンプト置換）。**変更履歴**を時系列表示。認定有効期間を介護度の隣へ配置。
+- 履歴API `/api/patient/care_level_history`（`clh-history-view-v1`）。記録は既存 `_record_care_level_history`＋`care_level_history`（facility_code, patient_id, care_level, valid_from）。
+- 評価の介護度自動セットを**対象月時点**へ（`evaluation_helper.py` `clh-dateaware-v1` `get_initial_care_classification`）: care_level_historyの月末時点→区分。過去月は当時の介護度。無ければ現在値→前回評価にフォールバック。
+
+### ジェノグラム
+- 故人表記を**塗りつぶし＋「死」**へ（`patient_info.html` `drawSym`、旧✕から標準表記、凡例更新）。
+
+### ICF運用の一本化（`icf-per-record-off-v1`）
+- 記録入力ごとの「ICFに追記しますか？」ポップアップと先読み提案を**廃止**（`input.html`、保存後は通常の記録一覧へ遷移）。TOPの「ICF追記の未確認」バナーも**常時非表示**（`top.html`）。
+- ICF作成は利用者情報ICF「入力」タブに一本化。ボタン文言を「**ケース記録からICFを取り込む（AI・できる/できない）**」へ（`/api/patient-hub/icf/generate` は `records` を最新200件読取してAI整理）。
+
+### UI整形
+- 上部mtg-tabsを**2段表示**（担当者会議・/ICF、事前/アセスメント、勉強会・/会議議事録）。`word-break:keep-all`＋明示改行でカタカナ1文字落ちを解消（3画面統一）。
+- アセスメント②サブタブが初期非表示で高さ0に潰れる不具合を修正（`abb580a`）。
+
+### 検証（DEV）
+- OCR: 模擬書類で36項目反映・ADL色分け・家族4名(故人含む)抽出。音声: UI/ガード確認（実録音は要実機）。初回BI: 反映→点数化(見守り=自立寄り)→`life_function_checks`保存(70点・basic動作含む)。介護度: カレンダー・履歴・対象月時点連携。ガイド: 1問ずつ送り・ADL/IADLボタンで実値セット・一覧切替。
