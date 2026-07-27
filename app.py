@@ -2050,27 +2050,47 @@ def _bcp_addenda_path(f_code, bid):
     return "bcp/%s/%s.addenda.json" % (f_code, bid)
 
 
+def _bcp_addenda_vpath(f_code, bid, v):
+    return "bcp/%s/%s.addenda.v%d.json" % (f_code, bid, v)
+
+
+def _bcp_addenda_next_version(supabase, f_code, bid):
+    """未使用の最小バージョン番号（＝次に書く番号。最新は-1）。"""
+    v = 0
+    while v < 1000:
+        try:
+            supabase.storage.from_(BCP_BUCKET).download(_bcp_addenda_vpath(f_code, bid, v))
+            v += 1
+        except Exception:
+            break
+    return v
+
+
 def _bcp_addenda_load(supabase, f_code, bid):
-    """追記JSONを読む。無ければ空リスト。"""
+    """追記の最新版を読む（上書き不可のため版を重ねる方式）。無ければ空。"""
     import json as _json
-    try:
-        blob = supabase.storage.from_(BCP_BUCKET).download(_bcp_addenda_path(f_code, bid))
-        if isinstance(blob, (bytes, bytearray)):
-            blob = blob.decode("utf-8")
-        data = _json.loads(blob)
-        items = data.get("items") if isinstance(data, dict) else data
-        return items or []
-    except Exception:
-        return []
+    latest = []
+    v = 0
+    while v < 1000:
+        try:
+            blob = supabase.storage.from_(BCP_BUCKET).download(_bcp_addenda_vpath(f_code, bid, v))
+            if isinstance(blob, (bytes, bytearray)):
+                blob = blob.decode("utf-8")
+            data = _json.loads(blob)
+            latest = (data.get("items") if isinstance(data, dict) else data) or []
+            v += 1
+        except Exception:
+            break
+    return latest
 
 
 def _bcp_addenda_save(supabase, f_code, bid, items):
     import json as _json
-    payload = _json.dumps({"items": items}, ensure_ascii=False).encode("utf-8")
-    path = _bcp_addenda_path(f_code, bid)
+    v = _bcp_addenda_next_version(supabase, f_code, bid)
+    payload = _json.dumps({"items": items, "version": v}, ensure_ascii=False).encode("utf-8")
     supabase.storage.from_(BCP_BUCKET).upload(
-        path=path, file=payload,
-        file_options={"content-type": "application/json", "upsert": "true"})
+        path=_bcp_addenda_vpath(f_code, bid, v), file=payload,
+        file_options={"content-type": "application/json"})
 
 
 def _bcp_now_iso():
@@ -2116,11 +2136,11 @@ def api_bcp_replace():
         ext, ctype = "pdf", "application/pdf"
     else:
         ext, ctype = "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    new_path = "bcp/%s/%s.%s" % (f_code, bid, ext)
+    new_path = "bcp/%s/%s.r%s.%s" % (f_code, bid, uuid.uuid4().hex[:8], ext)
     old_path = row.get("storage_path") or ""
     try:
         supabase.storage.from_(BCP_BUCKET).upload(
-            path=new_path, file=raw, file_options={"content-type": ctype, "upsert": "true"})
+            path=new_path, file=raw, file_options={"content-type": ctype})
     except Exception as e:
         return jsonify({"status": "error", "message": "保存に失敗しましざ: %s" % e}), 500
     try:
