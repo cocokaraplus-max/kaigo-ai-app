@@ -765,19 +765,8 @@ window.saveRecord = async function() {
         }
     }
 
-    // icf-suggest-tune-v1: ICF提案を先読み（カテゴリ提案と並行で走らせ、後で待ち時間ゼロ表示）
+    // icf-per-record-off-v1: 記録ごとのICF先読み提案は廃止（ICF作成は利用者情報側に一本化）
     window._icfPreload = null;
-    try {
-        var _icfCat = document.getElementById('selected-category') ? document.getElementById('selected-category').value : '';
-        if (content && content.length >= 6 && _icfCat !== '休み連絡' && _icfCat !== '追加利用連絡') {
-            var _icfP = (window._patientList||[]).find(function(x){return x.value===patientValue;});
-            var _icfUname = _icfP ? _icfP.name : '';
-            if (_icfUname) {
-                window._icfPreload = { uname:_icfUname, content:content,
-                    promise: fetch('/api/patient-hub/icf/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:_icfUname,text:content})}).then(function(r){return r.json();}).catch(function(){return null;}) };
-            }
-        }
-    } catch(e){}
 
     // ===== inp-save-spinner-v1 (A): 押下直後に即グルグル(無反応時間の解消) =====
     var _saveBtn = document.querySelector('.btn-primary[onclick="saveRecord()"]');
@@ -1624,33 +1613,8 @@ function escapeAic(s) {
 <script>
 /* icf-suggest-from-record-v1 : 保存直後のICF追記提案 */
 window._icfDoRedirectNow = function(){ if(window._icfDoRedirect){ var g=window._icfDoRedirect; window._icfDoRedirect=null; g(); } };
-window._icfAfterSave = async function(patientValue, content, category){  /* icf-suggest-redirect-fix-v1 */
-  window._icfWillHandleRedirect = false; window._icfModalOpen = false;
-  var uname = '';
-  try{
-    if(!content || content.length < 6) return;
-    if(category==='休み連絡' || category==='追加利用連絡') return;
-    var p=(window._patientList||[]).find(function(x){return x.value===patientValue;});
-    uname = p ? p.name : '';
-    if(!uname) return;
-  }catch(e){ return; }
-  window._icfWillHandleRedirect = true;
-  setTimeout(function(){ if(!window._icfModalOpen) window._icfDoRedirectNow(); }, 8000);
-  try{
-    var d;
-    if(window._icfPreload && window._icfPreload.uname===uname && window._icfPreload.content===content){
-      d = await window._icfPreload.promise;   /* icf-suggest-tune-v1: 先読み結果 */
-    } else {
-      var r = await fetch('/api/patient-hub/icf/suggest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:uname,text:content})});
-      d = await r.json();
-    }
-    window._icfPreload = null;
-    if(d && d.status==='success' && d.stickies && d.stickies.length && d.pid){
-      window._icfShowModal(d.pid, d.stickies, uname, category);
-      return;
-    }
-  }catch(e){}
-  window._icfDoRedirectNow();
+window._icfAfterSave = function(patientValue, content, category){  /* icf-per-record-off-v1: 記録ごとのICF追記ポップアップは廃止（ICF作成は利用者情報側に一本化） */
+  window._icfWillHandleRedirect = false;   // 通常の保存後遷移（記録一覧）に任せる
 };
 window._icfShowModal = function(pid, stickies, uname, label){  /* icf-suggest-3choice-v1 */
   window._icfModalOpen = true;

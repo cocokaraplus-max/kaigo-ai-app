@@ -283,7 +283,7 @@
           <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">sticky_note_2</span>ICF（付箋ボード）
             <button class="edit-jump" onclick="window.patientInfoApp.switchTab('input')">✏️ 入力へ</button>
           </div>
-          <div id="viewIcf"><div class="v-empty">まだ付箋がありません。「入力」タブで追加、または議事録から取り込めます。</div></div>
+          <div id="viewIcf"><div class="v-empty">まだ付箋がありません。「入力」タブの「ケース記録からICFを取り込む」で作成、または議事録から取り込めます。</div></div>
         </div>
 
         <!-- patient-hub-view-meetings-v1: 担当者会議記録（閲覧のみ・日付一覧→タップで議事録） -->
@@ -370,7 +370,7 @@
             <span class="material-symbols-outlined" style="font-size:20px;">sticky_note_2</span>ICF付箋ボード
           </div>
           <div class="goal-section-hint">付箋の <b>⠿</b> をつまんで領域へドラッグすると移動します。各領域の「＋」で追加、文字はタップで直接編集、× で削除。<b style="color:#c5221f;">できない</b>は赤で表示されます。議事録の付箋取り込み・記録からのAI生成もできます。</div>
-          <button class="btn-sub" onclick="window.patientInfoApp.generateIcf()">記録からAIで生成（できる/できない）</button>
+          <button class="btn-sub" onclick="window.patientInfoApp.generateIcf()">ケース記録からICFを取り込む（AI・できる/できない）</button>
           <button class="btn-sub" onclick="window.patientInfoApp.importIcf()">担会からICFを積み上げ</button>
           <button class="btn-sub" onclick="window.patientInfoApp.classifyIcfPositions()">🧭 貼り位置をAIでチェック</button>
           <button class="btn-sub" onclick="window.patientInfoApp.reviewIcf()">🧹 ICFの見直し（AI）</button>
@@ -809,7 +809,7 @@ const PATIENTS = {{ patients | tojson }};
             const icf = (j.icf || []);
             const iEl = document.getElementById("viewIcf");
             if (!icf.length) {
-                iEl.innerHTML = `<div class="v-empty">まだ付箋がありません。「入力」タブで追加、または議事録から取り込めます。</div>`;
+                iEl.innerHTML = `<div class="v-empty">まだ付箋がありません。「入力」タブの「ケース記録からICFを取り込む」で作成、または議事録から取り込めます。</div>`;
             } else {
                 iEl.innerHTML = this.ICF_ZONES.filter(([z]) => icf.some(s => (s.zone || "unsorted") === z)).map(([z, t]) => {
                     const chips = icf.filter(s => (s.zone || "unsorted") === z)

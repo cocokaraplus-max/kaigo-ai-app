@@ -246,6 +246,9 @@
 <script>
 /* icf-pending-top-v1 */
 (function(){
+  /* icf-per-record-off-v1: ICF追記は利用者情報側に一本化。TOPの未確認バナーは常時非表示にする */
+  var _b=document.getElementById('icf-pending-banner'); if(_b) _b.style.display='none';
+  return;
   var ZL={body:'心身機能',activity:'活動',participation:'参加',environment:'環境',personal:'個人',unsorted:'未分類'};
   function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   function loadCount(){
