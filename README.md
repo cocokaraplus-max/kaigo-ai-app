@@ -2575,3 +2575,12 @@ git checkout tasukaru-dev
 
 ### 検証（DEV）
 - OCR: 模擬書類で36項目反映・ADL色分け・家族4名(故人含む)抽出。音声: UI/ガード確認（実録音は要実機）。初回BI: 反映→点数化(見守り=自立寄り)→`life_function_checks`保存(70点・basic動作含む)。介護度: カレンダー・履歴・対象月時点連携。ガイド: 1問ずつ送り・ADL/IADLボタンで実値セット・一覧切替。
+
+## 引き出しメニュー「上から」表示のセーフエリア対応 2026-07-27  <!-- app-drawer-safearea-top-v1 -->
+
+歯車→「メニューの開く位置＝上から」設定時、引き出し本体が画面最上端(top:0)に着地し、ヘッダー（メニュー見出し・✕閉じる）・1段目アイコン・上取っ手がカメラ/ノッチ（`safe-area-inset-top`）の裏に隠れて押せない不具合を修正。**DEV実機確認済み→本番反映**。
+
+- `base.html`（マーカー `app-drawer-safearea-top-v1`）:
+  - `#appDrawer[data-side="top"]` に `padding-top: env(safe-area-inset-top, 0px)` を追加。白いシートは top:0 のままノッチ裏を埋め、ヘッダー・アイコンだけを安全領域の下へ落とす（box-sizing:border-box なので高さ min(72vh,620px) 内で吸収）。
+  - `#appDrawerHandle[data-side="top"]` を `top: calc(18px + env(safe-area-inset-top, 0px))` に変更し、開くための取っ手もノッチに掛からないようにした。
+- `env()` はノッチ無し端末・PCでは 0px 扱いとなり従来と同一。左右・下からの表示は不変。
