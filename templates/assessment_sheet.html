@@ -84,6 +84,14 @@
   </div>
 
   <div id="as-body" style="display:none;">
+    <div class="as-sec" style="border-color:#cfe0fb;background:#f7fbff;">
+      <h3 style="color:#1a56b3;"><span class="material-symbols-outlined" style="color:#1a73e8;">document_scanner</span>ケアマネ書類から自動入力</h3>
+      <div class="as-hint">紹介票・FAX・フェイスシートなどの写真を選ぶと、AIが読み取って下の各項目に自動で入れます（内容を確認してから保存してください）。家族構成図があればジェノグラムにも反映できます。</div>
+      <input type="file" id="as-ocr-file" accept="image/*" multiple style="display:none" onchange="asOcrRun(this)">
+      <button type="button" class="as-save" style="background:#1a73e8;" onclick="document.getElementById('as-ocr-file').click()"><span class="material-symbols-outlined" style="font-size:18px;">add_a_photo</span>書類の写真を選ぶ（複数可）</button>
+      <div id="as-ocr-msg" class="as-savemsg" style="display:block;margin-top:8px;"></div>
+      <div id="as-ocr-family"></div>
+    </div>
     <div class="as-subtabs">
       <button class="as-subtab active" data-sub="s1" onclick="asSub('s1')">アセスメント①</button>
       <button class="as-subtab" data-sub="s2" onclick="asSub('s2')">アセスメント②</button>
@@ -444,6 +452,49 @@
     });
   }
 
+  function readFileB64(file){ return new Promise(function(res){ var r=new FileReader(); r.onload=function(){ res({data:String(r.result).split(',')[1], mime_type:file.type||'image/jpeg'}); }; r.onerror=function(){res(null);}; r.readAsDataURL(file); }); }
+  function mergeFill(ex){
+    ex=ex||{};
+    var t=ex.texts||{}; Object.keys(t).forEach(function(id){ var e=el(id); if(e && t[id]){ e.value=t[id]; } });
+    var c=ex.chips||{}; Object.keys(c).forEach(function(id){ if(c[id]) chipSet(id, c[id]); });
+    var a=ex.adl||{}; ADL_ITEMS.forEach(function(name,i){ var rec=a[name]; if(rec&&rec.level){ setLevel('adl_'+i, rec.level); var nt=el('note_adl_'+i); if(nt&&rec.note) nt.value=rec.note; } });
+    var ia=ex.iadl||{}; IADL_ITEMS.forEach(function(name,i){ var rec=ia[name]; if(rec&&rec.level){ setLevel('iadl_'+i, rec.level); } });
+    growAll(); setDirty();
+  }
+  window.__ocrFamily=[];
+  window.asOcrRun=function(input){
+    if(!input.files||!input.files.length) return;
+    if(!current.pid){ alert('先に利用者を選んでください'); input.value=''; return; }
+    var msg=el('as-ocr-msg'); msg.textContent='読み取り中...（数十秒かかることがあります）'; msg.style.color='#1a73e8';
+    Promise.all(Array.prototype.slice.call(input.files).slice(0,6).map(readFileB64)).then(function(imgs){
+      imgs=imgs.filter(Boolean);
+      return fetch('/api/assessment/ocr',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:imgs})});
+    }).then(function(r){return r.json();}).then(function(j){
+      input.value='';
+      if(!j||j.status!=='success'){ msg.textContent='読み取り失敗: '+((j&&j.message)||''); msg.style.color='#c62828'; return; }
+      var ex=j.extracted||{};
+      mergeFill(ex);
+      var n=Object.keys(ex.texts||{}).length+Object.keys(ex.chips||{}).length+Object.keys(ex.adl||{}).length;
+      msg.textContent='読み取り完了：約'+n+'項目を反映しました。内容を確認して保存してください。'; msg.style.color='#2e7d32';
+      window.__ocrFamily=ex.family||[];
+      renderOcrFamily();
+    }).catch(function(){ input.value=''; msg.textContent='通信エラー'; msg.style.color='#c62828'; });
+  };
+  function renderOcrFamily(){
+    var host=el('as-ocr-family'); var fam=window.__ocrFamily||[];
+    if(!fam.length){ host.innerHTML=''; return; }
+    var ROLE={self:'本人',spouse:'配偶者',parent:'親',child:'子',sibling:'きょうだい',other:'その他'};
+    var rows=fam.map(function(f){ return '<div style="font-size:.8rem;color:#334155;padding:3px 0;">'+esc(f.member_label||'')+'（'+(f.sex==='m'?'男':(f.sex==='f'?'女':'?'))+'・'+(ROLE[f.relation_role]||f.relation_role)+(f.age?('・'+esc(f.age)+'歳'):'')+(f.is_cohabiting?'・同居':'')+(f.is_deceased?'・故人':'')+'）</div>'; }).join('');
+    host.innerHTML='<div style="margin-top:10px;padding:10px;border:1px solid #e0e6f0;border-radius:9px;background:#fff;"><div style="font-weight:800;font-size:.82rem;color:#1a56b3;margin-bottom:6px;">読み取った家族構成（'+fam.length+'名）</div>'+rows+'<button type="button" class="as-save" style="background:#1a73e8;margin-top:8px;" onclick="asApplyFamily()"><span class="material-symbols-outlined" style="font-size:18px;">account_tree</span>この家族構成を利用者情報のジェノグラムに反映</button><div id="as-fam-msg" class="as-savemsg" style="display:block;margin-top:6px;"></div></div>';
+  }
+  window.asApplyFamily=function(){
+    if(!current.pid||!window.__ocrFamily||!window.__ocrFamily.length) return;
+    var msg=el('as-fam-msg'); msg.textContent='反映中...'; msg.style.color='#1a73e8';
+    var members=window.__ocrFamily.map(function(f){ return {member_label:f.member_label,sex:f.sex,relation_role:f.relation_role,age:f.age,is_cohabiting:!!f.is_cohabiting,is_deceased:!!f.is_deceased,is_self:f.relation_role==='self'}; });
+    fetch('/api/patient-hub/family/save',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:current.pid,members:members})})
+      .then(function(r){return r.json();}).then(function(j){ if(j&&j.status==='success'){ msg.textContent='ジェノグラムに反映しました（利用者情報の「見る」で確認できます）'; msg.style.color='#2e7d32'; } else { msg.textContent='反映失敗: '+((j&&j.message)||''); msg.style.color='#c62828'; } })
+      .catch(function(){ msg.textContent='通信エラー'; msg.style.color='#c62828'; });
+  };
   function init(){
     buildAdl('adl-list', ADL_ITEMS, 'adl');
     buildAdl('iadl-list', IADL_ITEMS, 'iadl');
