@@ -13689,6 +13689,35 @@ def api_goal_history():
         return jsonify({"status": "error", "message": str(e), "history": []}), 500
 
 
+@app.route('/api/patient/care_level_history', methods=['GET'])
+@login_required
+def api_patient_care_level_history():
+    """clh-history-view-v1: 指定利用者の介護度変更履歴を返す（適用開始日の降順）。"""
+    try:
+        f_code = session["f_code"]
+        pid = (request.args.get("patient_id") or "").strip()
+        user_name = (request.args.get("user_name") or "").strip()
+        supabase = get_supabase()
+        if not pid and user_name:
+            r = supabase.table("patient_profiles").select("id").eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute()
+            if r.data:
+                pid = r.data[0].get("id")
+        if not pid:
+            return jsonify({"status": "error", "message": "patient_id が必要です"}), 400
+        res = supabase.table("care_level_history") \
+            .select("*") \
+            .eq("facility_code", f_code).eq("patient_id", pid) \
+            .execute()
+        items = res.data or []
+        items.sort(key=lambda h: ((h.get("valid_from") or ""), (h.get("id") or 0)), reverse=True)
+        out = [{"care_level": h.get("care_level") or "",
+                "valid_from": (h.get("valid_from") or "")[:10],
+                "created_at": h.get("created_at") or ""} for h in items]
+        return jsonify({"status": "success", "items": out})
+    except Exception as e:
+        print("care_level_history view error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/api/update_patient_care_level', methods=['POST'])
 @login_required
 def api_update_patient_care_level():

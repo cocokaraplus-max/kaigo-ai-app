@@ -186,40 +186,81 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
         pass
     return result
 
+def _care_level_at_month_end(history_rows, month_end_iso):
+    """care_level_history(list of dict)から month_end_iso('YYYY-MM-DD')時点で有効な care_level を返す。
+    valid_from <= 月末日 の中で valid_from 最大(同日ならid最大)を採用。無ければ None。"""
+    best = None
+    for h in (history_rows or []):
+        vf = (h.get("valid_from") or "")[:10]
+        if not vf or vf > month_end_iso:
+            continue
+        if best is None:
+            best = h
+        else:
+            bvf = (best.get("valid_from") or "")[:10]
+            if vf > bvf or (vf == bvf and (h.get("id") or 0) > (best.get("id") or 0)):
+                best = h
+    return (best.get("care_level") if best else None)
+
+
 def get_initial_care_classification(supabase, facility_code: str, user_name: str, target_month: str) -> str:
-    """介護区分の初期値を返す。
+    """介護区分の初期値を返す（clh-dateaware-v1: 対象月時点の介護度を優先）。
 
     優先順位:
-      1. patients.care_level → care_classification にマッピング
-         (要介護1-5 → '要介護'、要支援1-2 → '要支援'、事業対象者 → '事業対象者')
-      2. 対象月より前の最新 patient_evaluations.care_classification
-      3. フォールバック: 空文字
-
-    Args:
-        supabase: Supabase Client instance
-        facility_code: 施設コード
-        user_name: 利用者名
-        target_month: 対象月 'YYYY-MM' 形式
-
-    Returns:
-        '要介護' / '要支援' / '事業対象者' / ''(不明)
+      1. care_level_history から「対象月末時点」で有効な介護度 → care_classification
+         （過去月の評価には当時の介護度が当たる）
+      2. patient_profiles.care_level（現在値）→ care_classification（履歴が無い利用者向けフォールバック）
+      3. 対象月より前の最新 patient_evaluations.care_classification
+      4. 空文字
     """
-    # ── ① patients.care_level からマッピング ──
+    month_end = ""
+    try:
+        import calendar as _cal
+        _y, _m = target_month.split("-")
+        _y, _m = int(_y), int(_m)
+        _last = _cal.monthrange(_y, _m)[1]
+        month_end = "%04d-%02d-%02d" % (_y, _m, _last)
+    except Exception:
+        month_end = ""
+
+    pid = None
+    cur_level = ""
     try:
         res = supabase.table("patient_profiles") \
-            .select("care_level") \
+            .select("id, care_level") \
             .eq("facility_code", facility_code) \
             .eq("user_name", user_name) \
             .limit(1) \
             .execute()
-        if res.data and res.data[0].get("care_level"):
-            mapped = _care_level_to_classification(res.data[0]["care_level"])
-            if mapped:
-                return mapped
+        if res.data:
+            pid = res.data[0].get("id")
+            cur_level = res.data[0].get("care_level") or ""
     except Exception:
         pass
 
-    # ── ② 対象月より前の最新 patient_evaluations.care_classification ──
+    # ── ① care_level_history 対象月末時点で有効な介護度 ──
+    if pid and month_end:
+        try:
+            hres = supabase.table("care_level_history") \
+                .select("care_level, valid_from, id") \
+                .eq("facility_code", facility_code) \
+                .eq("patient_id", pid) \
+                .execute()
+            lv = _care_level_at_month_end(hres.data or [], month_end)
+            if lv:
+                mapped = _care_level_to_classification(lv)
+                if mapped:
+                    return mapped
+        except Exception:
+            pass
+
+    # ── ② patient_profiles.care_level（現在値）──
+    if cur_level:
+        mapped = _care_level_to_classification(cur_level)
+        if mapped:
+            return mapped
+
+    # ── ③ 対象月より前の最新 patient_evaluations.care_classification ──
     try:
         res = supabase.table("patient_evaluations") \
             .select("care_classification") \
@@ -234,8 +275,9 @@ def get_initial_care_classification(supabase, facility_code: str, user_name: str
     except Exception:
         pass
 
-    # ── ③ フォールバック ──
+    # ── ④ フォールバック ──
     return ""
+
 
 
 # ===========================================================================
