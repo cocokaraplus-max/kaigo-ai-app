@@ -2068,13 +2068,9 @@ def _bcp_addenda_save(supabase, f_code, bid, items):
     import json as _json
     payload = _json.dumps({"items": items}, ensure_ascii=False).encode("utf-8")
     path = _bcp_addenda_path(f_code, bid)
-    try:
-        supabase.storage.from_(BCP_BUCKET).remove([path])
-    except Exception:
-        pass
     supabase.storage.from_(BCP_BUCKET).upload(
         path=path, file=payload,
-        file_options={"content-type": "application/json"})
+        file_options={"content-type": "application/json", "upsert": "true"})
 
 
 def _bcp_now_iso():
@@ -2123,12 +2119,8 @@ def api_bcp_replace():
     new_path = "bcp/%s/%s.%s" % (f_code, bid, ext)
     old_path = row.get("storage_path") or ""
     try:
-        try:
-            supabase.storage.from_(BCP_BUCKET).remove([new_path])
-        except Exception:
-            pass
         supabase.storage.from_(BCP_BUCKET).upload(
-            path=new_path, file=raw, file_options={"content-type": ctype})
+            path=new_path, file=raw, file_options={"content-type": ctype, "upsert": "true"})
     except Exception as e:
         return jsonify({"status": "error", "message": "保存に失敗しましざ: %s" % e}), 500
     try:
