@@ -829,7 +829,8 @@ body.nav-editing {
   #appDrawerHandle.moving { opacity: 1; transform: scale(1.08); box-shadow: 0 10px 26px rgba(16,24,40,.35); }
   #appDrawerHandle[data-side="top"].moving, #appDrawerHandle[data-side="bottom"].moving {
     transform: translateX(-50%) scale(1.08); }
-  #appDrawerHandle[data-side="top"]    { top: 18px; }
+  /* app-drawer-safearea-top-v1: 上取っ手はカメラ/ノッチ（セーフエリア上部）に隠れないよう下げる。 */
+  #appDrawerHandle[data-side="top"]    { top: calc(18px + env(safe-area-inset-top, 0px)); }
   #appDrawerHandle[data-side="bottom"] { bottom: calc(var(--dw-nav-h, 0px) + 14px); }
   #appDrawerHandle[data-side="top"]:active    { transform: translateX(-50%) translateY(3px); }
   #appDrawerHandle[data-side="bottom"]:active { transform: translateX(-50%) translateY(-3px); }
@@ -867,7 +868,11 @@ body.nav-editing {
     left: var(--dw-gap); right: var(--dw-gap); width: auto; top: auto; bottom: auto;
     height: min(72vh, 620px); }
   /* 上下は縦方向に余白が無いので自分の幅ぶんでよいが、下はボトムナビの高さぶん余分に逃がす */
+  /* app-drawer-safearea-top-v1: 上から出すと、白いシートは最上端(top:0)まで敷いて
+     カメラ/ノッチ裏を埋めつつ、ヘッダー（メニュー見出し・✕閉じる）と1段目アイコンは
+     padding-top のぶんセーフエリアの下へ落とす。これが無いと✕や上段ボタンがカメラに隠れて押せない。 */
   #appDrawer[data-side="top"] { top: 0; transform: translateY(-102%);
+    padding-top: env(safe-area-inset-top, 0px);
     border-radius: 0 0 22px 22px; }
   #appDrawer[data-side="bottom"] { bottom: var(--dw-nav-h, 0px);
     transform: translateY(calc(100% + var(--dw-nav-h, 0px) + 24px));
