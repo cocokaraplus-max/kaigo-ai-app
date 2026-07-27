@@ -135,6 +135,7 @@
 .icf-text { outline:none; min-width:24px; color:#3c4043; }
 .icf-text:focus { background:#fffde3; }
 .icf-del { background:none; border:none; color:#c5221f; cursor:pointer; font-size:0.95rem; line-height:1; padding:0 2px; }
+.icf-text:empty:before { content:"内容を入力…"; color:#9aa0a6; }
 .icf-pol { border:1px solid #cfe0fb; background:#eef4ff; color:#1a73e8; border-radius:10px; font-size:0.66rem; font-weight:700; padding:1px 7px; cursor:pointer; line-height:1.4; }
 .icf-sticky.cannot { background:#fdecea; border-color:#f4a9a3; }
 .icf-sticky.cannot .icf-text { color:#c5221f; }
@@ -916,11 +917,25 @@ const PATIENTS = {{ patients | tojson }};
                 const bb = e.target.closest("[data-back]"); if (bb) { this.icfOverview(); return; }
                 const rb = e.target.closest("[data-reset]"); if (rb) { this.icfReset(rb); return; }
                 const del = e.target.closest(".icf-del");
-                if (del) { this.icfStickies.splice(+del.dataset.idx, 1); this.renderIcf(); return; }
+                if (del) {
+                    const _s = this.icfStickies[+del.dataset.idx];
+                    const _t = (_s && (_s.text || "").trim()) || "この付箋";
+                    if (confirm("「" + _t + "」を削除しますか？")) { this.icfStickies.splice(+del.dataset.idx, 1); this.renderIcf(); }
+                    return;
+                }
                 const pol = e.target.closest(".icf-pol");
                 if (pol) { const s = this.icfStickies[+pol.dataset.idx]; if (s) { s.polarity = (s.polarity === "cannot") ? "can" : "cannot"; this.renderIcf(); } return; }
                 const add = e.target.closest(".icf-add");
-                if (add) { this.icfStickies.push({ zone: add.dataset.zone, text: "新しい付箋", icf_code: "", polarity: "can" }); this.renderIcf(); return; }
+                if (add) {
+                    this.icfStickies.push({ zone: add.dataset.zone, text: "", icf_code: "", polarity: "can" });
+                    this.renderIcf();
+                    const _ni = this.icfStickies.length - 1;
+                    setTimeout(() => {
+                        const el = board.querySelector('.icf-text[data-idx="' + _ni + '"]');
+                        if (el) { el.focus(); try { const r = document.createRange(); r.selectNodeContents(el); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch (err) {} el.scrollIntoView({ block: "nearest" }); }
+                    }, 30);
+                    return;
+                }
             });
             board.addEventListener("pointerdown", (e) => {
                 const h = e.target.closest(".icf-handle");
