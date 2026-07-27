@@ -5,7 +5,7 @@
   .as-wrap{max-width:860px;margin:0 auto;padding:12px 12px 120px;font-family:'Noto Sans JP',sans-serif;color:#1e293b}
   /* 会議タブ共通 */
   .mtg-tabs{display:flex;border:1.5px solid #2e7d32;border-radius:10px;overflow:hidden;margin-bottom:12px}
-  .mtg-tab{flex:1;text-align:center;padding:10px 6px;font-size:.82rem;font-weight:700;color:#2e7d32;text-decoration:none;background:#fff}
+  .mtg-tab{flex:1;display:flex;flex-direction:column;justify-content:center;text-align:center;padding:8px 4px;font-size:.8rem;font-weight:700;color:#2e7d32;text-decoration:none;background:#fff;line-height:1.3;word-break:keep-all}
   .mtg-tab.active{background:#2e7d32;color:#fff}
   .mtg-tab + .mtg-tab{border-left:1.5px solid #2e7d32}
   .as-head{display:flex;align-items:center;gap:8px;margin:4px 0 12px}
@@ -65,9 +65,9 @@
 {% block content %}
 <div class="as-wrap">
   <div class="mtg-tabs">
-    <a class="mtg-tab" href="/admin/meetings">担当者会議・ICF</a>
-    <a class="mtg-tab active" href="/admin/assessment_sheet">事前アセスメント</a>
-    <a class="mtg-tab" href="/staff_minutes">勉強会・会議議事録</a>
+    <a class="mtg-tab" href="/admin/meetings">担当者会議・<br>ICF</a>
+    <a class="mtg-tab active" href="/admin/assessment_sheet">事前<br>アセスメント</a>
+    <a class="mtg-tab" href="/staff_minutes">勉強会・<br>会議議事録</a>
   </div>
   <div class="as-head">
     <span class="material-symbols-outlined">clinical_notes</span>
@@ -106,6 +106,7 @@
       <button class="as-subtab active" data-sub="s1" onclick="asSub('s1')">アセスメント①</button>
       <button class="as-subtab" data-sub="s2" onclick="asSub('s2')">アセスメント②</button>
       <button class="as-subtab" data-sub="face" onclick="asSub('face')">フェイスシート</button>
+      <button class="as-subtab" data-sub="bi" onclick="asSub('bi')">初回BI</button>
     </div>
 
     <!-- ============ アセスメント① ============ -->
@@ -277,6 +278,22 @@
         <div class="as-fld"><label class="as-lb">趣味・若いころ得意としていたこと・望む生活</label><textarea class="as-in" id="f_hobby"></textarea></div>
       </div>
     </div>
+    <div class="as-panel" id="panel-bi">
+      <div class="as-sec" style="border-color:#cfe0fb;background:#f7fbff;">
+        <h3 style="color:#1a56b3;"><span class="material-symbols-outlined" style="color:#1a73e8;">checklist</span>初回BI（生活機能チェック・Barthel）</h3>
+        <div class="as-hint">アセスメント②のADLと重複する項目は下のボタンで自動反映できます（見守り=自立寄り）。BIにしかない<b style="color:#c2410c;">トイレ動作・階段昇降</b>は追加で確認して入力してください。保存すると<b>生活機能チェック（BI）</b>画面で閲覧・修正できます。</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:8px 0;">
+          <button type="button" class="as-save" style="background:#1a73e8;" onclick="biApplyFromAssessment()"><span class="material-symbols-outlined" style="font-size:18px;">sync_alt</span>アセスメントのADLから反映</button>
+          <label class="as-lb" style="margin:0;display:flex;align-items:center;gap:6px;">評価日<input type="date" id="bi_check_date" class="as-in" style="width:auto;padding:6px 8px;"></label>
+        </div>
+        <div id="bi-list"></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 12px;background:#eef4ff;border-radius:10px;margin-top:10px;font-weight:800;color:#1a4b8f;">
+          <span>Barthel 合計</span><span><span id="bi-total">0</span> / 100点</span>
+        </div>
+        <button type="button" class="as-save" style="background:#12b76a;margin-top:10px;width:100%;justify-content:center;" onclick="biSave()"><span class="material-symbols-outlined" style="font-size:18px;">save</span>初回BIを保存（生活機能チェックへ）</button>
+        <div id="bi-msg" class="as-savemsg" style="display:block;margin-top:8px;"></div>
+      </div>
+    </div>
   </div>
 
   <div id="as-empty" class="as-empty">上で利用者を選ぶと、入力フォームが表示されます。</div>
@@ -434,7 +451,7 @@
 
   window.asSub=function(which){
     document.querySelectorAll('.as-subtab').forEach(function(b){ b.classList.toggle('active', b.dataset.sub===which); });
-    ['s1','s2','face'].forEach(function(k){ var p=el('panel-'+k); if(p) p.classList.toggle('active', k===which); });
+    ['s1','s2','face','bi'].forEach(function(k){ var p=el('panel-'+k); if(p) p.classList.toggle('active', k===which); });
     growAll();
   };
 
@@ -547,9 +564,90 @@
       }).catch(function(){ msg.textContent='通信エラー'; msg.style.color='#c62828'; });
   }
 
+  // ===== assess-bi-v1: 事前アセスメントから初回BI(生活機能チェック/Barthel)を同時入力 =====
+  var BI_ITEMS = [
+    {key:"adl_eating",   label:"食事",              src:"食事",  opts:[[10,"自立"],[5,"部分介助"],[0,"全介助"]]},
+    {key:"adl_transfer", label:"移乗(椅子⇄ベッド)", src:"移乗",  opts:[[15,"自立"],[10,"軽介助・監視"],[5,"座位可・ほぼ全介助"],[0,"全介助"]]},
+    {key:"adl_grooming", label:"整容",              src:"整容",  opts:[[5,"自立"],[0,"介助"]]},
+    {key:"adl_toilet",   label:"トイレ動作",        src:null,    opts:[[10,"自立"],[5,"部分介助"],[0,"全介助"]]},
+    {key:"adl_bathing",  label:"入浴",              src:"入浴",  opts:[[5,"自立"],[0,"介助"]]},
+    {key:"adl_walking",  label:"移動",              src:"歩行",  opts:[[15,"自立歩行"],[10,"介助歩行・歩行器"],[5,"車椅子操作可"],[0,"上記以外"]]},
+    {key:"adl_stairs",   label:"階段昇降",          src:null,    opts:[[10,"自立"],[5,"介助・監視"],[0,"不能"]]},
+    {key:"adl_dressing", label:"更衣",              src:"更衣",  opts:[[10,"自立"],[5,"部分介助"],[0,"上記以外"]]},
+    {key:"adl_bowel",    label:"排便",              src:"排便",  opts:[[10,"失禁なし"],[5,"時に失禁"],[0,"上記以外"]]},
+    {key:"adl_bladder",  label:"排尿",              src:"排尿",  opts:[[10,"失禁なし"],[5,"時に失禁"],[0,"上記以外"]]}
+  ];
+  var _biState = {};
+  function _biColor(score, opts){ var mx=opts[0][0]; if(score===mx) return '#1a73e8'; if(score===0) return '#e5484d'; return '#f79009'; }
+  function biSet(key, score){
+    _biState[key]=score;
+    var row=el('bi_'+key); if(!row) return;
+    var it=BI_ITEMS.filter(function(x){return x.key===key;})[0]; if(!it) return;
+    var col=_biColor(score, it.opts); row.style.borderLeftColor=col;
+    row.querySelectorAll('.adl-seg button').forEach(function(b){
+      if(parseInt(b.dataset.score,10)===score){ b.classList.add('on'); b.style.background=col; b.style.color='#fff'; }
+      else { b.classList.remove('on'); b.style.background='#fff'; b.style.color=''; }
+    });
+    biTotal();
+  }
+  function buildBi(){
+    var host=el('bi-list'); if(!host) return; host.innerHTML='';
+    BI_ITEMS.forEach(function(it){
+      var row=document.createElement('div'); row.className='adl-item'; row.id='bi_'+it.key;
+      var nm=document.createElement('div'); nm.className='adl-name';
+      nm.innerHTML=it.label+(it.src?'':' <span style="font-size:.6rem;color:#c2410c;background:#fff2e6;border-radius:6px;padding:1px 5px;white-space:nowrap;">追加で確認</span>');
+      var seg=document.createElement('div'); seg.className='adl-seg';
+      it.opts.forEach(function(o){
+        var b=document.createElement('button'); b.type='button'; b.dataset.score=o[0];
+        b.textContent=o[0]+'点'; b.title=o[1];
+        b.onclick=function(){ biSet(it.key,o[0]); setDirty(); };
+        seg.appendChild(b);
+      });
+      row.appendChild(nm); row.appendChild(seg); host.appendChild(row);
+    });
+  }
+  function _biMapLevel(level, opts){
+    var n=opts.length; if(!level) return null;
+    if(n===2){ return (level==='自立'||level==='見守り')?opts[0][0]:opts[1][0]; }
+    if(n===3){ if(level==='自立'||level==='見守り') return opts[0][0]; if(level==='一部介助') return opts[1][0]; return opts[2][0]; }
+    if(level==='自立') return opts[0][0];
+    if(level==='見守り') return opts[1][0];
+    if(level==='一部介助') return opts[2][0];
+    return opts[3][0];
+  }
+  function _biWorst(a,b){ var o={'自立':0,'見守り':1,'一部介助':2,'全介助':3}; if(!a) return b; if(!b) return a; return (o[a]>=o[b])?a:b; }
+  window.biApplyFromAssessment=function(){
+    var adl=collectAdl(ADL_ITEMS,'adl'); var applied=0, miss=[];
+    BI_ITEMS.forEach(function(it){
+      if(!it.src){ if(typeof _biState[it.key]!=='number') miss.push(it.label); return; }
+      var lv = (it.key==='adl_bathing') ? _biWorst((adl['入浴(出入り)']||{}).level,(adl['入浴(洗髪・洗身)']||{}).level) : (adl[it.src]||{}).level;
+      if(lv){ biSet(it.key,_biMapLevel(lv,it.opts)); applied++; }
+    });
+    var msg=el('bi-msg'); msg.style.color='#1a56b3';
+    msg.textContent='アセスメントから'+applied+'項目を反映しました。'+(miss.length?('未入力: '+miss.join('・')+' を追加で確認してください。'):'');
+    biTotal();
+  };
+  function biTotal(){ var t=0; BI_ITEMS.forEach(function(it){ if(typeof _biState[it.key]==='number') t+=_biState[it.key]; }); var e=el('bi-total'); if(e) e.textContent=t; return t; }
+  window.biSave=function(){
+    if(!current.pid){ alert('先に利用者を選んでください'); return; }
+    var cd=(el('bi_check_date')||{}).value; if(!cd){ alert('評価日を入力してください'); return; }
+    var payload={ patient_id:current.pid, user_name:(el('as-psearch')||{}).value||'', check_date:cd };
+    BI_ITEMS.forEach(function(it){ if(typeof _biState[it.key]==='number') payload[it.key]=_biState[it.key]; });
+    var adl=collectAdl(ADL_ITEMS,'adl'); var lm={'自立':'independent','見守り':'watch','一部介助':'partial','全介助':'full'};
+    if((adl['起き上がり']||{}).level) payload.basic_situp_level=lm[adl['起き上がり'].level];
+    if((adl['立ち上がり']||{}).level) payload.basic_standup_level=lm[adl['立ち上がり'].level];
+    var msg=el('bi-msg'); msg.textContent='保存中...'; msg.style.color='#1a73e8';
+    fetch('/api/save_life_check',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+      .then(function(r){return r.json();}).then(function(j){
+        if(j&&j.status==='success'){ msg.textContent='初回BIを保存しました（生活機能チェック画面で閲覧・修正できます）。合計'+biTotal()+'点'; msg.style.color='#2e7d32'; }
+        else { msg.textContent='保存失敗: '+((j&&j.message)||''); msg.style.color='#c62828'; }
+      }).catch(function(){ msg.textContent='通信エラー'; msg.style.color='#c62828'; });
+  };
+
   function init(){
     buildAdl('adl-list', ADL_ITEMS, 'adl');
     buildAdl('iadl-list', IADL_ITEMS, 'iadl');
+    buildBi(); var _bcd=el('bi_check_date'); if(_bcd&&!_bcd.value){ _bcd.value=new Date().toISOString().slice(0,10); }
     makeExpandable();
     initChips(); wireDirty(); loadPatients();
   }
