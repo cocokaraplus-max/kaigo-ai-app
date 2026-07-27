@@ -63,6 +63,11 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
   gap: 8px;
 }
 .accordion-head:active { background: #f0f0f0; }
+.np-tabs{display:flex;gap:6px;margin-bottom:12px;background:#f1f3f4;padding:4px;border-radius:12px;}
+.np-tab{flex:1;border:none;background:transparent;border-radius:9px;padding:9px 4px;font-size:0.78rem;font-weight:700;color:#5f6368;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center;gap:4px;}
+.np-tab .material-symbols-outlined{font-size:17px;}
+.np-tab.active{background:#fff;color:#1e5e26;box-shadow:0 1px 3px rgba(0,0,0,.12);}
+
 .acc-title {
   display: flex;
   align-items: center;
@@ -465,110 +470,20 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 </style>
 {# ==================== 利用者管理タブ ==================== #}
 <div class="tab-panel active" id="tab-patients">
-
-  {# ---- 利用管理(月間予定/実績) visit-admin-menu-v1 ---- #}
-  <!-- jisseki-page-v1 -->
-<a href="/admin/jisseki" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">monitoring</span>実績集計表</a>
-<!-- keiyaku-menu-v1 -->
-<a href="/admin/keiyaku" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">description</span>契約書・重要事項説明書</a>
-<!-- timecard-menu-v1 -->
-<a href="/admin/timecard" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">schedule</span>タイムカード（勤怠）</a>
-<a href="/visit" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#e6f4ea;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;">
-    <span class="material-symbols-outlined" style="color:#2e7d32;">event_available</span>
-    利用管理（予定・実績の確認）
-    <span class="material-symbols-outlined" style="margin-left:auto;color:#2e7d32;">chevron_right</span>
-  </a>
-
-  {# ---- CSVインポート ---- #}
-  <div class="accordion-block" style="border-color:#1a73e8;">
-    <div class="accordion-head" onclick="toggleAcc('csv')" style="background:#f0f6ff;">
-      <div class="acc-title">
-        <span class="material-symbols-outlined" style="color:#1a73e8;">upload_file</span>
-        <span style="color:#1a73e8;">CSV取込</span>
-      </div>
-      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-csv">expand_more</span>
+  {# ---- np-consolidate-v1 : 新規利用者を登録（手入力/CSV/写真OCR 集約） ---- #}
+  <div class="accordion-block" style="border-color:#2e7d32;margin-bottom:16px;">
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 14px 8px;">
+      <span class="material-symbols-outlined" style="color:#2e7d32;">group_add</span>
+      <span style="color:#1e5e26;font-weight:800;font-size:0.98rem;">新規利用者を登録</span>
     </div>
-    <div class="accordion-body" id="acc-body-csv">
-      <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
-        CSVファイルをドロップまたは選択してください。利用者番号・氏名・カナ・住所・生年月日・介護度・担当ケアマネ等を自動取込します。
+    <div style="padding:0 14px 14px;">
+      <div style="font-size:0.78rem;color:#5f6368;margin-bottom:10px;line-height:1.6;">3つの方法から選べます。1人ずつ手入力、CSVで一括、写真からAI読み取り。</div>
+      <div class="np-tabs">
+        <button type="button" class="np-tab active" data-np="manual" onclick="npSwitch('manual')"><span class="material-symbols-outlined">person_add</span>手入力</button>
+        <button type="button" class="np-tab" data-np="csv" onclick="npSwitch('csv')"><span class="material-symbols-outlined">upload_file</span>CSV取込</button>
+        <button type="button" class="np-tab" data-np="scan" onclick="npSwitch('scan')"><span class="material-symbols-outlined">document_scanner</span>写真から</button>
       </div>
-      <div class="import-zone" id="csv-drop-zone"
-        onclick="document.getElementById('csv-file-input').click()"
-        ondragover="event.preventDefault();this.classList.add('drag-over');"
-        ondragleave="this.classList.remove('drag-over');"
-        ondrop="handleCsvDrop(event)">
-        <span class="material-symbols-outlined">table_view</span>
-        <p>CSVファイルをドロップ または クリックして選択</p>
-        <small>対応形式: .csv（Shift-JIS / UTF-8）</small>
-      </div>
-      <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(this.files[0])">
-      <div id="csv-preview-area" style="display:none;">
-        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:8px;" id="csv-preview-title"></div>
-        <div style="overflow-x:auto;margin-bottom:12px;" id="csv-preview-table-wrap"></div>
-        <button class="btn btn-primary" onclick="bulkUpsertPatients()" style="width:100%;">
-          <span class="material-symbols-outlined" style="color:white;">group_add</span>
-          <span id="csv-import-btn-label">一括取込を実行</span>
-        </button>
-      </div>
-    </div>
-  </div>
-
-  {# ---- 写真からAIスキャン ---- #}
-  <div class="accordion-block" style="border-color:#34a853;">
-    <div class="accordion-head" onclick="toggleAcc('scan')" style="background:#f0faf3;">
-      <div class="acc-title">
-        <span class="material-symbols-outlined" style="color:#34a853;">document_scanner</span>
-        <span style="color:#34a853;">写真からAI読み取り</span>
-      </div>
-      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-scan">expand_more</span>
-    </div>
-    <div class="accordion-body" id="acc-body-scan">
-      <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
-        利用者名簿・介護ソフト画面・紙の名簿の写真をアップロード。AIが名前・生年月日を自動読み取りします。
-      </div>
-      <div class="import-zone" id="scan-drop-zone"
-        onclick="document.getElementById('scan-photo-input').click()"
-        ondragover="event.preventDefault();this.classList.add('drag-over');"
-        ondragleave="this.classList.remove('drag-over');"
-        ondrop="onScanDrop(event)">
-        <span class="material-symbols-outlined">add_a_photo</span>
-        <p>写真をタップして選択 またはドロップ</p>
-        <small>JPG / PNG / HEIC 対応</small>
-      </div>
-      <input type="file" id="scan-photo-input" accept="image/*" style="display:none" onchange="onScanFileSelect(this)">
-      <div id="scan-preview" style="display:none;margin-bottom:12px;">
-        <img id="scan-preview-img" style="width:100%;border-radius:8px;border:1px solid #e0e0e0;">
-      </div>
-      <button class="btn btn-primary" id="scan-btn" onclick="scanPatients()" style="display:none;width:100%;margin-bottom:12px;background:#34a853;">
-        <span class="material-symbols-outlined" style="color:white;">auto_awesome</span>
-        AIで読み取る
-      </button>
-      <div id="scan-loading" style="display:none;text-align:center;padding:16px;">
-        <span class="material-symbols-outlined" style="font-size:32px;color:#34a853;animation:spin 1s linear infinite;">sync</span>
-        <div style="font-size:0.85rem;color:#34a853;margin-top:8px;font-weight:700;">AIが読み取り中...</div>
-      </div>
-      <div id="scan-results" style="display:none;">
-        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:6px;">読み取り結果（確認・修正して登録）</div>
-        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:10px;">✅ チェックした利用者のみ登録されます</div>
-        <div id="scan-results-list"></div>
-        <button class="btn btn-primary" onclick="registerScannedPatients()" style="width:100%;margin-top:10px;background:#34a853;">
-          <span class="material-symbols-outlined" style="color:white;">group_add</span>
-          チェックした利用者を一括登録
-        </button>
-      </div>
-    </div>
-  </div>
-
-  {# ---- 新規手入力登録 ---- #}
-  <div class="accordion-block">
-    <div class="accordion-head" onclick="toggleAcc('new-patient')">
-      <div class="acc-title">
-        <span class="material-symbols-outlined" style="color:#34a853;">person_add</span>
-        新規手入力登録
-      </div>
-      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-new-patient">expand_more</span>
-    </div>
-    <div class="accordion-body" id="acc-body-new-patient">
+      <div class="np-panel" id="np-manual">
       <div class="form-group">
         <label class="form-label">利用者番号（カルテNo）</label>
         <input type="text" id="new-patient-number" class="form-control" placeholder="例: 000123">
@@ -605,7 +520,81 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
         <span class="material-symbols-outlined">add</span>登録する
       </button>
     </div>
+      <div class="np-panel" id="np-csv" style="display:none;">
+      <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
+        CSVファイルをドロップまたは選択してください。利用者番号・氏名・カナ・住所・生年月日・介護度・担当ケアマネ等を自動取込します。
+      </div>
+      <div class="import-zone" id="csv-drop-zone"
+        onclick="document.getElementById('csv-file-input').click()"
+        ondragover="event.preventDefault();this.classList.add('drag-over');"
+        ondragleave="this.classList.remove('drag-over');"
+        ondrop="handleCsvDrop(event)">
+        <span class="material-symbols-outlined">table_view</span>
+        <p>CSVファイルをドロップ または クリックして選択</p>
+        <small>対応形式: .csv（Shift-JIS / UTF-8）</small>
+      </div>
+      <input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCsvFile(this.files[0])">
+      <div id="csv-preview-area" style="display:none;">
+        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:8px;" id="csv-preview-title"></div>
+        <div style="overflow-x:auto;margin-bottom:12px;" id="csv-preview-table-wrap"></div>
+        <button class="btn btn-primary" onclick="bulkUpsertPatients()" style="width:100%;">
+          <span class="material-symbols-outlined" style="color:white;">group_add</span>
+          <span id="csv-import-btn-label">一括取込を実行</span>
+        </button>
+      </div>
+    </div>
+      <div class="np-panel" id="np-scan" style="display:none;">
+      <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
+        利用者名簿・介護ソフト画面・紙の名簿の写真をアップロード。AIが名前・生年月日を自動読み取りします。
+      </div>
+      <div class="import-zone" id="scan-drop-zone"
+        onclick="document.getElementById('scan-photo-input').click()"
+        ondragover="event.preventDefault();this.classList.add('drag-over');"
+        ondragleave="this.classList.remove('drag-over');"
+        ondrop="onScanDrop(event)">
+        <span class="material-symbols-outlined">add_a_photo</span>
+        <p>写真をタップして選択 またはドロップ</p>
+        <small>JPG / PNG / HEIC 対応</small>
+      </div>
+      <input type="file" id="scan-photo-input" accept="image/*" style="display:none" onchange="onScanFileSelect(this)">
+      <div id="scan-preview" style="display:none;margin-bottom:12px;">
+        <img id="scan-preview-img" style="width:100%;border-radius:8px;border:1px solid #e0e0e0;">
+      </div>
+      <button class="btn btn-primary" id="scan-btn" onclick="scanPatients()" style="display:none;width:100%;margin-bottom:12px;background:#34a853;">
+        <span class="material-symbols-outlined" style="color:white;">auto_awesome</span>
+        AIで読み取る
+      </button>
+      <div id="scan-loading" style="display:none;text-align:center;padding:16px;">
+        <span class="material-symbols-outlined" style="font-size:32px;color:#34a853;animation:spin 1s linear infinite;">sync</span>
+        <div style="font-size:0.85rem;color:#34a853;margin-top:8px;font-weight:700;">AIが読み取り中...</div>
+      </div>
+      <div id="scan-results" style="display:none;">
+        <div style="font-size:0.85rem;font-weight:700;color:#202124;margin-bottom:6px;">読み取り結果（確認・修正して登録）</div>
+        <div style="font-size:0.75rem;color:#5f6368;margin-bottom:10px;">✅ チェックした利用者のみ登録されます</div>
+        <div id="scan-results-list"></div>
+        <button class="btn btn-primary" onclick="registerScannedPatients()" style="width:100%;margin-top:10px;background:#34a853;">
+          <span class="material-symbols-outlined" style="color:white;">group_add</span>
+          チェックした利用者を一括登録
+        </button>
+      </div>
+    </div>
+    </div>
   </div>
+
+
+
+  {# ---- 利用管理(月間予定/実績) visit-admin-menu-v1 ---- #}
+  <!-- jisseki-page-v1 -->
+<a href="/admin/jisseki" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">monitoring</span>実績集計表</a>
+<!-- keiyaku-menu-v1 -->
+<a href="/admin/keiyaku" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">description</span>契約書・重要事項説明書</a>
+<!-- timecard-menu-v1 -->
+<a href="/admin/timecard" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">schedule</span>タイムカード（勤怠）</a>
+<a href="/visit" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#e6f4ea;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;">
+    <span class="material-symbols-outlined" style="color:#2e7d32;">event_available</span>
+    利用管理（予定・実績の確認）
+    <span class="material-symbols-outlined" style="margin-left:auto;color:#2e7d32;">chevron_right</span>
+  </a>
 
   {# ---- 利用者一覧・編集 ---- #}
   <div class="accordion-block">
@@ -1391,6 +1380,10 @@ async function loadContractCard() {
   }
 }
 
+function npSwitch(which){
+  ["manual","csv","scan"].forEach(function(k){ var el=document.getElementById("np-"+k); if(el) el.style.display=(k===which)?"block":"none"; });
+  document.querySelectorAll(".np-tab").forEach(function(b){ b.classList.toggle("active", b.dataset.np===which); });
+}
 // ---- patient_profiles 新規登録 ----
 async function addPatientProfile() {
   const num  = document.getElementById('new-patient-number').value.trim();
