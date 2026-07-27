@@ -1997,6 +1997,10 @@ def api_bcp_delete():
     except Exception:
         pass  # Storageに無くてもDBは消す
     try:
+        supabase.storage.from_(BCP_BUCKET).remove([_bcp_addenda_path(f_code, bid)])
+    except Exception:
+        pass
+    try:
         (supabase.table("bcp_manuals").delete()
          .eq("id", bid).eq("facility_code", f_code).execute())
     except Exception as e:
@@ -2039,6 +2043,200 @@ def api_bcp_file(bid):
                           download_name=(row.get("file_name") or "bcp"))
     resp.headers["Cache-Control"] = "private, max-age=86400"
     return resp
+
+
+# ==== app-bcp-edit-v1 : BCP差し替え（版更新）＋追記（アプリ内編集） ====
+def _bcp_addenda_path(f_code, bid):
+    return "bcp/%s/%s.addenda.json" % (f_code, bid)
+
+
+def _bcp_addenda_load(supabase, f_code, bid):
+    """追記JSONを読む。無ければ空リスト。"""
+    import json as _json
+    try:
+        blob = supabase.storage.from_(BCP_BUCKET).download(_bcp_addenda_path(f_code, bid))
+        if isinstance(blob, (bytes, bytearray)):
+            blob = blob.decode("utf-8")
+        data = _json.loads(blob)
+        items = data.get("items") if isinstance(data, dict) else data
+        return items or []
+    except Exception:
+        return []
+
+
+def _bcp_addenda_save(supabase, f_code, bid, items):
+    import json as _json
+    payload = _json.dumps({"items": items}, ensure_ascii=False).encode("utf-8")
+    path = _bcp_addenda_path(f_code, bid)
+    try:
+        supabase.storage.from_(BCP_BUCKET).remove([path])
+    except Exception:
+        pass
+    supabase.storage.from_(BCP_BUCKET).upload(
+        path=path, file=payload,
+        file_options={"content-type": "application/json"})
+
+
+def _bcp_now_iso():
+    import datetime as _dt
+    try:
+        return _dt.datetime.now(tokyo_tz).isoformat()
+    except Exception:
+        return _dt.datetime.utcnow().isoformat()
+
+
+@app.route('/api/bcp/replace', methods=['POST'])
+@login_required
+def api_bcp_replace():
+    """既存BCPを新しいファイルに差し替え（同一項目のまま最新版に更新）。"""
+    supabase, f_code, my_name, err = _bcp_admin_guard()
+    if err:
+        return err
+    bid = (request.form.get("id") or "").strip()
+    f = request.files.get("file")
+    if not bid:
+        return jsonify({"status": "error", "message": "idがありません"}), 400
+    if not f or not f.filename:
+        return jsonify({"status": "error", "message": "ファイルが選ばれていません"}), 400
+    try:
+        r = (supabase.table("bcp_manuals").select("id,storage_path,facility_code")
+             .eq("id", bid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row:
+        return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+    raw = f.read()
+    if not raw:
+        return jsonify({"status": "error", "message": "空のファイルです"}), 400
+    if len(raw) > _BCP_MAX_BYTES:
+        return jsonify({"status": "error", "message": "ファイルが大きすぎます（30MBまで）"}), 400
+    ext = (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "")
+    is_pdf = raw[:5].startswith(b"%PDF-")
+    is_docx = (raw[:2] == b"PK" and ext in ("docx", "doc"))
+    if not (is_pdf or is_docx):
+        return jsonify({"status": "error", "message": "PDFまたはWord(.docx)ファイルをアップロードしてください"}), 400
+    if is_pdf:
+        ext, ctype = "pdf", "application/pdf"
+    else:
+        ext, ctype = "docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    new_path = "bcp/%s/%s.%s" % (f_code, bid, ext)
+    old_path = row.get("storage_path") or ""
+    try:
+        try:
+            supabase.storage.from_(BCP_BUCKET).remove([new_path])
+        except Exception:
+            pass
+        supabase.storage.from_(BCP_BUCKET).upload(
+            path=new_path, file=raw, file_options={"content-type": ctype})
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しましざ: %s" % e}), 500
+    try:
+        (supabase.table("bcp_manuals").update({
+            "storage_path": new_path, "file_name": f.filename[:200],
+            "file_size": len(raw), "uploaded_by": my_name,
+            "updated_at": _bcp_now_iso(),
+        }).eq("id", bid).eq("facility_code", f_code).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if old_path and old_path != new_path:
+        try:
+            supabase.storage.from_(BCP_BUCKET).remove([old_path])
+        except Exception:
+            pass
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/bcp/addenda', methods=['GET'])
+@login_required
+def api_bcp_addenda():
+    """あるBCPの追記一覧（全職員が閲覧可）。"""
+    supabase = get_supabase()
+    f_code = session["f_code"]
+    bid = (request.args.get("id") or "").strip()
+    if not bid:
+        return jsonify({"status": "error", "message": "idがありません"}), 400
+    try:
+        r = (supabase.table("bcp_manuals").select("id")
+             .eq("id", bid).eq("facility_code", f_code).limit(1).execute())
+        if not (r.data or []):
+            return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    items = _bcp_addenda_load(supabase, f_code, bid)
+    return jsonify({"status": "success", "items": items,
+                    "is_admin": session.get("admin_authenticated", False)})
+
+
+@app.route('/api/bcp/addendum', methods=['POST'])
+@login_required
+def api_bcp_addendum():
+    """追記の追加・編集（管理者のみ）。addendum_id があれば更新、無ければ新規。"""
+    supabase, f_code, my_name, err = _bcp_admin_guard()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    bid = (data.get("bcp_id") or "").strip()
+    aid = (data.get("addendum_id") or "").strip()
+    title = (data.get("title") or "").strip()[:120]
+    bodytext = (data.get("body") or "").strip()[:8000]
+    if not bid:
+        return jsonify({"status": "error", "message": "bcp_idがありません"}), 400
+    if not bodytext and not title:
+        return jsonify({"status": "error", "message": "内容を入力してください"}), 400
+    try:
+        r = (supabase.table("bcp_manuals").select("id")
+             .eq("id", bid).eq("facility_code", f_code).limit(1).execute())
+        if not (r.data or []):
+            return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    items = _bcp_addenda_load(supabase, f_code, bid)
+    now = _bcp_now_iso()
+    if aid:
+        found = False
+        for it in items:
+            if it.get("id") == aid:
+                it["title"] = title
+                it["body"] = bodytext
+                it["updated_at"] = now
+                it["updated_by"] = my_name
+                found = True
+                break
+        if not found:
+            return jsonify({"status": "error", "message": "追記が見つかりません"}), 404
+    else:
+        items.append({
+            "id": str(uuid.uuid4()), "title": title, "body": bodytext,
+            "created_at": now, "created_by": my_name,
+            "updated_at": now, "updated_by": my_name,
+        })
+    try:
+        _bcp_addenda_save(supabase, f_code, bid, items)
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    return jsonify({"status": "success", "items": items})
+
+
+@app.route('/api/bcp/addendum_delete', methods=['POST'])
+@login_required
+def api_bcp_addendum_delete():
+    """追記の削除（管理者のみ）。"""
+    supabase, f_code, my_name, err = _bcp_admin_guard()
+    if err:
+        return err
+    data = request.get_json(silent=True) or {}
+    bid = (data.get("bcp_id") or "").strip()
+    aid = (data.get("addendum_id") or "").strip()
+    if not bid or not aid:
+        return jsonify({"status": "error", "message": "idがありません"}), 400
+    items = _bcp_addenda_load(supabase, f_code, bid)
+    newitems = [it for it in items if it.get("id") != aid]
+    try:
+        _bcp_addenda_save(supabase, f_code, bid, newitems)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "items": newitems})
 
 
 @app.route('/admin/bcp')

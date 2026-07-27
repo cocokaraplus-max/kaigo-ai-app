@@ -4442,7 +4442,7 @@ function ttResetLang() {
     })();
   };
   window.bcpDelOne=function(id){ idbDel(id).then(function(){ bcpOfflineLoad(); }); };
-  window.bcpOpenSaved=function(id){ idbGet(id).then(function(rec){ if(rec&&rec.blob){ if(window.bcpViewerOpen){ bcpViewerOpen({title:rec.title,category:rec.category,fileName:rec.file_name,blob:rec.blob,updatedAt:rec.savedAt}); } else { openBlob(rec); } } else { alert('保存データが見つかりません'); } }); };
+  window.bcpOpenSaved=function(id){ idbGet(id).then(function(rec){ if(rec&&rec.blob){ if(window.bcpViewerOpen){ bcpViewerOpen({id:rec.id,title:rec.title,category:rec.category,fileName:rec.file_name,blob:rec.blob,updatedAt:rec.savedAt}); } else { openBlob(rec); } } else { alert('保存データが見つかりません'); } }); };
 
   window.bcpOfflineLoad=function(){
     var box=document.getElementById('bcp-offline-list');
@@ -4611,6 +4611,33 @@ function ttResetLang() {
     });
   }
 
+  async function appendAddenda(bid, bodyEl){
+  if(!bid || !navigator.onLine) return;
+  try{
+    var r=await fetch('/api/bcp/addenda?id='+encodeURIComponent(bid),{credentials:'same-origin'});
+    var d=await r.json();
+    var items=(d&&d.items)||[];
+    if(!items.length) return;
+    var sec=document.createElement('div');
+    var h=document.createElement('h1'); h.textContent='追記事項'; h.id='bv-addenda-head'; sec.appendChild(h);
+    items.forEach(function(a){
+      var blk=document.createElement('div'); blk.className='bv-add';
+      var inner='';
+      if(a.title) inner+='<div style="font-weight:800;color:#8a6d00;margin-bottom:4px;">'+esc(a.title)+'</div>';
+      inner+='<div style="white-space:pre-wrap;">'+esc(a.body||'')+'</div>';
+      var who=a.updated_by||a.created_by||''; var when=a.updated_at||a.created_at||'';
+      var wd=''; try{ var dd=new Date(when); if(!isNaN(dd)) wd=dd.getFullYear()+'/'+('0'+(dd.getMonth()+1)).slice(-2)+'/'+('0'+dd.getDate()).slice(-2); }catch(e){}
+      inner+='<div style="font-size:0.68rem;color:#b0a074;margin-top:6px;">'+esc(who)+(wd?('　'+wd):'')+'</div>';
+      blk.innerHTML=inner;
+      sec.appendChild(blk);
+    });
+    bodyEl.appendChild(sec);
+    var tocHost=document.getElementById('bv-toc-host');
+    var tocDiv=tocHost && tocHost.querySelector('.bv-toc');
+    if(tocDiv){ var a2=document.createElement('a'); a2.href='#bv-addenda-head'; a2.textContent='追記事項'; a2.onclick=function(e){return bcpTocJump(e,'bv-addenda-head');}; tocDiv.appendChild(a2); }
+  }catch(e){}
+}
+
   // opts: {title, category, fileName, url?, blob?, updatedAt?}
   window.bcpViewerOpen = async function(opts){
     opts=opts||{};
@@ -4647,6 +4674,7 @@ function ttResetLang() {
 
       if(ext==='pdf'||isPdf){
         body.innerHTML='<iframe class="bv-pdf" src="'+window.__bvBlobUrl+'"></iframe>';
+        appendAddenda(opts.id, body);
         return;
       }
       if(ext==='docx'||isZip){
@@ -4661,6 +4689,7 @@ function ttResetLang() {
         promoteHeadings(body);
         buildTOC(body);
         markAdditions(body);
+        appendAddenda(opts.id, body);
         document.getElementById('bv-scroll').scrollTop=0;
         return;
       }

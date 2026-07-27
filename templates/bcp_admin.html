@@ -16,8 +16,9 @@
     display:flex;align-items:center;gap:8px}
   .bcp-card h2 .material-symbols-outlined{font-size:20px;color:#2e7d32}
   .bcp-field{font-size:0.76rem;color:#6b7d6f;font-weight:700;display:block;margin:10px 0 4px}
-  .bcp-input,.bcp-select{width:100%;padding:11px 12px;border:1px solid #cfd8cf;border-radius:10px;
+  .bcp-input,.bcp-select,.bcp-textarea{width:100%;padding:11px 12px;border:1px solid #cfd8cf;border-radius:10px;
     font-size:0.92rem;font-family:inherit;background:#fff;color:#1e3a24;box-sizing:border-box}
+  .bcp-textarea{min-height:90px;resize:vertical;line-height:1.7}
   .bcp-file{width:100%;padding:10px;border:1px dashed #9ccc9c;border-radius:10px;
     font-size:0.86rem;background:#f6fbf6;box-sizing:border-box}
   .bcp-btn{width:100%;margin-top:14px;padding:13px;background:#2e7d32;color:#fff;border:none;
@@ -27,8 +28,8 @@
   .bcp-msg.ok{color:#2e7d32}.bcp-msg.ng{color:#c62828}
   .bcp-group-label{font-size:0.78rem;font-weight:800;color:#2e7d32;margin:14px 0 8px;
     padding-left:8px;border-left:4px solid #2e7d32}
-  .bcp-item{display:flex;align-items:center;gap:10px;padding:11px 12px;border:1px solid #e6ebe6;
-    border-radius:10px;margin-bottom:8px;background:#fcfdfc}
+  .bcp-item{border:1px solid #e6ebe6;border-radius:10px;margin-bottom:8px;background:#fcfdfc}
+  .bcp-item-row{display:flex;align-items:center;gap:10px;padding:11px 12px;}
   .bcp-item .ic{flex:none;width:34px;height:34px;border-radius:8px;display:flex;align-items:center;
     justify-content:center;background:#eaf4ea;color:#2e7d32}
   .bcp-item .ic .material-symbols-outlined{font-size:20px}
@@ -36,21 +37,47 @@
   .bcp-item .nm{font-size:0.88rem;font-weight:700;color:#1e3a24;overflow:hidden;
     text-overflow:ellipsis;white-space:nowrap}
   .bcp-item .meta{font-size:0.7rem;color:#93a093;margin-top:2px}
-  .bcp-item .acts{flex:none;display:flex;gap:6px}
-  .bcp-icobtn{border:none;background:#f0f3f0;border-radius:8px;padding:7px;cursor:pointer;
-    display:flex;align-items:center;color:#5a6b5a}
-  .bcp-icobtn.view{background:#eaf4ea;color:#2e7d32}
-  .bcp-icobtn.del{background:#fdeaea;color:#c62828}
-  .bcp-icobtn .material-symbols-outlined{font-size:18px}
+  .bcp-acts{display:flex;flex-wrap:wrap;gap:6px;padding:0 12px 11px;}
+  .bcp-abtn{border:none;border-radius:8px;padding:7px 10px;cursor:pointer;font-family:inherit;
+    font-size:0.74rem;font-weight:700;display:inline-flex;align-items:center;gap:4px}
+  .bcp-abtn .material-symbols-outlined{font-size:16px}
+  .bcp-abtn.view{background:#eaf4ea;color:#2e7d32}
+  .bcp-abtn.replace{background:#eef3fb;color:#1d5fbf}
+  .bcp-abtn.add{background:#fff6e5;color:#b26a00}
+  .bcp-abtn.del{background:#fdeaea;color:#c62828}
   .bcp-empty{font-size:0.84rem;color:#93a093;text-align:center;padding:18px 0}
   .bcp-confirm{background:#fdeaea;border:1px solid #f3c0c0;border-radius:10px;padding:10px 12px;
-    margin-bottom:8px;font-size:0.82rem;color:#8a2b2b}
+    margin:0 12px 10px;font-size:0.82rem;color:#8a2b2b}
   .bcp-confirm .row{display:flex;gap:8px;margin-top:8px}
   .bcp-confirm button{flex:1;padding:8px;border-radius:8px;border:none;font-weight:700;
     cursor:pointer;font-size:0.82rem;font-family:inherit}
   .bcp-confirm .yes{background:#c62828;color:#fff}
   .bcp-confirm .no{background:#e6ebe6;color:#333}
   .bcp-note{font-size:0.72rem;color:#93a093;margin-top:6px;line-height:1.6}
+  /* 追記パネル */
+  .ad-panel{display:none;border-top:1px dashed #e0e6e0;margin:0 12px;padding:12px 0}
+  .ad-panel.on{display:block}
+  .ad-lead{font-size:0.74rem;color:#8a7a55;background:#fff8e8;border:1px solid #f0e2c0;
+    border-radius:8px;padding:8px 10px;margin-bottom:10px;line-height:1.6}
+  .ad-item{background:#fffdf6;border:1px solid #efe6cf;border-left:4px solid #f2a900;
+    border-radius:8px;padding:10px 12px;margin-bottom:8px}
+  .ad-item .at{font-size:0.82rem;font-weight:800;color:#7a5a00;margin-bottom:3px}
+  .ad-item .ab{font-size:0.8rem;color:#4a4030;white-space:pre-wrap;line-height:1.7}
+  .ad-item .am{font-size:0.66rem;color:#b0a480;margin-top:6px}
+  .ad-item .aacts{display:flex;gap:6px;margin-top:8px}
+  .ad-item .aacts button{border:none;border-radius:7px;padding:5px 10px;font-size:0.72rem;
+    font-weight:700;cursor:pointer;font-family:inherit}
+  .ad-item .aedit{background:#eef3fb;color:#1d5fbf}
+  .ad-item .adel{background:#fdeaea;color:#c62828}
+  .ad-form{background:#fbfbf7;border:1px solid #e6e6da;border-radius:10px;padding:12px;margin-top:6px}
+  .ad-form .ad-ttl{font-size:0.78rem;font-weight:800;color:#8a6d1e;margin:0 0 8px}
+  .ad-save{width:100%;margin-top:10px;padding:10px;background:#f2a900;color:#fff;border:none;
+    border-radius:9px;font-weight:800;cursor:pointer;font-family:inherit;font-size:0.86rem}
+  .ad-cancel{width:100%;margin-top:6px;padding:8px;background:#eee;color:#555;border:none;
+    border-radius:9px;font-weight:700;cursor:pointer;font-family:inherit;font-size:0.8rem;display:none}
+  .ad-cancel.on{display:block}
+  .ad-msg{font-size:0.78rem;text-align:center;min-height:1.1em;margin-top:6px}
+  .ad-msg.ok{color:#2e7d32}.ad-msg.ng{color:#c62828}
 </style>
 {% endblock %}
 {% block content %}
@@ -60,7 +87,7 @@
     <span class="material-symbols-outlined">menu_book</span>
     <span class="bcp-title">BCP管理</span>
   </div>
-  <p class="bcp-lead">災害・感染症のBCPマニュアルを登録します。登録したファイルは、職員が「災害モード」から閲覧し、事前にダウンロードしてオフラインでも見られるようになります。</p>
+  <p class="bcp-lead">災害・感染症のBCPマニュアルを登録します。登録後は、閲覧（整形表示）・差し替え（版の更新）・追記（アプリ内で内容を追加）ができます。職員は「災害モード」から閲覧し、事前にダウンロードしてオフラインでも見られます。</p>
 
   <div class="bcp-card">
     <h2><span class="material-symbols-outlined">upload_file</span>マニュアルを追加</h2>
@@ -89,11 +116,13 @@
 (function(){
   var CATS = ["災害","感染症","その他"];
   var CAT_ICON = {"災害":"crisis_alert","感染症":"coronavirus","その他":"description"};
+  var editState = {}; // bcpId -> editing addendum id (or '')
 
-  function esc(s){ return (s==null?"":String(s)); }
+  function esc(s){ var d=document.createElement("div"); d.textContent=(s==null?"":String(s)); return d.innerHTML; }
   function fmtSize(n){ n=+n||0; if(n<1024) return n+"B"; if(n<1048576) return (n/1024).toFixed(0)+"KB"; return (n/1048576).toFixed(1)+"MB"; }
   function fmtDate(s){ if(!s) return ""; try{ var d=new Date(s); if(isNaN(d)) return ""; return d.getFullYear()+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+("0"+d.getDate()).slice(-2); }catch(e){ return ""; } }
-  function ext(nm){ nm=esc(nm); var i=nm.lastIndexOf("."); return i>=0?nm.slice(i+1).toLowerCase():""; }
+  function fmtDateTime(s){ if(!s) return ""; try{ var d=new Date(s); if(isNaN(d)) return ""; return d.getFullYear()+"/"+("0"+(d.getMonth()+1)).slice(-2)+"/"+("0"+d.getDate()).slice(-2)+" "+("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2); }catch(e){ return ""; } }
+  function ext(nm){ nm=String(nm||""); var i=nm.lastIndexOf("."); return i>=0?nm.slice(i+1).toLowerCase():""; }
 
   window.bcpLoad = function(){
     var box = document.getElementById("bcp-list");
@@ -115,40 +144,174 @@
       .catch(function(){ box.innerHTML = '<div class="bcp-empty">通信エラー</div>'; });
   };
 
+  function abtn(cls, icon, label, onclick){
+    var b=document.createElement("button"); b.type="button"; b.className="bcp-abtn "+cls; b.onclick=onclick;
+    var i=document.createElement("span"); i.className="material-symbols-outlined"; i.textContent=icon; b.appendChild(i);
+    b.appendChild(document.createTextNode(label)); return b;
+  }
+
   function renderItem(it){
     var wrap = document.createElement("div"); wrap.className="bcp-item"; wrap.dataset.id=it.id;
+    var row = document.createElement("div"); row.className="bcp-item-row";
     var ic = document.createElement("div"); ic.className="ic";
     var ici = document.createElement("span"); ici.className="material-symbols-outlined"; ici.textContent = CAT_ICON[it.category]||"description"; ic.appendChild(ici);
     var info = document.createElement("div"); info.className="info";
     var nm = document.createElement("div"); nm.className="nm"; nm.textContent = it.title || it.file_name || "（無題）";
     var meta = document.createElement("div"); meta.className="meta";
-    meta.textContent = (ext(it.file_name).toUpperCase()||"FILE") + " ・ " + fmtSize(it.file_size) + (fmtDate(it.updated_at)?(" ・ "+fmtDate(it.updated_at)):"");
+    meta.textContent = (ext(it.file_name).toUpperCase()||"FILE") + " ・ " + fmtSize(it.file_size) + (fmtDate(it.updated_at)?(" ・ "+fmtDate(it.updated_at)+" 更新"):"");
     info.appendChild(nm); info.appendChild(meta);
-    var acts = document.createElement("div"); acts.className="acts";
-    var view = document.createElement("button"); view.type="button"; view.className="bcp-icobtn view"; view.onclick=function(){ if(window.bcpViewerOpen){ bcpViewerOpen({title:it.title,category:it.category,fileName:it.file_name,url:"/api/bcp/file/"+it.id,updatedAt:it.updated_at}); } else { window.open("/api/bcp/file/"+it.id,"_blank"); } };
-    var vi = document.createElement("span"); vi.className="material-symbols-outlined"; vi.textContent="visibility"; view.appendChild(vi);
-    var del = document.createElement("button"); del.className="bcp-icobtn del"; del.onclick=function(){ askDelete(wrap, it); };
-    var di = document.createElement("span"); di.className="material-symbols-outlined"; di.textContent="delete"; del.appendChild(di);
-    acts.appendChild(view); acts.appendChild(del);
-    wrap.appendChild(ic); wrap.appendChild(info); wrap.appendChild(acts);
+    row.appendChild(ic); row.appendChild(info);
+
+    var acts = document.createElement("div"); acts.className="bcp-acts";
+    acts.appendChild(abtn("view","visibility","閲覧",function(){ bcpView(it); }));
+    acts.appendChild(abtn("replace","sync","差し替え",function(){ bcpReplacePick(it.id); }));
+    acts.appendChild(abtn("add","note_add","追記",function(){ bcpToggleAddenda(it); }));
+    acts.appendChild(abtn("del","delete","削除",function(){ askDelete(wrap, it); }));
+    // 差し替え用の隠しfile input
+    var hidden=document.createElement("input"); hidden.type="file"; hidden.style.display="none";
+    hidden.id="adfile_"+it.id; hidden.accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    hidden.onchange=function(){ bcpReplaceDo(it, hidden); };
+    acts.appendChild(hidden);
+
+    var panel=document.createElement("div"); panel.className="ad-panel"; panel.id="adpanel_"+it.id;
+
+    wrap.appendChild(row); wrap.appendChild(acts); wrap.appendChild(panel);
     return wrap;
   }
 
+  window.bcpView = function(it){
+    if(window.bcpViewerOpen){ bcpViewerOpen({id:it.id,title:it.title,category:it.category,fileName:it.file_name,url:"/api/bcp/file/"+it.id,updatedAt:it.updated_at}); }
+    else { window.open("/api/bcp/file/"+it.id,"_blank"); }
+  };
+
+  // ---- 差し替え ----
+  window.bcpReplacePick = function(id){ var el=document.getElementById("adfile_"+id); if(el) el.click(); };
+  window.bcpReplaceDo = function(it, input){
+    if(!input.files || !input.files.length) return;
+    var file=input.files[0];
+    if(!confirm("「"+(it.title||it.file_name||"")+"」を、選んだファイル（"+file.name+"）に差し替えます。よろしいですか？")){ input.value=""; return; }
+    var fd=new FormData(); fd.append("id", it.id); fd.append("file", file);
+    fetch("/api/bcp/replace",{method:"POST",credentials:"same-origin",body:fd})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
+      .then(function(res){ input.value="";
+        if(res.ok && res.j && res.j.status==="success"){ bcpLoad(); }
+        else { alert((res.j&&res.j.message)||"差し替えに失敗しました"); }
+      })
+      .catch(function(){ input.value=""; alert("通信エラー"); });
+  };
+
+  // ---- 追記 ----
+  window.bcpToggleAddenda = function(it){
+    var panel=document.getElementById("adpanel_"+it.id);
+    if(!panel) return;
+    if(panel.classList.contains("on")){ panel.classList.remove("on"); return; }
+    panel.classList.add("on");
+    bcpLoadAddenda(it.id);
+  };
+
+  window.bcpLoadAddenda = function(id){
+    var panel=document.getElementById("adpanel_"+id);
+    panel.innerHTML='<div style="font-size:0.78rem;color:#93a093;padding:8px 0;">読み込み中...</div>';
+    fetch("/api/bcp/addenda?id="+encodeURIComponent(id),{credentials:"same-origin"})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ renderAddenda(id, (d&&d.items)||[]); })
+      .catch(function(){ panel.innerHTML='<div style="font-size:0.78rem;color:#c62828;padding:8px 0;">読み込みに失敗しました</div>'; });
+  };
+
+  function renderAddenda(id, items){
+    var panel=document.getElementById("adpanel_"+id);
+    editState[id]="";
+    var html='<div class="ad-lead">Wordを直さずに、ここで内容を追記できます。追記は閲覧画面に「追記」ブロックとして表示され、日時・記入者が記録されます（監査の証跡になります）。</div>';
+    html+='<div id="adlist_'+id+'">';
+    if(!items.length){ html+='<div style="font-size:0.76rem;color:#a5ac9f;padding:2px 0 8px;">まだ追記はありません。</div>'; }
+    items.forEach(function(a){
+      var who=a.updated_by||a.created_by||"";
+      var when=fmtDateTime(a.updated_at||a.created_at);
+      html+='<div class="ad-item">';
+      if(a.title) html+='<div class="at">'+esc(a.title)+'</div>';
+      html+='<div class="ab">'+esc(a.body||"")+'</div>';
+      html+='<div class="am">'+esc(who)+(when?('　'+when):'')+'</div>';
+      html+='<div class="aacts"><button class="aedit" onclick="bcpEditAddendum(\''+id+'\',\''+a.id+'\')">編集</button>'
+           +'<button class="adel" onclick="bcpDelAddendum(\''+id+'\',\''+a.id+'\')">削除</button></div>';
+      html+='</div>';
+    });
+    html+='</div>';
+    // form
+    html+='<div class="ad-form">'
+        +'<div class="ad-ttl" id="adformttl_'+id+'">追記を追加</div>'
+        +'<input class="bcp-input" id="adtitle_'+id+'" placeholder="見出し（任意）例：来年度の見直し事項" maxlength="120">'
+        +'<textarea class="bcp-textarea" id="adbody_'+id+'" placeholder="追記する内容を入力..." style="margin-top:8px;"></textarea>'
+        +'<button class="ad-save" id="adsave_'+id+'" onclick="bcpSaveAddendum(\''+id+'\')">保存する</button>'
+        +'<button class="ad-cancel" id="adcancel_'+id+'" onclick="bcpCancelEdit(\''+id+'\')">編集をやめる</button>'
+        +'<div class="ad-msg" id="admsg_'+id+'"></div>'
+        +'</div>';
+    panel.innerHTML=html;
+    window.__adCache=window.__adCache||{}; window.__adCache[id]=items;
+  }
+
+  window.bcpEditAddendum = function(id, aid){
+    var items=(window.__adCache&&window.__adCache[id])||[];
+    var a=null; items.forEach(function(x){ if(x.id===aid) a=x; });
+    if(!a) return;
+    editState[id]=aid;
+    document.getElementById("adtitle_"+id).value=a.title||"";
+    document.getElementById("adbody_"+id).value=a.body||"";
+    document.getElementById("adformttl_"+id).textContent="追記を編集";
+    document.getElementById("adcancel_"+id).classList.add("on");
+    document.getElementById("adbody_"+id).focus();
+  };
+  window.bcpCancelEdit = function(id){
+    editState[id]="";
+    document.getElementById("adtitle_"+id).value="";
+    document.getElementById("adbody_"+id).value="";
+    document.getElementById("adformttl_"+id).textContent="追記を追加";
+    document.getElementById("adcancel_"+id).classList.remove("on");
+  };
+
+  window.bcpSaveAddendum = function(id){
+    var title=document.getElementById("adtitle_"+id).value.trim();
+    var body=document.getElementById("adbody_"+id).value.trim();
+    var msg=document.getElementById("admsg_"+id);
+    var btn=document.getElementById("adsave_"+id);
+    msg.className="ad-msg"; msg.textContent="";
+    if(!title && !body){ msg.className="ad-msg ng"; msg.textContent="内容を入力してください"; return; }
+    var payload={bcp_id:id, title:title, body:body};
+    if(editState[id]) payload.addendum_id=editState[id];
+    btn.disabled=true; msg.textContent="保存中...";
+    fetch("/api/bcp/addendum",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)})
+      .then(function(r){ return r.json().then(function(j){ return {ok:r.ok,j:j}; }); })
+      .then(function(res){ btn.disabled=false;
+        if(res.ok && res.j && res.j.status==="success"){ renderAddenda(id, res.j.items||[]); }
+        else { msg.className="ad-msg ng"; msg.textContent=(res.j&&res.j.message)||"保存に失敗しました"; }
+      })
+      .catch(function(){ btn.disabled=false; msg.className="ad-msg ng"; msg.textContent="通信エラー"; });
+  };
+
+  window.bcpDelAddendum = function(id, aid){
+    if(!confirm("この追記を削除します。よろしいですか？")) return;
+    fetch("/api/bcp/addendum_delete",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({bcp_id:id, addendum_id:aid})})
+      .then(function(r){ return r.json(); })
+      .then(function(d){ if(d&&d.status==="success"){ renderAddenda(id, d.items||[]); } else { alert((d&&d.message)||"削除に失敗しました"); } })
+      .catch(function(){ alert("通信エラー"); });
+  };
+
+  // ---- 本体削除 ----
   function askDelete(wrap, it){
-    if(wrap.previousSibling && wrap.previousSibling.className==="bcp-confirm") return;
+    if(wrap.querySelector(".bcp-confirm")) return;
     var c = document.createElement("div"); c.className="bcp-confirm";
-    c.innerHTML = '「'+ (it.title||it.file_name||"") .replace(/</g,"&lt;") +'」を削除します。よろしいですか？<div class="row"><button class="yes">削除する</button><button class="no">やめる</button></div>';
+    c.innerHTML = '「'+ esc(it.title||it.file_name||"") +'」を削除します。よろしいですか？<div class="row"><button class="yes">削除する</button><button class="no">やめる</button></div>';
     c.querySelector(".no").onclick=function(){ c.remove(); };
     c.querySelector(".yes").onclick=function(){
       c.querySelector(".yes").disabled=true;
       fetch("/api/bcp/delete",{method:"POST",credentials:"same-origin",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:it.id})})
         .then(function(r){ return r.json(); })
-        .then(function(d){ if(d&&d.status==="success"){ c.remove(); bcpLoad(); } else { alert((d&&d.message)||"削除に失敗しました"); c.querySelector(".yes").disabled=false; } })
+        .then(function(d){ if(d&&d.status==="success"){ bcpLoad(); } else { alert((d&&d.message)||"削除に失敗しました"); c.querySelector(".yes").disabled=false; } })
         .catch(function(){ alert("通信エラー"); c.querySelector(".yes").disabled=false; });
     };
-    wrap.parentNode.insertBefore(c, wrap);
+    wrap.insertBefore(c, wrap.firstChild);
   }
 
+  // ---- アップロード ----
   window.bcpUpload = function(){
     var cat = document.getElementById("bcp-cat").value;
     var title = document.getElementById("bcp-title").value.trim();
