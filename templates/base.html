@@ -4598,12 +4598,7 @@ function ttResetLang() {
       else if(/^第[\sⅠⅡⅢⅣⅤⅥⅦⅧⅨⅩ0-9０-９一二三四五六七八九十]+\s*節/.test(raw)) lvl=2;
       else if(/^[（(][0-9０-９]{1,2}[）)]/.test(raw)) lvl=3;
       else if(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳]/.test(raw)) lvl=3;
-      else {
-        var strongOnly=(p.children.length===1 && p.children[0].tagName==='STRONG' && p.children[0].textContent.trim()===raw);
-        var numLead=/^[0-9０-９]{1,2}[　 ．.、]/.test(raw);
-        if((strongOnly||numLead) && raw.length<=30) lvl=2;
-        else if(strongOnly && raw.length<=24) lvl=3;
-      }
+      else if(/^[0-9０-９]{1,2}[　 ．.、]\s*\S/.test(raw) && raw.length<=30) lvl=2;
       if(lvl){ var h=document.createElement('h'+lvl); h.innerHTML=p.innerHTML; p.parentNode.replaceChild(h,p); }
     });
   }
