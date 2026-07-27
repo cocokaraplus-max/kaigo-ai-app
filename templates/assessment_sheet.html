@@ -43,6 +43,13 @@
   textarea.as-in{min-height:60px;resize:vertical;line-height:1.7}
   .as-row2{display:flex;gap:8px}.as-row2>*{flex:1;min-width:0}
   .as-row3{display:flex;gap:8px;flex-wrap:wrap}.as-row3>*{flex:1;min-width:110px}
+  .asg-modebtn{border:1px solid #e6c9a0;background:#fff;color:#b3541a;border-radius:7px;padding:3px 8px;font-size:.7rem;font-weight:700;cursor:pointer;font-family:inherit}
+  .asg-modebtn.asg-on{background:#f79009;color:#fff;border-color:#f79009}
+  .asg-lv{display:flex;gap:6px;flex-wrap:wrap}
+  .asg-lv button{flex:1;min-width:64px;border:1.5px solid #d6ddd6;background:#fff;border-radius:9px;padding:11px 4px;font-size:.82rem;font-weight:700;color:#334155;cursor:pointer;font-family:inherit}
+  .asg-nav{flex:1;border:1.5px solid #f79009;background:#fff;color:#b3541a;border-radius:10px;padding:10px;font-weight:800;cursor:pointer;font-family:inherit}
+  .asg-nav.asg-next{background:#f79009;color:#fff}
+  .asg-nav:disabled{opacity:.4;cursor:default}
   /* 選択チップ（在宅/男女など） */
   .as-chips{display:flex;flex-wrap:wrap;gap:6px}
   .as-chip{border:1px solid #cfd8cf;background:#fff;color:#475569;border-radius:20px;padding:6px 12px;font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit}
@@ -98,9 +105,22 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
         <button type="button" id="as-rec-btn" class="as-save" style="background:#f79009;" onclick="asRecToggle()"><span class="material-symbols-outlined" style="font-size:18px;">mic</span>録音を開始</button>
         <span id="as-rec-timer" style="font-variant-numeric:tabular-nums;font-weight:800;color:#b3541a;display:none;">00:00</span>
+        <button type="button" class="as-save" style="background:#fff;color:#b3541a;border:1.5px solid #f79009;" onclick="guideOpen()"><span class="material-symbols-outlined" style="font-size:18px;">menu_book</span>聞き取りガイド</button>
       </div>
       <div id="as-voice-msg" class="as-savemsg" style="display:block;margin-top:8px;"></div>
       <div id="as-voice-tr"></div>
+      <div id="as-guide" style="display:none;margin-top:12px;border:1.5px solid #ffd9a8;border-radius:12px;background:#fff;overflow:hidden;">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#fff7ee;border-bottom:1px solid #ffe6c7;">
+          <span style="font-weight:800;color:#b3541a;font-size:.85rem;">聞き取りガイド</span>
+          <span id="as-guide-prog" style="font-size:.72rem;color:#8a6d00;font-weight:700;"></span>
+          <span style="margin-left:auto;display:flex;gap:4px;">
+            <button type="button" id="as-guide-mode-step" class="asg-modebtn asg-on" onclick="guideMode('step')">1問ずつ</button>
+            <button type="button" id="as-guide-mode-list" class="asg-modebtn" onclick="guideMode('list')">一覧</button>
+            <button type="button" class="asg-modebtn" onclick="guideClose()">✕</button>
+          </span>
+        </div>
+        <div id="as-guide-body" style="padding:12px;"></div>
+      </div>
     </div>
     <div class="as-subtabs">
       <button class="as-subtab active" data-sub="s1" onclick="asSub('s1')">アセスメント①</button>
@@ -540,6 +560,7 @@
       _recTimer=setInterval(function(){ _recSecs++; tm.textContent=_fmtT(_recSecs); },1000);
       var b=el('as-rec-btn'); b.style.background='#e5484d'; b.innerHTML='<span class="material-symbols-outlined" style="font-size:18px;">stop</span>録音を停止して解析';
       var msg=el('as-voice-msg'); msg.textContent='録音中... 話し終わったら「停止して解析」を押してください。'; msg.style.color='#b3541a';
+      if(window.guideOpen) guideOpen();
     }).catch(function(){ var msg=el('as-voice-msg'); msg.textContent='マイクにアクセスできませんでした（ブラウザの許可をご確認ください）'; msg.style.color='#c62828'; });
   };
   function _recStop(){
@@ -643,6 +664,89 @@
         else { msg.textContent='保存失敗: '+((j&&j.message)||''); msg.style.color='#c62828'; }
       }).catch(function(){ msg.textContent='通信エラー'; msg.style.color='#c62828'; });
   };
+
+  // ===== assess-guide-v1: 聞き取りガイド（1問ずつ／一覧・ADL/IADLはその場で選択） =====
+  var GUIDE_STEPS = [
+    {sec:'基本情報', q:'お名前・生年月日・ご住所を確認させてください。'},
+    {sec:'基本情報', q:'介護度と、認定の有効期間はいつまでですか？'},
+    {sec:'基本情報', q:'担当ケアマネジャー・かかりつけ医（主治医）を教えてください。'},
+    {sec:'一日の様子', q:'普段の一日の過ごし方（起床・食事・入浴・就寝）を教えてください。'},
+    {sec:'一日の様子', q:'睡眠はとれていますか？夜間の様子はどうですか？'},
+    {sec:'ADL', q:'食事はご自分で食べられますか？きざみ・とろみ・むせは？', type:'adl', idx:0},
+    {sec:'ADL', q:'排尿は間に合いますか？失禁やパッド・尿器の使用は？', type:'adl', idx:1},
+    {sec:'ADL', q:'排便のコントロールはどうですか？便秘や失禁は？', type:'adl', idx:2},
+    {sec:'ADL（BI追加）', q:'トイレでの衣服の上げ下げ・後始末はご自分でできますか？（BIのトイレ動作）'},
+    {sec:'ADL', q:'浴槽の出入りに介助は要りますか？', type:'adl', idx:3},
+    {sec:'ADL', q:'洗身・洗髪はご自分でできますか？', type:'adl', idx:4},
+    {sec:'ADL', q:'洗面・整髪・歯みがき・ひげ剃りはできますか？', type:'adl', idx:5},
+    {sec:'ADL', q:'服の着替えはご自分で？ボタン・ファスナーは？', type:'adl', idx:6},
+    {sec:'ADL', q:'布団・ベッドから起き上がれますか？', type:'adl', idx:7},
+    {sec:'ADL', q:'椅子から立ち上がるのに介助は要りますか？', type:'adl', idx:8},
+    {sec:'ADL', q:'歩行はどのくらい？杖・歩行器・車いすは？', type:'adl', idx:9},
+    {sec:'ADL', q:'椅子・ベッド・車いすへの移り乗りはどうですか？', type:'adl', idx:10},
+    {sec:'ADL（BI追加）', q:'階段の昇り降りはできますか？手すりは使いますか？（BIの階段昇降）'},
+    {sec:'IADL', q:'掃除はどの程度ご自分で？', type:'iadl', idx:0},
+    {sec:'IADL', q:'料理はご自分で作れますか？', type:'iadl', idx:2},
+    {sec:'IADL', q:'買い物はどうですか？', type:'iadl', idx:3},
+    {sec:'IADL', q:'洗濯はご自分で？', type:'iadl', idx:4},
+    {sec:'IADL', q:'ゴミ出しはできますか？', type:'iadl', idx:5},
+    {sec:'IADL', q:'お薬の管理はご自分で？飲み忘れは？', type:'iadl', idx:6},
+    {sec:'IADL', q:'お金の管理はご自分でできますか？', type:'iadl', idx:7},
+    {sec:'IADL', q:'電話の対応はできますか？', type:'iadl', idx:8},
+    {sec:'IADL', q:'来客の対応はどうですか？', type:'iadl', idx:9},
+    {sec:'IADL', q:'外出はご自分で？付き添いは要りますか？', type:'iadl', idx:11},
+    {sec:'IADL', q:'車の運転はされますか？', type:'iadl', idx:10},
+    {sec:'医療', q:'現在の疾患・既往歴を教えてください。'},
+    {sec:'医療', q:'服用中のお薬・注意している薬はありますか？'},
+    {sec:'医療', q:'アレルギー・感染症・医療的処置（インスリン等）は？'},
+    {sec:'医療', q:'目・耳・鼻・口の状態（見え方・聞こえ・入れ歯など）は？'},
+    {sec:'家族・環境', q:'ご家族構成と同居・別居を教えてください（ジェノグラム用）。'},
+    {sec:'家族・環境', q:'主に介護される方は？周囲の協力はどの程度？'},
+    {sec:'家族・環境', q:'お住まいの状況（戸建/集合・手すり・段差・改修）は？'},
+    {sec:'家族・環境', q:'緊急連絡先・急変時の搬送希望先は？'},
+    {sec:'生活課題・望む生活', q:'今、生活で困っていること・支障は何ですか？'},
+    {sec:'生活課題・望む生活', q:'趣味や、若い頃得意だったこと、これからやりたいことは？'}
+  ];
+  var _gi=0, _gmode='step';
+  function _gCurLevel(prefix,idx){ var r=el('row_'+prefix+'_'+idx); return r?(r.dataset.level||''):''; }
+  function _gModeBtns(){ var s=el('as-guide-mode-step'), l=el('as-guide-mode-list'); if(s)s.classList.toggle('asg-on',_gmode==='step'); if(l)l.classList.toggle('asg-on',_gmode==='list'); }
+  window.guidePick=function(prefix,idx,lv){ setLevel(prefix+'_'+idx, lv); setDirty(); guideRender(); };
+  window.guideOpen=function(){ el('as-guide').style.display='block'; _gmode='step'; _gModeBtns(); guideRender(); try{ el('as-guide').scrollIntoView({block:'nearest'}); }catch(e){} };
+  window.guideClose=function(){ el('as-guide').style.display='none'; };
+  window.guideMode=function(m){ _gmode=m; _gModeBtns(); guideRender(); };
+  window.guideNext=function(){ if(_gi<GUIDE_STEPS.length-1){ _gi++; guideRender(); } };
+  window.guidePrev=function(){ if(_gi>0){ _gi--; guideRender(); } };
+  window.guideJump=function(i){ _gi=i; _gmode='step'; _gModeBtns(); guideRender(); };
+  function _gLevelBtns(prefix,idx){
+    var cur=_gCurLevel(prefix,idx);
+    return '<div class="asg-lv">'+LEVELS.map(function(lv){
+      var on=(lv===cur); var col=LEVEL_COLOR[lv];
+      return '<button type="button" onclick="guidePick(\''+prefix+'\','+idx+',\''+lv+'\')" style="'+(on?('background:'+col+';color:#fff;border-color:'+col+';'):'')+'">'+lv+'</button>';
+    }).join('')+'</div>';
+  }
+  function guideRender(){
+    var body=el('as-guide-body'); if(!body) return;
+    var prog=el('as-guide-prog');
+    if(_gmode==='list'){
+      if(prog) prog.textContent='全'+GUIDE_STEPS.length+'問';
+      var cur='', html='';
+      GUIDE_STEPS.forEach(function(st,i){
+        if(st.sec!==cur){ cur=st.sec; html+='<div style="font-weight:800;color:#b3541a;font-size:.76rem;margin:10px 0 4px;">'+esc(cur)+'</div>'; }
+        html+='<div style="font-size:.82rem;color:#334155;padding:4px 0;border-bottom:1px solid #f3f3f3;cursor:pointer;" onclick="guideJump('+i+')">・'+esc(st.q)+(st.type?' <span style="color:#1a73e8;font-size:.66rem;">[選択可]</span>':'')+'</div>';
+      });
+      body.innerHTML=html; return;
+    }
+    var st=GUIDE_STEPS[_gi];
+    if(prog) prog.textContent=(_gi+1)+' / '+GUIDE_STEPS.length;
+    var h='<div style="display:inline-block;background:#fff2e6;color:#b3541a;font-weight:800;font-size:.68rem;border-radius:8px;padding:2px 8px;margin-bottom:8px;">'+esc(st.sec)+'</div>';
+    h+='<div style="font-size:1.02rem;font-weight:700;color:#1e293b;line-height:1.5;margin-bottom:10px;">'+esc(st.q)+'</div>';
+    if(st.type){ h+=_gLevelBtns(st.type, st.idx); }
+    h+='<div style="display:flex;gap:8px;margin-top:14px;">'
+      +'<button type="button" class="asg-nav" onclick="guidePrev()"'+(_gi===0?' disabled':'')+'>← 前へ</button>'
+      +'<button type="button" class="asg-nav asg-next" onclick="guideNext()"'+(_gi===GUIDE_STEPS.length-1?' disabled':'')+'>次へ →</button>'
+      +'</div>';
+    body.innerHTML=h;
+  }
 
   function init(){
     buildAdl('adl-list', ADL_ITEMS, 'adl');
