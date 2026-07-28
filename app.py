@@ -12573,6 +12573,29 @@ def _normalize_relative_dates(content_text, created_at):
         content_text = content_text.replace(_old, _new)
     return content_text
 
+def _strip_relative_month_terms(text, year, month):
+    """reldate-normalize-v1: AI生成文の地の文に残りうる「月単位」の相対表現を、
+    報告対象月(year/month)を基準に実月「◯月」へ確定的に置換する。プロンプト指示だけでは
+    AIがまれに「今月」等を使うため、出力段でも保険をかける。日単位の相対表現は記録本文側で
+    実日付化済み・地の文には現れない想定なので、ここでは月単位のみ扱う。"""
+    if not text:
+        return text
+    try:
+        month = int(month)
+    except Exception:
+        return text
+    def _mlabel(delta):
+        return f"{(month - 1 + delta) % 12 + 1}月"
+    for _old, _new in [
+        ("先々月", _mlabel(-2)),
+        ("再来月", _mlabel(2)),
+        ("先月", _mlabel(-1)),
+        ("来月", _mlabel(1)),
+        ("今月", _mlabel(0)),
+    ]:
+        text = text.replace(_old, _new)
+    return text
+
 @app.route('/api/generate_monitoring', methods=['POST'])
 @login_required
 def api_generate_monitoring():
@@ -12680,6 +12703,8 @@ def api_generate_monitoring():
                 + f"『記録』\n{all_recs}"
             )
             result_text = model.generate_content([prompt]).text.strip()
+            # reldate-normalize-v1: 生成文に残った月単位の相対表現を対象月へ置換。
+            result_text = _strip_relative_month_terms(result_text, y, m)
             return jsonify({
                 "mode": "full",
                 "full_text": result_text,
@@ -12736,6 +12761,8 @@ def api_generate_monitoring():
                 "new_requests_exist": eval_data.get("new_requests_exist"),
                 "new_requests_detail": eval_data.get("new_requests_detail") or "",
             }
+            # reldate-normalize-v1: カテゴリ別生成文の月単位相対表現を対象月へ置換。
+            results = {k: _strip_relative_month_terms(v, y, m) for k, v in results.items()}
             return jsonify({
                 "mode": "category",
                 "categories": results,
@@ -25950,6 +25977,9 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
                 results[cat] = model.generate_content([prompt]).text.strip()
             except Exception:
                 results[cat] = NO_RECORD_MSG
+
+        # reldate-normalize-v1: 生成文の月単位相対表現を対象月へ置換してから保存。
+        results = {k: _strip_relative_month_terms(v, y, m) for k, v in results.items()}
 
         # DBに保存
         existing = supabase.table("monitoring_reports").select("id").eq(
