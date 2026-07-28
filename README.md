@@ -2576,11 +2576,10 @@ git checkout tasukaru-dev
 ### 検証（DEV）
 - OCR: 模擬書類で36項目反映・ADL色分け・家族4名(故人含む)抽出。音声: UI/ガード確認（実録音は要実機）。初回BI: 反映→点数化(見守り=自立寄り)→`life_function_checks`保存(70点・basic動作含む)。介護度: カレンダー・履歴・対象月時点連携。ガイド: 1問ずつ送り・ADL/IADLボタンで実値セット・一覧切替。
 
-## 引き出しメニュー「上から」表示のセーフエリア対応 2026-07-27  <!-- app-drawer-safearea-top-v1 -->
+## モニタリング生成の相対日付を実日付・実月へ置換 2026-07-28  <!-- reldate-normalize-v1 -->
 
-歯車→「メニューの開く位置＝上から」設定時、引き出し本体が画面最上端(top:0)に着地し、ヘッダー（メニュー見出し・✕閉じる）・1段目アイコン・上取っ手がカメラ/ノッチ（`safe-area-inset-top`）の裏に隠れて押せない不具合を修正。**DEV実機確認済み→本番反映**。
+モニタリング報告書をケース記録から生成する際、記録中の「今日／本日／昨日／一昨日／先月／先々月／今月」などの相対表現が実日付・実月に変換されない不具合を修正。原因は、この置換がAIプロンプトではなく Python 側の文字列置換（旧 `_replace_kyouha`）で行われており、対象が「今日」の変種だけに限定されていたこと（かつ印刷プレビューの自動生成には置換処理が無かった）。
 
-- `base.html`（マーカー `app-drawer-safearea-top-v1`）:
-  - `#appDrawer[data-side="top"]` に `padding-top: env(safe-area-inset-top, 0px)` を追加。白いシートは top:0 のままノッチ裏を埋め、ヘッダー・アイコンだけを安全領域の下へ落とす（box-sizing:border-box なので高さ min(72vh,620px) 内で吸収）。
-  - `#appDrawerHandle[data-side="top"]` を `top: calc(18px + env(safe-area-inset-top, 0px))` に変更し、開くための取っ手もノッチに掛からないようにした。
-- `env()` はノッチ無し端末・PCでは 0px 扱いとなり従来と同一。左右・下からの表示は不変。
+- `app.py`（マーカー `reldate-normalize-v1`）: 共通関数 `_normalize_relative_dates(content_text, created_at)` を新設。各記録の作成日(`created_at`, Asia/Tokyo)を基準に、今日/本日→◯月◯日、昨日→前日、一昨日・おととい→2日前、先月→前月「◯月」、先々月→2か月前「◯月」、今月→当月「◯月」へ確定的に置換する（AI任せにせず誤変換・ハルシネーションを回避）。長い語（一昨日・先々月）を先に処理。
+- 適用は2経路: 生成ボタン `/api/generate_monitoring`（旧 `_replace_kyouha` を置換）と、印刷プレビュー自動生成 `_auto_generate_monitoring`（新規適用）。
+- 単体検証済み: 月跨ぎ（7/1の昨日→6月30日）・年跨ぎ（1月の先月→12月・先々月→11月）・うるう無し2月境界（3/1の昨日→2月28日）・UTC→JST変換・created_at空の素通り・未対象語（明日/誕生日等）の不変。

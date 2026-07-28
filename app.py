@@ -12537,6 +12537,42 @@ def api_delete_record():
     except Exception as e:
         return jsonify({"status": "error"}), 500
 
+def _normalize_relative_dates(content_text, created_at):
+    """reldate-normalize-v1: 介護記録内の相対日付表現を、その記録の作成日
+    (created_at, Asia/Tokyo) を基準に実日付・実月へ確定的に置換する。
+    AIプロンプトに委ねず Python 側で置換することで誤変換・ハルシネーションを避ける。
+    対象（過去系）: 今日/本日→◯月◯日、昨日→前日、一昨日・おととい→2日前、
+    先月→前月「◯月」、先々月→2か月前「◯月」、今月→当月「◯月」。"""
+    if not content_text or not created_at:
+        return content_text
+    try:
+        from datetime import datetime as _dt3, timedelta as _td3
+        import pytz as _pytz
+        _tz = _pytz.timezone("Asia/Tokyo")
+        base = _dt3.fromisoformat(str(created_at).replace("Z", "+00:00")).astimezone(_tz)
+    except Exception:
+        return content_text
+
+    def _md(dt):
+        return f"{dt.month}月{dt.day}日"
+
+    def _month(delta):
+        return f"{(base.month - 1 + delta) % 12 + 1}月"
+
+    # 長い語を先に置換する（「一昨日」→「昨日」より先、「先々月」→「先月」より先）。
+    for _old, _new in [
+        ("一昨日", _md(base - _td3(days=2))),
+        ("おととい", _md(base - _td3(days=2))),
+        ("本日", _md(base)),
+        ("今日", _md(base)),
+        ("昨日", _md(base - _td3(days=1))),
+        ("先々月", _month(-2)),
+        ("先月", _month(-1)),
+        ("今月", _month(0)),
+    ]:
+        content_text = content_text.replace(_old, _new)
+    return content_text
+
 @app.route('/api/generate_monitoring', methods=['POST'])
 @login_required
 def api_generate_monitoring():
@@ -12572,33 +12608,10 @@ def api_generate_monitoring():
         records = [r for r in (res.data or [])
                    if r.get("staff_name") not in ("AI統合記録",)
                    and r.get("category") != "休み連絡"]
-        def _replace_kyouha(record):
-            content_text = record.get("content") or ""
-            created_at = record.get("created_at") or ""
-            if not created_at or "今日" not in content_text:
-                return record
-            try:
-                from datetime import datetime as _dt3
-                import pytz as _pytz
-                _tz = _pytz.timezone("Asia/Tokyo")
-                _dt = _dt3.fromisoformat(created_at.replace("Z", "+00:00")).astimezone(_tz)
-                _date_str = f"{_dt.month}月{_dt.day}日"
-                for _old, _new in [
-                    ("今日は", f"{_date_str}は"),
-                    ("今日も", f"{_date_str}も"),
-                    ("今日、", f"{_date_str}、"),
-                    ("今日。", f"{_date_str}。"),
-                    ("今日（", f"{_date_str}（"),
-                    ("今日の", f"{_date_str}の"),
-                    ("今日で", f"{_date_str}で"),
-                    ("今日から", f"{_date_str}から"),
-                    ("今日まで", f"{_date_str}まで"),
-                ]:
-                    content_text = content_text.replace(_old, _new)
-                return {**record, "content": content_text}
-            except Exception:
-                return record
-        records = [_replace_kyouha(r) for r in records]
+        # reldate-normalize-v1: 相対日付（今日/本日/昨日/一昨日/先月/先々月/今月）を
+        # 各記録の作成日基準で実日付・実月へ置換してからAIに渡す。
+        records = [{**r, "content": _normalize_relative_dates(r.get("content") or "", r.get("created_at"))}
+                   for r in records]
 
         # 休み連絡レコードから実際の休日情報を取得
         leave_res = supabase.table("records").select(
@@ -25890,6 +25903,10 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
 
         if not records:
             return {}
+
+        # reldate-normalize-v1: 印刷プレビュー自動生成でも相対日付を実日付・実月へ置換。
+        records = [{**r, "content": _normalize_relative_dates(r.get("content") or "", r.get("created_at"))}
+                   for r in records]
 
         CATEGORIES = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
         cat_records = {}
