@@ -12537,6 +12537,65 @@ def api_delete_record():
     except Exception as e:
         return jsonify({"status": "error"}), 500
 
+def _normalize_relative_dates(content_text, created_at):
+    """reldate-normalize-v1: 介護記録内の相対日付表現を、その記録の作成日
+    (created_at, Asia/Tokyo) を基準に実日付・実月へ確定的に置換する。
+    AIプロンプトに委ねず Python 側で置換することで誤変換・ハルシネーションを避ける。
+    対象（過去系）: 今日/本日→◯月◯日、昨日→前日、一昨日・おととい→2日前、
+    先月→前月「◯月」、先々月→2か月前「◯月」、今月→当月「◯月」。"""
+    if not content_text or not created_at:
+        return content_text
+    try:
+        from datetime import datetime as _dt3, timedelta as _td3
+        import pytz as _pytz
+        _tz = _pytz.timezone("Asia/Tokyo")
+        base = _dt3.fromisoformat(str(created_at).replace("Z", "+00:00")).astimezone(_tz)
+    except Exception:
+        return content_text
+
+    def _md(dt):
+        return f"{dt.month}月{dt.day}日"
+
+    def _month(delta):
+        return f"{(base.month - 1 + delta) % 12 + 1}月"
+
+    # 長い語を先に置換する（「一昨日」→「昨日」より先、「先々月」→「先月」より先）。
+    for _old, _new in [
+        ("一昨日", _md(base - _td3(days=2))),
+        ("おととい", _md(base - _td3(days=2))),
+        ("本日", _md(base)),
+        ("今日", _md(base)),
+        ("昨日", _md(base - _td3(days=1))),
+        ("先々月", _month(-2)),
+        ("先月", _month(-1)),
+        ("今月", _month(0)),
+    ]:
+        content_text = content_text.replace(_old, _new)
+    return content_text
+
+def _strip_relative_month_terms(text, year, month):
+    """reldate-normalize-v1: AI生成文の地の文に残りうる「月単位」の相対表現を、
+    報告対象月(year/month)を基準に実月「◯月」へ確定的に置換する。プロンプト指示だけでは
+    AIがまれに「今月」等を使うため、出力段でも保険をかける。日単位の相対表現は記録本文側で
+    実日付化済み・地の文には現れない想定なので、ここでは月単位のみ扱う。"""
+    if not text:
+        return text
+    try:
+        month = int(month)
+    except Exception:
+        return text
+    def _mlabel(delta):
+        return f"{(month - 1 + delta) % 12 + 1}月"
+    for _old, _new in [
+        ("先々月", _mlabel(-2)),
+        ("再来月", _mlabel(2)),
+        ("先月", _mlabel(-1)),
+        ("来月", _mlabel(1)),
+        ("今月", _mlabel(0)),
+    ]:
+        text = text.replace(_old, _new)
+    return text
+
 @app.route('/api/generate_monitoring', methods=['POST'])
 @login_required
 def api_generate_monitoring():
@@ -12572,33 +12631,10 @@ def api_generate_monitoring():
         records = [r for r in (res.data or [])
                    if r.get("staff_name") not in ("AI統合記録",)
                    and r.get("category") != "休み連絡"]
-        def _replace_kyouha(record):
-            content_text = record.get("content") or ""
-            created_at = record.get("created_at") or ""
-            if not created_at or "今日" not in content_text:
-                return record
-            try:
-                from datetime import datetime as _dt3
-                import pytz as _pytz
-                _tz = _pytz.timezone("Asia/Tokyo")
-                _dt = _dt3.fromisoformat(created_at.replace("Z", "+00:00")).astimezone(_tz)
-                _date_str = f"{_dt.month}月{_dt.day}日"
-                for _old, _new in [
-                    ("今日は", f"{_date_str}は"),
-                    ("今日も", f"{_date_str}も"),
-                    ("今日、", f"{_date_str}、"),
-                    ("今日。", f"{_date_str}。"),
-                    ("今日（", f"{_date_str}（"),
-                    ("今日の", f"{_date_str}の"),
-                    ("今日で", f"{_date_str}で"),
-                    ("今日から", f"{_date_str}から"),
-                    ("今日まで", f"{_date_str}まで"),
-                ]:
-                    content_text = content_text.replace(_old, _new)
-                return {**record, "content": content_text}
-            except Exception:
-                return record
-        records = [_replace_kyouha(r) for r in records]
+        # reldate-normalize-v1: 相対日付（今日/本日/昨日/一昨日/先月/先々月/今月）を
+        # 各記録の作成日基準で実日付・実月へ置換してからAIに渡す。
+        records = [{**r, "content": _normalize_relative_dates(r.get("content") or "", r.get("created_at"))}
+                   for r in records]
 
         # 休み連絡レコードから実際の休日情報を取得
         leave_res = supabase.table("records").select(
@@ -12650,6 +12686,7 @@ def api_generate_monitoring():
             "・職員名・利用者名・主語は不要\n"
             "・記録の中に他のご利用者の名前が出てきた場合は、その名前を書かず必ず「他の利用者様」と表現する\n"
             "・箇条書きは使わず、ひとつながりの文章で書く\n"
+            "・reldate-normalize-v1: 「今日・本日・昨日・一昨日・明日・先月・先々月・今月・来月」などの相対的な日付表現は文中で使わないこと。日付に触れる場合は「◯月◯日」、月に触れる場合は「◯月」のように具体的に書く（記録本文の日付は既に実日付へ変換済み）\n"
             "・口調は報告文書として読みやすい丁寧語(です・ます)。二重敬語や過剰な敬語(「お〜になられる」「ございました」等)は避け、硬すぎず砕けすぎない自然な丁寧さにとどめる\n"
         )
 
@@ -12666,6 +12703,8 @@ def api_generate_monitoring():
                 + f"『記録』\n{all_recs}"
             )
             result_text = model.generate_content([prompt]).text.strip()
+            # reldate-normalize-v1: 生成文に残った月単位の相対表現を対象月へ置換。
+            result_text = _strip_relative_month_terms(result_text, y, m)
             return jsonify({
                 "mode": "full",
                 "full_text": result_text,
@@ -12722,6 +12761,8 @@ def api_generate_monitoring():
                 "new_requests_exist": eval_data.get("new_requests_exist"),
                 "new_requests_detail": eval_data.get("new_requests_detail") or "",
             }
+            # reldate-normalize-v1: カテゴリ別生成文の月単位相対表現を対象月へ置換。
+            results = {k: _strip_relative_month_terms(v, y, m) for k, v in results.items()}
             return jsonify({
                 "mode": "category",
                 "categories": results,
@@ -25891,6 +25932,10 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
         if not records:
             return {}
 
+        # reldate-normalize-v1: 印刷プレビュー自動生成でも相対日付を実日付・実月へ置換。
+        records = [{**r, "content": _normalize_relative_dates(r.get("content") or "", r.get("created_at"))}
+                   for r in records]
+
         CATEGORIES = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
         cat_records = {}
         for r in records:
@@ -25910,6 +25955,7 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
             "・職員の名前は書かず、必要な場合は「職員」と表記する\n"
             "・この文書は他事業所のケアマネジャーに提出します。対象の利用者様以外の人名（他の利用者・他のご家族など）が記録に出てきても、実名は一切書かず「他の利用者様」と表記する\n"
             "・箇条書きは使わず、ひとつながりの文章で書く\n"
+            "・reldate-normalize-v1: 「今日・本日・昨日・一昨日・明日・先月・先々月・今月・来月」などの相対的な日付表現は文中で使わないこと。日付に触れる場合は「◯月◯日」、月に触れる場合は「◯月」のように具体的に書く（記録本文の日付は既に実日付へ変換済み）\n"
             "・口調は外部のケアマネジャーへの報告文書として読みやすい丁寧語(です・ます)。二重敬語や過剰な敬語(「お〜になられる」「ございました」等)は避け、硬すぎず砕けすぎない自然な丁寧さにとどめる\n"
         )
         NO_RECORD_MSG = "今月このカテゴリの報告はありませんでした"
@@ -25931,6 +25977,9 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
                 results[cat] = model.generate_content([prompt]).text.strip()
             except Exception:
                 results[cat] = NO_RECORD_MSG
+
+        # reldate-normalize-v1: 生成文の月単位相対表現を対象月へ置換してから保存。
+        results = {k: _strip_relative_month_terms(v, y, m) for k, v in results.items()}
 
         # DBに保存
         existing = supabase.table("monitoring_reports").select("id").eq(
