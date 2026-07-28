@@ -1156,7 +1156,13 @@ async function togglePPWeekday(btn) {
   const next = states[(states.indexOf(cur) + 1) % states.length];
   btn.dataset.state = next;
   btn.textContent = labels[next];
-  if (!PATIENT_ID) return;
+  if (!PATIENT_ID) {
+    // patient-int-link-fix-v1: 紐づけ未確立時に無言で失敗しない。見た目も元に戻して誤解を防ぐ。
+    btn.dataset.state = cur;
+    btn.textContent = labels[cur];
+    alert('この利用者の基本情報を一度保存してから、曜日を設定してください。');
+    return;
+  }
   const day = btn.dataset.day;
   const user_name = document.getElementById('user_name')?.value || '';
   try {
@@ -1179,7 +1185,13 @@ async function togglePPNth(btn) {
   const next = (cur + 1) % 6;   // 0(毎週) -> 1 -> ... -> 5 -> 0
   btn.dataset.nth = String(next);
   btn.textContent = next === 0 ? '毎週' : ('第' + next);
-  if (!PATIENT_ID) return;
+  if (!PATIENT_ID) {
+    // patient-int-link-fix-v1: 紐づけ未確立時に無言で失敗しない。見た目も元に戻す。
+    btn.dataset.nth = String(cur);
+    btn.textContent = cur === 0 ? '毎週' : ('第' + cur);
+    alert('この利用者の基本情報を一度保存してから、曜日を設定してください。');
+    return;
+  }
   const user_name = document.getElementById('user_name')?.value || '';
   try {
     const res = await fetch('/api/save_weekday_nth', {

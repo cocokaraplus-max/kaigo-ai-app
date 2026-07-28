@@ -2595,3 +2595,18 @@ git checkout tasukaru-dev
 ### 検証
 - 単体: 月跨ぎ（7/1の昨日→6月30日）・年跨ぎ（1月の先月→12月・先々月→11月）・2月境界（3/1の昨日→2月28日）・UTC→JST・created_at空の素通り・未対象語（明日/誕生日）の不変。後処理は4月→今月=4月/先月=3月/先々月=2月/来月=5月、1月→先月=12月、日単位「本日ご報告」不変。
 - DEV実機（岡田 清 2026-04・本日6件を含む91記録・まとめて1本）: 記録由来の相対表現は出力ゼロ。プロンプト適用後の複数回生成で地の文の「今月」も出力段で「4月」へ置換され、記録由来の日付は「4月4日」「4月18日」等に実日付化されることを確認。
+
+## 利用者基本情報の曜日がバイタルに出ない問題の修正 2026-07-28  <!-- patient-int-link-fix-v1 -->
+
+利用者基本情報で利用曜日を設定してもバイタル画面に反映されない不具合を修正。
+
+### 原因
+曜日データ `patient_visit_days` は `patients`（整数ID＝patient_int_id）をキーに持つ一方、基本情報は `patient_profiles`（UUID）側で、両者は**氏名(user_name)の完全一致でのみ紐づく**（`get_patients` の `patient_int_id = pt_id_map.get(name)`）。氏名一致に失敗して整数IDが引けないと、(a) 基本情報画面の `PATIENT_ID` が null になり `if(!PATIENT_ID) return` で**無言で保存されない**、(b) バイタル側も曜日を引けず（`renderPatientList` は当日 NONE を非表示）に出ない。氏名一致が壊れる主因は「改名（patients側が未同期）」「旧データ/取込で patients 行が無い」「表記ゆれ」「同姓同名」。
+
+### 修正（app.py / patient_profile.html, marker `patient-int-link-fix-v1`）
+- `/patient_profile` を開いた時点で、対応する `patients` 行が無ければ `_ensure_patient_row` で自動作成し `PATIENT_ID` を必ず用意（旧データ救済）。
+- `/api/admin/patient/save` の更新経路で氏名変更を検知し、`patients` 側の氏名も同名へ更新（改名で橋が切れないよう同期）。更新後に patients 行が無ければ作成。
+- `patient_profile.html` の曜日/第N週トグルは `PATIENT_ID` が無いとき見た目を元に戻し「基本情報を一度保存してください」と警告（無言失敗の解消）。
+
+### 補足
+新規追加・保存新規・一括取込の各経路は既に `_ensure_patient_row` で patients 行を作成済み。将来的には氏名ではなく安定IDでの結合が理想だが、影響範囲が大きいため今回は対症で再発防止に留める。
