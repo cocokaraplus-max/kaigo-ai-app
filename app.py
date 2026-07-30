@@ -3536,7 +3536,11 @@ def input_view():
                     # Session 33: 休み連絡カテゴリ専用フィールド(category=休み連絡 以外は None で保存)
                     leave_reporter_type = (request.form.get("leave_reporter_type", "") or "").strip()
                     leave_reporter_relation = (request.form.get("leave_reporter_relation", "") or "").strip()
-                    if category != "休み連絡":
+                    # extra-use-reporter-v1: 追加利用連絡も「誰から」連絡者を保持(休み連絡と同じ leave_reporter_* 列を流用)
+                    if category == "追加利用連絡":
+                        leave_reporter_type = (request.form.get("extra_reporter_type", "") or "").strip()
+                        leave_reporter_relation = (request.form.get("extra_reporter_relation", "") or "").strip()
+                    if category not in ("休み連絡", "追加利用連絡"):
                         leave_reporter_type = None
                         leave_reporter_relation = None
                     else:

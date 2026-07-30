@@ -652,6 +652,23 @@
             <span class="material-symbols-outlined" style="font-size:18px;">event_available</span>
             追加利用の連絡がケース記録とカレンダーに残ります
         </div>
+        <!-- extra-use-reporter-v1: 誰から連絡が来たか(休み連絡と同じ仕組み) -->
+        <label class="form-label">
+            <span class="material-symbols-outlined">person</span>
+            誰から
+        </label>
+        <div class="leave-btn-group">
+            <button type="button" class="leave-btn extra-rep-btn" data-extra-type="self">本人</button>
+            <button type="button" class="leave-btn extra-rep-btn" data-extra-type="family">家族</button>
+            <button type="button" class="leave-btn extra-rep-btn" data-extra-type="caremanager">ケアマネ</button>
+            <button type="button" class="leave-btn extra-rep-btn" data-extra-type="other">その他</button>
+        </div>
+        <input type="hidden" id="extra-reporter-type" name="extra_reporter_type" value="">
+        <div id="extra-relation-block" style="display:none; margin-top:14px;">
+            <label class="form-label" style="font-size:0.88rem;">関係性・詳細（任意）</label>
+            <input type="text" id="extra-reporter-relation" name="extra_reporter_relation"
+                   class="form-control" placeholder="例: 娘、ケアマネ事業所名 など">
+        </div>
         <!-- 追加利用期間 -->
         <div style="margin-top:4px;">
             <label class="form-label">
@@ -838,6 +855,9 @@ window.saveRecord = async function() {
         formData.append('extra_date_end', document.getElementById('extra-date-end')?.value || '');
         formData.append('extra_dates', document.getElementById('extra-dates')?.value || '');
         formData.append('extra_reason', document.getElementById('extra-reason')?.value || '');
+        // extra-use-reporter-v1: 追加利用連絡の「誰から」連絡者(休み連絡と同じ仕組み)
+        formData.append('extra_reporter_type', document.getElementById('extra-reporter-type')?.value || '');
+        formData.append('extra_reporter_relation', document.getElementById('extra-reporter-relation')?.value || '');
         // Session 36: VAS 入力データ
         formData.append('vas_records', document.getElementById('vas-records-json')?.value || '[]');
 
@@ -1473,8 +1493,34 @@ window.updateExtraFormVisibility = function() {
         if (ds) ds.value = '';
         if (de) de.value = '';
         if (rs) rs.value = '';
+        // extra-use-reporter-v1: 連絡者欄もリセット
+        var ert = document.getElementById('extra-reporter-type');
+        var err = document.getElementById('extra-reporter-relation');
+        var erb = document.getElementById('extra-relation-block');
+        if (ert) ert.value = '';
+        if (err) err.value = '';
+        if (erb) erb.style.display = 'none';
+        document.querySelectorAll('.extra-rep-btn').forEach(function(b){ b.classList.remove('selected'); });
         if (typeof resetExtraMultiDates === 'function') resetExtraMultiDates();
     }
+};
+
+// extra-use-reporter-v1: 追加利用連絡「誰から」ボタンのハンドラ(休み連絡と同じ挙動)
+window.initExtraReporterHandlers = function() {
+    document.querySelectorAll('.extra-rep-btn[data-extra-type]').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var type = btn.getAttribute('data-extra-type');
+            var erType = document.getElementById('extra-reporter-type');
+            var erBlock = document.getElementById('extra-relation-block');
+            var erRel = document.getElementById('extra-reporter-relation');
+            if (erType) erType.value = type;
+            document.querySelectorAll('.extra-rep-btn[data-extra-type]').forEach(function(b){ b.classList.remove('selected'); });
+            btn.classList.add('selected');
+            // 家族・その他のときだけ詳細欄を開く
+            if (erBlock) erBlock.style.display = (type === 'family' || type === 'other') ? 'block' : 'none';
+            if (type !== 'family' && type !== 'other' && erRel) erRel.value = '';
+        });
+    });
 };
 
 // Session 36: VAS ウィジェットの表示切替・初期化
@@ -1548,6 +1594,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Session 33: 休み連絡フォームのイベントハンドラ初期化
     if (typeof initLeaveFormHandlers === 'function') {
         initLeaveFormHandlers();
+    }
+    // extra-use-reporter-v1: 追加利用連絡「誰から」ハンドラ初期化
+    if (typeof initExtraReporterHandlers === 'function') {
+        initExtraReporterHandlers();
     }
 });
 

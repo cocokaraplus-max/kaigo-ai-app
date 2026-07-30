@@ -333,7 +333,7 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
                 <button class="po-toggle-btn on" id="tog-cat-心身状況" onclick="poToggleCat('心身状況')">心身状況</button>
                 <button class="po-toggle-btn on" id="tog-cat-食事" onclick="poToggleCat('食事')">食事</button>
                 <button class="po-toggle-btn on" id="tog-cat-入浴" onclick="poToggleCat('入浴')">入浴</button>
-                <button class="po-toggle-btn on" id="tog-cat-排泏" onclick="poToggleCat('排泏')">排泏</button>
+                <button class="po-toggle-btn on" id="tog-cat-排泄" onclick="poToggleCat('排泄')">排泄</button>
                 <button class="po-toggle-btn on" id="tog-cat-コミュニケーション" onclick="poToggleCat('コミュニケーション')">コミュニケーション</button>
                 <button class="po-toggle-btn on" id="tog-cat-訓練状況" onclick="poToggleCat('訓練状況')">訓練状況</button>
                 <button class="po-toggle-btn on" id="tog-cat-ヒヤリハット" onclick="poToggleCat('ヒヤリハット')">ヒヤリハット</button>
@@ -416,7 +416,7 @@ var poChartStyle = parseInt(localStorage.getItem('po_chart_style') || '1');
 var poChartSize  = parseInt(localStorage.getItem('po_chart_size')  || '2');
 
 var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, walk: true, walk_max: true, balance: true, special: true, no_record: false, images: false };
-var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泏': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
+var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泄': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
 // localStorageから設定を復元
 (function() {
     try {

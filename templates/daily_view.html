@@ -1358,8 +1358,8 @@
             {% endif %}
             {# Session 33: 休み連絡カテゴリの「○○より連絡」表示 #}
             {# leave-reporter-display-v1: 連絡者バッジを全タイプ対応。noneは赤クラス。 #}
-            {% if r.category == '休み連絡' and r.leave_reporter_type %}
-            {# leave-badge-inline-v1: アイコンなし・テキストのみ。noneは赤。 #}
+            {% if r.category in ['休み連絡', '追加利用連絡'] and r.leave_reporter_type %}
+            {# leave-badge-inline-v1: アイコンなし・テキストのみ。noneは赤。 extra-use-reporter-v1: 追加利用連絡にも対応 #}
             <span class="leave-reporter-badge{% if r.leave_reporter_type == 'none' %} leave-reporter-badge-none{% endif %}" id="leave-badge-{{ r.id }}">
                 {% if r.leave_reporter_type == 'self' %}連絡：本人{% elif r.leave_reporter_type == 'family' %}連絡：{% if r.leave_reporter_relation %}{{ r.leave_reporter_relation }}{% else %}家族{% endif %}{% elif r.leave_reporter_type == 'caremanager' %}連絡：ケアマネ{% elif r.leave_reporter_type == 'other' %}連絡：その他{% elif r.leave_reporter_type == 'none' %}連絡：連絡なし{% endif %}
             </span>
