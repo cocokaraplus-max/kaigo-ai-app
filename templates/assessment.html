@@ -2435,6 +2435,8 @@ window._evalLoadGoalHistory = async function(){
     var r=await fetch('/api/goal/history?user_name='+encodeURIComponent(uname));
     var d=await r.json();
     var hist=(d&&d.history)||[];
+    var _vm=(document.getElementById('eval-year-month')||{}).value||'';
+    if(_vm){ hist=hist.filter(function(h){ return !h.year_month || String(h.year_month) <= _vm; }); } /* goal-history-asof-v1: 対象月より未来の目標変更履歴は隠す */
     if(!hist.length){ box.style.display='none'; listEl.innerHTML=''; return; }
     listEl.innerHTML=hist.map(function(h){
       var oldv=(h.old_value||'').trim(); if(oldv==='None'||oldv==='null'||oldv==='NULL') oldv=''; /* goal-none-normalize-v1 */
