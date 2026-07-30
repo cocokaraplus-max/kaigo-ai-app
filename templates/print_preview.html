@@ -1414,6 +1414,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             <button class="rep-font-btn rep-font-reset" onclick="repFontReset('{{ p.user_name }}', '{{ year_month }}')" title="リセット">↺</button>
         </span>
         <button class="rep-edit-save-btn" onclick="repSaveEvalText('{{ p.user_name }}','{{ year_month }}')">この利用者の編集を保存</button>
+        <button class="rep-edit-save-btn" style="background:#8e24aa;" onclick="shortenToFit('{{ p.user_name }}','{{ year_month }}', this)" title="モニタリング各カテゴリ・変化・課題の文章を短く再生成して、通常サイズのままA4・1枚に収めます">✂️ 文章を短くして1枚に収める</button>
     </div>
     <div class="rep-twocol">
         {% if items.get('changes', true) %}
@@ -2648,6 +2649,52 @@ if (document.body.classList.contains('tmpl-4')) {
             drawBalanceChart('tmpl4-chart-balance-' + n, rd.fitness, fitLabels);
         }
     });
+}
+
+// ===== onepage-fit-v1: 文章を短く再生成してA4・1枚に収める =====
+async function shortenToFit(userName, yearMonth, btn){
+  yearMonth = yearMonth || (new URLSearchParams(location.search)).get('year_month') || '';
+  var orig = btn ? btn.textContent : '';
+  function catCells(){ return Array.prototype.slice.call(document.querySelectorAll('[data-cat]')).filter(function(td){ return td.getAttribute('data-user')===userName; }); }
+  function evalCells(){ return Array.prototype.slice.call(document.querySelectorAll('.rep-editable')).filter(function(el){ return el.getAttribute('data-user')===userName && el.getAttribute('data-field'); }); }
+  function stillOver(){ var ov=(typeof detectOverflowPages==='function')?detectOverflowPages():[]; return ov.some(function(pp){ return pp.getAttribute('data-user')===userName; }); }
+  if(btn){ btn.disabled=true; btn.textContent='調整中…'; }
+  var steps=[190,150,120,100,85,72];
+  var fitted=false;
+  try{
+    if(!stillOver()){ fitted=true; }
+    for(var i=0;i<steps.length && !fitted;i++){
+      var cl=steps[i];
+      if(btn){ btn.textContent='調整中… ('+(i+1)+'/'+steps.length+')'; }
+      // モニタリング各カテゴリを短く再生成
+      try{
+        var mr=await fetch('/api/generate_monitoring',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:userName, month:yearMonth, mode:'category', char_limit:cl})}).then(function(r){return r.json();});
+        var cats=(mr&&mr.categories)||{};
+        catCells().forEach(function(td){ var c=td.getAttribute('data-cat'); if(cats[c]!=null){ var t=String(cats[c]||''); if(t && t.indexOf('報告はありませんでした')<0){ td.innerText=t; } } });
+      }catch(e){}
+      // 変化・課題・特記事項を短縮
+      var evs=evalCells();
+      for(var k=0;k<evs.length;k++){
+        var el=evs[k]; var cur=(el.innerText||'').replace(/\u00a0/g,' ').trim();
+        if(cur && cur!=='（未入力）' && cur.length>cl){
+          try{ var sr=await fetch('/api/shorten_text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:cur, max_chars:Math.round(cl*0.85)})}).then(function(r){return r.json();}); if(sr&&sr.text){ el.innerText=sr.text; } }catch(e){}
+        }
+      }
+      await new Promise(function(r){ setTimeout(r,220); });
+      if(!stillOver()){ fitted=true; }
+    }
+    var msg = fitted ? '✅ 1枚に収まりました。\nこの短くした内容で保存しますか？' : 'これ以上は文章を短くできませんでした。\n現状の内容で保存しますか？（必要ならフォント縮小も併用してください）';
+    if(confirm(msg)){
+      var catsObj={}; catCells().forEach(function(td){ var c=td.getAttribute('data-cat'); var t=(td.innerText||'').trim(); if(t!=='今月の報告はありませんでした'){ catsObj[c]=t; } });
+      try{ await fetch('/api/save_monitoring',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:userName, month:yearMonth, mode:'category', categories:catsObj, confirm:false, allow_confirmed:true})}); }catch(e){}
+      var payload={user_name:userName, year_month:yearMonth};
+      evalCells().forEach(function(el){ var f=el.getAttribute('data-field'); var t=(el.innerText||'').replace(/\u00a0/g,' ').trim(); if(t==='（未入力）') t=''; payload[f]=t; });
+      try{ await fetch('/api/save_patient_evaluation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){}
+      alert('保存しました。');
+    }
+  } finally {
+    if(btn){ btn.disabled=false; btn.textContent = orig || '✂️ 文章を短くして1枚に収める'; }
+  }
 }
 
 function saveMonitoring(userName, yearMonth) {

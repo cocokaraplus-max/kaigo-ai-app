@@ -12770,6 +12770,39 @@ def api_generate_monitoring():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route('/api/shorten_text', methods=['POST'])
+@login_required
+def api_shorten_text():
+    """onepage-fit-v1: 既存の文章を、意味を保ったまま指定文字数程度に短縮する（書類の1枚化・自動調整用）。"""
+    try:
+        data = request.json or {}
+        text = (data.get("text") or "").strip()
+        try:
+            max_chars = int(data.get("max_chars", 150))
+        except (ValueError, TypeError):
+            max_chars = 150
+        if not text:
+            return jsonify({"status": "success", "text": ""})
+        if len(text) <= max_chars:
+            return jsonify({"status": "success", "text": text, "unchanged": True})
+        prompt = (
+            "次の介護記録の文章を、意味・事実を変えずに自然な日本語(ですます調)で"
+            + f"約{max_chars}文字に短くまとめてください。\n"
+            + "・箇条書きにしない。1〜数文の文章にする。\n"
+            + "・新しい情報は加えない。固有名詞・数値・重要な事実は残す。\n"
+            + "・前置きや補足は書かず、短くした本文だけを出力する。\n\n"
+            + "【元の文章】\n" + text
+        )
+        try:
+            model = get_generative_model()
+            out = (model.generate_content([prompt]).text or "").strip()
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e), "text": text}), 500
+        return jsonify({"status": "success", "text": out or text})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/save_monitoring', methods=['POST'])
 @login_required
 def api_save_monitoring():
