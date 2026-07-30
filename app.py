@@ -12794,6 +12794,7 @@ def api_shorten_text():
             + "【元の文章】\n" + text
         )
         try:
+            from utils import get_generative_model
             model = get_generative_model()
             out = (model.generate_content([prompt]).text or "").strip()
         except Exception as e:
