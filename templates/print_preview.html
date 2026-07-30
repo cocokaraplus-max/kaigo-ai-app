@@ -2657,7 +2657,9 @@ async function shortenToFit(userName, yearMonth, btn){
   var orig = btn ? btn.textContent : '';
   function catCells(){ return Array.prototype.slice.call(document.querySelectorAll('[data-cat]')).filter(function(td){ return td.getAttribute('data-user')===userName; }); }
   function evalCells(){ return Array.prototype.slice.call(document.querySelectorAll('.rep-editable')).filter(function(el){ return el.getAttribute('data-user')===userName && el.getAttribute('data-field'); }); }
-  function stillOver(){ var ov=(typeof detectOverflowPages==='function')?detectOverflowPages():[]; return ov.some(function(pp){ return pp.getAttribute('data-user')===userName; }); }
+  function _userPage(){ var pg=(typeof repGetPage==='function')?repGetPage(userName):null; if(!pg){ pg=Array.prototype.slice.call(document.querySelectorAll('.report-page')).filter(function(p){return p.getAttribute('data-user')===userName;})[0]||null; } return pg; }
+  // 通常サイズ(100%)で1枚に収まるか判定。自動縮小に頼らず短縮で収める。
+  function stillOver(){ if(typeof repApplyFont==='function'){ try{ repApplyFont(userName,1); }catch(e){} } var pg=_userPage(); return pg ? (typeof repRectOverflow==='function' && repRectOverflow(pg)) : false; }
   if(btn){ btn.disabled=true; btn.textContent='調整中…'; }
   var steps=[190,150,120,100,85,72];
   var fitted=false;
