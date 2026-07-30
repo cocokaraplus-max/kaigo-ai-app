@@ -184,6 +184,41 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
                     result[f"long_goal_{axis}"] = p.get(f"long_goal_{axis}") or ""
     except Exception:
         pass
+
+    # goal-asof-month-v1: 過去月は goal_history から「当時の目標」に復元する。
+    # これが無いと最新の patient_profiles を読むため、目標を後から変更すると
+    # 過去評価の「現在の目標」まで新しい値に見えてしまう。
+    # 対象月以降(year_month >= target_month)の変更のうち最も古いものの old_value
+    # = その対象月当時に有効だった目標、として上書きする。
+    try:
+        _fmap = {
+            "short_goal": "short_goal_simple", "long_goal": "long_goal_simple",
+            "short_goal_function": "short_goal_function", "short_goal_activity": "short_goal_activity",
+            "short_goal_participation": "short_goal_participation",
+            "long_goal_function": "long_goal_function", "long_goal_activity": "long_goal_activity",
+            "long_goal_participation": "long_goal_participation",
+        }
+        _gh = supabase.table("goal_history") \
+            .select("field, old_value, year_month, changed_at") \
+            .eq("facility_code", facility_code) \
+            .eq("user_name", user_name) \
+            .gte("year_month", target_month) \
+            .order("year_month") \
+            .order("changed_at") \
+            .execute()
+        _seen = set()
+        for _row in (_gh.data or []):
+            _rk = _fmap.get(_row.get("field"))
+            if not _rk or _rk in _seen:
+                continue  # 各フィールド最初(=対象月以降で最古の変更)の old_value のみ採用
+            _seen.add(_rk)
+            _ov = _row.get("old_value")
+            if _ov is None or str(_ov).strip().lower() in ("none", "null"):
+                _ov = ""
+            result[_rk] = _ov
+    except Exception:
+        pass
+
     return result
 
 def _care_level_at_month_end(history_rows, month_end_iso):
