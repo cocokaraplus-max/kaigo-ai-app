@@ -625,7 +625,7 @@ function renderCheckTable(results) {
     html += '<col style="width:14%">';
     html += '</colgroup>';
     html += '<thead><tr>';
-    html += '<th style="text-align:left;">利用者名</th>';
+    html += '<th style="text-align:left;"><label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;font-weight:inherit;"><input type="checkbox" id="po-chk-all" checked onclick="poToggleAllChk(this)" style="cursor:pointer;margin:0;">利用者名</label></th>';
     html += '<th>ケアマネ<br>事業所</th>';
     html += '<th>モニタ<br>リング</th>';
     html += '<th>訓練<br>記録</th>';
@@ -642,7 +642,7 @@ function renderCheckTable(results) {
         var allOk = !!r.all_ok;
         if (allOk) okCount++;
         html += '<tr class="' + (allOk ? 'po-check-row-ok' : '') + '">';
-        html += '<td>' + (p.user_name || '') + '</td>';
+        html += '<td><label style="display:flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" class="po-user-chk" data-name="' + encodeURIComponent(p.user_name || '') + '" checked onclick="poSyncChkAll()" style="cursor:pointer;margin:0;flex:none;"><span>' + (p.user_name || '') + '</span></label></td>';
         html += '<td style="font-size:0.68rem;color:#5f6368;word-break:break-all;line-height:1.3;">' + (p.support_office || '-') + '</td>';
         html += '<td>' + (hasMon ? '<span class="status-ok">&#10003;</span>' : '<span class="status-ng">&#10007;</span>') + '</td>';
         html += '<td>' + (hasEval ? '<span class="status-ok">&#10003;</span>' : '<span class="status-warn">&#9651;</span>') + '</td>';
@@ -659,8 +659,9 @@ function renderCheckTable(results) {
     html += '</tbody></table>';
     document.getElementById('po-check-table-wrap').innerHTML = html;
         document.getElementById('po-check-legend').style.display = 'block';
-    document.getElementById('po-check-summary').textContent =
-        okCount + ' / ' + sorted.length + '名 データ準備OK';
+    document.getElementById('po-check-summary').innerHTML =
+        okCount + ' / ' + sorted.length + '名 データ準備OK　<span id="po-sel-count" style="color:#1a73e8;font-weight:700;"></span>';
+    poSyncChkAll();
 }
 
 function poShowLoading(label) {
@@ -671,17 +672,38 @@ function poHideLoading() {
     document.getElementById('po-loading-overlay').classList.remove('is-active');
 }
 
+function poSelectedNames(){
+    var names = [];
+    document.querySelectorAll('.po-user-chk').forEach(function(c){ if (c.checked) { try { names.push(decodeURIComponent(c.getAttribute('data-name') || '')); } catch(e){ names.push(c.getAttribute('data-name') || ''); } } });
+    return names.filter(Boolean);
+}
+function poToggleAllChk(el){
+    document.querySelectorAll('.po-user-chk').forEach(function(c){ c.checked = el.checked; });
+    updateSelCount();
+}
+function poSyncChkAll(){
+    var all = document.querySelectorAll('.po-user-chk');
+    var checked = document.querySelectorAll('.po-user-chk:checked');
+    var m = document.getElementById('po-chk-all');
+    if (m) m.checked = (all.length > 0 && all.length === checked.length);
+    updateSelCount();
+}
+function updateSelCount(){
+    var el = document.getElementById('po-sel-count');
+    if (el) el.textContent = '選択 ' + document.querySelectorAll('.po-user-chk:checked').length + '名';
+}
 function poPrintAll() {
     var ym = document.getElementById('po-year-month').value;
     var sort = document.getElementById('po-sort-order').value;
-    var _names = poFilteredCheckData().map(function(r){ return r.patient.user_name; });
+    var _names = poSelectedNames();
+    if (_names.length === 0) { alert('印刷する利用者を1名以上選択してください。'); return; }
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
         template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
         author: poAuthor, auto_print: '1'
     });
-    if (poCareFilter !== 'all') { params.set('user_names', _names.join(',')); }
+    params.set('user_names', _names.join(','));
     poShowLoading('印刷データを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }
@@ -712,14 +734,15 @@ function poPreviewOne(encodedName) {
 function poPreviewAll() {
     var ym = document.getElementById('po-year-month').value;
     var sort = document.getElementById('po-sort-order').value;
-    var _names = poFilteredCheckData().map(function(r){ return r.patient.user_name; });
+    var _names = poSelectedNames();
+    if (_names.length === 0) { alert('印刷する利用者を1名以上選択してください。'); return; }
     var params = new URLSearchParams({
         year_month: ym, style: poPrintStyle, sort: sort,
         items: JSON.stringify(poItems), cats: JSON.stringify(poCats),
         template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
         author: poAuthor
     });
-    if (poCareFilter !== 'all') { params.set('user_names', _names.join(',')); }
+    params.set('user_names', _names.join(','));
     poShowLoading('プレビューを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }
