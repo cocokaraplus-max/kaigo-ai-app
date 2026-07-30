@@ -12777,7 +12777,7 @@ def api_save_monitoring():
     try:
         data = request.json
         f_code = session["f_code"]
-        u_name = session.get("u_name", "")
+        u_name = session.get("my_name", "")  # 確定者名（session キー修正 u_name->my_name）
         supabase = get_supabase()
 
         user_name = data.get("user_name", "").strip()
@@ -12788,6 +12788,7 @@ def api_save_monitoring():
         full_text = data.get("full_text", "")
         record_counts = data.get("record_counts", {})
         confirm = data.get("confirm", False)
+        allow_confirmed = data.get("allow_confirmed", False)  # 確定済みでも内容上書きを許可（UI側で確認済みのとき true）
 
         if not user_name or not month_val:
             return jsonify({"error": "必須項目が不足しています"}), 400
@@ -12814,11 +12815,12 @@ def api_save_monitoring():
 
         if existing.data:
             rec = existing.data[0]
-            if rec.get("confirmed_at") and not confirm:
-                # 確定済みは上書き不可（再確定のみ）
-                return jsonify({"error": "確定済みの報告書は上書きできません"}), 409
+            if rec.get("confirmed_at") and not confirm and not allow_confirmed:
+                # 確定済みは上書き不可。UI側で確認(confirm)を取り allow_confirmed=true で明示上書き可能
+                return jsonify({"error": "確定済みの報告書は上書きできません", "confirmed": True}), 409
             supabase.table("monitoring_reports").update(payload).eq("id", rec["id"]).execute()
-            return jsonify({"saved": True, "id": rec["id"], "confirmed": confirm})
+            # allow_confirmed の内容上書きでは payload に confirmed_at を含めないため、確定状態は維持される
+            return jsonify({"saved": True, "id": rec["id"], "confirmed": bool(rec.get("confirmed_at")) or confirm})
         else:
             result = supabase.table("monitoring_reports").insert(payload).execute()
             new_id = result.data[0]["id"] if result.data else None

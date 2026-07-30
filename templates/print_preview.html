@@ -2658,17 +2658,33 @@ function saveMonitoring(userName, yearMonth) {
         var txt = td.innerText.trim();
         if (txt !== '今月の報告はありませんでした') cats[cat] = txt;
     });
-    fetch('/api/save_monitoring', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({user_name: userName, month: yearMonth, mode: 'category', categories: cats, confirm: false})
-    }).then(function(r) { return r.json(); }).then(function(d) {
-        if (d.saved) {
-            var btn = document.activeElement;
-            var orig = btn.textContent;
-            btn.textContent = '保存済！'; btn.style.background = '#34a853';
-            setTimeout(function() { btn.textContent = orig; btn.style.background = '#1a73e8'; }, 2000);
-        } else { alert('保存失敗: ' + (d.error || '不明')); }
+    var btn = (document.activeElement && document.activeElement.tagName === 'BUTTON') ? document.activeElement : null;
+    function _markSaved() {
+        if (!btn) return;
+        var orig = btn.textContent;
+        btn.textContent = '保存済！'; btn.style.background = '#34a853';
+        setTimeout(function() { btn.textContent = orig; btn.style.background = '#1a73e8'; }, 2000);
+    }
+    function _post(allowConfirmed) {
+        return fetch('/api/save_monitoring', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({user_name: userName, month: yearMonth, mode: 'category', categories: cats, confirm: false, allow_confirmed: !!allowConfirmed})
+        }).then(function(r) { return r.json().then(function(d) { return { status: r.status, d: d }; }); });
+    }
+    _post(false).then(function(res) {
+        if (res.d && res.d.saved) { _markSaved(); return; }
+        // 確定済みで弾かれた場合は確認のうえ上書き（確定状態は維持）
+        if (res.status === 409 && res.d && res.d.confirmed) {
+            if (confirm('この月の報告書は「確定済み」です。\n上書き保存してもよろしいですか？\n（確定の状態は維持されます）')) {
+                _post(true).then(function(res2) {
+                    if (res2.d && res2.d.saved) { _markSaved(); }
+                    else { alert('保存失敗: ' + ((res2.d && res2.d.error) || '不明')); }
+                }).catch(function(e) { alert('通信エラー: ' + e); });
+            }
+            return;
+        }
+        alert('保存失敗: ' + ((res.d && res.d.error) || '不明'));
     }).catch(function(e) { alert('通信エラー: ' + e); });
 }
 
