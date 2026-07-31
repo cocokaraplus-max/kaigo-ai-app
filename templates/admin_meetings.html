@@ -782,9 +782,28 @@ function mtgRebuildTranscript() {
   const keys = Object.keys(mtgState.transcriptParts).map(Number).sort((a,b)=>a-b);
   const joined = keys.map(k => mtgState.transcriptParts[k]).filter(Boolean).join('\n');
   document.getElementById('mtgTranscript').value = joined;
+  mtgShowSaveArea();
 }
 
 // ===== 議事録生成 =====
+// meetings-save-always-v1: ICF分類の成否に関わらず、内容(文字起こし/議事録)があれば保存ボタンを出す
+function mtgShowSaveArea() {
+  try {
+    var t = (document.getElementById('mtgTranscript') || {}).value || '';
+    var m = (document.getElementById('mtgMinutes') || {}).value || '';
+    if (t.trim() || m.trim()) {
+      var el = document.getElementById('mtgBoardCard');
+      if (el) el.style.display = 'block';
+    }
+  } catch (e) {}
+}
+document.addEventListener('DOMContentLoaded', function() {
+  ['mtgTranscript', 'mtgMinutes'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('input', mtgShowSaveArea);
+  });
+});
+
 async function mtgSummarize() {
   const transcript = document.getElementById('mtgTranscript').value.trim();
   if (!transcript) { alert('先に文字起こしを入力してください'); return; }
@@ -801,6 +820,7 @@ async function mtgSummarize() {
     if (d.status === 'success') {
       document.getElementById('mtgMinutes').value = d.minutes || '';
       mtgState.minutesStruct = d.minutes_struct || null;
+      mtgShowSaveArea();
     } else { alert(d.message || '議事録の作成に失敗しました'); }
   } catch(e) { alert('エラー: '+e); }
   if (overlay) overlay.classList.remove('is-active');
@@ -830,6 +850,7 @@ async function mtgAssess() {
       }));
       document.getElementById('mtgAssessCard').style.display = 'block';
       mtgRenderAssessment();
+      mtgShowSaveArea();
     } else { alert(d.message || 'アセスメントの作成に失敗しました'); }
   } catch(e) { alert('エラー: '+e); }
   btn.disabled = false;
