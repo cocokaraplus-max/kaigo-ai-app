@@ -28447,6 +28447,145 @@ def api_meeting_classify_icf():
 # --- /meetings-icf-classify-v1 ---
 
 
+# =========================================================
+# meetings-recover-audio-v1 : 未保存の録音をストレージから復元
+#   保存前に画面を閉じても、文字起こし中にアップした音声はStorageに残る。
+#   {f_code}/meetings/{session_id}/ を新しい順に一覧し、選んで再文字起こしする。
+# ============================================================
+_MTG_AUDIO_EXTS = ("webm", "mp3", "m4a", "wav", "aac", "ogg", "mp4")
+_MTG_EXT_MIME = {
+    "mp3": "audio/mpeg", "m4a": "audio/mp4", "wav": "audio/wav",
+    "aac": "audio/aac", "ogg": "audio/ogg", "webm": "audio/webm", "mp4": "audio/mp4",
+}
+_MTG_TRANSCRIBE_PROMPT = """これは介護施設の担当者会議(サービス担当者会議)の録音です。
+発話内容を、話し言葉のフィラー(えー・あのー等)を除いて、正確に文字起こししてください。
+・【話者ラベル】発言者の役割が判別できる場合のみ、次のいずれかを発言の先頭に付ける:
+  生活相談員 / 機能訓練指導員 / 看護職員 / 介護職員 / 管理者 / ケアマネジャー /
+  福祉用具専門相談員 / 訪問介護 / 他事業所 / 利用者本人 / 利用者家族 / 医師
+・自己紹介や話の内容・文脈から役割が明らかな場合だけラベルを付け、推測が難しい場合は無理に役割を決めない。
+・役割は不明だが別人だと分かる場合は「発言者A4」「発言者B:」のように仮ラベルで区別する。
+・数値・固有名詞(利用者名・薬名・部位名)は聞き取れた通りに残す。
+・要約や解釈はせず、あくまで発話の文字起こしに徹する。
+出力は文字起こし本文のみ。前置き・説明・マークダウンは不要。"""
+
+
+def _mtg_audio_only(files):
+    out = []
+    for x in (files or []):
+        nm = (x.get("name") or "")
+        if "." in nm and nm.rsplit(".", 1)[-1].lower() in _MTG_AUDIO_EXTS:
+            out.append(x)
+    return out
+
+
+def _mtg_file_time(x):
+    return x.get("updated_at") or x.get("created_at") or (x.get("metadata") or {}).get("lastModified") or ""
+
+
+@app.route("/api/meeting/recover_list", methods=["GET"])
+@login_required
+def api_meeting_recover_list():
+    """未保存を含む録音セッションをストレージから新しい順に一覧。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        base = f"{f_code}/meetings"
+        try:
+            folders = supabase.storage.from_("assessment-audio").list(base) or []
+        except Exception as _e:
+            return jsonify({"status": "error", "message": f"ストレージ一覧に失敗: {_e}"}), 500
+        # 既に保存済みのセッションIDを把握（一覧で区別表示）
+        saved_ids = set()
+        try:
+            sv = supabase.table("meetings").select("audio_session_id,title,meeting_date")\
+                .eq("facility_code", f_code).execute()
+            saved_map = {}
+            for r in (sv.data or []):
+                sid = r.get("audio_session_id")
+                if sid:
+                    saved_ids.add(sid)
+                    saved_map[sid] = {"title": r.get("title"), "date": r.get("meeting_date")}
+        except Exception:
+            saved_map = {}
+        sessions = []
+        for fo in folders:
+            name = (fo.get("name") or "").strip()
+            if not name or name.startswith("."):
+                continue
+            try:
+                files = supabase.storage.from_("assessment-audio").list(f"{base}/{name}") or []
+            except Exception:
+                files = []
+            afiles = _mtg_audio_only(files)
+            if not afiles:
+                continue
+            times = [t for t in (_mtg_file_time(x) for x in afiles) if t]
+            latest = max(times) if times else ""
+            sessions.append({
+                "session_id": name,
+                "chunks": len(afiles),
+                "latest": latest,
+                "saved": name in saved_ids,
+                "saved_info": saved_map.get(name),
+            })
+        sessions.sort(key=lambda s: (s.get("latest") or ""), reverse=True)
+        return jsonify({"status": "success", "count": len(sessions), "sessions": sessions[:30]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/meeting/recover_transcribe", methods=["POST"])
+@login_required
+def api_meeting_recover_transcribe():
+    """指定セッションの音声チャンクをStorageから取得し、順に再文字起こしして連結。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        from utils import get_generative_model
+        import re as _re3
+        data = request.get_json(silent=True) or {}
+        session_id = _re3.sub(r"[^0-9a-zA-Z\-]", "", (data.get("session_id") or ""))[:64]
+        if not session_id:
+            return jsonify({"status": "error", "message": "セッションIDが指定されていません"}), 400
+        supabase = get_supabase()
+        base = f"{f_code}/meetings/{session_id}"
+        try:
+            files = supabase.storage.from_("assessment-audio").list(base) or []
+        except Exception as _e:
+            return jsonify({"status": "error", "message": f"音声一覧に失敗: {_e}"}), 500
+        afiles = _mtg_audio_only(files)
+        if not afiles:
+            return jsonify({"status": "error", "message": "この録音の音声ファイルが見つかりませんでした"}), 404
+        # チャンク名(0000, 0001 ...)で昇順
+        afiles.sort(key=lambda x: (x.get("name") or ""))
+        model = get_generative_model()
+        parts = []
+        errors = 0
+        for x in afiles:
+            nm = x.get("name") or ""
+            ext = nm.rsplit(".", 1)[-1].lower() if "." in nm else "webm"
+            mime = _MTG_EXT_MIME.get(ext, "audio/webm")
+            path = f"{base}/{nm}"
+            try:
+                blob = supabase.storage.from_("assessment-audio").download(path)
+                resp = model.generate_content([{"mime_type": mime, "data": blob}, _MTG_TRANSCRIBE_PROMPT])
+                t = (resp.text or "").strip()
+                if t:
+                    parts.append(t)
+            except Exception as _te:
+                errors += 1
+                print(f"[meeting-recover] chunk fail {path}: {_te}", flush=True)
+        transcript = "\n".join(parts).strip()
+        return jsonify({"status": "success", "transcript": transcript,
+                        "chunks": len(afiles), "errors": errors, "session_id": session_id})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+# --- /meetings-recover-audio-v1 ---
+
+
 # ============================================================
 # staff-minutes-api-v1 : 勉強会・会議議事録 (社内会議・利用者非依存)
 #   担当者会議(meetings)の同型APIを流用しつつ、ICF/付箋/アセスメントは持たない。
