@@ -2669,6 +2669,13 @@ function repFitMetrics(page){
   return { innerH:innerH, used:(maxB-innerTop), ratio: innerH>0 ? (maxB-innerTop)/innerH : 0, pxPerMm:pxPerMm };
 }
 
+// lx-beforeprint-autofit: 印刷ボタン/Cmd+P/PDF保存 どの経路でも印刷直前に必ずフィット
+(function(){
+  var _busy=false;
+  function _fit(){ if(_busy) return; _busy=true; try{ if(typeof repAutofitAll==='function') repAutofitAll(); }catch(e){} _busy=false; }
+  if(window.matchMedia){ try{ window.matchMedia('print').addListener(function(m){ if(m.matches) _fit(); }); }catch(e){} }
+  window.addEventListener('beforeprint', _fit);
+})();
 // onepage-fit-v2: 印刷/PDF前に全レポート(2枚版の各ページ含む)を安全内寸へ確実に収める(非破壊・縮尺のみ・下限80%)
 function repAutofitAll(){
   var FLOOR=0.80, TARGET=0.95;   // 目標占有率95%（下端に安全余白）。素の状態から測って確実に縮める
@@ -3019,6 +3026,7 @@ window.addEventListener('load', function() {
     // 第1段階: 自動縮小の後、なお収まらないページを検知してバッジ表示
     setTimeout(detectOverflowPages, 1100);
     setTimeout(function(){ try{ if(typeof repAutofitAll==='function') repAutofitAll(); }catch(e){} }, 1750);
+    setTimeout(function(){ try{ if(typeof repAutofitAll==='function') repAutofitAll(); }catch(e){} }, 3200);
 });
 
 // ===== あふれ検知（縮小適用後に、なおA4 1枚に収まらないページを判定） =====
