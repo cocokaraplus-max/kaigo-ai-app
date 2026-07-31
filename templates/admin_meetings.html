@@ -1010,6 +1010,7 @@ async function mtgSave(opts) {
       if (d.meeting_id) mtgState.editingMeetingId = d.meeting_id;
       savedId = mtgState.editingMeetingId;
       mtgUpdatePdfButtons();
+      if (typeof mtgClearDraft === 'function') mtgClearDraft();  // 保存成功→下書き破棄
       if (!silent) alert('保存しました（付箋 '+d.saved_stickies+'件）。PDF出力ができます。');
     } else {
       if (!silent) { alert(d.message || '保存に失敗しました'); } else { throw new Error(d.message || '保存に失敗しました'); }
@@ -1313,4 +1314,89 @@ document.addEventListener('DOMContentLoaded', () => {
   mtgLoadPatients();   // 対象利用者リストを先読み
 });
 </script>
+<!-- meetings-autosave-draft-v1: 作業中の担当者会議を自動保存し復元できるようにする -->
+<script id="mtg-autosave">
+(function(){
+  'use strict';
+  var KEY='tasukaru_mtg_draft_v1';
+  function $(id){ return document.getElementById(id); }
+  function v(id){ var e=$(id); return e?(e.value||''):''; }
+  function nonEmpty(d){ return !!((d.transcript||'').trim() || (d.minutes||'').trim() || (d.assessment&&d.assessment.length) || (d.boardCards&&d.boardCards.length)); }
+  function collect(){
+    var ms=(window.mtgState||{});
+    var pe=$('mtgPatient');
+    var plabel=(pe&&pe.selectedOptions&&pe.selectedOptions[0])?pe.selectedOptions[0].textContent:'';
+    return { ts:Date.now(), ver:1,
+      title:v('mtgTitle'), meeting_date:v('mtgDate'), patient_id:v('mtgPatient'), patient_label:plabel,
+      transcript:v('mtgTranscript'), minutes:v('mtgMinutes'),
+      assessment:ms.assessment||[], minutesStruct:ms.minutesStruct||null,
+      boardCards:ms.boardCards||[], sessionId:ms.sessionId||null,
+      editingMeetingId:ms.editingMeetingId||null };
+  }
+  function save(){ try{ var d=collect(); if(nonEmpty(d)) localStorage.setItem(KEY, JSON.stringify(d)); }catch(e){} }
+  function clear(){ try{ localStorage.removeItem(KEY); }catch(e){} }
+  function load(){ try{ var s=localStorage.getItem(KEY); return s?JSON.parse(s):null; }catch(e){ return null; } }
+  window.mtgAutosave=save; window.mtgClearDraft=clear;
+
+  // 3秒ごと＋入力時＋離脱時に自動保存
+  setInterval(save, 3000);
+  ['mtgTitle','mtgDate','mtgPatient','mtgTranscript','mtgMinutes'].forEach(function(id){
+    var e=$(id); if(!e) return;
+    e.addEventListener('input', save);
+    e.addEventListener('change', save);
+  });
+  window.addEventListener('beforeunload', save);
+
+  function fmtTs(ts){ try{ var d=new Date(ts); function p(n){return('0'+n).slice(-2);} return d.getFullYear()+'/'+(d.getMonth()+1)+'/'+d.getDate()+' '+p(d.getHours())+':'+p(d.getMinutes()); }catch(e){ return ''; } }
+
+  function restore(d){
+    try{
+      if($('mtgTitle')) $('mtgTitle').value=d.title||'';
+      if($('mtgDate')) $('mtgDate').value=d.meeting_date||'';
+      if($('mtgPatient')&&d.patient_id){ try{ $('mtgPatient').value=d.patient_id; }catch(e){} }
+      if($('mtgTranscript')) $('mtgTranscript').value=d.transcript||'';
+      if($('mtgMinutes')) $('mtgMinutes').value=d.minutes||'';
+      var ms=(window.mtgState=window.mtgState||{});
+      ms.assessment=d.assessment||[]; ms.minutesStruct=d.minutesStruct||null;
+      ms.boardCards=d.boardCards||[]; if(d.sessionId) ms.sessionId=d.sessionId;
+      ms.editingMeetingId=d.editingMeetingId||null;
+      try{ ms.asmtSeq=(ms.assessment.reduce(function(m,x){return Math.max(m,x.id||0);},0))+1; }catch(e){}
+      try{ ms.cardSeq=(ms.boardCards.reduce(function(m,x){return Math.max(m,x.id||0);},0))+1; }catch(e){}
+      // 編集ビューへ
+      if(typeof mtgSetView==='function'){ try{ mtgSetView('edit'); }catch(e){} }
+      else { if($('mtgListView'))$('mtgListView').style.display='none'; if($('mtgEditView'))$('mtgEditView').style.display='block'; }
+      if((d.assessment||[]).length){ if($('mtgAssessCard'))$('mtgAssessCard').style.display='block'; if(typeof mtgRenderAssessment==='function') mtgRenderAssessment(); }
+      if((d.boardCards||[]).length && typeof mtgRenderBoard==='function'){ mtgRenderBoard(); }
+      if(typeof mtgShowSaveArea==='function') mtgShowSaveArea();
+      window.scrollTo({top:0});
+    }catch(e){ alert('復元中にエラーが発生しました: '+e); }
+  }
+
+  function showBanner(d){
+    if($('mtg-draft-banner')) return;
+    var bar=document.createElement('div'); bar.id='mtg-draft-banner';
+    bar.style.cssText='position:fixed;left:0;right:0;top:0;z-index:99999;background:#fff8e1;border-bottom:2px solid #f0b429;padding:10px 14px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;font-size:14px;color:#5c4a00;box-shadow:0 2px 10px rgba(0,0,0,.15);';
+    var who=(d.patient_label||d.title||'').trim();
+    var msg=document.createElement('span');
+    msg.innerHTML='<b>未保存の下書きが見つかりました</b>（'+fmtTs(d.ts)+(who?('・'+who):'')+'）。復元しますか？';
+    var b1=document.createElement('button'); b1.textContent='復元する';
+    b1.style.cssText='background:#f0b429;color:#4a3b00;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;';
+    var b2=document.createElement('button'); b2.textContent='破棄';
+    b2.style.cssText='background:#eee;color:#555;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;';
+    b1.addEventListener('click', function(){ restore(d); bar.remove(); });
+    b2.addEventListener('click', function(){ if(confirm('この下書きを破棄します。よろしいですか？（元に戻せません）')){ clear(); bar.remove(); } });
+    bar.appendChild(msg); bar.appendChild(b1); bar.appendChild(b2);
+    document.body.appendChild(bar);
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(function(){
+      var d=load();
+      if(d && nonEmpty(d)) showBanner(d);
+    }, 900);
+  });
+})();
+</script>
+<!-- /meetings-autosave-draft-v1 -->
+
 {% endblock %}
