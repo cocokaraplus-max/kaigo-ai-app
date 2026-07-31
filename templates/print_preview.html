@@ -3114,6 +3114,33 @@ function ovIsGraphChild(el) {
 function ovIsMobile() {
     return window.innerWidth < 794;
 }
+// wysiwyg-pdf-v1: 現在のプレビューの見た目そのもの(canvasは画像化)をHTML化してPDF用に渡す
+function _lxBuildPrintHtml(){
+    try{ if(typeof repAutofitAll==='function') repAutofitAll(); }catch(e){}
+    var live = document.documentElement;
+    var clone = live.cloneNode(true);
+    var lcs = live.querySelectorAll('canvas');
+    var ccs = clone.querySelectorAll('canvas');
+    for(var i=0;i<lcs.length;i++){
+        var lc=lcs[i], cc=ccs[i]; if(!cc) continue;
+        var url=''; try{ url=lc.toDataURL('image/png'); }catch(e){ url=''; }
+        var img=document.createElement('img');
+        img.src=url; img.className=lc.className;
+        if(lc.getAttribute('style')) img.setAttribute('style', lc.getAttribute('style'));
+        try{
+            var pg=lc.closest('.report-page');
+            if(pg){ var pr=pg.getBoundingClientRect(); var pxmm=(pr.width||210)/210; var r=lc.getBoundingClientRect();
+                img.style.width=(r.width/pxmm).toFixed(2)+'mm';
+                img.style.height=(r.height/pxmm).toFixed(2)+'mm';
+                img.style.display='block'; }
+        }catch(e){}
+        if(cc.parentNode) cc.parentNode.replaceChild(img, cc);
+    }
+    var rm=clone.querySelectorAll('script, .no-print, .screen-bar, .lx-ctrl, .lx-bulk, #lx-totop, .rep-overflow-badge, .rep-images-panel, .rep-resizable-handle');
+    Array.prototype.forEach.call(rm, function(e){ if(e && e.parentNode) e.parentNode.removeChild(e); });
+    return '<!doctype html>\n' + clone.outerHTML;
+}
+
 // server-pdf-btn-v1: サーバー(Chromium)で確実なA4・グラフ入りPDFを新規タブで生成
 function serverPdfOutput(btn){
     var o = btn ? btn.textContent : '';
@@ -3122,10 +3149,13 @@ function serverPdfOutput(btn){
     catch(e){ u = location.href + (location.search ? '&' : '?') + 'pdf=1'; }
     // ユーザー操作の文脈で先にタブを開く(ポップアップブロック回避)。生成中メッセージを表示。
     var w = window.open('', '_blank');
-    if(w){ try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF生成中</title><body style="font-family:sans-serif;color:#333;padding:40px;line-height:1.7;text-align:center"><h2 style="color:#0b8043">\uD83D\uDCC4 PDFを生成しています…</h2><p>サーバーでグラフを描画してPDF化しています。<br>最大40秒ほどお待ちください。<br>(このタブが自動でPDFに切り替わります)</p></body>'); }catch(e){} }
+    if(w){ try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF生成中</title><body style="font-family:sans-serif;color:#333;padding:40px;line-height:1.7;text-align:center"><h2 style="color:#0b8043">\uD83D\uDCC4 PDFを作成しています…</h2><p>プレビューの見たままをPDFにしています。<br>数秒〜十数秒お待ちください。<br>(このタブが自動でPDFに切り替わります)</p></body>'); }catch(e){} }
     if(btn){ btn.disabled=true; btn.textContent='PDF生成中…'; }
     function _restore(){ if(btn){ btn.disabled=false; btn.textContent=o||'\uD83D\uDDA8 PDF保存 / 印刷'; } }
-    fetch(u, {credentials:'same-origin'}).then(function(res){
+    var _payload;
+    try{ _payload = _lxBuildPrintHtml(); }
+    catch(_be){ if(w){ try{ w.close(); }catch(_x){} } _restore(); alert('プレビューの取り込みに失敗しました: '+_be); return; }
+    fetch('/print_pdf_render', {method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify({html:_payload})}).then(function(res){
         if(!res.ok){ return res.text().then(function(t){ throw new Error('サーバーエラー('+res.status+') '+((t||'').slice(0,300))); }); }
         return res.blob();
     }).then(function(blob){

@@ -26487,6 +26487,51 @@ def print_preview():
     return render("print_preview.html", **_pp_kwargs)
 
 
+# =========================================================
+# wysiwyg-pdf-v1 : 画面プレビューをそのままPDF化する
+#   クライアントが現在の見た目(HTML)をPOSTし、サーバーのChromiumが
+#   一切作り直さず・自動フィットせず、そのままA4・余白0でPDF化する。
+#   → 文字サイズ・2枚レイアウト・手直し文章が「見たまま」出る。
+# ============================================================
+@app.route("/print_pdf_render", methods=["POST"])
+@login_required
+def print_pdf_render():
+    try:
+        from flask import make_response as _mkresp
+        data = request.get_json(silent=True) or {}
+        html = data.get("html") or ""
+        if not html:
+            return ("HTMLが空です", 400)
+        if len(html) > 40_000_000:
+            return ("HTMLが大きすぎます（画像が多すぎる可能性）", 413)
+        from playwright.sync_api import sync_playwright as _spw
+        _pdf = None
+        with _spw() as _pw:
+            _br = _pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"])
+            try:
+                _pg = _br.new_page(viewport={"width": 1200, "height": 1600})
+                _pg.set_default_timeout(60000)
+                # 画像はdata URLで埋め込み済み・スクリプトなし → set_content は即完了
+                _pg.set_content(html, wait_until="load")
+                _pg.emulate_media(media="print")
+                _pg.wait_for_timeout(200)
+                _pdf = _pg.pdf(prefer_css_page_size=True, print_background=True,
+                               margin={"top": "0", "bottom": "0", "left": "0", "right": "0"})
+            finally:
+                _br.close()
+        _resp = _mkresp(_pdf)
+        _resp.headers["Content-Type"] = "application/pdf"
+        _resp.headers["Content-Disposition"] = 'inline; filename="report.pdf"'
+        _resp.headers["Cache-Control"] = "no-store"
+        return _resp
+    except Exception as _e:
+        import traceback as _tb
+        _tb.print_exc()
+        return ("PDF生成エラー: " + str(_e)), 500
+# --- /wysiwyg-pdf-v1 ---
+
+
+
 # ==========================================
 # jisseki-clsummary-v1: 実績集計(第2段階A) 介護度別の実人数・延べ人数
 # 集計源: vitals(来所実績) / 判定軸: care_level_history(月末時点の介護度)
