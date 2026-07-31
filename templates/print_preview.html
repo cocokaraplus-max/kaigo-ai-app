@@ -1179,7 +1179,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 
 <div class="report-page" id="page-{{ loop.index }}"
      data-user="{{ p.user_name }}"
-     data-font-scale="{{ ev.get('font_scale', 1.0) if ev and ev.get('font_scale') else 1.0 }}">
+     data-font-scale="{{ ev.get('font_scale', 1.0) if ev and ev.get('font_scale') else 1.0 }}"
+     data-layout-mode="{{ ev.get('layout_mode','compact') if ev and ev.get('layout_mode') else 'compact' }}">
     {% if tmpl == 4 %}
     <!-- テンプレート4: 分割レイアウト 上部フル幅 / 下部グラフ左＋テキスト右 -->
     <div class="tmpl4-top">
@@ -2651,47 +2652,82 @@ if (document.body.classList.contains('tmpl-4')) {
     });
 }
 
-// ===== onepage-fit-v1: 文章を短く再生成してA4・1枚に収める =====
+// onepage-fit-v2: 物理A4(297mm)基準で占有率を測る
+function repFitMetrics(page){
+  var cs=getComputedStyle(page);
+  var pt=parseFloat(cs.paddingTop)||0, pb=parseFloat(cs.paddingBottom)||0;
+  var rpr=page.getBoundingClientRect();
+  var pxPerMm=(rpr.width||1)/210;                 // このレンダリングの mm→px
+  var innerTop=rpr.top+pt;
+  var innerBottomFixed=rpr.top+297*pxPerMm-pb;    // 画面上でページが伸びても物理A4基準で下端を固定
+  var innerH=innerBottomFixed-innerTop;
+  var wrap=page.querySelector(':scope > .rep-scale-wrap'); var scope=wrap||page;
+  var kids=Array.prototype.slice.call(scope.children).filter(function(c){
+    return !(c.classList&&(c.classList.contains('no-print')||c.classList.contains('rep-overflow-badge')||c.classList.contains('page-number')));
+  });
+  var maxB=innerTop; kids.forEach(function(k){ var b=k.getBoundingClientRect().bottom; if(b>maxB)maxB=b; });
+  return { innerH:innerH, used:(maxB-innerTop), ratio: innerH>0 ? (maxB-innerTop)/innerH : 0, pxPerMm:pxPerMm };
+}
+
+// ===== onepage-fit-v2: 文章短縮→必要分だけ縮尺(下限80%)で確実にA4・1枚に収める =====
 async function shortenToFit(userName, yearMonth, btn){
   yearMonth = yearMonth || (new URLSearchParams(location.search)).get('year_month') || '';
   var orig = btn ? btn.textContent : '';
+  var TARGET = 0.985;  // 印刷安全マージンを見た目標占有率
+  var FLOOR  = 0.80;   // 縮尺の下限
   function catCells(){ return Array.prototype.slice.call(document.querySelectorAll('[data-cat]')).filter(function(td){ return td.getAttribute('data-user')===userName; }); }
   function evalCells(){ return Array.prototype.slice.call(document.querySelectorAll('.rep-editable')).filter(function(el){ return el.getAttribute('data-user')===userName && el.getAttribute('data-field'); }); }
   function _userPage(){ var pg=(typeof repGetPage==='function')?repGetPage(userName):null; if(!pg){ pg=Array.prototype.slice.call(document.querySelectorAll('.report-page')).filter(function(p){return p.getAttribute('data-user')===userName;})[0]||null; } return pg; }
-  // 通常サイズ(100%)で1枚に収まるか判定。自動縮小に頼らず短縮で収める。
-  function stillOver(){ if(typeof repApplyFont==='function'){ try{ repApplyFont(userName,1); }catch(e){} } var pg=_userPage(); return pg ? (typeof repRectOverflow==='function' && repRectOverflow(pg)) : false; }
+  function ratioAt1(){ if(typeof repApplyFont==='function'){ try{ repApplyFont(userName,1);}catch(e){} } var pg=_userPage(); return pg?repFitMetrics(pg).ratio:0; }
   if(btn){ btn.disabled=true; btn.textContent='調整中…'; }
   var steps=[190,150,120,100,85,72];
-  var fitted=false;
+  var fitted=false, usedScale=1;
   try{
-    if(!stillOver()){ fitted=true; }
+    // (1) まず通常サイズで文章短縮（目標占有率まで）
+    if(ratioAt1() <= TARGET){ fitted=true; }
     for(var i=0;i<steps.length && !fitted;i++){
       var cl=steps[i];
       if(btn){ btn.textContent='調整中… ('+(i+1)+'/'+steps.length+')'; }
-      // モニタリング各カテゴリを短く再生成
       try{
         var mr=await fetch('/api/generate_monitoring',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:userName, month:yearMonth, mode:'category', char_limit:cl})}).then(function(r){return r.json();});
         var cats=(mr&&mr.categories)||{};
         catCells().forEach(function(td){ var c=td.getAttribute('data-cat'); if(cats[c]!=null){ var t=String(cats[c]||''); if(t && t.indexOf('報告はありませんでした')<0){ td.innerText=t; } } });
       }catch(e){}
-      // 変化・課題・特記事項を短縮
       var evs=evalCells();
       for(var k=0;k<evs.length;k++){
-        var el=evs[k]; var cur=(el.innerText||'').replace(/\u00a0/g,' ').trim();
+        var el=evs[k]; var cur=(el.innerText||'').replace(/ /g,' ').trim();
         if(cur && cur!=='（未入力）' && cur.length>cl){
           try{ var sr=await fetch('/api/shorten_text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:cur, max_chars:Math.round(cl*0.85)})}).then(function(r){return r.json();}); if(sr&&sr.text){ el.innerText=sr.text; } }catch(e){}
         }
       }
       await new Promise(function(r){ setTimeout(r,220); });
-      if(!stillOver()){ fitted=true; }
+      if(ratioAt1() <= TARGET){ fitted=true; }
     }
-    var msg = fitted ? '✅ 1枚に収まりました。\nこの短くした内容で保存しますか？' : 'これ以上は文章を短くできませんでした。\n現状の内容で保存しますか？（必要ならフォント縮小も併用してください）';
+    // (2) それでも収まらなければ、足りない分だけ縮尺(下限80%)で確実に収める
+    if(!fitted){
+      var pg=_userPage();
+      var r1 = pg ? repFitMetrics(pg).ratio : 1;   // 100%時の占有率
+      if(r1>0){
+        var need = TARGET / r1;
+        usedScale = Math.max(FLOOR, Math.min(1, Math.round(need*100)/100));
+        if(typeof repApplyFont==='function'){ try{ repApplyFont(userName, usedScale);}catch(e){} }
+        var r2 = pg ? repFitMetrics(pg).ratio : 1;  // 縮尺後の占有率
+        if(r2 <= 1.0){ fitted = true; }
+      }
+    }
+    // (3) 保存確認
+    var pct = Math.round(usedScale*100);
+    var msg;
+    if(fitted && usedScale>=1){ msg='✅ 文章の短縮のみで、通常サイズのままA4・1枚に収まりました。\nこの内容で保存しますか？'; }
+    else if(fitted){ msg='✅ A4・1枚に収まりました（文字サイズを'+pct+'%に自動調整）。\nこの内容で保存しますか？'; }
+    else { msg='⚠ 文字'+pct+'%まで調整しましたが、情報量が多くまだ1枚に収まりきりません。\nこの内容で保存しますか？（「原寸2枚」レイアウトの利用もご検討ください）'; }
     if(confirm(msg)){
       var catsObj={}; catCells().forEach(function(td){ var c=td.getAttribute('data-cat'); var t=(td.innerText||'').trim(); if(t!=='今月の報告はありませんでした'){ catsObj[c]=t; } });
       try{ await fetch('/api/save_monitoring',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:userName, month:yearMonth, mode:'category', categories:catsObj, confirm:false, allow_confirmed:true})}); }catch(e){}
-      var payload={user_name:userName, year_month:yearMonth};
-      evalCells().forEach(function(el){ var f=el.getAttribute('data-field'); var t=(el.innerText||'').replace(/\u00a0/g,' ').trim(); if(t==='（未入力）') t=''; payload[f]=t; });
+      var payload={user_name:userName, year_month:yearMonth, font_scale:usedScale};
+      evalCells().forEach(function(el){ var f=el.getAttribute('data-field'); var t=(el.innerText||'').replace(/ /g,' ').trim(); if(t==='（未入力）') t=''; payload[f]=t; });
       try{ await fetch('/api/save_patient_evaluation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){}
+      if(typeof repApplyFont==='function'){ try{ repApplyFont(userName, usedScale);}catch(e){} }
       alert('保存しました。');
     }
   } finally {
@@ -3511,5 +3547,249 @@ function ovConfirmPrint() {
         <button class="ov-confirm-print" onclick="ovConfirmPrint()">この内容で印刷</button>
     </div>
 </div>
+<!-- ===== layout-select-v1: 1枚コンパクト / 2枚リッチA / 2枚リッチB 切替 ===== -->
+<style id="lx-style">
+/* 選択バー（各レポート上部・印刷しない） */
+.lx-ctrl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 auto 6px;max-width:210mm;padding:6px 8px;background:#eef2f6;border:1px solid #d3dde6;border-radius:8px;font-size:12px;color:#33414f;}
+.lx-ctrl .lx-lbl{font-weight:700;color:#1f2933;}
+.lx-ctrl .lx-name{color:#5a6b7c;margin-right:2px;}
+.lx-seg{display:inline-flex;border:1px solid #b9c6d2;border-radius:7px;overflow:hidden;}
+.lx-seg button{background:#fff;color:#3a4b5c;border:none;border-right:1px solid #d5dee6;padding:5px 11px;font-size:12px;font-weight:700;cursor:pointer;}
+.lx-seg button:last-child{border-right:none;}
+.lx-seg button.on{background:#3f5b74;color:#fff;}
+.lx-ctrl .lx-hint{color:#7f8c99;font-size:11px;}
+/* 一括バー */
+.lx-bulk{display:inline-flex;align-items:center;gap:6px;margin-left:12px;font-size:12px;color:#dbe3ec;}
+.lx-bulk .lx-seg button{padding:4px 9px;font-size:11.5px;}
+/* リッチ（2枚前提）ページ：ゆとりを持たせる */
+.report-page.lx-rich{padding:14mm 14mm 12mm;}
+.report-page.lx-rich .rep-twocol-body{font-size:9pt;line-height:1.85;min-height:24mm;}
+.report-page.lx-rich .rep-monitoring-table td{font-size:8.5pt;padding:4px 8px;line-height:1.75;}
+.report-page.lx-rich .rep-special-body{font-size:9pt;line-height:1.85;padding:3mm 4mm;min-height:20mm;}
+.report-page.lx-rich .rep-fitness-title{font-size:11pt;margin-bottom:3mm;}
+/* リッチページのグラフ大判化 */
+.report-page.lx-rich .rep-radar-wrap{max-width:100% !important;}
+.report-page.lx-rich .rep-radar-canvas{height:96mm !important;}
+.report-page.lx-rich .graph-col .rep-radar-canvas{height:88mm !important;}
+.report-page.lx-rich canvas.mini-chart{height:70px !important;}
+.report-page.lx-rich .rep-fitness-chart-box{padding:3mm 2mm;}
+.report-page.lx-rich .rep-fitness-chart-label{font-size:8pt;}
+.report-page.lx-rich .rep-fitness-chart-value{font-size:11pt;}
+.report-page.lx-rich .rep-fitness-charts{gap:4mm;}
+/* 2枚目 継続ヘッダー */
+.lx-page2-header{display:flex;justify-content:space-between;align-items:center;background:var(--accent,#444441);color:#fff;font-size:12pt;font-weight:800;letter-spacing:.06em;padding:4mm 6mm;margin:-14mm -14mm 5mm;}
+.lx-page2-header .lx-p2sub{font-size:8.5pt;font-weight:400;letter-spacing:0;color:#e6e6e2;}
+@media print{ .lx-ctrl,.lx-bulk{display:none !important;} }
+</style>
+<script id="lx-script">
+(function(){
+  'use strict';
+  var YM = (new URLSearchParams(location.search)).get('year_month') || '';
+  // セクション分類（クラス→グループ）
+  var GROUP = {
+    'rep-header':'HEAD','rep-info-row':'HEAD','rep-patient-row':'HEAD','rep-goals-row':'HEAD',
+    'rep-edit-bar':'CTRL',
+    'rep-twocol':'TEXT','rep-monitoring-title':'TEXT','rep-monitoring-table':'TEXT',
+    'rep-fitness-title':'GRAPH','rep-resizable':'GRAPH','rep-fitness-note':'GRAPH',
+    'rep-graph-special-wrapper':'GRAPH','rep-fitness-charts':'GRAPH',
+    'rep-special-container':'SPECIAL'
+  };
+  // レイアウト定義：ページごとのグループ順
+  var LAYOUTS = {
+    compact:{ pages:[['HEAD','CTRL','TEXT','GRAPH','SPECIAL']], rich:false, label2:'' },
+    richA:{ pages:[['HEAD','CTRL','TEXT'],['GRAPH','SPECIAL']], rich:true, label2:'評価グラフ・記録' },
+    richB:{ pages:[['HEAD','CTRL','GRAPH'],['TEXT','SPECIAL']], rich:true, label2:'詳細記録' }
+  };
+  function contentRoot(page){ return page.querySelector(':scope > .rep-scale-wrap') || page; }
+  function groupOf(el){
+    if(!el.classList) return null;
+    for(var c in GROUP){ if(el.classList.contains(c)) return GROUP[c]; }
+    return null;
+  }
+  function resizeCharts(page){
+    if(!(window.Chart && Chart.getChart)) return;
+    page.querySelectorAll('canvas').forEach(function(c){ var ch=Chart.getChart(c); if(ch){ try{ch.resize();}catch(e){}} });
+  }
+  function patientName(page){
+    var el=page.querySelector('.rep-patient-name'); return el?(el.textContent||'').trim():'';
+  }
+
+  var STATE = {}; // user -> {origPage, sections:{group:[nodes]}, extraPages:[], mode}
+
+  function snapshot(page){
+    var user=page.getAttribute('data-user');
+    var root=contentRoot(page);
+    var sections={HEAD:[],CTRL:[],TEXT:[],GRAPH:[],SPECIAL:[],OTHER:[]};
+    Array.prototype.slice.call(root.children).forEach(function(el){
+      if(el.classList && el.classList.contains('page-number')) { sections.OTHER.push(el); return; }
+      var g=groupOf(el)||'OTHER'; sections[g].push(el);
+    });
+    STATE[user]={origPage:page, root:root, sections:sections, extraPages:[], mode:'compact'};
+    return STATE[user];
+  }
+
+  function clearAutoCompact(page){
+    page.classList.remove('compact'); page.style.fontSize=''; page.style.lineHeight=''; page.style.padding='';
+    page.querySelectorAll('.rep-monitoring-table td').forEach(function(td){ td.style.fontSize=''; td.style.padding=''; });
+    var badge=page.querySelector('.rep-overflow-badge'); if(badge) badge.remove();
+  }
+
+  function buildPage2(st, groups, richLabel, pageIdx, total){
+    var src=st.origPage;
+    var p2=document.createElement('div');
+    p2.className=src.className; // 同テンプレのクラスを継承
+    p2.classList.add('lx-rich','lx-extra-page');
+    p2.classList.remove('compact');
+    p2.setAttribute('data-user', src.getAttribute('data-user'));
+    p2.style.marginTop='10mm';
+    var wrap=document.createElement('div'); wrap.className='rep-scale-wrap';
+    // 継続ヘッダー
+    var h=document.createElement('div'); h.className='lx-page2-header';
+    h.innerHTML='<span>'+ (patientName(src)||'') +'　様</span><span class="lx-p2sub">'+ (YM? YM.replace('-','年')+'月':'') +' ／ '+ richLabel +'（'+pageIdx+' / '+total+'）</span>';
+    wrap.appendChild(h);
+    groups.forEach(function(g){ (st.sections[g]||[]).forEach(function(n){ wrap.appendChild(n); }); });
+    var pn=document.createElement('div'); pn.className='page-number'; pn.textContent=pageIdx+' / '+total;
+    p2.appendChild(wrap); p2.appendChild(pn);
+    return p2;
+  }
+
+  function applyLayout(user, mode, persist){
+    var st=STATE[user]; if(!st) return;
+    var def=LAYOUTS[mode]||LAYOUTS.compact;
+    var page=st.origPage, root=st.root;
+    // 1) 既存の生成2枚目を撤去し、全セクションを元ページへ戻す
+    st.extraPages.forEach(function(p){ p.remove(); }); st.extraPages=[];
+    clearAutoCompact(page);
+    page.classList.toggle('lx-rich', !!def.rich && def.pages.length>1);
+    // page-number 要素は sections.OTHER に含む
+    // 2) ページ1を再構成
+    var order1=def.pages[0];
+    order1.forEach(function(g){ (st.sections[g]||[]).forEach(function(n){ root.appendChild(n); }); });
+    // 使わないグループ(page2行き)は後で移動するので、まず page1 に無いグループを回収
+    // page-number を末尾へ
+    (st.sections.OTHER||[]).forEach(function(n){ if(n.classList && n.classList.contains('page-number')) root.appendChild(n); });
+    // rich でない場合、page1 に全グループを正しい順で戻す（order1が全部含む）
+    if(!def.rich || def.pages.length===1){
+      // 1枚：既存の自動縮小・あふれ検知に委ねる
+      resizeCharts(page);
+    } else {
+      // 3) page2以降を生成
+      var total=def.pages.length;
+      var prev=page;
+      for(var i=1;i<def.pages.length;i++){
+        var p2=buildPage2(st, def.pages[i], def.label2, i+1, total);
+        prev.parentNode.insertBefore(p2, prev.nextSibling);
+        st.extraPages.push(p2); prev=p2;
+      }
+      // ページ1の page-number を "1 / total" に
+      var pn1=root.querySelector(':scope > .page-number');
+      if(!pn1){ pn1=document.createElement('div'); pn1.className='page-number'; root.appendChild(pn1); }
+      pn1.textContent='1 / '+total;
+      // チャート再描画（全ページ）
+      resizeCharts(page); st.extraPages.forEach(resizeCharts);
+      setTimeout(function(){ resizeCharts(page); st.extraPages.forEach(resizeCharts); }, 120);
+    }
+    st.mode=mode;
+    // セレクタUIの状態更新
+    updateSeg(user, mode);
+    if(persist) saveMode(user, mode);
+  }
+
+  // ---- 保存（デバウンス） ----
+  var timers={};
+  function saveMode(user, mode){
+    if(timers[user]) clearTimeout(timers[user]);
+    timers[user]=setTimeout(function(){
+      fetch('/api/save_patient_evaluation',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({user_name:user, year_month:YM, layout_mode:mode})}).catch(function(){});
+    }, 500);
+  }
+
+  // ---- セレクタUI ----
+  function seg(user, cur){
+    var opts=[['compact','1枚'],['richA','2枚A'],['richB','2枚B']];
+    var html='<span class="lx-seg" data-user="'+encodeURIComponent(user)+'">';
+    opts.forEach(function(o){ html+='<button data-mode="'+o[0]+'"'+(o[0]===cur?' class="on"':'')+'>'+o[1]+'</button>'; });
+    return html+'</span>';
+  }
+  function updateSeg(user, mode){
+    document.querySelectorAll('.lx-seg[data-user="'+encodeURIComponent(user)+'"]').forEach(function(s){
+      s.querySelectorAll('button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-mode')===mode); });
+    });
+    // bulk側は個別変更では触らない
+  }
+  function addPerPageControl(page){
+    var user=page.getAttribute('data-user');
+    var bar=document.createElement('div'); bar.className='lx-ctrl no-print';
+    bar.innerHTML='<span class="lx-lbl">レイアウト</span><span class="lx-name">'+ (patientName(page)||user) +' 様</span>'
+      + seg(user, STATE[user]?STATE[user].mode:'compact')
+      + '<span class="lx-hint">1枚＝コンパクト／2枚A＝グラフ大判・写真／2枚B＝要約+詳細</span>';
+    page.parentNode.insertBefore(bar, page);
+    bar.addEventListener('click', function(e){
+      var b=e.target.closest('button[data-mode]'); if(!b) return;
+      applyLayout(user, b.getAttribute('data-mode'), true);
+      window.scrollTo({top: bar.getBoundingClientRect().top+window.pageYOffset-70, behavior:'instant'});
+    });
+  }
+
+  function addBulkControl(){
+    var sb=document.querySelector('.screen-bar'); if(!sb) return;
+    var box=document.createElement('span'); box.className='lx-bulk no-print';
+    box.innerHTML='<span>全員のレイアウト：</span>'
+      +'<span class="lx-seg" data-bulk="1"><button data-mode="compact">1枚</button><button data-mode="richA">2枚A</button><button data-mode="richB">2枚B</button></span>';
+    // 印刷ボタンの近くに置く
+    sb.appendChild(box);
+    box.addEventListener('click', function(e){
+      var b=e.target.closest('button[data-mode]'); if(!b) return;
+      var m=b.getAttribute('data-mode');
+      box.querySelectorAll('button').forEach(function(x){ x.classList.toggle('on', x===b); });
+      Object.keys(STATE).forEach(function(u){ applyLayout(u, m, true); });
+    });
+  }
+
+  // ---- 初期化 ----
+  function init(){
+    var pages=document.querySelectorAll('.report-page[data-user]');
+    if(!pages.length) return;
+    pages.forEach(function(p){
+      if(p.classList.contains('lx-extra-page')) return;
+      snapshot(p);
+      addPerPageControl(p);
+    });
+    addBulkControl();
+    // 保存済みレイアウトを適用
+    Object.keys(STATE).forEach(function(u){
+      var mode=STATE[u].origPage.getAttribute('data-layout-mode')||'compact';
+      if(mode!=='compact') applyLayout(u, mode, false);
+      else updateSeg(u,'compact');
+    });
+  }
+  // チャート描画後に実行（既存 autoCompact=800ms, detectOverflow=1100ms の後）
+  if(document.readyState==='complete'){ setTimeout(init, 1300); }
+  else window.addEventListener('load', function(){ setTimeout(init, 1300); });
+  // デバッグ用
+  window.lxApply=applyLayout; window.lxState=STATE;
+})();
+</script>
+<!-- ===== /layout-select-v1 ===== -->
+
+<!-- scroll-to-top-v1 -->
+<style>
+#lx-totop{position:fixed;right:18px;bottom:20px;z-index:300;min-width:52px;height:52px;padding:0 14px;border-radius:26px;background:#3f5b74;color:#fff;border:none;box-shadow:0 4px 12px rgba(0,0,0,.32);font-size:13px;font-weight:700;cursor:pointer;display:none;align-items:center;gap:4px;}
+#lx-totop:hover{background:#33495e;}
+#lx-totop .ar{font-size:18px;line-height:1;}
+@media print{ #lx-totop{display:none !important;}}
+</style>
+<button id="lx-totop" class="no-print" title="最上部へ移動"><span class="ar">▲</span>最上部へ</button>
+<script>
+(function(){
+  var b=document.getElementById('lx-totop'); if(!b) return;
+  b.addEventListener('click', function(){ window.scrollTo({top:0, behavior:'smooth'}); });
+  function upd(){ b.style.display = (window.pageYOffset>350)?'inline-flex':'none'; }
+  window.addEventListener('scroll', upd, {passive:true}); upd();
+})();
+</script>
+<!-- /scroll-to-top-v1 -->
+
 </body>
 </html>
