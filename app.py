@@ -28381,13 +28381,36 @@ def api_meeting_classify_icf():
         client = _anthropic.Anthropic()
         message = client.messages.create(
             model="claude-sonnet-4-5",
-            max_tokens=3000,
+            max_tokens=8000,
             messages=[{"role": "user", "content": prompt}]
         )
         raw = message.content[0].text.strip()
         raw = _re.sub(r"^```[a-zA-Z]*\n?", "", raw).strip()
         raw = _re.sub(r"```$", "", raw).strip()
-        parsed = _json.loads(raw)
+        # icf-json-salvage-v1: 途中で切れたJSONも可能な範囲で救済し、全滅（記録の作り直し）を防ぐ
+        def _loads_salvage(txt):
+            try:
+                return _json.loads(txt), False
+            except Exception:
+                pass
+            st = txt.find("[")
+            if st == -1:
+                raise ValueError("no-array")
+            body = txt[st:]
+            for mm in reversed(list(_re.finditer(r"\}", body))):
+                cand = body[:mm.end()] + "]"
+                try:
+                    return _json.loads(cand), True
+                except Exception:
+                    continue
+            raise ValueError("unsalvageable")
+        try:
+            parsed, _truncated = _loads_salvage(raw)
+        except Exception:
+            return jsonify({"status": "error",
+                "message": "AIの応答が途中で切れて分類できませんでした。もう一度「ICF分類する」を押してお試しください。会議情報が長い場合は議事録を分けると安定します。（記録は保存されておらず、失われていません）"}), 200
+        if not isinstance(parsed, list):
+            parsed = []
 
         # マスタに無いコードは弾く(創作防止)。componentも付けて返す。
         code_to_comp = {r["code"]: r["component"] for r in master}
@@ -28414,7 +28437,11 @@ def api_meeting_classify_icf():
                 "alt_reason": (s.get("alt_reason") if alt else None),
             })
         # 保存はフロントの承認後(別API)で。ここでは候補を返すのみ(人が承認思想)。
-        return jsonify({"status": "success", "count": len(results), "results": results})
+        _resp = {"status": "success", "count": len(results), "results": results}
+        if _truncated:
+            _resp["truncated"] = True
+            _resp["note"] = "AI応答が長かったため一部のみ分類しました。必要なら再実行・手動追加してください。"
+        return jsonify(_resp)
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 # --- /meetings-icf-classify-v1 ---
