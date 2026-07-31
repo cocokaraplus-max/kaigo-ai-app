@@ -2671,25 +2671,24 @@ function repFitMetrics(page){
 
 // onepage-fit-v2: 印刷/PDF前に全レポート(2枚版の各ページ含む)を安全内寸へ確実に収める(非破壊・縮尺のみ・下限80%)
 function repAutofitAll(){
-  var FLOOR=0.80, TARGET=0.975;
+  var FLOOR=0.80, TARGET=0.95;   // 目標占有率95%（下端に安全余白）。素の状態から測って確実に縮める
   var pages=document.querySelectorAll('.report-page');
   Array.prototype.forEach.call(pages, function(page){
     if(page.classList.contains('rep-image-page')) return;
     var wrap=page.querySelector(':scope > .rep-scale-wrap');
     if(!wrap) return;
-    var cur=parseFloat(page.getAttribute('data-font-scale'))||1;
+    // 既存の縮尺を一旦解除し、真のコンテンツ量で測る（cur依存の取りこぼしを防ぐ）
+    wrap.style.transform=''; wrap.style.width='';
     var m=repFitMetrics(page);
-    if(m.ratio > TARGET+0.006){
-      var abs=TARGET*cur/m.ratio;
-      var sc=Math.max(FLOOR, Math.min(1, Math.floor(abs*100)/100));
-      if(sc < cur-0.001){
-        wrap.style.transform='scale('+sc+')';
-        wrap.style.width=(100/sc)+'%';
-        page.setAttribute('data-font-scale', sc);
-        var id=page.id? page.id.replace('page-','font-val-'):'';
-        var v=id?document.getElementById(id):null; if(v) v.textContent=Math.round(sc*100)+'%';
-      }
+    var sc=1;
+    if(m.ratio > TARGET){
+      sc=Math.max(FLOOR, Math.floor((TARGET/m.ratio)*100)/100);
+      wrap.style.transform='scale('+sc+')';
+      wrap.style.width=(100/sc)+'%';
     }
+    page.setAttribute('data-font-scale', sc);
+    var id=page.id? page.id.replace('page-','font-val-'):'';
+    var v=id?document.getElementById(id):null; if(v) v.textContent=Math.round(sc*100)+'%';
   });
 }
 
