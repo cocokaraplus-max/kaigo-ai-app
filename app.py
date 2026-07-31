@@ -26430,7 +26430,7 @@ def print_preview():
     except Exception:
         pass
 
-    return render("print_preview.html",
+    _pp_kwargs = dict(
         report_data_list=report_data_list,
         facility=facility,
         year_month=year_month,
@@ -26446,6 +26446,45 @@ def print_preview():
         selected_images_json=selected_images_json,
         img_layouts_json=img_layouts_json,
     )
+    # server-pdf-chromium-v1: ?pdf=1 で本物のChromium(Playwright)によりプレビュー同一のPDFを生成
+    if request.args.get("pdf") == "1":
+        try:
+            from flask import render_template as _rt, make_response as _mkresp
+            _html = _rt("print_preview.html", **_pp_kwargs)
+            from playwright.sync_api import sync_playwright as _spw
+            _pdf = None
+            with _spw() as _pw:
+                _br = _pw.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu"])
+                try:
+                    _pg = _br.new_page(viewport={"width": 1200, "height": 1600})
+                    _pg.set_default_timeout(60000)
+                    _pg.set_content(_html, wait_until="load")
+                    try:
+                        _pg.wait_for_load_state("networkidle", timeout=20000)
+                    except Exception:
+                        pass
+                    _pg.wait_for_timeout(2500)          # Chart.js 描画待ち
+                    _pg.emulate_media(media="print")     # 印刷レイアウトへ
+                    _pg.wait_for_timeout(300)
+                    try:                                  # 印刷前の自動フィット(1枚化)を確実に実行
+                        _pg.evaluate("() => { try{ if(typeof repAutofitAll==='function') repAutofitAll(); }catch(e){} }")
+                    except Exception:
+                        pass
+                    _pg.wait_for_timeout(400)
+                    _pdf = _pg.pdf(prefer_css_page_size=True, print_background=True,
+                                   margin={"top": "0", "bottom": "0", "left": "0", "right": "0"})
+                finally:
+                    _br.close()
+            _resp = _mkresp(_pdf)
+            _resp.headers["Content-Type"] = "application/pdf"
+            _resp.headers["Content-Disposition"] = 'inline; filename="report.pdf"'
+            _resp.headers["Cache-Control"] = "no-store"
+            return _resp
+        except Exception as _e:
+            import traceback as _tb
+            _tb.print_exc()
+            return ("PDF生成エラー: " + str(_e)), 500
+    return render("print_preview.html", **_pp_kwargs)
 
 
 # ==========================================

@@ -17,6 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+# Chromium(Playwright) 導入: サーバーPDF生成用
+RUN python -m playwright install --with-deps chromium
 COPY . .
 EXPOSE 8080
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "2", "--threads", "8", "--worker-class", "gthread", "--timeout", "180", "--limit-request-line", "8190", "app:app"]
