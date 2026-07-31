@@ -1087,8 +1087,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 <div class="screen-bar">
     <span class="screen-bar-title">書類出力プレビュー — {{ year_month }}</span>
     <div class="screen-bar-btns">
-        <button class="btn-print-now" onclick="serverPdfOutput(this)" style="background:#fff;color:#0b8043;border:2px solid #0b8043;box-shadow:0 1px 4px rgba(0,0,0,0.15);" title="サーバーで確実にA4・グラフ入りのPDFを生成します（プリンタに依存せず切れません）">📄 PDF出力（確実）</button>
-        <button class="btn-print-now" onclick="handlePrintClick()">印刷 / ブラウザPDF</button>
+        <button class="btn-print-now" onclick="serverPdfOutput(this)" style="background:#fff;color:#0b8043;border:2px solid #0b8043;box-shadow:0 1px 4px rgba(0,0,0,0.15);padding:8px 20px;font-size:0.9rem;" title="A4・グラフ入りの確実なPDFを新しいタブで作成します。印刷はそのPDFから行えます（プリンタに依存せず切れません）">🖨 PDF保存 / 印刷</button>
         <button class="btn-close" onclick="if(window.opener){window.close();}else{window.location.href='/print_output';}">閉じる</button>
     </div>
 </div>
@@ -3117,17 +3116,30 @@ function ovIsMobile() {
 }
 // server-pdf-btn-v1: サーバー(Chromium)で確実なA4・グラフ入りPDFを新規タブで生成
 function serverPdfOutput(btn){
-    try{
-        var u = new URL(window.location.href);
-        u.searchParams.set('pdf','1');
-        var w = window.open(u.toString(), '_blank');
-        if(btn){ var o=btn.textContent; btn.textContent='PDF生成中…'; btn.disabled=true;
-            setTimeout(function(){ btn.textContent=o; btn.disabled=false; }, 8000); }
-        if(!w){ alert('ポップアップがブロックされました。ブラウザのポップアップ許可をご確認ください。'); }
-    }catch(e){
-        var sep = location.search ? '&' : '?';
-        window.open(location.href + sep + 'pdf=1', '_blank');
-    }
+    var o = btn ? btn.textContent : '';
+    var u;
+    try{ var _u = new URL(window.location.href); _u.searchParams.set('pdf','1'); u = _u.toString(); }
+    catch(e){ u = location.href + (location.search ? '&' : '?') + 'pdf=1'; }
+    // ユーザー操作の文脈で先にタブを開く(ポップアップブロック回避)。生成中メッセージを表示。
+    var w = window.open('', '_blank');
+    if(w){ try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF生成中</title><body style="font-family:sans-serif;color:#333;padding:40px;line-height:1.7;text-align:center"><h2 style="color:#0b8043">\uD83D\uDCC4 PDFを生成しています…</h2><p>サーバーでグラフを描画してPDF化しています。<br>最大40秒ほどお待ちください。<br>(このタブが自動でPDFに切り替わります)</p></body>'); }catch(e){} }
+    if(btn){ btn.disabled=true; btn.textContent='PDF生成中…'; }
+    function _restore(){ if(btn){ btn.disabled=false; btn.textContent=o||'\uD83D\uDDA8 PDF保存 / 印刷'; } }
+    fetch(u, {credentials:'same-origin'}).then(function(res){
+        if(!res.ok){ return res.text().then(function(t){ throw new Error('サーバーエラー('+res.status+') '+((t||'').slice(0,300))); }); }
+        return res.blob();
+    }).then(function(blob){
+        var burl = URL.createObjectURL(blob);
+        if(w){ w.location.href = burl; }
+        else { var a=document.createElement('a'); a.href=burl; a.download='report.pdf'; document.body.appendChild(a); a.click(); a.remove(); }
+        setTimeout(function(){ try{ URL.revokeObjectURL(burl); }catch(e){} }, 120000);
+        _restore();
+    }).catch(function(e){
+        var msg = (e && e.message) ? e.message : String(e);
+        if(w){ try{ w.document.body.innerHTML='<div style="font-family:sans-serif;color:#b00020;padding:40px"><h3>PDF生成に失敗しました</h3><pre style="white-space:pre-wrap">'+msg+'</pre></div>'; }catch(_e){} }
+        alert('PDF生成に失敗しました: '+msg);
+        _restore();
+    });
 }
 
 function handlePrintClick() {
