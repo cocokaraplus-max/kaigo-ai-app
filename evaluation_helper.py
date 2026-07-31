@@ -540,6 +540,7 @@ ALLOWED_UPSERT_KEYS = (
     "new_requests_exist", "new_requests_detail",
     "satisfaction", "service_appropriateness",
     "font_scale",
+    "layout_mode",
     "eval_memo",
 )
 
