@@ -1087,7 +1087,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 <div class="screen-bar">
     <span class="screen-bar-title">書類出力プレビュー — {{ year_month }}</span>
     <div class="screen-bar-btns">
-        <button class="btn-print-now" onclick="handlePrintClick()">印刷 / PDF保存</button>
+        <button class="btn-print-now" onclick="serverPdfOutput(this)" style="background:#0b8043;" title="サーバーで確実にA4・グラフ入りのPDFを生成します（プリンタに依存せず切れません）">📄 PDF出力（確実）</button>
+        <button class="btn-print-now" onclick="handlePrintClick()">印刷 / ブラウザPDF</button>
         <button class="btn-close" onclick="if(window.opener){window.close();}else{window.location.href='/print_output';}">閉じる</button>
     </div>
 </div>
@@ -3114,6 +3115,21 @@ function ovIsGraphChild(el) {
 function ovIsMobile() {
     return window.innerWidth < 794;
 }
+// server-pdf-btn-v1: サーバー(Chromium)で確実なA4・グラフ入りPDFを新規タブで生成
+function serverPdfOutput(btn){
+    try{
+        var u = new URL(window.location.href);
+        u.searchParams.set('pdf','1');
+        var w = window.open(u.toString(), '_blank');
+        if(btn){ var o=btn.textContent; btn.textContent='PDF生成中…'; btn.disabled=true;
+            setTimeout(function(){ btn.textContent=o; btn.disabled=false; }, 8000); }
+        if(!w){ alert('ポップアップがブロックされました。ブラウザのポップアップ許可をご確認ください。'); }
+    }catch(e){
+        var sep = location.search ? '&' : '?';
+        window.open(location.href + sep + 'pdf=1', '_blank');
+    }
+}
+
 function handlePrintClick() {
     // モバイルは印刷ブロック回避のため編集画面（オーバーレイ）を開く
     if (ovIsMobile()) {
