@@ -703,7 +703,7 @@ function poPrintAll() {
         template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
         author: poAuthor, auto_print: '1'
     });
-    params.set('user_names', _names.join(','));
+    if (!(poCareFilter === 'all' && _names.length === document.querySelectorAll('.po-user-chk').length)) { params.set('user_names', _names.join(',')); }
     poShowLoading('印刷データを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }
@@ -742,7 +742,7 @@ function poPreviewAll() {
         template: poTemplate, chart_style: poChartStyle, chart_size: poChartSize,
         author: poAuthor
     });
-    params.set('user_names', _names.join(','));
+    if (!(poCareFilter === 'all' && _names.length === document.querySelectorAll('.po-user-chk').length)) { params.set('user_names', _names.join(',')); }
     poShowLoading('プレビューを準備中…');
     setTimeout(function() { window.location.href = '/print_preview?' + params.toString(); }, 300);
 }
