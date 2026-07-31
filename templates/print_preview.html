@@ -1087,7 +1087,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 <div class="screen-bar">
     <span class="screen-bar-title">書類出力プレビュー — {{ year_month }}</span>
     <div class="screen-bar-btns">
-        <button class="btn-print-now" onclick="serverPdfOutput(this)" style="background:#0b8043;" title="サーバーで確実にA4・グラフ入りのPDFを生成します（プリンタに依存せず切れません）">📄 PDF出力（確実）</button>
+        <button class="btn-print-now" onclick="serverPdfOutput(this)" style="background:#fff;color:#0b8043;border:2px solid #0b8043;box-shadow:0 1px 4px rgba(0,0,0,0.15);" title="サーバーで確実にA4・グラフ入りのPDFを生成します（プリンタに依存せず切れません）">📄 PDF出力（確実）</button>
         <button class="btn-print-now" onclick="handlePrintClick()">印刷 / ブラウザPDF</button>
         <button class="btn-close" onclick="if(window.opener){window.close();}else{window.location.href='/print_output';}">閉じる</button>
     </div>
