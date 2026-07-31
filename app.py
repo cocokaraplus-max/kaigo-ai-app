@@ -27120,9 +27120,12 @@ def api_meeting_transcribe():
 ・役割は不明だが別人だと分かる場合は「発言者A:」「発言者B:」のように仮ラベルで区別する(同一録音内では同じ人物に同じ仮ラベルを一貫して使う)。
 ・数値・固有名詞(利用者名・薬名・部位名)は聞き取れた通りに残す。
 ・要約や解釈はせず、あくまで発話の文字起こしに徹する。
+・聞き取れない/不明瞭な箇所は[聞き取り不能]と書き、推測で単語や文を補わない。
+・無音・雑音のみで発話が無い区間は何も出力しない。存在しない発言を作らない。
+・録音に実際に含まれる発話だけを出力し、一般論や想像で内容を足さない。
 出力は文字起こし本文のみ。前置き・説明・マークダウンは不要。"""
         model = get_generative_model()
-        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt], generation_config={"temperature": 0.1})  # halluc-guard-v1
         text = (resp.text or "").strip()
         # 無音チャンク等でテキストが空でもエラーにしない(連結時に飛ばせるよう空文字返す)
         return jsonify({"status": "success", "transcript": text,
@@ -27275,7 +27278,7 @@ def api_meeting_summarize():
 【文字起こし】
 {transcript[:8000]}"""  # meetings-summarize-form4-v1 / concise: meetings-summarize-concise-v1
         model = get_generative_model()  # meetings-minutes-struct-parse-v1
-        resp = model.generate_content(prompt)
+        resp = model.generate_content(prompt, generation_config={"temperature": 0.2})  # halluc-guard-v1
         minutes = (resp.text or "").strip()
         if not minutes:
             return jsonify({"status": "error", "message": "議事録を生成できませんでした。"})
