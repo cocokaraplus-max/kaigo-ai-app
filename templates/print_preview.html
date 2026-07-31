@@ -2652,47 +2652,82 @@ if (document.body.classList.contains('tmpl-4')) {
     });
 }
 
-// ===== onepage-fit-v1: 文章を短く再生成してA4・1枚に収める =====
+// onepage-fit-v2: 物理A4(297mm)基準で占有率を測る
+function repFitMetrics(page){
+  var cs=getComputedStyle(page);
+  var pt=parseFloat(cs.paddingTop)||0, pb=parseFloat(cs.paddingBottom)||0;
+  var rpr=page.getBoundingClientRect();
+  var pxPerMm=(rpr.width||1)/210;                 // このレンダリングの mm→px
+  var innerTop=rpr.top+pt;
+  var innerBottomFixed=rpr.top+297*pxPerMm-pb;    // 画面上でページが伸びても物理A4基準で下端を固定
+  var innerH=innerBottomFixed-innerTop;
+  var wrap=page.querySelector(':scope > .rep-scale-wrap'); var scope=wrap||page;
+  var kids=Array.prototype.slice.call(scope.children).filter(function(c){
+    return !(c.classList&&(c.classList.contains('no-print')||c.classList.contains('rep-overflow-badge')||c.classList.contains('page-number')));
+  });
+  var maxB=innerTop; kids.forEach(function(k){ var b=k.getBoundingClientRect().bottom; if(b>maxB)maxB=b; });
+  return { innerH:innerH, used:(maxB-innerTop), ratio: innerH>0 ? (maxB-innerTop)/innerH : 0, pxPerMm:pxPerMm };
+}
+
+// ===== onepage-fit-v2: 文章短縮→必要分だけ縮尺(下限80%)で確実にA4・1枚に収める =====
 async function shortenToFit(userName, yearMonth, btn){
   yearMonth = yearMonth || (new URLSearchParams(location.search)).get('year_month') || '';
   var orig = btn ? btn.textContent : '';
+  var TARGET = 0.985;  // 印刷安全マージンを見た目標占有率
+  var FLOOR  = 0.80;   // 縮尺の下限
   function catCells(){ return Array.prototype.slice.call(document.querySelectorAll('[data-cat]')).filter(function(td){ return td.getAttribute('data-user')===userName; }); }
   function evalCells(){ return Array.prototype.slice.call(document.querySelectorAll('.rep-editable')).filter(function(el){ return el.getAttribute('data-user')===userName && el.getAttribute('data-field'); }); }
   function _userPage(){ var pg=(typeof repGetPage==='function')?repGetPage(userName):null; if(!pg){ pg=Array.prototype.slice.call(document.querySelectorAll('.report-page')).filter(function(p){return p.getAttribute('data-user')===userName;})[0]||null; } return pg; }
-  // 通常サイズ(100%)で1枚に収まるか判定。自動縮小に頼らず短縮で収める。
-  function stillOver(){ if(typeof repApplyFont==='function'){ try{ repApplyFont(userName,1); }catch(e){} } var pg=_userPage(); return pg ? (typeof repRectOverflow==='function' && repRectOverflow(pg)) : false; }
+  function ratioAt1(){ if(typeof repApplyFont==='function'){ try{ repApplyFont(userName,1);}catch(e){} } var pg=_userPage(); return pg?repFitMetrics(pg).ratio:0; }
   if(btn){ btn.disabled=true; btn.textContent='調整中…'; }
   var steps=[190,150,120,100,85,72];
-  var fitted=false;
+  var fitted=false, usedScale=1;
   try{
-    if(!stillOver()){ fitted=true; }
+    // (1) まず通常サイズで文章短縮（目標占有率まで）
+    if(ratioAt1() <= TARGET){ fitted=true; }
     for(var i=0;i<steps.length && !fitted;i++){
       var cl=steps[i];
       if(btn){ btn.textContent='調整中… ('+(i+1)+'/'+steps.length+')'; }
-      // モニタリング各カテゴリを短く再生成
       try{
         var mr=await fetch('/api/generate_monitoring',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:userName, month:yearMonth, mode:'category', char_limit:cl})}).then(function(r){return r.json();});
         var cats=(mr&&mr.categories)||{};
         catCells().forEach(function(td){ var c=td.getAttribute('data-cat'); if(cats[c]!=null){ var t=String(cats[c]||''); if(t && t.indexOf('報告はありませんでした')<0){ td.innerText=t; } } });
       }catch(e){}
-      // 変化・課題・特記事項を短縮
       var evs=evalCells();
       for(var k=0;k<evs.length;k++){
-        var el=evs[k]; var cur=(el.innerText||'').replace(/\u00a0/g,' ').trim();
+        var el=evs[k]; var cur=(el.innerText||'').replace(/ /g,' ').trim();
         if(cur && cur!=='（未入力）' && cur.length>cl){
           try{ var sr=await fetch('/api/shorten_text',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text:cur, max_chars:Math.round(cl*0.85)})}).then(function(r){return r.json();}); if(sr&&sr.text){ el.innerText=sr.text; } }catch(e){}
         }
       }
       await new Promise(function(r){ setTimeout(r,220); });
-      if(!stillOver()){ fitted=true; }
+      if(ratioAt1() <= TARGET){ fitted=true; }
     }
-    var msg = fitted ? '✅ 1枚に収まりました。\nこの短くした内容で保存しますか？' : 'これ以上は文章を短くできませんでした。\n現状の内容で保存しますか？（必要ならフォント縮小も併用してください）';
+    // (2) それでも収まらなければ、足りない分だけ縮尺(下限80%)で確実に収める
+    if(!fitted){
+      var pg=_userPage();
+      var r1 = pg ? repFitMetrics(pg).ratio : 1;   // 100%時の占有率
+      if(r1>0){
+        var need = TARGET / r1;
+        usedScale = Math.max(FLOOR, Math.min(1, Math.round(need*100)/100));
+        if(typeof repApplyFont==='function'){ try{ repApplyFont(userName, usedScale);}catch(e){} }
+        var r2 = pg ? repFitMetrics(pg).ratio : 1;  // 縮尺後の占有率
+        if(r2 <= 1.0){ fitted = true; }
+      }
+    }
+    // (3) 保存確認
+    var pct = Math.round(usedScale*100);
+    var msg;
+    if(fitted && usedScale>=1){ msg='✅ 文章の短縮のみで、通常サイズのままA4・1枚に収まりました。\nこの内容で保存しますか？'; }
+    else if(fitted){ msg='✅ A4・1枚に収まりました（文字サイズを'+pct+'%に自動調整）。\nこの内容で保存しますか？'; }
+    else { msg='⚠ 文字'+pct+'%まで調整しましたが、情報量が多くまだ1枚に収まりきりません。\nこの内容で保存しますか？（「原寸2枚」レイアウトの利用もご検討ください）'; }
     if(confirm(msg)){
       var catsObj={}; catCells().forEach(function(td){ var c=td.getAttribute('data-cat'); var t=(td.innerText||'').trim(); if(t!=='今月の報告はありませんでした'){ catsObj[c]=t; } });
       try{ await fetch('/api/save_monitoring',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:userName, month:yearMonth, mode:'category', categories:catsObj, confirm:false, allow_confirmed:true})}); }catch(e){}
-      var payload={user_name:userName, year_month:yearMonth};
-      evalCells().forEach(function(el){ var f=el.getAttribute('data-field'); var t=(el.innerText||'').replace(/\u00a0/g,' ').trim(); if(t==='（未入力）') t=''; payload[f]=t; });
+      var payload={user_name:userName, year_month:yearMonth, font_scale:usedScale};
+      evalCells().forEach(function(el){ var f=el.getAttribute('data-field'); var t=(el.innerText||'').replace(/ /g,' ').trim(); if(t==='（未入力）') t=''; payload[f]=t; });
       try{ await fetch('/api/save_patient_evaluation',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); }catch(e){}
+      if(typeof repApplyFont==='function'){ try{ repApplyFont(userName, usedScale);}catch(e){} }
       alert('保存しました。');
     }
   } finally {
