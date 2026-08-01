@@ -3116,7 +3116,7 @@ function ovIsMobile() {
 }
 // wysiwyg-pdf-v1: 現在のプレビューの見た目そのもの(canvasは画像化)をHTML化してPDF用に渡す
 function _lxBuildPrintHtml(){
-    try{ if(typeof repAutofitAll==='function') repAutofitAll(); }catch(e){}
+    // 見たまま主義：自動縮小(repAutofitAll)は呼ばない。画面の状態をそのまま取り込む。
     var live = document.documentElement;
     var clone = live.cloneNode(true);
     var lcs = live.querySelectorAll('canvas');
