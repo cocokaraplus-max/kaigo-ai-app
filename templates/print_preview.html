@@ -3059,7 +3059,7 @@ function lxBuildCompareTable(userName){
   ];
   var rows = defs.filter(function(d){ return d[2]!==null; });
   if (!rows.length) return null;
-  var html = '<div class="lx-cmp-title">体力測定の推移<span>前回 → 今回</span></div>';
+  var html = '<div class="lx-cmp-title">測定値の比較<span>前回 → 今回</span></div>';
   html += '<table class="lx-cmp"><thead><tr><th class="l">測定項目</th><th>単位</th><th>前回</th><th>今回</th><th>変化</th></tr></thead><tbody>';
   rows.forEach(function(d){
     var name=d[0], unit=d[1], v=d[2], lower=d[3];
