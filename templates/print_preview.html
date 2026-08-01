@@ -2677,12 +2677,21 @@ function repFitMetrics(page){
   window.addEventListener('beforeprint', _fit);
 })();
 // onepage-fit-v2: 印刷/PDF前に全レポート(2枚版の各ページ含む)を安全内寸へ確実に収める(非破壊・縮尺のみ・下限80%)
+// screen-fit-v3: 全ページを先にrep-scale-wrapで包み、画面でも自動フィットを確実に効かせる
+function repWrapAllPages(){
+  var pages=document.querySelectorAll('.report-page');
+  Array.prototype.forEach.call(pages, function(page){
+    if(page.classList.contains('rep-image-page')) return;
+    try{ if(typeof repEnsureScaleWrap==='function') repEnsureScaleWrap(page); }catch(e){}
+  });
+}
 function repAutofitAll(){
   var FLOOR=0.80, TARGET=0.95;   // 目標占有率95%（下端に安全余白）。素の状態から測って確実に縮める
   var pages=document.querySelectorAll('.report-page');
   Array.prototype.forEach.call(pages, function(page){
     if(page.classList.contains('rep-image-page')) return;
     var wrap=page.querySelector(':scope > .rep-scale-wrap');
+    if(!wrap){ try{ if(typeof repEnsureScaleWrap==='function') wrap=repEnsureScaleWrap(page); }catch(e){} }
     if(!wrap) return;
     // 既存の縮尺を一旦解除し、真のコンテンツ量で測る（cur依存の取りこぼしを防ぐ）
     wrap.style.transform=''; wrap.style.width='';
@@ -3022,6 +3031,7 @@ function autoCompactPages() {
 
 // ページロード完了後・グラフ描画後に実行
 window.addEventListener('load', function() {
+    try{ repWrapAllPages(); }catch(e){}
     setTimeout(autoCompactPages, 800);
     // 第1段階: 自動縮小の後、なお収まらないページを検知してバッジ表示
     setTimeout(detectOverflowPages, 1100);
