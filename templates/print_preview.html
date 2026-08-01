@@ -3756,9 +3756,9 @@ function ovConfirmPrint() {
 .report-page.lx-rich .rep-special-col{ width:100% !important; max-width:100% !important; }
 .report-page.lx-rich .rep-radar-wrap{ max-width:150mm !important; margin:0 auto 2mm; }
 .report-page.lx-rich .rep-radar-canvas{ height:104mm !important; }
-.report-page.lx-rich .rep-special-col > .rep-resizable,
-.report-page.lx-rich .rep-special-col .rep-fitness-charts,
-.report-page.lx-rich .rep-special-col .rep-fitness-note{ display:none !important; }
+.report-page.lx-rich .rep-fitness-charts,
+.report-page.lx-rich .rep-fitness-note,
+.report-page.lx-rich .rep-special-col > .rep-resizable{ display:none !important; }
 .lx-cmp-title{ font-size:11pt; font-weight:800; color:var(--accent,#444441); border-left:4px solid var(--accent,#444441); padding-left:8px; margin:2mm 0 2.5mm; display:flex; align-items:baseline; gap:8px; }
 .lx-cmp-title span{ font-size:8pt; font-weight:400; color:#8a94a0; }
 table.lx-cmp{ width:100%; border-collapse:collapse; font-size:9.5pt; }
@@ -3785,7 +3785,8 @@ table.lx-cmp td.chg.flat{ color:#8a94a0; }
     'rep-twocol':'TEXT','rep-monitoring-title':'TEXT','rep-monitoring-table':'TEXT',
     'rep-fitness-title':'GRAPH','rep-resizable':'GRAPH','rep-fitness-note':'GRAPH',
     'rep-graph-special-wrapper':'GRAPH','rep-fitness-charts':'GRAPH',
-    'rep-special-container':'SPECIAL'
+    'rep-special-container':'SPECIAL',
+    'lx-compare-table-wrap':'SPECIAL'
   };
   // レイアウト定義：ページごとのグループ順
   var LAYOUTS = {
