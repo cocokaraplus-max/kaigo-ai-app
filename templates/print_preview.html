@@ -3029,9 +3029,79 @@ function autoCompactPages() {
     });
 }
 
+
+// ===== lx-compare-table-v1: 体力測定「前回→今回」比較表（2枚リッチ時に表示） =====
+function lxFitFindRd(userName){
+  var arr = window.chartData || [];
+  for (var i=0;i<arr.length;i++){ if (arr[i] && arr[i].patient && arr[i].patient.user_name===userName) return arr[i]; }
+  return null;
+}
+function lxNum(v){ if (v===null||v===undefined||v==='') return null; var n=parseFloat(v); return isNaN(n)?null:n; }
+function lxLastTwo(arr, field){
+  var vals=[]; (arr||[]).forEach(function(x){ var n=lxNum(x[field]); if (n!==null) vals.push(n); });
+  if (!vals.length) return null;
+  return { now: vals[vals.length-1], prev: vals.length>=2 ? vals[vals.length-2] : null };
+}
+function lxTrim(x){ if (x===null) return '—'; var s=(Math.round(x*10)/10); return String(s); }
+function lxBuildCompareTable(userName){
+  var rd = lxFitFindRd(userName); if (!rd) return null;
+  var W = rd.weights || [], F = rd.fitness || [];
+  var defs = [
+    ['体重','kg', lxLastTwo(W,'weight_kg'), false],
+    ['握力（右）','kg', lxLastTwo(F,'grip_right'), false],
+    ['握力（左）','kg', lxLastTwo(F,'grip_left'), false],
+    ['TUG','秒', lxLastTwo(F,'tug_sec'), true],
+    ['CS-30','回', lxLastTwo(F,'sit_stand_30sec'), false],
+    ['5m歩行（通常）','秒', lxLastTwo(F,'walk_5m_sec'), true],
+    ['5m歩行（最大）','秒', lxLastTwo(F,'walk_5m_max_sec'), true],
+    ['片脚立位（右）','秒', lxLastTwo(F,'standing_balance_right'), false],
+    ['片脚立位（左）','秒', lxLastTwo(F,'standing_balance_left'), false]
+  ];
+  var rows = defs.filter(function(d){ return d[2]!==null; });
+  if (!rows.length) return null;
+  var html = '<div class="lx-cmp-title">測定値の比較<span>前回 → 今回</span></div>';
+  html += '<table class="lx-cmp"><thead><tr><th class="l">測定項目</th><th>単位</th><th>前回</th><th>今回</th><th>変化</th></tr></thead><tbody>';
+  rows.forEach(function(d){
+    var name=d[0], unit=d[1], v=d[2], lower=d[3];
+    var prev=v.prev, now=v.now, chg='—', cls='flat';
+    if (prev!==null){
+      var diff = Math.round((now-prev)*10)/10;
+      if (diff===0){ chg='±0'; cls='flat'; }
+      else {
+        var improved = lower ? (diff<0) : (diff>0);
+        var sign = diff>0 ? '+' : '';
+        chg = (improved?'▲ ':'▼ ') + (lower&&improved?'改善 ':'') + sign + diff;
+        cls = improved ? 'up' : 'down';
+      }
+    }
+    html += '<tr><td class="l">'+name+'</td><td class="u">'+unit+'</td><td>'+lxTrim(prev)+'</td><td class="now">'+lxTrim(now)+'</td><td class="chg '+cls+'">'+chg+'</td></tr>';
+  });
+  html += '</tbody></table>';
+  var wrap = document.createElement('div');
+  wrap.className = 'lx-compare-table-wrap';
+  wrap.innerHTML = html;
+  return wrap;
+}
+function lxInjectCompareTables(){
+  var pages = document.querySelectorAll('.report-page[data-user]');
+  Array.prototype.forEach.call(pages, function(page){
+    if (page.classList.contains('rep-image-page')) return;
+    if (page.querySelector('.lx-compare-table-wrap')) return;
+    var user = page.getAttribute('data-user');
+    var tbl = lxBuildCompareTable(user); if (!tbl) return;
+    var sc = page.querySelector('.rep-special-container');
+    if (sc && sc.parentNode){ sc.parentNode.insertBefore(tbl, sc); }
+    else {
+      var col = page.querySelector('.rep-special-col') || page.querySelector('.rep-graph-special-wrapper');
+      if (col) col.appendChild(tbl);
+    }
+  });
+}
+
 // ページロード完了後・グラフ描画後に実行
 window.addEventListener('load', function() {
     try{ repWrapAllPages(); }catch(e){}
+    try{ lxInjectCompareTables(); }catch(e){}
     setTimeout(autoCompactPages, 800);
     // 第1段階: 自動縮小の後、なお収まらないページを検知してバッジ表示
     setTimeout(detectOverflowPages, 1100);
@@ -3678,6 +3748,30 @@ function ovConfirmPrint() {
 /* 2枚目 継続ヘッダー */
 .lx-page2-header{display:flex;justify-content:space-between;align-items:center;background:var(--accent,#444441);color:#fff;font-size:12pt;font-weight:800;letter-spacing:.06em;padding:4mm 6mm;margin:-14mm -14mm 5mm;}
 .lx-page2-header .lx-p2sub{font-size:8.5pt;font-weight:400;letter-spacing:0;color:#e6e6e2;}
+/* lx-compare-table-v1: 前回→今回 比較表（2枚リッチ時に表示） */
+.lx-compare-table-wrap{ display:none; margin-top:4mm; }
+.report-page.lx-rich .lx-compare-table-wrap{ display:block; }
+.report-page.lx-rich .rep-graph-special-wrapper{ display:block !important; }
+.report-page.lx-rich .rep-graph-col{ width:100% !important; max-width:100% !important; margin-bottom:4mm; }
+.report-page.lx-rich .rep-special-col{ width:100% !important; max-width:100% !important; }
+.report-page.lx-rich .rep-radar-wrap{ max-width:150mm !important; margin:0 auto 2mm; }
+.report-page.lx-rich .rep-radar-canvas{ height:104mm !important; }
+.report-page.lx-rich .rep-fitness-charts,
+.report-page.lx-rich .rep-fitness-note,
+.report-page.lx-rich .rep-special-col > .rep-resizable{ display:none !important; }
+.lx-cmp-title{ font-size:11pt; font-weight:800; color:var(--accent,#444441); border-left:4px solid var(--accent,#444441); padding-left:8px; margin:2mm 0 2.5mm; display:flex; align-items:baseline; gap:8px; }
+.lx-cmp-title span{ font-size:8pt; font-weight:400; color:#8a94a0; }
+table.lx-cmp{ width:100%; border-collapse:collapse; font-size:9.5pt; }
+table.lx-cmp thead th{ background:var(--accent,#444441); color:#fff; font-weight:700; padding:2.2mm 3mm; font-size:8.5pt; text-align:center; }
+table.lx-cmp thead th.l{ text-align:left; }
+table.lx-cmp tbody td{ border:1px solid #dfe3e7; padding:1.9mm 3mm; text-align:center; }
+table.lx-cmp tbody td.l{ text-align:left; font-weight:700; color:#333; background:#f7f9fb; }
+table.lx-cmp tbody td.u{ color:#8a94a0; font-size:8pt; }
+table.lx-cmp tbody td.now{ font-weight:800; color:var(--accent,#444441); font-size:10.5pt; }
+table.lx-cmp td.chg{ font-weight:800; }
+table.lx-cmp td.chg.up{ color:#1a9e5f; }
+table.lx-cmp td.chg.down{ color:#d0672f; }
+table.lx-cmp td.chg.flat{ color:#8a94a0; }
 @media print{ .lx-ctrl,.lx-bulk{display:none !important;} }
 </style>
 <script id="lx-script">
@@ -3691,7 +3785,8 @@ function ovConfirmPrint() {
     'rep-twocol':'TEXT','rep-monitoring-title':'TEXT','rep-monitoring-table':'TEXT',
     'rep-fitness-title':'GRAPH','rep-resizable':'GRAPH','rep-fitness-note':'GRAPH',
     'rep-graph-special-wrapper':'GRAPH','rep-fitness-charts':'GRAPH',
-    'rep-special-container':'SPECIAL'
+    'rep-special-container':'SPECIAL',
+    'lx-compare-table-wrap':'SPECIAL'
   };
   // レイアウト定義：ページごとのグループ順
   var LAYOUTS = {
