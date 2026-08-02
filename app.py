@@ -584,8 +584,6 @@ def _renraku_to_line_text(note, vitals, patient_name):
     """連絡帳を家族向けテキストに整形する。"""
     items = (note or {}).get('items') or {}
     lines = []
-    lines.append(f'{patient_name}様の連絡帳です。')
-    lines.append('')
 
     # 行った場所
     places = _rk_chips_text(items.get('places'))
@@ -615,13 +613,14 @@ def _renraku_to_line_text(note, vitals, patient_name):
     if training:
         lines.append(f'【機能訓練・運動】{training}')
 
-    # バイタル(数値テキスト)
+    # バイタル(数値テキスト) — 体温は各行、血圧(＋脈拍・SpO2)は各行で縦に並べる
     if vitals:
-        vlines = []
+        temp_lines = []
+        other_lines = []
         for v in vitals:
-            seg = []
             if v.get('temperature') is not None:
-                seg.append(f"体温{v.get('temperature')}")
+                temp_lines.append(f"・体温{v.get('temperature')}")
+            seg = []
             if v.get('bp_high') is not None and v.get('bp_low') is not None:
                 seg.append(f"血圧{v.get('bp_high')}/{v.get('bp_low')}")
             if v.get('pulse') is not None:
@@ -629,7 +628,8 @@ def _renraku_to_line_text(note, vitals, patient_name):
             if v.get('spo2') is not None:
                 seg.append(f"SpO2 {v.get('spo2')}%")
             if seg:
-                vlines.append('・' + '、'.join(seg))
+                other_lines.append('・' + '、'.join(seg))
+        vlines = temp_lines + other_lines
         if vlines:
             lines.append('')
             lines.append('【体調・バイタル】')

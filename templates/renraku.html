@@ -46,6 +46,7 @@
 .rk-row { display:flex; gap:10px; flex-wrap:wrap; }
 .rk-input { width:100%; padding:8px 10px; border:1px solid #dadce0; border-radius:8px; font-size:0.9rem; box-sizing:border-box; }
 .rk-textarea { width:100%; padding:9px 11px; border:1px solid #dadce0; border-radius:8px; font-size:0.9rem; box-sizing:border-box; min-height:80px; resize:vertical; font-family:inherit; }
+#rk-family { min-height:160px; line-height:1.6; }  /* renraku-family-bigger-v1 */
 .rk-train-detail { margin-top:10px; }
 .rk-train-row { border:1px solid #e8eaed; border-radius:10px; padding:10px; margin-bottom:8px; background:#fafbfc; }
 .rk-train-row .rk-train-top { display:flex; gap:8px; margin-bottom:6px; align-items:center; }
@@ -465,6 +466,7 @@ async function rkGenFamily(){
       const ta=document.getElementById('rk-family');
       if(ta.value.trim() && !confirm('既存の文章を生成結果で置き換えますか？')){ }
       else { ta.value=data.message_text||''; }
+      try{ ta.dispatchEvent(new Event('input')); }catch(_e){}  /* 生成後に自動で広げる */
     } else { alert(data.message||'生成できませんでした'); }
   }catch(e){ alert('生成に失敗しました：'+e); }
   finally{ btn.disabled=false; btn.innerHTML=old; }
