@@ -223,6 +223,22 @@ body.ss-open .bottom-nav{display:none !important}
     margin:10px 0; font-size:0.82rem; line-height:1.7;
 }
 .gd-warn b { color:#e65100; }
+
+/* ===== manual-tabs-v1 : カテゴリタブ ===== */
+.mtab-bar{position:sticky;top:0;z-index:50;display:flex;gap:8px;overflow-x:auto;
+  padding:10px 4px;margin:0 -4px 14px;background:#f2f4f8;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.mtab-bar::-webkit-scrollbar{display:none;}
+.mtab{flex:0 0 auto;display:flex;align-items:center;gap:6px;white-space:nowrap;
+  border:2px solid #e3e8f2;background:#fff;color:#5f6368;border-radius:22px;
+  padding:8px 15px;font-family:'M PLUS Rounded 1c','Noto Sans JP',sans-serif;
+  font-size:0.82rem;font-weight:800;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  box-shadow:0 2px 8px rgba(0,0,0,0.05);transition:all .15s;}
+.mtab .material-symbols-outlined{font-size:18px;}
+.mtab:active{transform:scale(0.96);}
+.mtab.active{background:var(--mc,#1a73e8);border-color:var(--mc,#1a73e8);color:#fff;
+  box-shadow:0 4px 14px rgba(26,115,232,0.30);}
+.toc-a.toc-active{outline:2px solid #1a73e8;outline-offset:1px;}
 </style>
 {% endblock %}
 
@@ -1664,6 +1680,26 @@ body.ss-open .bottom-nav{display:none !important}
             <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
             <div class="mb-text">TASUKARUが生成したモニタリング文章は、施設の既存書式や他のシステムにそのままコピペして使えるよ📋<br>会社指定のExcelやWordに貼り付けるだけで大幅に時短！</div>
         </div>
+        <!-- monitoring-origin-v1 : モニタリング文章の作られ方を説明 -->
+        <div class="point-box" style="border-left-color:#2d7a4f;background:#f1f8f3;">
+            <div class="point-box-title" style="color:#2d7a4f;"><span class="material-symbols-outlined" style="font-size:18px;">insights</span>そもそもモニタリング文章はどう作られる？</div>
+            <div style="font-size:0.8rem;color:#37474f;line-height:1.8;">
+                ゼロから書く必要はありません。毎日の<b>「記録入力」</b>でたまった介護記録を、<b>AIが読み取って自動でモニタリング用に要約</b>します。さらに<b>「評価（アセスメント）」</b>で入力した内容も合わせて、TASUKARUからそのまま<b>モニタリング報告書</b>として出力できます📄
+            </div>
+        </div>
+        <div class="flow">
+            <div class="flow-step"><div class="flow-num" style="background:#ff9800;"><span class="material-symbols-outlined" style="font-size:16px;color:#fff;">edit_note</span></div><div class="flow-lbl">日々の<br>記録入力</div></div>
+            <div class="flow-arr">→</div>
+            <div class="flow-step"><div class="flow-num" style="background:#2d7a4f;"><span class="material-symbols-outlined" style="font-size:16px;color:#fff;">auto_awesome</span></div><div class="flow-lbl">AIが<br>文章を生成</div></div>
+            <div class="flow-arr">→</div>
+            <div class="flow-step"><div class="flow-num" style="background:#c2185b;"><span class="material-symbols-outlined" style="font-size:16px;color:#fff;">assignment</span></div><div class="flow-lbl">評価の<br>内容も反映</div></div>
+            <div class="flow-arr">→</div>
+            <div class="flow-step"><div class="flow-num" style="background:#1a73e8;"><span class="material-symbols-outlined" style="font-size:16px;color:#fff;">description</span></div><div class="flow-lbl">モニタリング<br>報告書</div></div>
+        </div>
+        <div class="mb" style="border-left-color:#2d7a4f;">
+            <img src="/static/tasukaru_sestumei.png" alt="タスカルくん" style="background:#1558d0;border-radius:50%;width:44px;height:44px;object-fit:contain;flex-shrink:0;">
+            <div class="mb-text">つまり、<b>毎日の記録と評価を入れておくほど</b>、モニタリング報告書づくりがどんどん楽になるよ✨ そして完成した文章は、下の手順で<b>他の書式にもコピペ</b>できるんだ📋</div>
+        </div>
         <div class="steps">
             <div class="step">
                 <div class="step-n" style="background:#2d7a4f;">1</div>
@@ -2381,5 +2417,45 @@ body.ss-open .bottom-nav{display:none !important}
 
 {% block extra_script %}
 <script src="/static/js/slideshow.js"></script>
+<script>
+/* manual-tabs-v1 : もくじ連動カテゴリタブ（テイスト非変更・表示切替のみ） */
+(function(){
+  var CATS=[
+    {key:'basic',label:'基本操作',icon:'touch_app',color:'#1a73e8',ids:['s-login','s-top','s-input','s-records']},
+    {key:'vitals',label:'バイタル',icon:'ecg_heart',color:'#dc2626',ids:['s-vitals-input','s-bulk-temp','s-vitals-window','s-vitals-recheck','s-vitals-weekday','s-vitals-trouble']},
+    {key:'doc',label:'記録・書類',icon:'assignment',color:'#00897b',ids:['s-assess','s-life-check','s-monitoring-copyuse','s-print-output']},
+    {key:'comm',label:'連絡・タスク',icon:'forum',color:'#e91e63',ids:['s-board','s-tasks']},
+    {key:'tools',label:'便利機能',icon:'auto_awesome',color:'#9c27b0',ids:['s-tts','s-bookmark','s-customize','s-disaster','s-line-start']},
+    {key:'admin',label:'管理・情報',icon:'shield',color:'#5f6368',ids:['s-admin','s-updates']}
+  ];
+  var id2cat={}; CATS.forEach(function(c){c.ids.forEach(function(id){id2cat[id]=c.key;});});
+  function init(){
+    var gpad=document.querySelector('.gpad'); if(!gpad||gpad.__mtab)return; gpad.__mtab=1;
+    var secs=Array.prototype.filter.call(gpad.children,function(el){return el.classList&&el.classList.contains('sc')&&el.id;});
+    if(!secs.length)return;
+    var bar=document.createElement('div'); bar.className='mtab-bar';
+    CATS.forEach(function(c){var b=document.createElement('button');b.className='mtab';b.dataset.cat=c.key;
+      b.style.setProperty('--mc',c.color);
+      b.innerHTML='<span class="material-symbols-outlined">'+c.icon+'</span>'+c.label;
+      b.addEventListener('click',function(){activate(c.key);});bar.appendChild(b);});
+    var toc=gpad.querySelector('.toc');
+    if(toc&&toc.nextSibling){gpad.insertBefore(bar,toc.nextSibling);}else{gpad.insertBefore(bar,gpad.firstChild);}
+    function activate(key,targetId){
+      secs.forEach(function(s){s.style.display=(id2cat[s.id]===key)?'':'none';});
+      Array.prototype.forEach.call(bar.children,function(b){b.classList.toggle('active',b.dataset.cat===key);});
+      document.querySelectorAll('.toc-a').forEach(function(a){
+        var id=(a.getAttribute('href')||'').replace('#','');a.classList.toggle('toc-active',id2cat[id]===key);});
+      if(targetId){var t=document.getElementById(targetId);if(t)setTimeout(function(){t.scrollIntoView({behavior:'smooth',block:'start'});},30);}
+      else{try{bar.scrollIntoView({behavior:'smooth',block:'nearest'});}catch(e){}}
+    }
+    document.querySelectorAll('.toc-a').forEach(function(a){
+      a.addEventListener('click',function(e){var id=(a.getAttribute('href')||'').replace('#','');
+        if(id2cat[id]){e.preventDefault();activate(id2cat[id],id);}});});
+    activate('basic');
+    window.__manualActivate=activate;
+  }
+  if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',init);}else{init();}
+})();
+</script>
 {% endblock %}
 
