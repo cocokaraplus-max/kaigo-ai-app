@@ -153,6 +153,20 @@
   min-height: 72px;
 }
 
+/* goal-period-config-v1 */
+.gp-gear{background:none;border:0;cursor:pointer;font-size:.95rem;padding:0 2px;line-height:1;vertical-align:middle;}
+.gpc-back{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:12000;display:none;align-items:center;justify-content:center;padding:16px;}
+.gpc-back.show{display:flex;}
+.gpc{background:#fff;border-radius:14px;max-width:460px;width:100%;padding:18px;box-shadow:0 10px 40px rgba(0,0,0,.3);}
+.gpc h3{font-size:1.02rem;margin:0 0 4px;}
+.gpc .sub{font-size:.76rem;color:#5f6368;margin-bottom:12px;line-height:1.6;}
+.gpc-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
+.gpc-row .cat{width:92px;font-weight:700;font-size:.85rem;}
+.gpc-row label{font-size:.82rem;color:#5f6368;display:flex;align-items:center;gap:4px;}
+.gpc-row input{width:56px;padding:6px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;font-size:.9rem;text-align:right;}
+.gpc-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;}
+.gpc-actions button{border-radius:9px;padding:9px 16px;font-weight:700;cursor:pointer;font-family:inherit;border:1px solid #dfe3e8;background:#fff;color:#5f6368;}
+.gpc-actions .save{background:#1a73e8;color:#fff;border:none;}
 /* 期間グループ */
 .period-group {
   display: flex;
@@ -517,7 +531,17 @@
 
   <!-- 目標設定 -->
     <div class="profile-section">
-      <div class="profile-section-header">🎯 目標設定</div>
+      <div class="gpc-back" id="gpc-back">
+  <div class="gpc">
+    <h3>⚙️ 目標期間の自動入力設定</h3>
+    <div class="sub">開始日を入れた時に自動で入る終了日までの月数を、区分ごとに設定します（終了＝開始＋月数−1日）。この施設に保存されます。</div>
+    <div class="gpc-row"><span class="cat">事業対象者</span><label>短期<input type="number" id="gpc-jigyou-short" min="1" max="60">ヶ月</label><label>長期<input type="number" id="gpc-jigyou-long" min="1" max="60">ヶ月</label></div>
+    <div class="gpc-row"><span class="cat">要支援</span><label>短期<input type="number" id="gpc-youshien-short" min="1" max="60">ヶ月</label><label>長期<input type="number" id="gpc-youshien-long" min="1" max="60">ヶ月</label></div>
+    <div class="gpc-row"><span class="cat">要介護</span><label>短期<input type="number" id="gpc-yokaigo-short" min="1" max="60">ヶ月</label><label>長期<input type="number" id="gpc-yokaigo-long" min="1" max="60">ヶ月</label></div>
+    <div class="gpc-actions"><button type="button" onclick="closeGoalPeriodConfig()">閉じる</button><button type="button" class="save" id="gpc-save" onclick="saveGoalPeriodConfig()">保存</button></div>
+  </div>
+</div>
+<div class="profile-section-header">🎯 目標設定</div>
       <div class="profile-section-body">
         <!-- 事業対象者・要支援用（2軸） -->
         <div id="goal-simple" class="form-grid full" style="display:none;">
@@ -542,7 +566,7 @@
               placeholder="例: 手すりを使って廊下を安全に歩くことができる">{{ selected.short_goal if selected and selected.short_goal else '' }}</textarea>
           </div>
           <div class="form-group">
-            <label>短期目標期間</label>
+            <label>短期目標期間 <button type="button" class="gp-gear" onclick="openGoalPeriodConfig()" title="区分別 自動入力期間の設定">⚙️</button></label>
             <div class="period-group">
               <input type="date" id="short_goal_period_from" name="short_goal_period_from"
                 value="{{ selected.short_goal_period_from if selected else '' }}">
@@ -581,7 +605,7 @@
           </div>
         </div>
         <div class="form-group">
-          <label>短期目標期間</label>
+          <label>短期目標期間 <button type="button" class="gp-gear" onclick="openGoalPeriodConfig()" title="区分別 自動入力期間の設定">⚙️</button></label>
           <div class="period-group">
             <input type="date" id="kaigo_short_goal_period_from" name="short_goal_period_from"
               value="{{ selected.short_goal_period_from if selected else '' }}">
@@ -739,10 +763,11 @@ document.addEventListener('DOMContentLoaded', () => {
   updateAge();
   updateGoalSection();
   document.getElementById('care_level').addEventListener('change', updateGoalSection);
-  setupGoalPeriodAuto('short_goal_period_from', 'short_goal_period_to', 3);
-  setupGoalPeriodAuto('long_goal_period_from', 'long_goal_period_to', 6);
-  setupGoalPeriodAuto('kaigo_short_goal_period_from', 'kaigo_short_goal_period_to', 3);
-  setupGoalPeriodAuto('kaigo_long_goal_period_from', 'kaigo_long_goal_period_to', 6);
+  loadGoalPeriodCfg();
+  setupGoalPeriodAuto('short_goal_period_from', 'short_goal_period_to', 'short');
+  setupGoalPeriodAuto('long_goal_period_from', 'long_goal_period_to', 'long');
+  setupGoalPeriodAuto('kaigo_short_goal_period_from', 'kaigo_short_goal_period_to', 'short');
+  setupGoalPeriodAuto('kaigo_long_goal_period_from', 'kaigo_long_goal_period_to', 'long');
 });
 
 function updateGoalSection() {
@@ -752,11 +777,12 @@ function updateGoalSection() {
   document.getElementById('goal-simple').style.display = isSimple ? '' : 'none';
   document.getElementById('goal-kaigo').style.display = isKaigo ? '' : 'none';
 }
-function setupGoalPeriodAuto(fromId, toId, months) {
+function setupGoalPeriodAuto(fromId, toId, kind) {
   const fromEl = document.getElementById(fromId);
   if (!fromEl) return;
   function autoFill() {
     if (!fromEl.value) return;
+    const months = goalPeriodMonths(kind);
     const toEl = document.getElementById(toId);
     if (toEl) {
       const parts = fromEl.value.split('-');
@@ -781,6 +807,47 @@ function setupGoalPeriodAuto(fromId, toId, months) {
   fromEl.addEventListener('change', autoFill);
   fromEl.addEventListener('blur', autoFill);
 }
+
+// goal-period-config-v1: 施設別の自動入力月数(区分別)
+var _GP_DEF = {jigyou:{short:6,long:12}, youshien:{short:3,long:6}, yokaigo:{short:3,long:6}};
+function goalPeriodCategory(){
+  var el=document.getElementById('care_level'); var cl=el?el.value:'';
+  if(cl.indexOf('要介護')===0) return 'yokaigo';
+  if(cl.indexOf('要支援')===0) return 'youshien';
+  return 'jigyou';
+}
+function goalPeriodMonths(kind){
+  var cat=goalPeriodCategory();
+  var cfg=(window._goalPeriodCfg||{})[cat]||{};
+  var v=cfg[kind];
+  return (v&&v>0)?v:_GP_DEF[cat][kind];
+}
+async function loadGoalPeriodCfg(){
+  try{ var r=await fetch('/api/goal_period_config'); var j=await r.json(); if(j.status==='success') window._goalPeriodCfg=j.config; }catch(e){}
+}
+window.openGoalPeriodConfig=function(){
+  var cfg=window._goalPeriodCfg||{};
+  ['jigyou','youshien','yokaigo'].forEach(function(cat){
+    var c=cfg[cat]||_GP_DEF[cat];
+    document.getElementById('gpc-'+cat+'-short').value=(c.short!=null?c.short:_GP_DEF[cat].short);
+    document.getElementById('gpc-'+cat+'-long').value=(c.long!=null?c.long:_GP_DEF[cat].long);
+  });
+  document.getElementById('gpc-back').classList.add('show');
+};
+window.closeGoalPeriodConfig=function(){ document.getElementById('gpc-back').classList.remove('show'); };
+window.saveGoalPeriodConfig=async function(){
+  var cfg={};
+  ['jigyou','youshien','yokaigo'].forEach(function(cat){
+    cfg[cat]={short:parseInt(document.getElementById('gpc-'+cat+'-short').value,10)||0, long:parseInt(document.getElementById('gpc-'+cat+'-long').value,10)||0};
+  });
+  var btn=document.getElementById('gpc-save'); btn.disabled=true; var old=btn.textContent; btn.textContent='保存中…';
+  try{
+    var r=await fetch('/api/goal_period_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:cfg})});
+    var j=await r.json();
+    if(j.status==='success'){ window._goalPeriodCfg=j.config; btn.textContent='保存しました'; setTimeout(function(){btn.textContent=old;btn.disabled=false;window.closeGoalPeriodConfig();},800); }
+    else { alert(j.message||'保存に失敗しました'); btn.textContent=old;btn.disabled=false; }
+  }catch(e){ alert('通信エラー'); btn.textContent=old;btn.disabled=false; }
+};
 
 // 利用者選択
 function loadPatient(id) {

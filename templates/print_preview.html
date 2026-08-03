@@ -103,6 +103,7 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .rep-goal-table th { background: var(--th-bg); font-size: 7.5pt; padding: 3px 4px; border: 1px solid #bbb; text-align: center; font-weight: 700; }
 .rep-goal-table td { font-size: 7.5pt; padding: 3px 4px; border: 1px solid #bbb; }
 .rep-goal-table td.ach { text-align: center; font-weight: 700; }
+.rep-goal-period { font-size: 7pt; color: #555; padding: 2px 4px 3px; }  /* goal-period-config-v1 */
 .ach-cont { color: var(--accent); }
 .ach-done { color: #34a853; }
 .ach-fail { color: #ea4335; }
@@ -1225,6 +1226,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     <div class="rep-goals-row">
         <div class="rep-goal-box">
             <div class="rep-goal-title">【短期目標】</div>
+            {% if ga.get('short_goal_period_from') or ga.get('short_goal_period_to') %}<div class="rep-goal-period">期間：{{ ga.get('short_goal_period_from','') }} 〜 {{ ga.get('short_goal_period_to','') }}</div>{% endif %}
             <table class="rep-goal-table">
                 {% if is_kaigo %}
                 {% for label, goal_key, status_key, cont_key, new_key in [
@@ -1266,6 +1268,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         </div>
         <div class="rep-goal-box">
             <div class="rep-goal-title">【長期目標】</div>
+            {% if ga.get('long_goal_period_from') or ga.get('long_goal_period_to') %}<div class="rep-goal-period">期間：{{ ga.get('long_goal_period_from','') }} 〜 {{ ga.get('long_goal_period_to','') }}</div>{% endif %}
             <table class="rep-goal-table">
                 {% if is_kaigo %}
                 {% for label, goal_key, status_key, cont_key, new_key in [
