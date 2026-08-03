@@ -27388,7 +27388,9 @@ def api_meeting_transcribe():
         if ext == "mpeg":
             ext = "mp3"
         audio_url = ""
-        if session_id:
+        # meetings-audio-nostore-v1: アップロード音声(WAV等)はStorageに保存しない(容量対策)。録音のみ保持。
+        _no_store = (request.form.get("no_store") or "") == "1"
+        if session_id and not _no_store:
             try:
                 supabase = get_supabase()
                 path = f"{f_code}/meetings/{session_id}/{chunk_index:04d}.{ext}"
@@ -28828,6 +28830,105 @@ def api_meeting_recover_list():
             })
         sessions.sort(key=lambda s: (s.get("latest") or ""), reverse=True)
         return jsonify({"status": "success", "count": len(sessions), "sessions": sessions[:30]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# meetings-audio-retention-v1: 会議音声の容量管理(整理/統計)。最新Nセッションのみ保持。
+_MTG_AUDIO_KEEP = 5
+
+
+def _mtg_list_sessions(supabase, f_code):
+    """{f_code}/meetings 配下の録音セッションを新しい順に返す。
+    各: session_id, chunks, bytes, latest, saved。"""
+    base = f"{f_code}/meetings"
+    try:
+        folders = supabase.storage.from_("assessment-audio").list(base) or []
+    except Exception:
+        folders = []
+    saved_ids = set()
+    try:
+        sv = supabase.table("meetings").select("audio_session_id").eq("facility_code", f_code).execute()
+        for r in (sv.data or []):
+            if r.get("audio_session_id"):
+                saved_ids.add(r["audio_session_id"])
+    except Exception:
+        pass
+    out = []
+    for fo in folders:
+        name = (fo.get("name") or "").strip()
+        if not name or name.startswith("."):
+            continue
+        try:
+            files = supabase.storage.from_("assessment-audio").list(f"{base}/{name}") or []
+        except Exception:
+            files = []
+        afiles = _mtg_audio_only(files)
+        if not afiles:
+            continue
+        b = 0
+        for x in afiles:
+            try:
+                b += int((x.get("metadata") or {}).get("size") or 0)
+            except Exception:
+                pass
+        times = [t for t in (_mtg_file_time(x) for x in afiles) if t]
+        out.append({"session_id": name, "chunks": len(afiles), "bytes": b,
+                    "latest": max(times) if times else "", "saved": name in saved_ids})
+    out.sort(key=lambda z: (z.get("latest") or ""), reverse=True)
+    return out
+
+
+@app.route("/api/meeting/audio_stats", methods=["GET"])
+@login_required
+def api_meeting_audio_stats():
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        sessions = _mtg_list_sessions(get_supabase(), f_code)
+        old = sessions[_MTG_AUDIO_KEEP:]
+        return jsonify({"status": "success", "keep": _MTG_AUDIO_KEEP,
+                        "count": len(sessions),
+                        "total_bytes": sum(z["bytes"] for z in sessions),
+                        "deletable_count": len(old),
+                        "deletable_bytes": sum(z["bytes"] for z in old)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/meeting/audio_cleanup", methods=["POST"])
+@login_required
+def api_meeting_audio_cleanup():
+    """最新5セッションを残し、それより古い会議音声を削除(管理者のみ)。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者のみ実行できます"}), 403
+        sessions = _mtg_list_sessions(supabase, f_code)
+        old = sessions[_MTG_AUDIO_KEEP:]
+        base = f"{f_code}/meetings"
+        deleted, freed = 0, 0
+        for z in old:
+            sid = z["session_id"]
+            try:
+                files = supabase.storage.from_("assessment-audio").list(f"{base}/{sid}") or []
+            except Exception:
+                files = []
+            paths = [f"{base}/{sid}/{x.get('name')}" for x in files if x.get("name")]
+            if not paths:
+                continue
+            try:
+                supabase.storage.from_("assessment-audio").remove(paths)
+                deleted += 1
+                freed += z["bytes"]
+            except Exception as _de:
+                print(f"[meeting] audio cleanup remove failed {sid}: {_de}", flush=True)
+        return jsonify({"status": "success", "deleted_sessions": deleted,
+                        "freed_bytes": freed, "remaining": len(sessions) - deleted})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
