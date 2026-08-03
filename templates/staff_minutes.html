@@ -197,6 +197,11 @@
     <div class="sm-mm-hint">会議名を中心に、議題・決定事項・ToDoなどが枝分かれで表示されます。保存すると次回も再表示されます。</div>
   </div>
 
+  <div style="margin:0 0 12px;">
+    <button type="button" class="sm-btn" id="smCleanupBtn" onclick="smCleanupAudio()" title="担当者会議・勉強会の古い音声を、各最新5件を残して削除">
+      <span class="material-symbols-outlined" style="font-size:20px;vertical-align:middle;">cleaning_services</span>音声を整理
+    </button>
+  </div>
   <!-- 一覧 -->
   <div class="sm-card">
     <h3><span class="material-symbols-outlined">history</span>保存した議事録</h3>
@@ -222,6 +227,23 @@ var smState = {
 };
 
 function smMsg(text, ok){ var e=document.getElementById('smMsg'); e.textContent=text||''; e.className='sm-msg '+(ok?'ok':'ng'); }
+
+// meetings-audio-retention-v1: 古い会議音声を整理(担当者会議・勉強会の各最新5件を残して削除)
+async function smCleanupAudio(){
+  var btn=document.getElementById('smCleanupBtn');
+  try{
+    var st=await (await fetch('/api/meeting/audio_stats')).json();
+    if(st.status!=='success'){ alert(st.message||'取得に失敗しました'); return; }
+    if(!st.deletable_count){ alert('整理対象の古い音声はありません（現在'+st.count+'件、各最新'+(st.keep||5)+'件は保持）。'); return; }
+    var mb=(st.deletable_bytes/1048576).toFixed(0);
+    if(!confirm('担当者会議・勉強会の古い音声 '+st.deletable_count+'件（約'+mb+'MB）を削除します（各最新'+(st.keep||5)+'件は保持）。よろしいですか？\n※議事録・文字起こしのテキストは残ります。音声ファイルのみ削除します。')) return;
+    if(btn) btn.disabled=true;
+    var r=await (await fetch('/api/meeting/audio_cleanup',{method:'POST'})).json();
+    if(r.status==='success'){ alert(r.deleted_sessions+'件の音声を削除しました（約'+(r.freed_bytes/1048576).toFixed(0)+'MB）。'); }
+    else{ alert(r.message||'整理に失敗しました'); }
+  }catch(e){ alert('通信エラーが発生しました'); }
+  finally{ if(btn) btn.disabled=false; }
+}
 
 // ===== staff-name-select-v1: 参加者タグ選択 =====
 var _smStaffNames = null;
@@ -304,6 +326,13 @@ document.addEventListener('click', function(e){
 async function smToggleRec(){
   if (smState.recording) { smStopRec(); return; }
   try {
+    try {
+      var _st = await (await fetch('/api/meeting/audio_stats?area=staff_minutes')).json();
+      if (_st.status === 'success' && _st.count >= (_st.keep || 5)) {
+        alert('議事録の音声が' + _st.count + '件たまっています。\n先に議事録を保存し、「音声を整理」で古い音声を減らしてから録音してください。');
+        return;
+      }
+    } catch (e) {}
     var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     smState.recording = true;
     if (window.recKeepAlive) recKeepAlive.start({ onResume: smResumeRec, label: '勉強会議事録' });  // rec-keepalive-v2
@@ -389,6 +418,7 @@ async function smUploadFile(files){
   fd.append('audio', f, f.name);
   fd.append('session_id', smState.sessionId);
   fd.append('chunk_index', idx);
+  fd.append('no_store', '1');  // meetings-audio-nostore-v1: アップロード音声は保存しない
   var chunksEl = document.getElementById('smChunks');
   chunksEl.textContent = 'ファイルを文字起こし中...';
   try {

@@ -191,6 +191,9 @@
       <button class="mtg-btn" onclick="mtgStartNew()">
         <span class="material-symbols-outlined" style="font-size:20px;">add</span>新規会議
       </button>
+      <button class="mtg-btn sec" id="mtgCleanupBtn" onclick="mtgCleanupAudio()" title="担当者会議・勉強会の古い音声を、各最新5件を残して削除">
+        <span class="material-symbols-outlined" style="font-size:20px;">cleaning_services</span>音声を整理
+      </button>
     </div>
     <div class="mtg-card">
       <h3><span class="material-symbols-outlined">history</span>会議の記録</h3>
@@ -254,9 +257,6 @@
           <span class="material-symbols-outlined" style="font-size:20px;">upload_file</span>音声ファイル
         </button>
         <input type="file" id="mtgAudioFile" accept="audio/*" style="display:none;" onchange="mtgUploadAudio(this.files[0])" />
-        <button class="mtg-btn sec" id="mtgCleanupBtn" onclick="mtgCleanupAudio()">
-          <span class="material-symbols-outlined" style="font-size:20px;">cleaning_services</span>音声を整理
-        </button>
         <span class="mtg-rec-status" id="mtgRecStatus"></span>
       </div>
       <div class="mtg-chunks" id="mtgChunks"></div>
@@ -624,7 +624,7 @@ async function mtgStartRec() {
   try {
     // meetings-audio-retention-v1: 音声が5件たまっていたら整理を促してブロック(自動削除はしない)
     try {
-      const st = await (await fetch('/api/meeting/audio_stats')).json();
+      const st = await (await fetch('/api/meeting/audio_stats?area=meetings')).json();
       if (st.status === 'success' && st.count >= (st.keep || 5)) {
         alert('会議音声が' + st.count + '件たまっています。\n先に議事録を保存し、「音声を整理」で古い音声を減らしてから録音してください。');
         return;
