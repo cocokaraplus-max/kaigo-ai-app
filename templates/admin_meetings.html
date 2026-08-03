@@ -254,6 +254,9 @@
           <span class="material-symbols-outlined" style="font-size:20px;">upload_file</span>音声ファイル
         </button>
         <input type="file" id="mtgAudioFile" accept="audio/*" style="display:none;" onchange="mtgUploadAudio(this.files[0])" />
+        <button class="mtg-btn sec" id="mtgCleanupBtn" onclick="mtgCleanupAudio()">
+          <span class="material-symbols-outlined" style="font-size:20px;">cleaning_services</span>音声を整理
+        </button>
         <span class="mtg-rec-status" id="mtgRecStatus"></span>
       </div>
       <div class="mtg-chunks" id="mtgChunks"></div>
@@ -595,6 +598,23 @@ async function mtgPdf(type, style) {
 // ===== 録音(チャンク分割) =====
 const MTG_CHUNK_MS = 5 * 60 * 1000; // 5分ごとに区切る
 
+// meetings-audio-retention-v1: 古い会議音声を整理(最新5件を残して削除)。押した時だけ実行。
+async function mtgCleanupAudio() {
+  const btn = document.getElementById('mtgCleanupBtn');
+  try {
+    const st = await (await fetch('/api/meeting/audio_stats')).json();
+    if (st.status !== 'success') { alert(st.message || '取得に失敗しました'); return; }
+    if (!st.deletable_count) { alert('整理対象の古い音声はありません（現在' + st.count + '件、最新' + (st.keep || 5) + '件は保持）。'); return; }
+    const mb = (st.deletable_bytes / 1048576).toFixed(0);
+    if (!confirm('最新' + (st.keep || 5) + '会議分を残し、古い音声 ' + st.deletable_count + '件（約' + mb + 'MB）を削除します。よろしいですか？\n※議事録・文字起こしのテキストは残ります。音声ファイルのみ削除します。')) return;
+    if (btn) btn.disabled = true;
+    const r = await (await fetch('/api/meeting/audio_cleanup', { method: 'POST' })).json();
+    if (r.status === 'success') { alert(r.deleted_sessions + '件の音声を削除しました（約' + (r.freed_bytes / 1048576).toFixed(0) + 'MB）。'); }
+    else { alert(r.message || '整理に失敗しました'); }
+  } catch (e) { alert('通信エラーが発生しました'); }
+  finally { if (btn) btn.disabled = false; }
+}
+
 async function mtgToggleRec() {
   if (mtgState.recording) { mtgStopRec(); return; }
   await mtgStartRec();
@@ -602,6 +622,14 @@ async function mtgToggleRec() {
 
 async function mtgStartRec() {
   try {
+    // meetings-audio-retention-v1: 音声が5件たまっていたら整理を促してブロック(自動削除はしない)
+    try {
+      const st = await (await fetch('/api/meeting/audio_stats')).json();
+      if (st.status === 'success' && st.count >= (st.keep || 5)) {
+        alert('会議音声が' + st.count + '件たまっています。\n先に議事録を保存し、「音声を整理」で古い音声を減らしてから録音してください。');
+        return;
+      }
+    } catch (e) {}
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mtgState.recording = true;
     if (window.recKeepAlive) recKeepAlive.start({ onResume: mtgResumeRec, label: '担当者会議' });  // rec-keepalive-v2
@@ -767,6 +795,7 @@ async function mtgSendFileChunk(blob, idx) {
   fd.append('audio', blob, 'chunk_'+idx+'.wav');
   fd.append('session_id', mtgState.sessionId);
   fd.append('chunk_index', mtgState.chunkIndex++);
+  fd.append('no_store', '1');  // meetings-audio-nostore-v1: アップロード音声は保存しない(容量対策)
   try {
     const r = await fetch('/api/meeting/transcribe', { method:'POST', body: fd });
     const d = await r.json();
