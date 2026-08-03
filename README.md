@@ -2630,3 +2630,21 @@ git checkout tasukaru-dev
 - サンプルデータでPDFをwkhtmltopdf生成し、色ラベル・振替元・公休空欄・上段強調・月合計・備考・凡例を目視確認。app.py=py_compile通過、テンプレJS=node --check通過、render単体テストで休みチップ/編集導線/記録なし職員パネルを確認。
 - dev(`tasukaru-dev`) 583c987→5796802、本番(`tasukaru`)マージ feb285a。GitHub push→Cloud Build自動デプロイ。
 - 対象外（従来通り）: simple勤怠出力（CSV/Excel）は打刻のみ。将来必要なら同マージmapで休暇列を追加可能。
+
+
+## 勤怠集計表をCSVでも出力（個人別対応）2026-08-03  <!-- timecard-grid-csv-v1 -->
+
+タイムカードの記録をPDFだけでなくCSVでも出せるようにした。施設全体・職員ごと（個人別）の両方に対応。
+
+### 背景
+- 既存の個人別CSVは「給与出力」→勤怠実績(simple)→CSV→職員ごと で出せたが、**休み申告/休暇の列が無い**（simpleは打刻のみ）。payroll CSVには休暇区分列あり。
+- 要望は「勤怠集計表（グリッド）と同じ内容をCSVで、個人個人それぞれも出せるように」。→ 集計表グリッドをそのままCSV化する方針を採用（ユーザー選択）。
+
+### 主な変更（app.py / templates/admin_timecard_report.html, marker `timecard-grid-csv-v1`）
+- 新ルート `GET /admin/timecard/export/grid/csv`（`pay_export_grid_csv`）。PDFグリッドと同一データ源 `_tc_build_monthly_data`（休み申告マージ済み）を使用し、1日〜末日を全日出力。列＝職員名/日付/曜日/出勤/退勤/休憩(分)/実働(分)/実働(時間)/区分/振替元/備考/打刻異常＋職員ごと【合計】行。区分＝有給・振替休・欠勤等のラベル、登録なしの休みは「公休」。cp932エンコード（Excel互換）。
+- `_pay_resolve_params`/`_pay_filter_scope` を流用し `scope=all/staff`＋`staff_name` で 施設全体/職員ごと を切替。ファイル名 `kintai_shukei_YYYYMM[_職員名].csv`。
+- レポート画面（admin_timecard_report.html）に「PDFで保存」の隣へ **「CSVで保存」ボタン** と専用モーダル（施設全体/職員ごと選択、職員セレクトは `window._tcrStaff` を流用）を追加。
+
+### 検証・リリース
+- app.py=py_compile通過（ローカル＋デバイス両方）、テンプレJS=node --check通過。
+- TODO: dev(`tasukaru-dev`) push→Cloud Build自動デプロイ後にDEV実機でCSVダウンロード（施設全体/職員ごと）を確認 → 本番マージ。

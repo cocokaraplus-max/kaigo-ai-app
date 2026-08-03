@@ -18391,6 +18391,82 @@ def pay_export_simple_excel():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ---------- 勤怠集計表(グリッド/休暇込み) CSV : timecard-grid-csv-v1 ----------
+@app.route("/admin/timecard/export/grid/csv", methods=["GET"])
+@login_required
+def pay_export_grid_csv():
+    """勤怠集計表(PDFグリッドと同じ内容)をCSV(cp932)で出力。
+    出退勤・休憩・実働に加え休み申告(有給/振替休/公休/欠勤…)も列に含む。
+    scope=all/staff, staff_name で 施設全体/職員ごと を切替。全日(1日〜末日)出力。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        pr = _pay_resolve_params()
+        if pr is None:
+            return jsonify({"status": "error", "message": "パラメータ不正"}), 400
+        year, month, scope, staff_name = pr
+        # PDFグリッドと同一データ(休み申告マージ済み)
+        staff = _tc_build_monthly_data(supabase, f_code, year, month)
+        staff = _pay_filter_scope(staff, scope, staff_name)
+
+        import calendar as _cal
+        last_day = _cal.monthrange(year, month)[1]
+
+        sio = _pay_io.StringIO()
+        w = _pay_csv.writer(sio)
+        w.writerow(["職員名", "日付", "曜日", "出勤", "退勤", "休憩(分)",
+                    "実働(分)", "実働(時間)", "区分", "振替元", "備考", "打刻異常"])
+        for s in staff:
+            dmap = {d["date"]: d for d in s.get("days", [])}
+            for day in range(1, last_day + 1):
+                ds = f"{year:04d}-{month:02d}-{day:02d}"
+                wd = _pay_wd_label(ds)
+                d = dmap.get(ds)
+                if not d:
+                    # 登録なし＝公休(空欄セル)
+                    w.writerow([s["name"], ds, wd, "", "", "", "", "", "公休", "", "", ""])
+                    continue
+                lv = d.get("leave") or {}
+                lv_label = lv.get("label", "") if lv else ""
+                sub_for = ""
+                if lv and lv.get("type") == "substitute" and lv.get("substitute_for"):
+                    sub_for = _tc_day_label(lv.get("substitute_for"))
+                note = (lv.get("note") or "") if lv else ""
+                has_punch = bool(d.get("in") or d.get("out"))
+                if d.get("incomplete"):
+                    w.writerow([s["name"], ds, wd,
+                                _tc_fmt_time_jst(d.get("in")), _tc_fmt_time_jst(d.get("out")),
+                                "", "", "", lv_label, sub_for, note,
+                                "/".join(d.get("flags") or [])])
+                elif has_punch:
+                    mn = d.get("minutes")
+                    w.writerow([s["name"], ds, wd,
+                                _tc_fmt_time_jst(d.get("in")), _tc_fmt_time_jst(d.get("out")),
+                                d.get("break_min", 0), mn,
+                                (_tc_fmt_hm(mn) if mn is not None else ""),
+                                lv_label, sub_for, note, ""])
+                else:
+                    # 打刻なし: 休暇 or 公休
+                    w.writerow([s["name"], ds, wd, "", "", "", "", "",
+                                (lv_label or "公休"), sub_for, note, ""])
+            w.writerow([s["name"], "【合計】", "", "", "", "",
+                        s.get("total_minutes", 0), _tc_fmt_hm(s.get("total_minutes", 0)),
+                        f'{s.get("worked_days", 0)}日勤務', "", "", ""])
+        data = sio.getvalue().encode("cp932", errors="replace")
+        from flask import send_file as _send
+        buf = _pay_io.BytesIO(data)
+        buf.seek(0)
+        suf = ("_" + staff_name) if (scope == "staff" and staff_name) else ""
+        fname = f"kintai_shukei_{year}{month:02d}{suf}.csv"
+        return _send(buf, as_attachment=True, download_name=fname, mimetype="text/csv")
+    except Exception as e:
+        print(f"pay_export_grid_csv error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ---------- 給与(社労士向け) CSV ----------
 @app.route("/admin/timecard/export/payroll/csv", methods=["GET"])
 @login_required
