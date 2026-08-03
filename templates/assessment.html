@@ -2020,6 +2020,20 @@ window.evalSelectCareClass = function(value, fromUser) {
 // セグメントボタン (radio 代替)
 // ===========================================================================
 window.evalSelectSegment = function(hiddenId, value) {
+    // goal-consistency-alert-v1: 長期目標を「達成」にする時、対応する短期目標(同一軸)が
+    // 未達成/一部達成なら確認する。短期は長期の通過点のため矛盾を防ぐ。
+    var _needShortReminder = false;
+    var _L2S = {'eval-long-function':'eval-short-function','eval-long-activity':'eval-short-activity','eval-long-participation':'eval-short-participation','eval-long-goal-simple':'eval-short-goal-simple'};
+    if (value === '達成' && _L2S[hiddenId]) {
+        var _sEl = document.getElementById(_L2S[hiddenId]);
+        var _sVal = _sEl ? _sEl.value : '';
+        if (_sVal === '未達成' || _sVal === '一部達成') {
+            if (!confirm('短期目標が「' + _sVal + '」ですが、長期目標を「達成」にしてよろしいですか？\n（短期目標は長期目標の通過点のため、通常は長期目標も未達成／一部達成になります）')) {
+                return;  // キャンセル: 何もせず戻る
+            }
+            _needShortReminder = true;  // OK(変更する)を選んだ
+        }
+    }
     document.getElementById(hiddenId).value = value;
 
     // 親 .eval-segment 内の他のボタンの active を外す
@@ -2048,6 +2062,9 @@ window.evalSelectSegment = function(hiddenId, value) {
     }
 
     evalUpdateStatus();
+    if (_needShortReminder) {
+        alert('長期目標が変更されましたので短期目標の変更もしてください。');
+    }
 };
 
 // ===========================================================================
