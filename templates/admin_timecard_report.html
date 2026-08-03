@@ -145,6 +145,7 @@
 
   <div class="tcr-actions">
     <button id="tcr-print"><span class="material-symbols-outlined" style="font-size:18px">picture_as_pdf</span>PDFで保存</button><!-- timecard-pdf-btn-v1 -->
+    <button id="tcr-csv"><span class="material-symbols-outlined" style="font-size:18px">table_view</span>CSVで保存</button><!-- timecard-grid-csv-v1 -->
     <button id="tcr-youshiki"><span class="material-symbols-outlined" style="font-size:18px">description</span>様式で出力</button><!-- youshiki-btn-v1 -->
     <button id="tcr-payexport"><span class="material-symbols-outlined" style="font-size:18px">download</span>給与出力</button><!-- pay-export-ui-v1 -->
     <button id="tcr-config"><span class="material-symbols-outlined" style="font-size:18px">settings</span>勤務設定</button><!-- timecard-config-ui-v1 -->
@@ -619,6 +620,78 @@
     if(openBtn){ openBtn.addEventListener("click",function(){ openModal(); syncFmtButtons(); }); }
   })();
   // ===== /pay-export-ui-v1 =====
+
+  // ===== timecard-grid-csv-v1: 勤怠集計表(休暇込み)をCSVで保存 =====
+  (function(){
+    function esc3(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
+    var wrap=document.createElement("div");
+    wrap.id="csvx-back";
+    wrap.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;z-index:9999;padding:16px";
+    wrap.innerHTML=
+      '<div style="background:#fff;border-radius:16px;max-width:420px;width:100%;padding:20px;box-shadow:0 10px 40px rgba(0,0,0,.2)">'
+      +'<div style="font-weight:800;font-size:1.1rem;margin-bottom:6px;display:flex;align-items:center;gap:8px">'
+      +'<span class="material-symbols-outlined">table_view</span>勤怠集計表をCSVで保存</div>'
+      +'<div style="font-size:.78rem;color:#888;margin-bottom:14px;line-height:1.5">画面の集計表と同じ内容（出退勤・休憩・実働・休み申告）を1日〜末日でCSV出力します。Excel等で開けます。</div>'
+      +'<div style="font-size:.82rem;color:#666;margin-bottom:6px">出力する範囲</div>'
+      +'<div style="display:flex;gap:8px;margin-bottom:10px">'
+      +'<label style="flex:1"><input type="radio" name="csvx-scope" value="all" checked> 施設全体</label>'
+      +'<label style="flex:1"><input type="radio" name="csvx-scope" value="staff"> 職員ごと</label>'
+      +'</div>'
+      +'<select id="csvx-staff" style="width:100%;padding:9px;border:1px solid #d8d4cc;border-radius:9px;font-family:inherit;font-size:.9rem;margin-bottom:16px;display:none"></select>'
+      +'<div id="csvx-msg" style="font-size:.78rem;color:#c0392b;margin-bottom:10px;min-height:1em"></div>'
+      +'<button id="csvx-go" style="width:100%;padding:12px;border:none;border-radius:10px;background:#2f6b5e;color:#fff;font-family:inherit;font-weight:800;cursor:pointer;margin-bottom:8px">CSVをダウンロード</button>'
+      +'<button id="csvx-close" style="width:100%;padding:10px;border:1px solid #d8d4cc;border-radius:10px;background:#f6f4ef;font-family:inherit;font-weight:700;cursor:pointer">閉じる</button>'
+      +'</div>';
+    document.body.appendChild(wrap);
+    function openModal(){
+      var sel=document.getElementById("csvx-staff");
+      var names=(window._tcrStaff||[]).map(function(s){return s.name;});
+      sel.innerHTML=names.map(function(n){return '<option value="'+esc3(n)+'">'+esc3(n)+'</option>';}).join("");
+      document.getElementById("csvx-staff").style.display="none";
+      var r=wrap.querySelector('input[name="csvx-scope"][value="all"]'); if(r){ r.checked=true; }
+      document.getElementById("csvx-msg").textContent="";
+      wrap.style.display="flex";
+    }
+    function closeModal(){ wrap.style.display="none"; }
+    wrap.addEventListener("change",function(e){
+      if(e.target.name==="csvx-scope"){
+        document.getElementById("csvx-staff").style.display=(e.target.value==="staff")?"block":"none";
+      }
+    });
+    document.getElementById("csvx-go").addEventListener("click",async function(){
+      var scope=(wrap.querySelector('input[name="csvx-scope"]:checked')||{}).value||"all";
+      var staffName=document.getElementById("csvx-staff").value||"";
+      var msg=document.getElementById("csvx-msg");
+      if(scope==="staff" && !staffName){ msg.style.color="#c0392b"; msg.textContent="職員を選んでください"; return; }
+      var qs="year="+year+"&month="+month+"&scope="+scope+(scope==="staff"?("&staff_name="+encodeURIComponent(staffName)):"");
+      var url="/admin/timecard/export/grid/csv?"+qs;
+      var btn=this; btn.disabled=true; msg.style.color="#666"; msg.textContent="作成中…";
+      try{
+        var res=await fetch(url);
+        var ct=res.headers.get("content-type")||"";
+        if(ct.indexOf("csv")<0){
+          var j=await res.json().catch(function(){return {};});
+          msg.style.color="#c0392b"; msg.textContent=j.message||"出力に失敗しました";
+          return;
+        }
+        var blob=await res.blob();
+        var suf=(scope==="staff")?("_"+staffName):"";
+        var fname="kintai_shukei_"+year+String(month).padStart(2,"0")+suf+".csv";
+        var durl=URL.createObjectURL(blob);
+        var a=document.createElement("a");
+        a.href=durl; a.download=fname;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        URL.revokeObjectURL(durl);
+        msg.style.color="#2f6b5e"; msg.textContent="ダウンロードしました";
+      }catch(e){ msg.style.color="#c0392b"; msg.textContent="通信エラーが発生しました"; }
+      finally{ btn.disabled=false; }
+    });
+    document.getElementById("csvx-close").addEventListener("click",closeModal);
+    wrap.addEventListener("click",function(e){ if(e.target===wrap) closeModal(); });
+    var openBtn=document.getElementById("tcr-csv");
+    if(openBtn){ openBtn.addEventListener("click",openModal); }
+  })();
+  // ===== /timecard-grid-csv-v1 =====
 
   $("tcm-add-btn").addEventListener("click", addPunch);
   $("tcm-close").addEventListener("click",function(){ $("tcm-back").classList.remove("show"); });
