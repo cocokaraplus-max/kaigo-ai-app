@@ -16737,6 +16737,8 @@ def admin_timecard_monthly():
                            "worked_days": worked_days,
                            "incomplete_days": incomplete_days})
 
+        # timecard-leave-grid-v1: 休み申告を日次にマージ
+        _tc_merge_leaves_into_monthly(supabase, f_code, year, month, result)
         return jsonify({"status": "success", "year": year, "month": month,
                         "staff": result})
     except Exception as e:
@@ -16751,6 +16753,215 @@ def admin_timecard_monthly():
 #   window.print()が印刷に飛んでPDF保存できない問題を解決。
 #   月次データからPDF用HTMLを組み、pdfkit/wkhtmltopdfでPDF化してダウンロード。
 # ============================================================
+
+def _tc_merge_leaves_into_monthly(supabase, f_code, year, month, result):
+    """timecard-leave-grid-v1: staff_leave_days を月次result へマージ。
+    各日dictに day["leave"]、打刻無し休暇日は days に追加、s["leaves"]に一覧。"""
+    lstart = f"{year:04d}-{month:02d}-01"
+    lend = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+    try:
+        lr = (supabase.table("staff_leave_days").select("*")
+              .eq("facility_code", f_code).gte("leave_date", lstart)
+              .lt("leave_date", lend).execute())
+        recs = lr.data or []
+    except Exception as e:
+        print(f"_tc_merge_leaves_into_monthly error: {e}", flush=True)
+        recs = []
+    by_name = {s0["name"]: s0 for s0 in result}
+    emoji_map = {}
+    try:
+        emoji_map = {x["name"]: x.get("emoji", "") for x in _tc_staff_list(supabase, f_code)}
+    except Exception:
+        pass
+    leaves_by_name = {}
+    for r in recs:
+        leaves_by_name.setdefault(r.get("staff_name"), []).append(r)
+    for name, lrecs in leaves_by_name.items():
+        s0 = by_name.get(name)
+        if s0 is None:
+            s0 = {"name": name, "emoji": emoji_map.get(name, ""),
+                  "days": [], "total_minutes": 0, "worked_days": 0,
+                  "incomplete_days": 0}
+            result.append(s0)
+            by_name[name] = s0
+        day_idx = {d["date"]: d for d in s0["days"]}
+        s_leaves = []
+        for r in lrecs:
+            code = r.get("leave_type")
+            meta = _LEAVE_TYPES.get(code) or {}
+            lv = {"type": code, "label": meta.get("label", code or ""),
+                  "form": meta.get("form", ""),
+                  "substitute_for": r.get("substitute_for"),
+                  "note": (r.get("note") or "").strip() or None}
+            ds = r.get("leave_date")
+            d = day_idx.get(ds)
+            if d is not None:
+                d["leave"] = lv
+            else:
+                nd = {"date": ds, "minutes": None, "incomplete": False,
+                      "flags": [], "in": None, "out": None, "break_min": 0,
+                      "leave": lv}
+                s0["days"].append(nd)
+                day_idx[ds] = nd
+            s_leaves.append({"date": ds, "label": lv["label"], "type": code,
+                             "form": lv["form"], "note": lv["note"],
+                             "substitute_for": lv["substitute_for"]})
+        s0["days"].sort(key=lambda x: x["date"])
+        s_leaves.sort(key=lambda x: x["date"] or "")
+        s0["leaves"] = s_leaves
+    for s0 in result:
+        s0.setdefault("leaves", [])
+        for d in s0.get("days", []):
+            d.setdefault("leave", None)
+
+
+def _tc_leave_style(code):
+    """timecard-leave-grid-v1: 休暇区分ごとの(背景色, 文字色)。"""
+    M = {
+        "paid":       ("#e8f5e9", "#2e7d32"),
+        "substitute": ("#e3f2fd", "#1565c0"),
+        "condolence": ("#f3e5f5", "#6a1b9a"),
+        "absence":    ("#ffebee", "#c62828"),
+        "off":        ("#eceff1", "#546e7a"),
+        "half":       ("#fff8e1", "#ef6c00"),
+        "hourly":     ("#fff8e1", "#ef6c00"),
+        "cancel":     ("#f5f5f5", "#9e9e9e"),
+    }
+    return M.get(code, ("#eeeeee", "#555555"))
+
+
+def _tc_fmt_time_jp(iso):
+    """timecard-leave-grid-v1: JST時刻を「H時MM分」表記で返す。無しは空。"""
+    if not iso:
+        return ""
+    dt = _tc_parse_iso(iso)
+    if dt is None:
+        return ""
+    dt = dt.astimezone(_TC_JST)
+    return f"{dt.hour}時{dt.minute:02d}分"
+
+
+def _tc_grid_cell(dd):
+    """timecard-leave-grid-v1: 1セルHTML。打刻/休暇/公休(空欄)を出し分け。"""
+    import html as _h
+    if not dd:
+        return ""  # 公休(登録なし)
+    lv = dd.get("leave")
+    lv_html = ""
+    if lv:
+        bg, fg = _tc_leave_style(lv.get("type"))
+        lv_html = (f'<span class="lv" style="background:{bg};color:{fg}">'
+                   f'{_h.escape(lv.get("label", ""))}</span>')
+    inv = _tc_fmt_time_jp(dd.get("in"))
+    outv = _tc_fmt_time_jp(dd.get("out"))
+    has_punch = bool(dd.get("in") or dd.get("out"))
+    if dd.get("incomplete"):
+        flags = "／".join(dd.get("flags") or [])
+        body = (f'<span class="io">{inv}〜{outv}</span><br>'
+                f'<span class="bad">⚠{_h.escape(flags)}</span>')
+        return (lv_html + "<br>" + body) if lv_html else body
+    if has_punch:
+        brk = f'（休憩{dd.get("break_min")}分）' if dd.get("break_min") else ""
+        mn = dd.get("minutes")
+        top = f'<span class="io">{inv}〜{outv}{brk}</span>'
+        bot = f'<span class="wk">{_tc_fmt_hm(mn)}勤務</span>' if mn is not None else ""
+        cell = top + "<br>" + bot
+        if lv_html:
+            cell += "<br>" + lv_html
+        return cell
+    if lv_html:
+        return lv_html
+    return ""
+
+
+def _tc_report_grid_html(fac_name, year, month, staff):
+    """timecard-leave-grid-v1: 勤怠集計表を職員×日付グリッドHTMLで組む。
+    休み申告(有給/振替休/公休/欠勤…)を色ラベルで反映。空欄=公休。"""
+    import html as _h
+    import calendar as _cal
+    from datetime import date as _d
+    last_day = _cal.monthrange(year, month)[1]
+    wdj = ["月", "火", "水", "木", "金", "土", "日"]
+    per = []
+    grand_min = 0
+    for s0 in staff:
+        dmap = {d["date"]: d for d in s0.get("days", [])}
+        grand_min += s0.get("total_minutes", 0)
+        per.append((s0, dmap))
+    P = []
+    P.append("""<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8"><style>
+  @page { size: A4 landscape; margin: 8mm; }
+  * { box-sizing: border-box; }
+  body { font-family:'Noto Sans CJK JP','IPAexGothic',sans-serif; color:#222; font-size:9px; }
+  .hd { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:6px; }
+  h1 { font-size:15px; margin:0; }
+  .sub { color:#666; font-size:9.5px; }
+  .tot { font-size:11px; font-weight:bold; color:#2f6b5e; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  th,td { border:1px solid #d9d5cc; padding:2px 3px; text-align:center; vertical-align:middle; line-height:1.3; overflow:hidden; }
+  th { background:#f2efe9; font-weight:bold; }
+  .stname { font-size:9.5px; } .stsub { font-size:8px; color:#666; font-weight:normal; }
+  td.date { background:#faf8f4; font-weight:bold; white-space:nowrap; width:42px; }
+  td.sat .wd { color:#1565c0; } td.sun .wd { color:#c62828; }
+  .io { font-variant-numeric:tabular-nums; font-weight:bold; font-size:9.5px; }
+  .wk { font-weight:normal; color:#666; font-size:8.5px; }
+  .bad { color:#c0392b; font-size:8px; }
+  .lv { display:inline-block; padding:1px 6px; border-radius:8px; font-weight:bold; font-size:8.5px; }
+  tr.total td { background:#eef5f3; font-weight:bold; }
+  .notes { margin-top:8px; border:1px solid #e6d3b3; border-radius:5px; padding:5px 8px; background:#fff8ef; }
+  .notes-h { font-weight:bold; color:#c0392b; font-size:9.5px; margin-bottom:2px; }
+  .note-row { font-size:8.5px; color:#333; line-height:1.55; }
+  .legend { margin-top:6px; font-size:8px; color:#777; line-height:1.55; }
+</style></head><body>""")
+    P.append('<div class="hd"><div>')
+    P.append(f'<h1>勤怠集計表</h1><div class="sub">{_h.escape(fac_name)}　'
+             f'{year}年{month}月（1日〜{last_day}日 全日表示）</div></div>')
+    P.append(f'<div class="tot">施設合計：{_tc_fmt_hm(grand_min)}</div></div>')
+    # ヘッダ
+    P.append('<table><colgroup><col style="width:42px">')
+    for _ in per:
+        P.append('<col>')
+    P.append('</colgroup><tr><th>日付</th>')
+    for (s0, _dm) in per:
+        P.append('<th><div class="stname">' + _h.escape((s0.get("emoji") or "") + s0["name"])
+                 + '</div><div class="stsub">計' + _tc_fmt_hm(s0.get("total_minutes", 0))
+                 + '<br>' + str(s0.get("worked_days", 0)) + '日勤務</div></th>')
+    P.append('</tr>')
+    # 日次
+    for day in range(1, last_day + 1):
+        ds = f"{year:04d}-{month:02d}-{day:02d}"
+        wd = _d(year, month, day).weekday()
+        cls = "date" + (" sat" if wd == 5 else (" sun" if wd == 6 else ""))
+        P.append(f'<tr><td class="{cls}">{day}<span class="wd">({wdj[wd]})</span></td>')
+        for (s0, dm) in per:
+            P.append('<td>' + _tc_grid_cell(dm.get(ds)) + '</td>')
+        P.append('</tr>')
+    # 月合計
+    P.append('<tr class="total"><td>月合計</td>')
+    for (s0, _dm) in per:
+        P.append('<td>' + _tc_fmt_hm(s0.get("total_minutes", 0))
+                 + '<br><span class="stsub">出勤' + str(s0.get("worked_days", 0)) + '日</span></td>')
+    P.append('</tr></table>')
+    # 備考
+    note_rows = []
+    for (s0, _dm) in per:
+        for lv in (s0.get("leaves") or []):
+            if lv.get("note"):
+                note_rows.append((lv["date"], s0["name"], lv.get("label", ""),
+                                  lv["note"], lv.get("substitute_for")))
+    note_rows.sort(key=lambda x: (x[0] or "", x[1] or ""))
+    if note_rows:
+        P.append('<div class="notes"><div class="notes-h">備考</div>')
+        for (nd, nm, nl, nt, nsf) in note_rows:
+            sfx = f'（振替元:{_tc_day_label(nsf)}）' if nsf else ''
+            P.append(f'<div class="note-row">{_h.escape(nm)}：{_tc_day_label(nd)}　'
+                     f'{_h.escape(nl)}：{_h.escape(nt)}{sfx}</div>')
+        P.append('</div>')
+    P.append('<div class="legend">※各セル：上段＝出勤‒退勤（）内は休憩、下段＝その日の勤務時間合計。'
+             '有給・振替休などは色付きラベルで表示。空欄は公休（登録なしの休み）。⚠は打刻の要確認。</div>')
+    P.append('</body></html>')
+    return "".join(P)
+
 
 def _tc_build_monthly_data(supabase, f_code, year, month):
     """月次の職員別・日別集計を返す(admin_timecard_monthlyと同じ構造)。PDF/JSON共用。"""
@@ -16796,6 +17007,8 @@ def _tc_build_monthly_data(supabase, f_code, year, month):
                        "days": days, "total_minutes": total_min,
                        "worked_days": worked_days,
                        "incomplete_days": incomplete_days})
+    # timecard-leave-grid-v1: 休み申告を日次にマージ
+    _tc_merge_leaves_into_monthly(supabase, f_code, year, month, result)
     return result
 
 
@@ -16848,29 +17061,7 @@ def admin_timecard_report_pdf():
 
         staff = _tc_build_monthly_data(supabase, f_code, year, month)
 
-        # timecard-leave-note-report-v1: 社労士向けの打刻記録にも備考を載せる。
-        # 休暇（振替休等）は打刻の無い日もあるので、職員ごとに 日付/区分/備考 を別欄で出す。
-        _lstart = f"{year:04d}-{month:02d}-01"
-        _lend = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
-        notes_by_staff = {}
-        try:
-            _lr = (supabase.table("staff_leave_days").select("*")
-                   .eq("facility_code", f_code).gte("leave_date", _lstart)
-                   .lt("leave_date", _lend).execute())
-            for _r in (_lr.data or []):
-                _nt = (_r.get("note") or "").strip()
-                if not _nt:
-                    continue
-                _lt = _LEAVE_TYPES.get(_r.get("leave_type"))
-                _lbl = _lt["label"] if _lt else (_r.get("leave_type") or "")
-                notes_by_staff.setdefault(_r.get("staff_name"), []).append(
-                    (_r.get("leave_date"), _lbl, _nt, _r.get("substitute_for")))
-            for _k in notes_by_staff:
-                notes_by_staff[_k].sort(key=lambda x: x[0] or "")
-        except Exception as _ne:
-            print(f"report_pdf notes error: {_ne}", flush=True)
-
-        # 施設名
+        # timecard-leave-grid-v1: 職員×日付グリッドで休み申告(有給/振替休/公休…)を反映
         fac_name = ""
         try:
             fr = supabase.table("facilities").select("name").eq("facility_code", f_code).execute()
@@ -16878,91 +17069,14 @@ def admin_timecard_report_pdf():
                 fac_name = fr.data[0].get("name", "") or ""
         except Exception:
             pass
-
-        grand_min = sum(s["total_minutes"] for s in staff)
-        grand_inc = sum(s["incomplete_days"] for s in staff)
-
-        import html as _html
-        parts = []
-        parts.append(f"""<!DOCTYPE html><html lang="ja"><head><meta charset="utf-8">
-<style>
-  @page {{ size: A4; margin: 14mm 12mm; }}
-  * {{ box-sizing: border-box; }}
-  body {{ font-family: 'Noto Sans CJK JP','IPAexGothic',sans-serif; color:#222; font-size:11px; }}
-  h1 {{ font-size:16px; margin:0 0 2px; }}
-  .sub {{ color:#666; font-size:10px; margin-bottom:10px; }}
-  .summary {{ background:#eef5f3; border:1px solid #d7e6e1; border-radius:6px; padding:8px 10px; margin-bottom:12px; font-size:11px; }}
-  .staff {{ border:1px solid #d0ccc4; border-radius:6px; margin-bottom:10px; page-break-inside:avoid; }}
-  .staff-head {{ background:#f6f4ef; padding:6px 10px; font-weight:bold; border-bottom:1px solid #e5e1d8; display:flex; justify-content:space-between; }}
-  .staff-tot {{ color:#2f6b5e; }}
-  table {{ width:100%; border-collapse:collapse; table-layout:fixed; }}  /* timecard-pdf-colfix-v1 */
-  col.c-date {{ width:22%; }}
-  col.c-in,col.c-out {{ width:15%; }}
-  col.c-brk {{ width:20%; }}
-  col.c-work {{ width:28%; }}
-  th,td {{ border-bottom:1px solid #efece6; padding:4px 8px; text-align:left; font-size:10.5px; }}
-  th {{ background:#faf9f6; color:#666; font-weight:normal; }}
-  .num {{ text-align:right; }}
-  .bad {{ color:#c0392b; }}
-  .empty {{ color:#aaa; padding:8px; }}
-  .notes {{ border-top:1px dashed #d8b48a; margin:0; padding:6px 10px; background:#fff8ef; }}
-  .notes-h {{ font-weight:bold; color:#c0392b; font-size:10.5px; margin-bottom:3px; }}
-  .note-row {{ font-size:10px; color:#333; line-height:1.5; }}
-</style></head><body>""")
-        parts.append(f"<h1>勤怠集計表</h1>")
-        parts.append(f'<div class="sub">{_html.escape(fac_name)}　{year}年{month}月</div>')
-        parts.append(f'<div class="summary">施設合計：<b>{_tc_fmt_hm(grand_min)}</b>'
-                     + (f'　／　要確認の日 <b>{grand_inc}</b>日' if grand_inc else '') + '</div>')
-
-        any_data = False
-        for s in staff:
-            _s_notes = notes_by_staff.get(s["name"]) or []
-            # 打刻が無くても備考（振替休のメモ等）がある職員は表示する
-            if not s["days"] and not _s_notes:
-                continue
-            any_data = True
-            parts.append('<div class="staff"><div class="staff-head"><span>'
-                         + _html.escape(s["emoji"] + " " + s["name"])
-                         + '</span><span class="staff-tot">' + _tc_fmt_hm(s["total_minutes"])
-                         + f'（{s["worked_days"]}日勤務'
-                         + (f'・要確認{s["incomplete_days"]}日' if s["incomplete_days"] else '')
-                         + '）</span></div>')
-            if s["days"]:
-                parts.append('<table><colgroup><col class="c-date"><col class="c-in"><col class="c-out"><col class="c-brk"><col class="c-work"></colgroup>'
-                             '<tr><th>日付</th><th>出勤</th><th>退勤</th><th>休憩</th><th class="num">勤務時間</th></tr>')
-                for d in s["days"]:
-                    if d["incomplete"]:
-                        flags = "／".join(d.get("flags") or [])
-                        parts.append(f'<tr class="bad"><td>{_tc_day_label(d["date"])}</td>'
-                                     f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
-                                     f'<td colspan="2">⚠ {_html.escape(flags)}</td></tr>')
-                    else:
-                        brk = f'{d["break_min"]}分' if d.get("break_min") else "—"
-                        parts.append(f'<tr><td>{_tc_day_label(d["date"])}</td>'
-                                     f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
-                                     f'<td>{brk}</td><td class="num">{_tc_fmt_hm(d["minutes"])}</td></tr>')
-                parts.append('</table>')
-            # timecard-leave-note-report-v1: 職員ごとの備考（日付・区分・備考）
-            if _s_notes:
-                parts.append('<div class="notes"><div class="notes-h">備考</div>')
-                for (_nd, _nl, _nt, _nsf) in _s_notes:
-                    _sfx = f'（振替元:{_tc_day_label(_nsf)}）' if _nsf else ''
-                    parts.append(f'<div class="note-row">{_tc_day_label(_nd)}　'
-                                 f'{_html.escape(_nl)}：{_html.escape(_nt)}{_sfx}</div>')
-                parts.append('</div>')
-            parts.append('</div>')
-
-        if not any_data:
-            parts.append('<div class="empty">この月の打刻記録はありません。</div>')
-        parts.append("</body></html>")
-        html_str = "".join(parts)
+        html_str = _tc_report_grid_html(fac_name, year, month, staff)
 
         import pdfkit
         import shutil as _sh
         options = {
-            "page-size": "A4", "encoding": "UTF-8",
-            "margin-top": "14mm", "margin-bottom": "14mm",
-            "margin-left": "12mm", "margin-right": "12mm",
+            "page-size": "A4", "encoding": "UTF-8", "orientation": "Landscape",
+            "margin-top": "8mm", "margin-bottom": "8mm",
+            "margin-left": "8mm", "margin-right": "8mm",
             "quiet": "",
         }
         wk_path = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"

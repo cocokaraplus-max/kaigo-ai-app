@@ -32,6 +32,12 @@
   .tcr-day .hrs{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
   .tcr-day.bad{background:#fff8ec;margin:0 -14px;padding:9px 14px}
   .tcr-flag{color:#c77d12;font-size:.74rem;font-weight:700}
+  /* timecard-leave-grid-v1 */
+  .tcr-lv{display:inline-block;padding:1px 8px;border-radius:9px;font-size:.72rem;font-weight:700;margin-left:4px;vertical-align:middle}
+  .tcr-subref{color:#888;font-size:.72rem;margin-left:4px}
+  .tcr-addleave{display:flex;gap:8px;align-items:center;padding:8px 0 10px;border-bottom:1px dashed #e8e4dc;margin-bottom:4px}
+  .tcr-al-date{flex:1;min-width:0;padding:7px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;font-size:.82rem;background:#fff}
+  .tcr-al-btn{background:#2f6b5e;color:#fff;border:0;border-radius:8px;padding:7px 10px;font-family:inherit;font-weight:700;font-size:.78rem;cursor:pointer;white-space:nowrap}
   .tcr-edit{background:none;border:0;color:#2f6b5e;cursor:pointer;padding:4px;display:flex;align-items:center}
   .tcr-edit .material-symbols-outlined{font-size:18px}
   .tcr-empty{color:#999;font-size:.86rem;text-align:center;padding:24px 0}
@@ -305,6 +311,9 @@
   var PT_LABEL={in:"出勤",out:"退勤",break_start:"休憩開始",break_end:"休憩終了"};
 
   function fmtHM(min){ if(min==null) return "—"; var h=Math.floor(min/60),m=min%60; return h+"時間"+(m?(" "+m+"分"):""); }
+  // timecard-leave-grid-v1: 休暇区分の色チップ
+  var LV_COLOR={paid:["#e8f5e9","#2e7d32"],substitute:["#e3f2fd","#1565c0"],condolence:["#f3e5f5","#6a1b9a"],absence:["#ffebee","#c62828"],off:["#eceff1","#546e7a"],half:["#fff8e1","#ef6c00"],hourly:["#fff8e1","#ef6c00"],cancel:["#f5f5f5","#9e9e9e"]};
+  function leaveChip(lv){ if(!lv) return ""; var c=LV_COLOR[lv.type]||["#eee","#555"]; return '<span class="tcr-lv" style="background:'+c[0]+';color:'+c[1]+'">'+esc(lv.label||"")+'</span>'; }
   function fmtTime(iso){ if(!iso) return "--:--"; try{var d=new Date(iso);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}catch(e){return "--:--";} }
   function timeVal(iso){ if(!iso) return ""; try{var d=new Date(iso);return String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0");}catch(e){return "";} }
   function dayLabel(dk){ var p=dk.split("-");var d=new Date(Number(p[0]),Number(p[1])-1,Number(p[2]));var wd=["日","月","火","水","木","金","土"][d.getDay()];return Number(p[2])+"日("+wd+")"; }
@@ -323,26 +332,37 @@
   function render(j){
     var staff=j.staff||[];
     window._tcrStaff=staff;  // pay-export-ui-v1
-    if(!staff.some(function(s){return s.days.length>0;})){ $("tcr-body").innerHTML='<div class="tcr-empty">この月の打刻記録はありません。</div>'; return; }
+    // timecard-leave-grid-v1: 記録が無くても職員パネルを出し、休み登録を可能にする
     var grandMin=0,grandInc=0;
     staff.forEach(function(s){ grandMin+=s.total_minutes; grandInc+=s.incomplete_days; });
     var html='<div class="tcr-summary">施設合計：<b>'+fmtHM(grandMin)+'</b>'+(grandInc?'　／　要確認の日 <b>'+grandInc+'</b>日':'')+'</div>';
+    var mm=String(month).padStart(2,"0");
+    var mStart=year+"-"+mm+"-01";
+    var mEnd=year+"-"+mm+"-"+String(new Date(year,month,0).getDate()).padStart(2,"0");
     staff.forEach(function(s){
-      if(!s.days.length) return;
       var warn=s.incomplete_days>0?'<span class="tcr-warn-dot"></span>':'';
       html+='<div class="tcr-staff tcr-collapsed"><div class="tcr-staff-head" data-toggle>'
         +'<span class="emoji">'+(s.emoji||"👤")+'</span><span class="nm">'+esc(s.name)+warn+'</span>'
         +'<span class="tot">'+fmtHM(s.total_minutes)+'<span class="sub">'+s.worked_days+'日勤務'+(s.incomplete_days?'・要確認'+s.incomplete_days+'日':'')+'</span></span></div><div class="tcr-days">';
+      html+='<div class="tcr-addleave"><input type="date" class="tcr-al-date" min="'+mStart+'" max="'+mEnd+'" value="'+mStart+'"><button class="tcr-al-btn" data-al-staff="'+esc(s.name)+'">選んだ日を編集（打刻・休み登録）</button></div>';
+      if(!s.days.length){ html+='<div class="tcr-empty" style="padding:12px 0">この月の記録はありません。上の日付を選んで休みを登録できます。</div>'; }
       s.days.forEach(function(d){
         var editBtn='<button class="tcr-edit" data-edit data-staff="'+esc(s.name)+'" data-date="'+d.date+'"><span class="material-symbols-outlined">edit</span></button>';
+        var lv=d.leave, chip=lv?leaveChip(lv):"";
+        var subref=(lv&&lv.substitute_for)?'<span class="tcr-subref">振替元 '+dayLabel(lv.substitute_for)+'</span>':"";
         if(d.incomplete){
           html+='<div class="tcr-day bad"><span class="d">'+dayLabel(d.date)+'</span>'
-            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+'</span>'
+            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+chip+'</span>'
             +'<span class="tcr-flag">⚠ '+esc((d.flags||[]).join("／"))+'</span>'+editBtn+'</div>';
+        }else if(lv && !d.in && !d.out){
+          // timecard-leave-grid-v1: 打刻なしの休暇日(有給/振替休/公休以外の申告)
+          html+='<div class="tcr-day"><span class="d">'+dayLabel(d.date)+'</span>'
+            +'<span class="io">'+chip+subref+'</span>'
+            +'<span class="hrs"></span>'+editBtn+'</div>';
         }else{
           var brk=d.break_min?'（休憩'+d.break_min+'分）':'';
           html+='<div class="tcr-day"><span class="d">'+dayLabel(d.date)+'</span>'
-            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+' '+brk+'</span>'
+            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+' '+brk+chip+subref+'</span>'
             +'<span class="hrs">'+fmtHM(d.minutes)+'</span>'+editBtn+'</div>';
         }
       });
@@ -354,6 +374,13 @@
     });
     document.querySelectorAll("[data-edit]").forEach(function(b){
       b.addEventListener("click",function(e){ e.stopPropagation(); openEdit(b.getAttribute("data-staff"), b.getAttribute("data-date")); });
+    });
+    document.querySelectorAll(".tcr-al-btn").forEach(function(b){
+      b.addEventListener("click",function(e){ e.stopPropagation();
+        var wrap=b.closest(".tcr-addleave"); var di=wrap?wrap.querySelector(".tcr-al-date"):null;
+        var dv=di?di.value:""; if(!dv){ alert("日付を選んでください"); return; }
+        openEdit(b.getAttribute("data-al-staff"), dv);
+      });
     });
   }
 
