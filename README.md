@@ -2647,4 +2647,5 @@ git checkout tasukaru-dev
 
 ### 検証・リリース
 - app.py=py_compile通過（ローカル＋デバイス両方）、テンプレJS=node --check通過。
-- TODO: dev(`tasukaru-dev`) push→Cloud Build自動デプロイ後にDEV実機でCSVダウンロード（施設全体/職員ごと）を確認 → 本番マージ。
+- DEV実機(`tasukaru-dev`)で確認済み: 「CSVで保存」ボタン表示、施設全体CSV(2026/7)=200・CSV・12列・全日×5名＋合計5行=161行、職員ごと(デモ職員A)=33行に絞り込み、公休/有給/振替も出力。モーダルの施設全体/職員ごと切替＋氏名セレクト表示もOK。
+- リリース: dev `2991f75`→`072ea2c`、本番(`tasukaru`)マージ `782bcdf`→`0e5e54c`。本番実機でもボタン表示＋エンドポイント200・12列を確認（件数のみ確認、個人データ本文は取得せず）。GitHub push→Cloud Build自動デプロイ。
