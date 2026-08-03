@@ -16852,6 +16852,8 @@ def _tc_grid_cell(dd):
         bg, fg = _tc_leave_style(lv.get("type"))
         lv_html = (f'<span class="lv" style="background:{bg};color:{fg}">'
                    f'{_h.escape(lv.get("label", ""))}</span>')
+        if lv.get("type") == "substitute" and lv.get("substitute_for"):
+            lv_html += (f'<div class="lvsub">振替元 {_tc_day_label(lv.get("substitute_for"))}</div>')
     inv = _tc_fmt_time_jp(dd.get("in"))
     outv = _tc_fmt_time_jp(dd.get("out"))
     has_punch = bool(dd.get("in") or dd.get("out"))
@@ -16907,6 +16909,7 @@ def _tc_report_grid_html(fac_name, year, month, staff):
   .wk { font-weight:normal; color:#666; font-size:8.5px; }
   .bad { color:#c0392b; font-size:8px; }
   .lv { display:inline-block; padding:1px 6px; border-radius:8px; font-weight:bold; font-size:8.5px; }
+  .lvsub { font-size:7.5px; color:#1565c0; margin-top:1px; }
   tr.total td { background:#eef5f3; font-weight:bold; }
   .notes { margin-top:8px; border:1px solid #e6d3b3; border-radius:5px; padding:5px 8px; background:#fff8ef; }
   .notes-h { font-weight:bold; color:#c0392b; font-size:9.5px; margin-bottom:2px; }
