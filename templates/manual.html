@@ -239,6 +239,29 @@ body.ss-open .bottom-nav{display:none !important}
 .mtab.active{background:var(--mc,#1a73e8);border-color:var(--mc,#1a73e8);color:#fff;
   box-shadow:0 4px 14px rgba(26,115,232,0.30);}
 .toc-a.toc-active{outline:2px solid #1a73e8;outline-offset:1px;}
+
+/* ===== slideshow-readable-v1 : スタートガイド 読みやすさ改善（中身は非変更・表示のみ） ===== */
+#ss-content{padding:18px 16px 22px;}
+.ss-progress-bar{height:6px;background:#e6eaf0;border-radius:3px;margin-bottom:16px;}
+.ss-phase{gap:6px;padding:7px 14px;border-radius:20px;font-size:0.82rem;font-weight:800;margin-bottom:14px;}
+.ss-phase .material-symbols-outlined{font-size:16px;}
+.ss-title{font-size:1.36rem;font-weight:900;color:#172233;line-height:1.36;margin-bottom:7px;letter-spacing:.2px;}
+.ss-subtitle{font-size:0.94rem;color:#46607a;line-height:1.65;margin-bottom:16px;}
+.ss-mock-wrap{margin-bottom:16px;}
+.ss-points{display:flex;flex-direction:column;gap:10px;margin-bottom:16px;}
+.ss-point{align-items:center;gap:12px;background:#fff;border:1.5px solid #e6ecf5;border-radius:14px;padding:13px 14px;box-shadow:0 2px 8px rgba(0,0,0,0.05);}
+.ss-point-ic{font-size:23px;width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:#eef4ff;flex-shrink:0;margin-top:0;}
+.ss-point-txt{font-size:0.93rem;color:#20303f;line-height:1.6;font-weight:600;}
+.ss-tip{padding:14px 16px;border-radius:13px;font-size:0.9rem;line-height:1.7;font-weight:600;color:#324457;gap:10px;align-items:flex-start;margin-bottom:6px;}
+.ss-tip .material-symbols-outlined{font-size:20px !important;}
+.ss-arrow{font-size:0.9rem;color:#8391a4;font-weight:800;padding:10px 0 4px;}
+.ss-header-title{font-size:1rem;font-weight:900;}
+.ss-nav{padding:12px 16px 16px;gap:12px;}
+.ss-nav-btn{width:54px;height:54px;}
+.ss-nav-btn .material-symbols-outlined{font-size:26px;}
+.ss-dots{display:flex;gap:5px;align-items:center;flex-wrap:nowrap;overflow:hidden;max-width:180px;}
+.ss-dot{width:7px;height:7px;border-radius:50%;background:#d4dce8;}
+.ss-dot.active{background:#1a73e8;width:22px;border-radius:4px;height:7px;}
 </style>
 {% endblock %}
 
@@ -262,7 +285,7 @@ body.ss-open .bottom-nav{display:none !important}
         <span class="material-symbols-outlined" style="font-size:24px">play_circle</span>
     </div>
     <div style="text-align:left">
-        <div class="ss-open-title">📅 月の流れを見る</div>
+        <div class="ss-open-title">📖 スタートガイド</div>
         <div class="ss-open-sub">利用開始〜書類出力まで10ステップで解説</div>
     </div>
     <span class="material-symbols-outlined" style="margin-left:auto;opacity:0.7">chevron_right</span>
@@ -271,7 +294,7 @@ body.ss-open .bottom-nav{display:none !important}
 <div id="ss-modal" onclick="if(event.target===this)closeSlideshow()">
     <div class="ss-sheet">
         <div class="ss-header">
-            <span class="ss-header-title">📅 月の流れガイド</span>
+            <span class="ss-header-title">📖 スタートガイド</span>
             <button class="ss-close-btn" onclick="closeSlideshow()">
                 <span class="material-symbols-outlined" style="font-size:18px">close</span>
             </button>
