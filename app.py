@@ -16903,8 +16903,8 @@ def _tc_report_grid_html(fac_name, year, month, staff):
   .stname { font-size:9.5px; } .stsub { font-size:8px; color:#666; font-weight:normal; }
   td.date { background:#faf8f4; font-weight:bold; white-space:nowrap; width:42px; }
   td.sat .wd { color:#1565c0; } td.sun .wd { color:#c62828; }
-  .io { font-variant-numeric:tabular-nums; }
-  .wk { font-weight:bold; }
+  .io { font-variant-numeric:tabular-nums; font-weight:bold; font-size:9.5px; }
+  .wk { font-weight:normal; color:#666; font-size:8.5px; }
   .bad { color:#c0392b; font-size:8px; }
   .lv { display:inline-block; padding:1px 6px; border-radius:8px; font-weight:bold; font-size:8.5px; }
   tr.total td { background:#eef5f3; font-weight:bold; }
