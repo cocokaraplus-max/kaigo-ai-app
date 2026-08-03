@@ -13703,11 +13703,15 @@ def api_goal_apply():
             return jsonify({"status": "error", "message": "user_name と goals が必要です"}), 400
         ALLOWED = {"short_goal", "long_goal",
                    "short_goal_function", "short_goal_activity", "short_goal_participation",
-                   "long_goal_function", "long_goal_activity", "long_goal_participation"}
+                   "long_goal_function", "long_goal_activity", "long_goal_participation",
+                   "short_goal_period_from", "short_goal_period_to",
+                   "long_goal_period_from", "long_goal_period_to"}  # goal-period-config-v1
         LABEL = {"short_goal": "短期目標", "long_goal": "長期目標",
                  "short_goal_function": "短期目標（心身機能）", "short_goal_activity": "短期目標（活動）",
                  "short_goal_participation": "短期目標（参加）", "long_goal_function": "長期目標（心身機能）",
-                 "long_goal_activity": "長期目標（活動）", "long_goal_participation": "長期目標（参加）"}
+                 "long_goal_activity": "長期目標（活動）", "long_goal_participation": "長期目標（参加）",
+                 "short_goal_period_from": "短期目標期間(開始)", "short_goal_period_to": "短期目標期間(終了)",
+                 "long_goal_period_from": "長期目標期間(開始)", "long_goal_period_to": "長期目標期間(終了)"}
         pr = supabase.table("patient_profiles").select("*").eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute()
         prof = (pr.data or [None])[0]
         if not prof:
@@ -13759,6 +13763,82 @@ def api_goal_history():
         return jsonify({"status": "success", "history": r.data or []})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e), "history": []}), 500
+
+
+# goal-period-config-v1: 施設ごとの目標期間 自動入力月数（区分別）
+_GOAL_PERIOD_DEFAULT = {
+    "jigyou":   {"short": 6, "long": 12},  # 事業対象者: 短期6ヶ月/長期1年
+    "youshien": {"short": 3, "long": 6},   # 要支援: 短期3ヶ月/長期6ヶ月
+    "yokaigo":  {"short": 3, "long": 6},   # 要介護: 短期3ヶ月/長期6ヶ月
+}
+
+
+def _goal_period_config(supabase, f_code):
+    cfg = {k: dict(v) for k, v in _GOAL_PERIOD_DEFAULT.items()}
+    try:
+        r = supabase.table("admin_settings").select("value").eq(
+            "facility_code", f_code).eq("key", "goal_period_months").execute()
+        if r.data:
+            import json as _j
+            raw = r.data[0].get("value")
+            data = _j.loads(raw) if isinstance(raw, str) else (raw or {})
+            for cat in cfg:
+                if isinstance(data.get(cat), dict):
+                    for k in ("short", "long"):
+                        v = data[cat].get(k)
+                        try:
+                            v = int(v)
+                        except Exception:
+                            v = None
+                        if v and v > 0:
+                            cfg[cat][k] = v
+    except Exception as e:
+        print(f"_goal_period_config error: {e}", flush=True)
+    return cfg
+
+
+@app.route('/api/goal_period_config', methods=['GET'])
+@login_required
+def api_goal_period_config_get():
+    try:
+        f_code = session["f_code"]
+        return jsonify({"status": "success", "config": _goal_period_config(get_supabase(), f_code)})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/goal_period_config', methods=['POST'])
+@login_required
+def api_goal_period_config_save():
+    try:
+        import json as _j
+        f_code = session["f_code"]
+        data = request.json or {}
+        incoming = data.get("config") or {}
+
+        def _iv(x, dflt):
+            try:
+                n = int(x)
+                return n if 1 <= n <= 60 else dflt
+            except Exception:
+                return dflt
+        clean = {}
+        for cat in ("jigyou", "youshien", "yokaigo"):
+            c = incoming.get(cat) or {}
+            clean[cat] = {"short": _iv(c.get("short"), _GOAL_PERIOD_DEFAULT[cat]["short"]), "long": _iv(c.get("long"), _GOAL_PERIOD_DEFAULT[cat]["long"])}
+        supabase = get_supabase()
+        val = _j.dumps(clean, ensure_ascii=False)
+        ex = supabase.table("admin_settings").select("id").eq(
+            "facility_code", f_code).eq("key", "goal_period_months").execute()
+        if ex.data:
+            supabase.table("admin_settings").update({"value": val}).eq(
+                "facility_code", f_code).eq("key", "goal_period_months").execute()
+        else:
+            supabase.table("admin_settings").insert({
+                "facility_code": f_code, "key": "goal_period_months", "value": val}).execute()
+        return jsonify({"status": "success", "config": clean})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route('/api/patient/care_level_history', methods=['GET'])

@@ -1124,6 +1124,26 @@
             </div>
         </div>
 
+        <!-- goal-period-config-v1: 目標期間(評価画面) -->
+        <div class="eval-section" id="eval-section-period" style="display:none;">
+          <div class="eval-section-body" style="padding:12px 14px;">
+            <div style="font-weight:700;font-size:.9rem;color:#1a73e8;margin-bottom:6px;">目標期間</div>
+            <div style="font-size:.72rem;color:#80868b;margin-bottom:10px;line-height:1.6;">開始日を入れると終了日が自動で入ります（区分別の月数は利用者基本情報の⚙️で設定）。ここで設定した期間は基本情報に反映され、履歴に残ります。</div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+              <span style="width:44px;font-size:.82rem;font-weight:700;">短期</span>
+              <input type="date" id="eval-short-period-from" style="padding:7px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;">
+              <span>〜</span>
+              <input type="date" id="eval-short-period-to" style="padding:7px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;">
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="width:44px;font-size:.82rem;font-weight:700;">長期</span>
+              <input type="date" id="eval-long-period-from" style="padding:7px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;">
+              <span>〜</span>
+              <input type="date" id="eval-long-period-to" style="padding:7px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;">
+            </div>
+          </div>
+        </div>
+
         <!-- ========== セクション 4: 訓練による変化と課題 (初期: 閉) ========== -->
         <div class="eval-section collapsed" id="eval-section-notes">
             <button type="button" class="eval-section-header"
@@ -2276,7 +2296,23 @@ window.evalShowGoalDisplay = function(mode) {
     if (gdK) gdK.style.display = (mode === 'kaigo') ? '' : 'none';
     if (gdS) gdS.style.display = (mode === 'simple') ? '' : 'none';
     if (gdE) gdE.style.display = (mode === 'none' || !mode) ? '' : 'none';
+    var _pb = document.getElementById('eval-section-period');
+    if (_pb) _pb.style.display = (mode === 'none' || !mode) ? 'none' : '';
 }
+
+// goal-period-config-v1: 評価画面の目標期間 自動入力(施設設定・区分別)
+var _EVGP_DEF={jigyou:{short:6,long:12},youshien:{short:3,long:6},yokaigo:{short:3,long:6}};
+function evalGoalPeriodCat(){ var c=(window.evalState&&evalState.careClass)||''; if(c.indexOf('要介護')===0)return 'yokaigo'; if(c.indexOf('要支援')===0)return 'youshien'; return 'jigyou'; }
+function evalGoalPeriodMonths(kind){ var cat=evalGoalPeriodCat(); var cfg=(window._goalPeriodCfg||{})[cat]||{}; var v=cfg[kind]; return (v&&v>0)?v:_EVGP_DEF[cat][kind]; }
+function evalSetupPeriodAuto(fromId,toId,kind){
+  var fromEl=document.getElementById(fromId); if(!fromEl) return;
+  function fill(){ if(!fromEl.value) return; var toEl=document.getElementById(toId); if(!toEl) return;
+    var months=evalGoalPeriodMonths(kind); var pr=fromEl.value.split('-'); var y=parseInt(pr[0]),mo=parseInt(pr[1]),d=parseInt(pr[2]);
+    var ny=y,nm=mo+months; while(nm>12){nm-=12;ny++;} var maxDay=new Date(ny,nm,0).getDate(); var sd=Math.min(d,maxDay);
+    var end=new Date(ny,nm-1,sd-1); toEl.value=end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')+'-'+String(end.getDate()).padStart(2,'0'); }
+  fromEl.addEventListener('change',fill); fromEl.addEventListener('blur',fill);
+}
+async function evalLoadGoalPeriodCfg(){ try{var r=await fetch('/api/goal_period_config');var j=await r.json(); if(j.status==='success') window._goalPeriodCfg=j.config;}catch(e){} }
 window.evalSetGoalDisplay = function(initial) {
     if (!initial) return;
     var fields = {
@@ -2294,6 +2330,14 @@ window.evalSetGoalDisplay = function(initial) {
         if (el) el.textContent = fields[id] || '（未設定）';
     });
     if (window._evalLoadGoalHistory) window._evalLoadGoalHistory();  /* goal-link-history-v1 */
+    // goal-period-config-v1: 期間の自動入力配線(一度だけ)＋as-of初期値
+    if(!window._evalPeriodWired){ window._evalPeriodWired=true;
+      evalSetupPeriodAuto('eval-short-period-from','eval-short-period-to','short');
+      evalSetupPeriodAuto('eval-long-period-from','eval-long-period-to','long');
+      evalLoadGoalPeriodCfg();
+    }
+    var _pf={'eval-short-period-from':initial.short_goal_period_from,'eval-short-period-to':initial.short_goal_period_to,'eval-long-period-from':initial.long_goal_period_from,'eval-long-period-to':initial.long_goal_period_to};
+    Object.keys(_pf).forEach(function(id){ var el=document.getElementById(id); if(el) el.value=_pf[id]||''; });
 }
 function evalUpdateSectionBadges(data) {
     // 訓練目標バッジ（表示のみになったため判定スキップ）
@@ -2407,6 +2451,11 @@ window._evalMaybeApplyGoals = function(data){
     if(v){ goals[m[1]]=v; list.push({label:m[2], val:v}); }
   });
   if(!list.length) return;
+  // goal-period-config-v1: 期間も基本情報へ反映(履歴化)
+  [['short_goal_period_from','eval-short-period-from'],['short_goal_period_to','eval-short-period-to'],
+   ['long_goal_period_from','eval-long-period-from'],['long_goal_period_to','eval-long-period-to']].forEach(function(pp){
+    var el=document.getElementById(pp[1]); var v=el?(el.value||'').trim():''; if(v) goals[pp[0]]=v;
+  });
   function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   var uname=data.user_name||'';
   var ov=document.createElement('div');

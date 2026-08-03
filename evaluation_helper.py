@@ -163,10 +163,15 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
                     result[key] = val
     except Exception:
         pass
+    # goal-period-config-v1: 期間キーを追加(評価テーブルには列が無いのでselect対象外)
+    for _pk in ("short_goal_period_from", "short_goal_period_to",
+                "long_goal_period_from", "long_goal_period_to"):
+        result[_pk] = ""
+
     # patient_profilesからのフォールバック（evaluationsに値がない場合）
     try:
         prof = supabase.table("patient_profiles") \
-            .select("short_goal,long_goal,short_goal_function,short_goal_activity,short_goal_participation,long_goal_function,long_goal_activity,long_goal_participation") \
+            .select("short_goal,long_goal,short_goal_function,short_goal_activity,short_goal_participation,long_goal_function,long_goal_activity,long_goal_participation,short_goal_period_from,short_goal_period_to,long_goal_period_from,long_goal_period_to") \
             .eq("facility_code", facility_code) \
             .eq("user_name", user_name) \
             .limit(1) \
@@ -182,6 +187,10 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
                     result[f"short_goal_{axis}"] = p.get(f"short_goal_{axis}") or ""
                 if not result[f"long_goal_{axis}"]:
                     result[f"long_goal_{axis}"] = p.get(f"long_goal_{axis}") or ""
+            for _pk in ("short_goal_period_from", "short_goal_period_to",
+                        "long_goal_period_from", "long_goal_period_to"):
+                if not result[_pk]:
+                    result[_pk] = p.get(_pk) or ""
     except Exception:
         pass
 
@@ -197,6 +206,8 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
             "short_goal_participation": "short_goal_participation",
             "long_goal_function": "long_goal_function", "long_goal_activity": "long_goal_activity",
             "long_goal_participation": "long_goal_participation",
+            "short_goal_period_from": "short_goal_period_from", "short_goal_period_to": "short_goal_period_to",
+            "long_goal_period_from": "long_goal_period_from", "long_goal_period_to": "long_goal_period_to",
         }
         _gh = supabase.table("goal_history") \
             .select("field, old_value, year_month, changed_at") \
