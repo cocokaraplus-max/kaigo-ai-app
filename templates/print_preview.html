@@ -1166,6 +1166,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 {% set p = rd.patient %}
 {% set cm = rd.caremanager %}
 {% set ev = rd.evaluation %}
+{% set ga = rd.goal_asof or {} %}{# goal-asof-print-v1 #}
 {% set mon = rd.monitoring %}
 {% set fitness = rd.fitness %}
 {% set weights = rd.weights %}
@@ -1231,7 +1232,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                     ('活動', 'short_goal_activity', 'short_goal_activity_status', 'short_goal_activity_cont', 'short_goal_activity_new'),
                     ('参加', 'short_goal_participation', 'short_goal_participation_status', 'short_goal_participation_cont', 'short_goal_participation_new')
                 ] %}
-                {% set goal_val = (cm.get(goal_key) or '') if cm else '' %}
+                {% set _ga = (ga.get(goal_key) or '') if ga else '' %}
+                {% set goal_val = _ga if _ga else ((cm.get(goal_key) or '') if cm else '') %}
                 {% set status = ev.get(status_key, '') if ev else '' %}
                 {% set cont = ev.get(cont_key, '') if ev else '' %}
                 {% set new_goal = ev.get(new_key, '') if ev else '' %}
@@ -1246,7 +1248,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                 {% endif %}
                 {% endfor %}
                 {% else %}
-                {% set goal_val = (cm.short_goal or '') if cm else '' %}
+                {% set _ga = (ga.get('short_goal_simple') or '') if ga else '' %}
+                {% set goal_val = _ga if _ga else ((cm.short_goal or '') if cm else '') %}
                 {% set status = ev.get('short_goal_status', ev.get('short_goal_function_status', '')) if ev else '' %}
                 {% set cont = ev.get('short_goal_cont', ev.get('short_goal_function_cont', '')) if ev else '' %}
                 {% set new_goal = ev.get('short_goal_new', ev.get('short_goal_function_new', '')) if ev else '' %}
@@ -1270,7 +1273,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                     ('活動', 'long_goal_activity', 'long_goal_activity_status', 'long_goal_activity_cont', 'long_goal_activity_new'),
                     ('参加', 'long_goal_participation', 'long_goal_participation_status', 'long_goal_participation_cont', 'long_goal_participation_new')
                 ] %}
-                {% set goal_val = (cm.get(goal_key) or '') if cm else '' %}
+                {% set _ga = (ga.get(goal_key) or '') if ga else '' %}
+                {% set goal_val = _ga if _ga else ((cm.get(goal_key) or '') if cm else '') %}
                 {% set status = ev.get(status_key, '') if ev else '' %}
                 {% set cont = ev.get(cont_key, '') if ev else '' %}
                 {% set new_goal = ev.get(new_key, '') if ev else '' %}
@@ -1285,7 +1289,8 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                 {% endif %}
                 {% endfor %}
                 {% else %}
-                {% set goal_val = (cm.long_goal or '') if cm else '' %}
+                {% set _ga = (ga.get('long_goal_simple') or '') if ga else '' %}
+                {% set goal_val = _ga if _ga else ((cm.long_goal or '') if cm else '') %}
                 {% set status = ev.get('long_goal_status', ev.get('long_goal_function_status', '')) if ev else '' %}
                 {% set cont = ev.get('long_goal_cont', ev.get('long_goal_function_cont', '')) if ev else '' %}
                 {% set new_goal = ev.get('long_goal_new', ev.get('long_goal_function_new', '')) if ev else '' %}

@@ -26253,6 +26253,12 @@ def print_pdf():
             data["caremanager"] = cm.data[0] if cm.data else {}
         except Exception:
             data["caremanager"] = {}
+        # goal-asof-print-v1: 上段の目標は「その月時点(=旧目標)」を表示する。
+        # 目標変更で patient_profiles が新目標に上書きされても、印刷の元目標は旧目標のまま。
+        try:
+            data["goal_asof"] = get_initial_goal_values(supabase, f_code, uname, year_month)
+        except Exception:
+            data["goal_asof"] = {}
         # 対象月のケース記録から画像URLを収集
         try:
             if items.get("images", False):
@@ -26497,6 +26503,12 @@ def print_preview():
             data["caremanager"] = cm.data[0] if cm.data else {}
         except Exception:
             data["caremanager"] = {}
+        # goal-asof-print-v1: 上段の目標は「その月時点(=旧目標)」を表示する。
+        # 目標変更で patient_profiles が新目標に上書きされても、印刷の元目標は旧目標のまま。
+        try:
+            data["goal_asof"] = get_initial_goal_values(supabase, f_code, uname, year_month)
+        except Exception:
+            data["goal_asof"] = {}
         # 対象月のケース記録から画像URLを収集
         try:
             if items.get("images", False):
