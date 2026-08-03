@@ -2019,12 +2019,12 @@ window.evalSelectCareClass = function(value, fromUser) {
 // ===========================================================================
 // セグメントボタン (radio 代替)
 // ===========================================================================
-window.evalSelectSegment = function(hiddenId, value) {
+window.evalSelectSegment = function(hiddenId, value, silent) {
     // goal-consistency-alert-v1: 長期目標を「達成」にする時、対応する短期目標(同一軸)が
     // 未達成/一部達成なら確認する。短期は長期の通過点のため矛盾を防ぐ。
     var _needShortReminder = false;
     var _L2S = {'eval-long-function':'eval-short-function','eval-long-activity':'eval-short-activity','eval-long-participation':'eval-short-participation','eval-long-goal-simple':'eval-short-goal-simple'};
-    if (value === '達成' && _L2S[hiddenId]) {
+    if (!silent && value === '達成' && _L2S[hiddenId]) {
         var _sEl = document.getElementById(_L2S[hiddenId]);
         var _sVal = _sEl ? _sEl.value : '';
         if (_sVal === '未達成' || _sVal === '一部達成') {
@@ -2152,7 +2152,7 @@ function evalFillForm(ev) {
      ['eval-short-goal-simple', ev.short_goal_status],
      ['eval-long-goal-simple', ev.long_goal_status],
     ].forEach(([id, val]) => {
-        if (val) evalSelectSegment(id, val);
+        if (val) evalSelectSegment(id, val, true);  // 復元時は確認を出さない
     });
 
     // 各軸の新規目標を復元＋現在の目標を表示
