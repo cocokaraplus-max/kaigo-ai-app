@@ -2610,3 +2610,23 @@ git checkout tasukaru-dev
 
 ### 補足
 新規追加・保存新規・一括取込の各経路は既に `_ensure_patient_row` で patients 行を作成済み。将来的には氏名ではなく安定IDでの結合が理想だが、影響範囲が大きいため今回は対症で再発防止に留める。
+
+
+## 勤怠集計表をグリッド化し「休み申告」を反映＋画面に休み表示/登録編集 2026-08-03  <!-- timecard-leave-grid-v1 -->
+
+タイムカードの「休み申告」データ（`staff_leave_days`）を、実際の勤怠出力（勤怠集計表PDF）と管理画面の勤怠集計に反映。
+
+### 背景・調査
+- 休み申告は `staff_leave_days`（`leave_type`＝paid/substitute/condolence/absence/off/half/hourly/cancel、`substitute_for`＝振替元、`note`＝経緯メモ）。入力は職員本人（打刻画面 `/timecard/leave/self`・過去30日以内）と管理者（編集モーダル `/admin/timecard/leave/set`）。
+- 反映状況（着手前）: 様式4xlsx `/admin/timecard/youshiki`・給与payroll出力 `/admin/timecard/export/payroll/*` は反映済み。一方、勤怠集計表PDF `/admin/timecard/report_pdf` は**備考(noteあり)のみ**、画面の勤怠集計 `/admin/timecard/monthly`(admin_timecard_report.html)・simple出力は**打刻のみで休みは非表示**だった。いただいたグリッド型PDF（職員×日付・色ラベル・空欄=公休）は当時コードに無く、目標デザインだった。
+
+### 主な変更（app.py / templates/admin_timecard_report.html, marker `timecard-leave-grid-v1`）
+- 休みをマージする `_tc_merge_leaves_into_monthly` を新設。`_tc_build_monthly_data` と `admin_timecard_monthly` の両経路で、各日dictに `leave`（区分/ラベル/振替元/note）を付与し、打刻の無い休暇日も days に追加、職員dictに `leaves` 一覧を付与（画面・PDFで同一データ源）。
+- 勤怠集計表PDF `report_pdf` を **職員×日付グリッド（A4横）** に刷新（`_tc_report_grid_html` / `_tc_grid_cell` / `_tc_leave_style` を新設、pdfkitオプションをLandscape化）。有給=緑・振替休=青・欠勤=赤ほかを色ラベル、公休は空欄、施設合計・月合計・備考・凡例、打刻要確認は⚠。
+- セル表記は上段「〇時〇分〜〇時〇分（休憩〇分）」（`_tc_fmt_time_jp` を新設）＝**太字で強調**、下段「〇時間〇分勤務」は控えめ。
+- 画面(admin_timecard_report.html)は従来のコンパクト表記のまま、休みの色ラベル表示（`leaveChip` / `LV_COLOR`）と、各職員の「日付を選んで編集（打刻・休み登録）」導線を追加。記録の無い日/職員でも編集モーダルを開いて休み登録・変更・削除が可能（`.tcr-al-btn`）。
+
+### 検証・リリース
+- サンプルデータでPDFをwkhtmltopdf生成し、色ラベル・振替元・公休空欄・上段強調・月合計・備考・凡例を目視確認。app.py=py_compile通過、テンプレJS=node --check通過、render単体テストで休みチップ/編集導線/記録なし職員パネルを確認。
+- dev(`tasukaru-dev`) 583c987→5796802、本番(`tasukaru`)マージ feb285a。GitHub push→Cloud Build自動デプロイ。
+- 対象外（従来通り）: simple勤怠出力（CSV/Excel）は打刻のみ。将来必要なら同マージmapで休暇列を追加可能。
