@@ -1339,6 +1339,8 @@ DAILY_SUMMARY_PROMPT = """以下は介護職員それぞれが記録した1日�
 ・「支援内容」として記録されている事柄は必ず要約して含める
 ・変化・気になる点・注意事項を優先して記載
 ・です・ます調で書く
+・【厳守】記録に書かれていない事実・症状・処置・出来事・発言を、絶対に追加・推測・創作しない（記録に無いことは書かない）
+・文字数を埋めるために内容を足さない。記録が短ければ短いままでよい
 
 【記録】
 {records}
@@ -12392,8 +12394,13 @@ def api_generate_daily():
             return jsonify({"status": "error", "message": "個別記録がありません"})
         recs_text = "\n".join([f"【{r['staff_name']}】{r['content']}" for r in normal_recs])
         from utils import get_generative_model, upload_audio_to_supabase
-        model = get_generative_model()
-        summary = model.generate_content([DAILY_SUMMARY_PROMPT.format(records=recs_text)]).text
+        # halluc-guard-v1: 実内容が極端に短い場合はAI要約せず記録そのものを使う（創作防止・AI統合記録に反映）
+        _content_only = "".join([(r.get('content') or '') for r in normal_recs]).strip()
+        if len(_content_only) < 20:
+            summary = "\n".join([(r.get('content') or '') for r in normal_recs]).strip()
+        else:
+            model = get_generative_model()
+            summary = model.generate_content([DAILY_SUMMARY_PROMPT.format(records=recs_text)]).text
         c_num = normal_recs[0]["chart_number"]
         dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
         supabase.table("records").insert({
@@ -12427,8 +12434,13 @@ def api_regenerate_daily():
         normal_recs = [r for r in res.data if r["staff_name"] != "AI統合記録"]
         recs_text = "\n".join([f"【{r['staff_name']}】{r['content']}" for r in normal_recs])
         from utils import get_generative_model, upload_audio_to_supabase
-        model = get_generative_model()
-        summary = model.generate_content([DAILY_SUMMARY_PROMPT.format(records=recs_text)]).text
+        # halluc-guard-v1: 実内容が極端に短い場合はAI要約せず記録そのものを使う（創作防止・AI統合記録に反映）
+        _content_only = "".join([(r.get('content') or '') for r in normal_recs]).strip()
+        if len(_content_only) < 20:
+            summary = "\n".join([(r.get('content') or '') for r in normal_recs]).strip()
+        else:
+            model = get_generative_model()
+            summary = model.generate_content([DAILY_SUMMARY_PROMPT.format(records=recs_text)]).text
         c_num = normal_recs[0]["chart_number"]
         dt = tokyo_tz.localize(datetime.combine(selected_date, dt_time(23, 59, 59)))
         supabase.table("records").delete().eq("id", data["ai_record_id"]).execute()
