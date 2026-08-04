@@ -880,6 +880,8 @@ window.saveRecord = async function() {
         const audioData = document.getElementById('audio-data')?.value;
         const audioMime = document.getElementById('audio-mime')?.value;
         if (audioData) { formData.append('audio_data', audioData); formData.append('audio_mime', audioMime); }
+        // offline-dedup-v1: 記録ごとに一意ID。オフライン再送でも同じIDなのでサーバが二重登録を弾く
+        formData.append('client_uid', (self.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('r-' + Date.now() + '-' + Math.random().toString(36).slice(2)));
 
         const res = await fetch('/input', {
             method: 'POST',
