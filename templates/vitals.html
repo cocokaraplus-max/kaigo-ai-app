@@ -1951,8 +1951,21 @@ window.saveVital = async function(pid, name, dateStr) {
         if (window._measureView && window._measureView !== 'list') {
             setTimeout(() => { window.backToMeasureList(); }, 900);
         }
-    } else {
+    } else if (data.status !== 'queued') {
         alert('保存に失敗しました: ' + (data.message || ''));
+    }
+    // offline-record-v1: オフライン時はキュー保存され status:'queued' が返る（接続後に自動送信）
+    if (data.status === 'queued') {
+        VITALS_DATA[pid] = {...VITALS_DATA[pid], ...payload};
+        ['bp_high','bp_low','pulse','temperature','spo2','recheck','note'].forEach(k => { delete VITALS_DATA[pid][k]; });
+        ['bp_high','bp_low','pulse','temperature','spo2','note'].forEach(k => { const el = document.getElementById(`v-${k}-${pid}`); if (el) el.value = ''; });
+        const _rc = document.getElementById(`v-recheck-${pid}`); if (_rc) _rc.checked = false;
+        const offMsg = document.createElement('div');
+        offMsg.style.cssText = 'font-size:0.78rem;color:#f57c00;text-align:center;margin-top:4px;font-weight:700;';
+        offMsg.textContent = '📴 オフライン保存しました（接続後に自動送信）';
+        const _b = document.querySelector(`#vbody-${pid} .save-vital-btn`);
+        if (_b) { _b.after(offMsg); setTimeout(()=>offMsg.remove(), 3800); }
+        if (window._measureView && window._measureView !== 'list') { setTimeout(() => { window.backToMeasureList(); }, 1200); }
     }
 };
 
