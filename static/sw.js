@@ -1,6 +1,6 @@
 // TASUKARU Service Worker
 // バージョンを上げると古いキャッシュが自動削除される
-const CACHE_VERSION = 'tasukaru-v14';
+const CACHE_VERSION = 'tasukaru-v15';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -226,16 +226,34 @@ self.addEventListener('sync', event => {
   }
 });
 
+// offline-dedup-v1: claim-before-send（1件ずつ取り出して即削除→送信）で二重再送を防ぐ。
+function _swReadd(db, item) {
+  return new Promise((resolve) => {
+    try {
+      const o = {}; for (const k in item) { if (k !== 'id') o[k] = item[k]; }
+      const tx = db.transaction('queue', 'readwrite');
+      tx.objectStore('queue').add(o);
+      tx.oncomplete = resolve; tx.onerror = resolve;
+    } catch (e) { resolve(); }
+  });
+}
 async function syncOfflineRecords() {
   const db = await openDB();
-  const items = await getAllItems(db);
-  for (const item of items) {
+  while (true) {
+    const item = await new Promise((resolve) => {
+      let picked = null;
+      const tx = db.transaction('queue', 'readwrite');
+      const store = tx.objectStore('queue');
+      const req = store.openCursor();
+      req.onsuccess = e => { const c = e.target.result; if (c) { picked = c.value; store.delete(c.key); } };
+      tx.oncomplete = () => resolve(picked);
+      tx.onerror = () => resolve(null);
+    });
+    if (!item) break;
     try {
-      await fetch(item.data.url, { method: item.data.method, body: item.data.body, headers: item.data.headers });
-      await deleteItem(db, item.key);
-    } catch (e) {
-      console.log('[SW] 同期失敗:', e);
-    }
+      const r = await fetch(item.url, { method: item.method, body: item.body, headers: item.headers });
+      if (!r.ok && r.status >= 500) { await _swReadd(db, item); break; }
+    } catch (e) { await _swReadd(db, item); break; }
   }
 }
 

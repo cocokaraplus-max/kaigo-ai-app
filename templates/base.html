@@ -1045,14 +1045,20 @@ body.nav-editing {
   .dw-app[data-href="/admin"] .dw-ic, .dw-app[data-href="/dev"] .dw-ic,
   .dw-app[data-href="/manual"] .dw-ic { background: #5f6368; }
   .dw-app[data-href="/birthday"] .dw-ic, .dw-app[data-href="/numerology"] .dw-ic { background: #e8710a; }
-  /* offline-nav-v1: オフライン時、オフラインでも使えるメニュー(記録入力・バイタル)にオレンジ印 */
+  /* offline-nav-v1: オフライン時、オフラインでも使えるメニュー(記録入力・バイタル・カレンダー・ガイド)にオレンジ印 */
   body.sw-offline .dw-app[data-href="/input"] .dw-ic,
-  body.sw-offline .dw-app[data-href="/vitals"] .dw-ic { box-shadow: 0 0 0 3px #ff6f00, 0 3px 10px rgba(255,111,0,.35) !important; }
+  body.sw-offline .dw-app[data-href="/vitals"] .dw-ic,
+  body.sw-offline .dw-app[data-href="/calendar"] .dw-ic,
+  body.sw-offline .dw-app[data-href="/manual"] .dw-ic { box-shadow: 0 0 0 3px #ff6f00, 0 3px 10px rgba(255,111,0,.35) !important; }
   body.sw-offline .dw-app[data-href="/input"] .dw-ic::after,
-  body.sw-offline .dw-app[data-href="/vitals"] .dw-ic::after { content:''; position:absolute; top:-4px; right:-4px; width:14px; height:14px; border-radius:50%; background:#ff6f00; border:2px solid #fff; z-index:4; }
+  body.sw-offline .dw-app[data-href="/vitals"] .dw-ic::after,
+  body.sw-offline .dw-app[data-href="/calendar"] .dw-ic::after,
+  body.sw-offline .dw-app[data-href="/manual"] .dw-ic::after { content:''; position:absolute; top:-4px; right:-4px; width:14px; height:14px; border-radius:50%; background:#ff6f00; border:2px solid #fff; z-index:4; }
   body.sw-offline .dw-app[data-href="/input"] .dw-label,
-  body.sw-offline .dw-app[data-href="/vitals"] .dw-label { color:#e65100 !important; font-weight:800; }
-  body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]) { opacity:0.5; }
+  body.sw-offline .dw-app[data-href="/vitals"] .dw-label,
+  body.sw-offline .dw-app[data-href="/calendar"] .dw-label,
+  body.sw-offline .dw-app[data-href="/manual"] .dw-label { color:#e65100 !important; font-weight:800; }
+  body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]):not([data-href="/calendar"]):not([data-href="/manual"]) { opacity:0.5; }
 </style>
 
 <div id="appDrawerHandle" data-side="{{ drawer_side }}" title="メニュー">
@@ -2523,7 +2529,7 @@ window.addEventListener('online',  updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 updateOnlineStatus();
 // offline-nav-v1: オンラインのうちに、オフラインで使うページを取得してキャッシュに温めておく（SWがv14でHTMLを実行時キャッシュする）
-window.addEventListener('load', function(){ setTimeout(function(){ if (navigator.onLine) { ['/input','/vitals','/top'].forEach(function(u){ try{ fetch(u, {credentials:'include'}).catch(function(){}); }catch(e){} }); } }, 4500); });
+window.addEventListener('load', function(){ setTimeout(function(){ if (navigator.onLine) { ['/input','/vitals','/calendar','/manual','/top'].forEach(function(u){ try{ fetch(u, {credentials:'include'}).catch(function(){}); }catch(e){} }); } }, 4500); });
 
 // ========== オフラインキャッシュ ==========
 const OFFLINE_DB = 'tasukaru-offline';
@@ -2660,42 +2666,51 @@ async function loadOfflineQueue() {
 }
 
 // ネット復帰時に未送信記録を自動同期
+// offline-dedup-v1: 再送を「1回だけ・排他的」にして重複登録を防ぐ。
+// claim-before-send＝1件ずつ「取り出して即削除→送信」。削除がロック代わりになり、
+// 別トリガー（online復帰/SW sync/機内モード切替の連発）が同じ件を二重送信できない。
+function _ssqReadd(db, item) {
+    return new Promise(resolve => {
+        try {
+            const o = {}; for (const k in item) { if (k !== 'id') o[k] = item[k]; }
+            const tx = db.transaction('queue', 'readwrite');
+            tx.objectStore('queue').add(o);
+            tx.oncomplete = resolve; tx.onerror = resolve;
+        } catch (e) { resolve(); }
+    });
+}
 async function syncOfflineQueue() {
+    if (window.__ssqRunning) return;   // 排他: 同時実行を止める
+    window.__ssqRunning = true;
+    let synced = 0;
     try {
         const db = await openOfflineDB();
-        const items = await new Promise(resolve => {
-            const list = [];
-            const tx = db.transaction('queue', 'readonly');
-            const req = tx.objectStore('queue').openCursor();
-            req.onsuccess = e => {
-                const c = e.target.result;
-                if (c) { list.push({key: c.key, data: c.value}); c.continue(); }
-                else resolve(list);
-            };
-        });
-        if (!items.length) return;
-
-        let synced = 0;
-        for (const item of items) {
+        while (true) {
+            // 1件だけ atomically に取り出して削除（claim）
+            const item = await new Promise(resolve => {
+                let picked = null;
+                const tx = db.transaction('queue', 'readwrite');
+                const store = tx.objectStore('queue');
+                const req = store.openCursor();
+                req.onsuccess = e => { const c = e.target.result; if (c) { picked = c.value; store.delete(c.key); } };
+                tx.oncomplete = () => resolve(picked);
+                tx.onerror = () => resolve(null);
+            });
+            if (!item) break;
             try {
-                const res = await fetch(item.data.url, {
-                    method: item.data.method,
-                    body: item.data.body,
-                    headers: item.data.headers
-                });
-                if (res.ok) {
-                    const tx = db.transaction('queue', 'readwrite');
-                    tx.objectStore('queue').delete(item.key);
-                    synced++;
-                }
-            } catch(e) {}
+                const res = await fetch(item.url, { method: item.method, body: item.body, headers: item.headers });
+                if (res.ok) { synced++; }
+                else if (res.status >= 500) { await _ssqReadd(db, item); break; }   // サーバ一時エラー: 戻して中断
+                // 4xx はサーバ拒否＝戻すと無限ループになるので破棄
+            } catch (e) {
+                await _ssqReadd(db, item); break;   // オフライン等: 戻して中断
+            }
         }
         if (synced > 0) {
             const banner = document.getElementById('sync-banner');
-            banner.style.display = 'block';
-            setTimeout(() => { banner.style.display = 'none'; }, 3000);
+            if (banner) { banner.style.display = 'block'; setTimeout(() => { banner.style.display = 'none'; }, 3000); }
         }
-    } catch(e) {}
+    } catch (e) {} finally { window.__ssqRunning = false; }
 }
 
 // ページ読み込み時に利用者情報をキャッシュ
