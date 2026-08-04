@@ -13179,15 +13179,23 @@ def api_generate_daily_summary():
 
         contents = [r['content'] for r in records]
         recs_text = '\n'.join(contents)
-        from utils import get_generative_model
-        model = get_generative_model()
-        prompt = (
-            f"以下は{date_str}の{user_name}さんに関する介護記録です。"
-            "職員が記入した記録を、要点を押さえて簡潔に要約してください。"
-            "箇条書きは使わず自然な文章で、200文字程度でまとめてください。"
-            "職員名や主語は不要です。\n\n" + recs_text
-        )
-        summary = model.generate_content([prompt]).text.strip()
+        # halluc-guard-v1: 記録が極端に短い場合はAI要約せず記録そのものを返す（創作の余地をゼロに）
+        if len(recs_text.strip()) < 20:
+            summary = recs_text.strip()
+        else:
+            from utils import get_generative_model
+            model = get_generative_model()
+            prompt = (
+                f"以下は{date_str}の{user_name}さんに関する介護記録です。\n"
+                "この記録に実際に書かれている内容だけを使って、自然な文章で要約してください。\n"
+                "【厳守】記録に書かれていない事実・症状・処置・出来事・発言を、絶対に追加・推測・創作しないこと。"
+                "記録に無いことは一切書かないでください。\n"
+                "記録が短いときは無理に長くせず、書かれている範囲でそのまま短くまとめること"
+                "（文字数を埋めるために内容を足してはいけません）。\n"
+                "箇条書きは使わず、職員名や主語は不要。最大200文字程度。\n\n"
+                "=== 介護記録 ===\n" + recs_text
+            )
+            summary = model.generate_content([prompt]).text.strip()
 
         all_image_urls = []
         for r in records:
