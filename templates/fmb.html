@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% block title %}ファーストミッションボックス - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* fmb-v1: 災害時ファーストミッションボックス（完全オフライン） */
+.fmb-wrap { max-width: 680px; margin: 0 auto; padding: 12px 14px 40px; }
+.fmb-screen { display: none; }
+.fmb-screen.active { display: block; animation: fmbIn .18s ease; }
+@keyframes fmbIn { from { opacity:0; transform: translateY(6px);} to {opacity:1; transform:none;} }
+
+.fmb-title { font-size: 1.35rem; font-weight: 900; color:#c62828; text-align:center; margin: 6px 0 2px; letter-spacing:.02em; }
+.fmb-sub { font-size: .92rem; color:#5f6368; text-align:center; line-height:1.7; margin-bottom: 18px; }
+.fmb-creed { background:#fff8e1; border:1.5px solid #ffcc80; border-radius:12px; padding:12px 14px; color:#e65100; font-size:.9rem; line-height:1.8; font-weight:700; text-align:center; margin-bottom:18px; }
+
+.fmb-btn-open { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:20px; background:#c62828; color:#fff; border:none; border-radius:16px; font-size:1.3rem; font-weight:900; cursor:pointer; box-shadow:0 6px 16px rgba(198,40,40,.3); }
+.fmb-btn-open:active { transform: scale(.98); }
+
+.fmb-dz { display:grid; grid-template-columns:1fr; gap:14px; margin-top:8px; }
+.fmb-dz-btn { display:flex; align-items:center; gap:16px; width:100%; padding:20px 22px; border:2.5px solid #e0e0e0; background:#fff; border-radius:16px; cursor:pointer; text-align:left; transition:.12s; }
+.fmb-dz-btn:active { transform:scale(.98); }
+.fmb-dz-btn .ic { font-size:40px; line-height:1; }
+.fmb-dz-btn .nm { font-size:1.4rem; font-weight:900; color:#202124; }
+.fmb-dz-btn .ds { font-size:.82rem; color:#5f6368; margin-top:2px; }
+.fmb-dz-btn[data-d="earthquake"] { border-color:#ff8f00; } .fmb-dz-btn[data-d="earthquake"] .ic{color:#ff8f00;}
+.fmb-dz-btn[data-d="fire"] { border-color:#e53935; } .fmb-dz-btn[data-d="fire"] .ic{color:#e53935;}
+.fmb-dz-btn[data-d="flood"] { border-color:#1e88e5; } .fmb-dz-btn[data-d="flood"] .ic{color:#1e88e5;}
+
+.fmb-banner { display:flex; align-items:center; gap:8px; padding:10px 14px; border-radius:12px; font-weight:800; color:#fff; margin-bottom:16px; font-size:1rem; }
+.fmb-banner.earthquake{background:#ff8f00;} .fmb-banner.fire{background:#e53935;} .fmb-banner.flood{background:#1e88e5;}
+
+.fmb-count { display:flex; align-items:center; justify-content:center; gap:22px; margin:24px 0; }
+.fmb-count button { width:64px; height:64px; border-radius:50%; border:none; background:#c62828; color:#fff; font-size:2rem; font-weight:900; cursor:pointer; line-height:1; }
+.fmb-count .val { font-size:3.4rem; font-weight:900; color:#202124; min-width:90px; text-align:center; }
+.fmb-count .unit { font-size:1rem; color:#5f6368; }
+
+.fmb-btn-primary { display:block; width:100%; padding:18px; background:#c62828; color:#fff; border:none; border-radius:14px; font-size:1.25rem; font-weight:900; cursor:pointer; margin-top:10px; box-shadow:0 5px 14px rgba(198,40,40,.28); }
+.fmb-btn-primary:active{transform:scale(.98);}
+.fmb-btn-ghost { display:block; width:100%; padding:13px; background:#fff; color:#5f6368; border:2px solid #e0e0e0; border-radius:12px; font-size:.98rem; font-weight:700; cursor:pointer; margin-top:10px; }
+
+.fmb-roles-hint { font-size:.9rem; color:#5f6368; text-align:center; line-height:1.7; margin-bottom:16px; }
+.fmb-role-card { display:flex; align-items:center; gap:14px; width:100%; padding:16px 18px; border:2px solid #e0e0e0; background:#fff; border-radius:14px; cursor:pointer; text-align:left; margin-bottom:12px; transition:.12s; }
+.fmb-role-card:active{transform:scale(.99);}
+.fmb-role-card .no { flex:0 0 auto; width:40px; height:40px; border-radius:50%; background:#c62828; color:#fff; font-size:1.3rem; font-weight:900; display:flex; align-items:center; justify-content:center; }
+.fmb-role-card .rn { font-size:1.12rem; font-weight:800; color:#202124; line-height:1.4; }
+.fmb-role-card .rc { font-size:.78rem; color:#c62828; font-weight:700; margin-top:2px; }
+
+/* ミッションカード */
+.fmb-m-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.fmb-m-role { font-size:1.05rem; font-weight:900; color:#c62828; }
+.fmb-m-step { font-size:.86rem; color:#5f6368; font-weight:700; }
+.fmb-progress { height:8px; background:#eee; border-radius:6px; overflow:hidden; margin-bottom:18px; }
+.fmb-progress > div { height:100%; background:#c62828; transition:width .2s; }
+.fmb-m-card { background:#fff; border:2.5px solid #c62828; border-radius:18px; padding:26px 22px; min-height:170px; display:flex; align-items:center; justify-content:center; text-align:center; margin-bottom:8px; }
+.fmb-m-text { font-size:1.35rem; font-weight:800; color:#202124; line-height:1.7; }
+.fmb-m-num { display:inline-block; background:#c62828; color:#fff; font-size:.9rem; font-weight:900; border-radius:20px; padding:3px 14px; margin-bottom:14px; }
+.fmb-m-nav { display:flex; gap:12px; margin-top:14px; }
+.fmb-m-nav button { flex:1; padding:18px; border-radius:14px; font-size:1.2rem; font-weight:900; cursor:pointer; border:none; }
+.fmb-m-nav .prev { flex:0 0 34%; background:#fff; color:#5f6368; border:2px solid #e0e0e0; }
+.fmb-m-nav .next { background:#c62828; color:#fff; box-shadow:0 5px 14px rgba(198,40,40,.28); }
+.fmb-done { text-align:center; padding:30px 10px; }
+.fmb-done .ic { font-size:64px; color:#2e7d32; }
+.fmb-done .msg { font-size:1.2rem; font-weight:900; color:#2e7d32; margin:10px 0 20px; }
+.fmb-backrow { margin-top:20px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fmb-wrap">
+
+  <!-- 画面1: イントロ -->
+  <div class="fmb-screen active" id="fmb-intro">
+    <div class="fmb-title">災害時ファーストミッションボックス</div>
+    <div class="fmb-sub">3人以上そろったら、開始します。<br>落ち着いて、順番に、無理をしない。</div>
+    <div class="fmb-creed">🧭 まず深呼吸。<br>この箱が、今やることを順番に指示します。<br>あわてず、書いてある通りに動けば大丈夫です。</div>
+    <button class="fmb-btn-open" onclick="fmbGo('fmb-disaster')">
+      <span class="material-symbols-outlined" style="font-size:32px;">inventory_2</span>
+      ボックスを開く
+    </button>
+  </div>
+
+  <!-- 画面2: 災害種別選択 -->
+  <div class="fmb-screen" id="fmb-disaster">
+    <div class="fmb-title" style="color:#202124;">どの災害ですか？</div>
+    <div class="fmb-sub">起きている災害を選んでください。</div>
+    <div class="fmb-dz">
+      <button class="fmb-dz-btn" data-d="earthquake" onclick="fmbPickDisaster('earthquake')">
+        <span class="material-symbols-outlined ic">public</span>
+        <span><span class="nm">地震</span><br><span class="ds">揺れ・倒壊・火災の危険に対応</span></span>
+      </button>
+      <button class="fmb-dz-btn" data-d="fire" onclick="fmbPickDisaster('fire')">
+        <span class="material-symbols-outlined ic">local_fire_department</span>
+        <span><span class="nm">火災</span><br><span class="ds">通報・避難・初期消火に対応</span></span>
+      </button>
+      <button class="fmb-dz-btn" data-d="flood" onclick="fmbPickDisaster('flood')">
+        <span class="material-symbols-outlined ic">flood</span>
+        <span><span class="nm">水害</span><br><span class="ds">早めの避難・垂直避難に対応</span></span>
+      </button>
+    </div>
+    <button class="fmb-btn-ghost" onclick="fmbGo('fmb-intro')">← 戻る</button>
+  </div>
+
+  <!-- 画面3: 人数入力 -->
+  <div class="fmb-screen" id="fmb-people">
+    <div class="fmb-banner" id="fmb-people-banner"></div>
+    <div class="fmb-title" style="color:#202124;">今、現場に何人いますか？</div>
+    <div class="fmb-sub">動ける職員の人数を入れてください。<br>人数に合わせて役割を自動で割り当てます。</div>
+    <div class="fmb-count">
+      <button onclick="fmbCount(-1)">−</button>
+      <span class="val"><span id="fmb-n">3</span><span class="unit">人</span></span>
+      <button onclick="fmbCount(1)">＋</button>
+    </div>
+    <button class="fmb-btn-primary" onclick="fmbStart()">この人数で開始する</button>
+    <button class="fmb-btn-ghost" onclick="fmbGo('fmb-disaster')">← 災害を選び直す</button>
+  </div>
+
+  <!-- 画面4: 役割分担 -->
+  <div class="fmb-screen" id="fmb-roles">
+    <div class="fmb-banner" id="fmb-roles-banner"></div>
+    <div class="fmb-roles-hint">各自、<b>自分の担当を1つタップ</b>してください。<br>担当ごとに、やることを順番に指示します。</div>
+    <div id="fmb-roles-list"></div>
+    <button class="fmb-btn-ghost" onclick="fmbGo('fmb-people')">← 人数を変える</button>
+  </div>
+
+  <!-- 画面5: ミッション -->
+  <div class="fmb-screen" id="fmb-mission">
+    <div class="fmb-m-head">
+      <span class="fmb-m-role" id="fmb-m-role"></span>
+      <span class="fmb-m-step" id="fmb-m-step"></span>
+    </div>
+    <div class="fmb-progress"><div id="fmb-m-bar" style="width:0%"></div></div>
+
+    <div id="fmb-m-body">
+      <div class="fmb-m-card">
+        <div>
+          <span class="fmb-m-num" id="fmb-m-num"></span>
+          <div class="fmb-m-text" id="fmb-m-text"></div>
+        </div>
+      </div>
+      <div class="fmb-m-nav">
+        <button class="prev" onclick="fmbStep(-1)">← 戻る</button>
+        <button class="next" id="fmb-m-next" onclick="fmbStep(1)">次へ →</button>
+      </div>
+    </div>
+
+    <div id="fmb-m-done" style="display:none;" class="fmb-done">
+      <span class="material-symbols-outlined ic">check_circle</span>
+      <div class="msg">この担当の初動は完了です</div>
+      <button class="fmb-btn-primary" onclick="fmbGo('fmb-roles')">役割一覧にもどる</button>
+    </div>
+
+    <div class="fmb-backrow">
+      <button class="fmb-btn-ghost" onclick="fmbGo('fmb-roles')">役割一覧にもどる</button>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* fmb-v1: 標準ミッション（完全オフライン・端末内で完結） */
+const FMB_DEFAULT = {
+  earthquake: { label:'地震', roles:[
+    { name:'リーダー（指揮・記録）', missions:[
+      'まず自分の身を守る。机の下などで頭を守り、揺れが収まるのを待つ。',
+      '揺れが収まったら大きな声で「落ち着いて！役割どおり動きます」と全員に声かけ。',
+      '今の時刻をメモする（発生時刻）。以後の判断の基準になります。',
+      '各担当に「開始してください」と指示する。',
+      '各担当から「安否・被害・危険」の報告を集める。',
+      '火災や倒壊の危険があれば『避難』を決断し、全員に指示する。',
+      '家族・本部へ伝える内容（無事か／けが人／避難先）をまとめる。'
+    ]},
+    { name:'安否確認・避難誘導', missions:[
+      '利用者に「頭を守って！動かないで！」と声かけし、身を守らせる。',
+      '揺れが収まったら、全利用者の安否を1人ずつ確認（返事・意識・けが）。',
+      'けが人がいれば救護担当を呼ぶ。',
+      '出口と避難経路が安全か（ふさがっていないか）を確認する。',
+      '危険なら、安全な場所または屋外へ落ち着いて誘導する。',
+      '利用者の人数を数え、全員いるかリーダーへ報告する。'
+    ]},
+    { name:'通報・連絡', missions:[
+      '火災や重傷者がいれば、ためらわず119番通報（住所・状況を伝える）。',
+      '被害の状況を簡単にメモする。',
+      '可能であれば利用者の家族へ安否を連絡する。',
+      '本部・法人へ状況を報告する。',
+      '電気・ガス・水道・電話の使える／使えないを確認する。'
+    ]},
+    { name:'安全・設備確認', missions:[
+      '火の元を確認。使用中の火があれば消し、ガスの元栓を閉める。',
+      'ガス臭・焦げ臭さがあれば、ブレーカーを落とし窓を開ける（火気厳禁）。',
+      '避難経路の割れ物・倒れた物を片付け、通れるようにする。',
+      '建物の大きな亀裂・傾き・ドアの開閉を確認し、リーダーへ報告。',
+      'エレベーターは使わない（閉じ込めの危険）。'
+    ]},
+    { name:'救護・応援', missions:[
+      'けが人の応急手当（止血・安静）。救急セット・AEDを用意する。',
+      '自力で動けない利用者の避難を手伝う。',
+      'いちばん人手が要る担当（多くは安否・避難）を応援する。',
+      '体調が急変した人がいないか見守る。'
+    ]}
+  ]},
+  fire: { label:'火災', roles:[
+    { name:'リーダー（指揮・記録）', missions:[
+      '「火事です！」と大声で全員に知らせる。',
+      '各担当に指示する（通報・避難・初期消火・救護）。',
+      '「無理な消火はしない。避難が最優先」を全員に徹底する。',
+      '避難完了と人数を確認し、集約する。',
+      '本部・家族への連絡内容をまとめる。'
+    ]},
+    { name:'安否確認・避難誘導', missions:[
+      '利用者を火元から遠ざける。低い姿勢で避難誘導する。',
+      '煙を吸わないよう、ハンカチ等で口と鼻を覆わせる。',
+      '自力で動けない人を優先して介助・搬送する。',
+      '決めた避難場所（屋外の安全な所）へ誘導する。',
+      '人数を数えて、全員避難できたかリーダーへ報告する。'
+    ]},
+    { name:'通報・連絡', missions:[
+      'すぐに119番通報（住所・何が燃えているか・逃げ遅れの有無）。',
+      '家族・本部へ連絡する。'
+    ]},
+    { name:'初期消火・安全確認', missions:[
+      '火が小さいうちだけ消火器で初期消火する。',
+      '天井に燃え移ったら消火を中止し、すぐ避難する。',
+      '防火扉・ドアを閉めて、延焼と煙の広がりを遅らせる。',
+      '可能なら電源・ガスを止める。'
+    ]},
+    { name:'救護・応援', missions:[
+      '逃げ遅れ・要介助者の避難を手伝う。',
+      '避難場所で、けが・気分不良の人がいないか確認する。'
+    ]}
+  ]},
+  flood: { label:'水害', roles:[
+    { name:'リーダー（指揮・記録）', missions:[
+      '気象情報・避難情報（警戒レベル）を確認する。',
+      '「上の階へ避難（垂直避難）」か「建物の外へ避難」かを判断する。',
+      '各担当に指示する。早めの避難を決断する。',
+      '避難完了と人数を確認する。',
+      '本部・家族へ連絡内容をまとめる。'
+    ]},
+    { name:'安否確認・避難誘導', missions:[
+      '利用者を上階または安全な場所へ誘導する。',
+      '車いす・歩行が難しい人を優先して介助する。',
+      '人数を数え、全員そろっているかリーダーへ報告する。'
+    ]},
+    { name:'通報・連絡', missions:[
+      '避難情報・ハザード（浸水想定）を確認する。',
+      '家族・本部へ連絡する。',
+      '取り残されそうなら、ためらわず救助要請（119）。'
+    ]},
+    { name:'安全・設備確認', missions:[
+      '浸水の前に電源（コンセント・ブレーカー）を落とす。',
+      '薬・重要書類・非常持出品を高い所／上階へ移す。',
+      '出入口の止水（土のう・止水板）ができれば行う。'
+    ]},
+    { name:'救護・応援', missions:[
+      '要介助者の移動を手伝う。',
+      '薬・水・毛布など必要な物を確保して上階へ運ぶ。'
+    ]}
+  ]}
+};
+const FMB = (window.__FMB_DATA && window.__FMB_DATA.earthquake) ? window.__FMB_DATA : FMB_DEFAULT;
+
+let fmbState = { disaster:null, n:3, assignments:[], person:0, step:0, steps:[] };
+
+function fmbGo(id){
+  document.querySelectorAll('.fmb-screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+function fmbBanner(el){
+  const d = fmbState.disaster; if(!d) return;
+  const label = FMB[d].label;
+  const icon = d==='earthquake'?'public':(d==='fire'?'local_fire_department':'flood');
+  el.className = 'fmb-banner '+d;
+  el.innerHTML = '<span class="material-symbols-outlined">'+icon+'</span> 災害：'+label+' への初動';
+}
+function fmbPickDisaster(d){
+  fmbState.disaster = d;
+  fmbBanner(document.getElementById('fmb-people-banner'));
+  fmbGo('fmb-people');
+}
+function fmbCount(delta){
+  fmbState.n = Math.max(1, Math.min(20, fmbState.n + delta));
+  document.getElementById('fmb-n').textContent = fmbState.n;
+}
+function fmbStart(){
+  const roles = FMB[fmbState.disaster].roles;
+  const n = fmbState.n;
+  // 役割をラウンドロビンで人数に自動割当（優先度の高い役割から分散）
+  const assign = Array.from({length:n}, ()=>[]);
+  roles.forEach((role, idx)=>{ assign[idx % n].push(role); });
+  // 役割が無い人（人数>役割数）は応援担当
+  for(let i=0;i<n;i++){
+    if(assign[i].length===0){
+      assign[i].push({ name:'応援（フリー）', missions:[
+        'いちばん人手が要る担当を手伝う（多くは安否確認・避難誘導）。',
+        'リーダーの指示を受け、足りないところを埋める。'
+      ]});
+    }
+  }
+  fmbState.assignments = assign;
+  fmbRenderRoles();
+  fmbBanner(document.getElementById('fmb-roles-banner'));
+  fmbGo('fmb-roles');
+}
+function fmbRenderRoles(){
+  const list = document.getElementById('fmb-roles-list');
+  list.innerHTML = '';
+  fmbState.assignments.forEach((roles, i)=>{
+    const names = roles.map(r=>r.name).join(' ＋ ');
+    const multi = roles.length>1 ? '<div class="rc">（'+roles.length+'役を兼務）</div>' : '';
+    const btn = document.createElement('button');
+    btn.className = 'fmb-role-card';
+    btn.onclick = ()=>fmbOpenPerson(i);
+    btn.innerHTML = '<span class="no">'+(i+1)+'</span><span><span class="rn">'+names+'</span>'+multi+'</span>';
+    list.appendChild(btn);
+  });
+}
+function fmbOpenPerson(i){
+  fmbState.person = i;
+  // その人の全ステップを平坦化（役割ごとに順番に）
+  const steps = [];
+  fmbState.assignments[i].forEach(role=>{
+    role.missions.forEach((m, k)=>{ steps.push({role:role.name, text:m}); });
+  });
+  fmbState.steps = steps;
+  fmbState.step = 0;
+  fmbRenderMission();
+  fmbGo('fmb-mission');
+}
+function fmbRenderMission(){
+  const steps = fmbState.steps, i = fmbState.step, total = steps.length;
+  const body = document.getElementById('fmb-m-body');
+  const done = document.getElementById('fmb-m-done');
+  if(i >= total){ body.style.display='none'; done.style.display='block'; return; }
+  body.style.display='block'; done.style.display='none';
+  const s = steps[i];
+  document.getElementById('fmb-m-role').textContent = '担当'+(fmbState.person+1)+'：'+s.role;
+  document.getElementById('fmb-m-step').textContent = (i+1)+' / '+total;
+  document.getElementById('fmb-m-bar').style.width = Math.round((i)/total*100)+'%';
+  document.getElementById('fmb-m-num').textContent = 'STEP '+(i+1);
+  document.getElementById('fmb-m-text').textContent = s.text;
+  document.getElementById('fmb-m-next').textContent = (i===total-1) ? '完了する ✓' : '次へ →';
+}
+function fmbStep(delta){
+  const total = fmbState.steps.length;
+  const next = fmbState.step + delta;
+  if(next < 0) { fmbGo('fmb-roles'); return; }
+  fmbState.step = Math.min(total, next);
+  if(fmbState.step >= total){ document.getElementById('fmb-m-bar').style.width='100%'; }
+  fmbRenderMission();
+}
+</script>
+{% endblock %}

@@ -471,6 +471,15 @@ body.nav-editing {
             <div id="offline-patients" style="font-size:0.82rem;color:#5f6368;">読み込み中...</div>
         </div>
 
+        <!-- fmb-v1: 災害時ファーストミッションボックス（オフライン初動指示） -->
+        <a href="/fmb" style="display:flex;align-items:center;gap:12px;text-decoration:none;background:#c62828;color:#fff;border-radius:14px;padding:16px 18px;margin-bottom:16px;box-shadow:0 4px 12px rgba(198,40,40,.3);">
+            <span class="material-symbols-outlined" style="font-size:32px;">inventory_2</span>
+            <span style="line-height:1.4;">
+                <span style="font-size:1.05rem;font-weight:900;">ファーストミッションボックス</span><br>
+                <span style="font-size:0.76rem;opacity:.92;">3人そろったら開く。地震・火災・水害の初動を順番に指示</span>
+            </span>
+        </a>
+
         <!-- bcp-offline-v1: BCPマニュアル(オフライン保存/閲覧) -->
         <div style="margin-bottom:16px;">
             <div style="font-size:0.85rem;font-weight:700;color:#5f6368;margin-bottom:8px;">
@@ -2529,7 +2538,7 @@ window.addEventListener('online',  updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 updateOnlineStatus();
 // offline-nav-v1: オンラインのうちに、オフラインで使うページを取得してキャッシュに温めておく（SWがv14でHTMLを実行時キャッシュする）
-window.addEventListener('load', function(){ setTimeout(function(){ if (navigator.onLine) { ['/input','/vitals','/calendar','/manual','/top'].forEach(function(u){ try{ fetch(u, {credentials:'include'}).catch(function(){}); }catch(e){} }); } }, 4500); });
+window.addEventListener('load', function(){ setTimeout(function(){ if (navigator.onLine) { ['/input','/vitals','/calendar','/manual','/fmb','/top'].forEach(function(u){ try{ fetch(u, {credentials:'include'}).catch(function(){}); }catch(e){} }); } }, 4500); });
 
 // ========== オフラインキャッシュ ==========
 const OFFLINE_DB = 'tasukaru-offline';

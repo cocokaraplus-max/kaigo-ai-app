@@ -13168,6 +13168,13 @@ def api_tts_toggle():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/fmb')
+@login_required
+def fmb_view():
+    """災害時ファーストミッションボックス（完全オフライン）。fmb-v1"""
+    return render_template('fmb.html')
+
+
 @app.route('/api/generate_daily_summary', methods=['POST'])
 @login_required
 def api_generate_daily_summary():
