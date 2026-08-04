@@ -2462,9 +2462,11 @@ setTimeout(function() {
 }, 3000);
 
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/static/sw.js').then(function(reg){
-          console.log('[PWA] Service Worker');
-          // 
+    navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).then(function(reg){
+          console.log('[PWA] Service Worker (scope=/)');
+          // sw-scope-fix-v1: 旧 /static/ スコープの登録が残っていたら掃除（アプリ全体を新スコープ / で制御させる）
+          try { navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ if (r.scope && /\/static\/$/.test(r.scope)) { try{ r.unregister(); }catch(e){} } }); }); } catch(e){}
+          //
           if ('sync' in reg) {
             reg.sync.register('sync-offline-records').catch(function(){});
           }
