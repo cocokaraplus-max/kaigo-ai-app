@@ -1045,6 +1045,14 @@ body.nav-editing {
   .dw-app[data-href="/admin"] .dw-ic, .dw-app[data-href="/dev"] .dw-ic,
   .dw-app[data-href="/manual"] .dw-ic { background: #5f6368; }
   .dw-app[data-href="/birthday"] .dw-ic, .dw-app[data-href="/numerology"] .dw-ic { background: #e8710a; }
+  /* offline-nav-v1: オフライン時、オフラインでも使えるメニュー(記録入力・バイタル)にオレンジ印 */
+  body.sw-offline .dw-app[data-href="/input"] .dw-ic,
+  body.sw-offline .dw-app[data-href="/vitals"] .dw-ic { box-shadow: 0 0 0 3px #ff6f00, 0 3px 10px rgba(255,111,0,.35) !important; }
+  body.sw-offline .dw-app[data-href="/input"] .dw-ic::after,
+  body.sw-offline .dw-app[data-href="/vitals"] .dw-ic::after { content:''; position:absolute; top:-4px; right:-4px; width:14px; height:14px; border-radius:50%; background:#ff6f00; border:2px solid #fff; z-index:4; }
+  body.sw-offline .dw-app[data-href="/input"] .dw-label,
+  body.sw-offline .dw-app[data-href="/vitals"] .dw-label { color:#e65100 !important; font-weight:800; }
+  body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]) { opacity:0.5; }
 </style>
 
 <div id="appDrawerHandle" data-side="{{ drawer_side }}" title="メニュー">
@@ -2498,6 +2506,7 @@ if ('serviceWorker' in navigator) {
 
 // ========== オンライン/オフライン検知 ==========
 function updateOnlineStatus() {
+    document.body.classList.toggle('sw-offline', !navigator.onLine); // offline-nav-v1: オフライン印の切替
     const banner = document.getElementById('offline-banner');
     if (!banner) return;
     if (!navigator.onLine) {
@@ -2513,6 +2522,8 @@ function updateOnlineStatus() {
 window.addEventListener('online',  updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 updateOnlineStatus();
+// offline-nav-v1: オンラインのうちに、オフラインで使うページを取得してキャッシュに温めておく（SWがv14でHTMLを実行時キャッシュする）
+window.addEventListener('load', function(){ setTimeout(function(){ if (navigator.onLine) { ['/input','/vitals','/top'].forEach(function(u){ try{ fetch(u, {credentials:'include'}).catch(function(){}); }catch(e){} }); } }, 4500); });
 
 // ========== オフラインキャッシュ ==========
 const OFFLINE_DB = 'tasukaru-offline';
