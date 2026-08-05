@@ -1,6 +1,6 @@
 // TASUKARU Service Worker
 // バージョンを上げると古いキャッシュが自動削除される
-const CACHE_VERSION = 'tasukaru-v26';
+const CACHE_VERSION = 'tasukaru-v27';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -10,6 +10,19 @@ const STATIC_FILES = [
   '/static/manifest.json',
   '/static/admin.js',
   'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200',
+  // kyukyu-v1: 救急対応ボックスのイラスト（オフラインでも表示できるよう事前キャッシュ）
+  '/static/kyukyu/01_response.jpg',
+  '/static/kyukyu/02_callhelp.jpg',
+  '/static/kyukyu/03_breathing.jpg',
+  '/static/kyukyu/04_compression.jpg',
+  '/static/kyukyu/05_aed_pads.jpg',
+  '/static/kyukyu/06_aed_shock.jpg',
+  '/static/kyukyu/07_choke_sign.jpg',
+  '/static/kyukyu/08_backblow.jpg',
+  '/static/kyukyu/09_heimlich.jpg',
+  '/static/kyukyu/10_seizure.jpg',
+  '/static/kyukyu/11_recovery.jpg',
+  '/static/kyukyu/12_bleeding.jpg',
 ];
 
 // HTMLページのパス一覧(Network-First で扱う)

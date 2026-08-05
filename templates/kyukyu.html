@@ -128,7 +128,11 @@
     </div>
     <div class="ky-progress"><div id="ky-m-bar" style="width:0%"></div></div>
     <div class="ky-card" id="ky-m-cardbox">
-      <div><span class="ky-num" id="ky-m-num"></span><div class="ky-text" id="ky-m-text"></div></div>
+      <div style="width:100%;">
+        <img id="ky-m-img" alt="" style="display:none;width:100%;max-width:380px;border-radius:12px;margin:0 auto 14px;box-shadow:0 2px 8px rgba(0,0,0,.12);"/>
+        <span class="ky-num" id="ky-m-num"></span>
+        <div class="ky-text" id="ky-m-text"></div>
+      </div>
     </div>
     <div class="ky-nav">
       <button class="prev" onclick="kyStep(-1)">← 戻る</button>
@@ -188,38 +192,38 @@
 const KY = {
   bls: { label:'反応がない・倒れている', theme:'bls', danger:true, steps:[
     '周囲の安全を確認する（自分の身の安全も守る）。',
-    '肩を優しく叩きながら「大丈夫ですか？」と大きな声で呼びかける。',
-    '反応がなければ、大声で応援を呼ぶ。「誰か来て！救急です！」',
+    {t:'肩を優しく叩きながら「大丈夫ですか？」と大きな声で呼びかける。', img:'01_response'},
+    {t:'反応がなければ、大声で応援を呼ぶ。「誰か来て！救急です！」', img:'02_callhelp'},
     '人を指さして「あなたは119番通報を」「あなたはAEDを持ってきて」と頼む。（1人のときは先に119）',
-    '胸とお腹の動きを見て、10秒以内で「普段どおりの呼吸」があるか確認する。',
+    {t:'胸とお腹の動きを見て、10秒以内で「普段どおりの呼吸」があるか確認する。', img:'03_breathing'},
     '普段どおりの呼吸がなければ、ただちに胸骨圧迫を開始する。',
-    '胸の真ん中を、強く（約5cm沈むまで）・速く（1分間に100〜120回）・絶え間なく押す。',
+    {t:'胸の真ん中を、強く（約5cm沈むまで）・速く（1分間に100〜120回）・絶え間なく押す。', img:'04_compression'},
     '訓練を受けていれば胸骨圧迫30回＋人工呼吸2回。できなければ胸骨圧迫だけでよい。',
-    'AEDが届いたら電源を入れ、音声ガイドに従う。パッドを貼る。',
-    '「解析中」は傷病者に触れない。ショックの指示が出たら、周囲の安全を確認してボタンを押す。',
+    {t:'AEDが届いたら電源を入れ、音声ガイドに従う。パッドを貼る。', img:'05_aed_pads'},
+    {t:'「解析中」は傷病者に触れない。ショックの指示が出たら、周囲の安全を確認してボタンを押す。', img:'06_aed_shock'},
     '救急隊が到着するまで、胸骨圧迫とAEDを続ける。'
   ]},
   choke: { label:'のどに詰まった・窒息', theme:'choke', danger:true, steps:[
-    '「のどが詰まりましたか？」と聞く。声が出ない・咳ができない・顔色が悪いなら窒息を疑う。',
+    {t:'「のどが詰まりましたか？」と聞く。声が出ない・咳ができない・顔色が悪いなら窒息を疑う。', img:'07_choke_sign'},
     '咳ができるなら、できるだけ強く咳を続けさせる（無理に叩かない）。',
     '咳ができない・苦しそうなら、応援を呼び119を要請する。',
-    '背部叩打法：前かがみにさせ、左右の肩甲骨の間を手の付け根で数回、強く叩く。',
-    '改善しなければ腹部突き上げ法：後ろから抱え、みぞおちの下でこぶしを手前上方へ突き上げる。',
+    {t:'背部叩打法：前かがみにさせ、左右の肩甲骨の間を手の付け根で数回、強く叩く。', img:'08_backblow'},
+    {t:'改善しなければ腹部突き上げ法：後ろから抱え、みぞおちの下でこぶしを手前上方へ突き上げる。', img:'09_heimlich'},
     '※妊婦・高度肥満の人には腹部突き上げは行わず、背部叩打と胸部突き上げにする。',
     '背部叩打と腹部突き上げを、詰まりが取れるまで交互に繰り返す。',
     '反応がなくなったら、ただちに胸骨圧迫（心肺蘇生）を始め、119を確認する。'
   ]},
   seizure: { label:'けいれん', theme:'seiz', danger:false, steps:[
-    '周囲の危険な物をどける。頭の下に柔らかい物を敷き、けがを防ぐ。',
+    {t:'周囲の危険な物をどける。頭の下に柔らかい物を敷き、けがを防ぐ。', img:'10_seizure'},
     '押さえつけない。口の中に指や物を入れない。',
     'けいれんが始まった時刻を確認する（続いた時間がとても重要）。',
-    'けいれんが止まったら、体を横向き（回復体位）にして気道を確保し、嘔吐に備える。',
+    {t:'けいれんが止まったら、体を横向き（回復体位）にして気道を確保し、嘔吐に備える。', img:'11_recovery'},
     '5分以上続く／繰り返す／初めての発作／呼吸がおかしい 場合は、すぐ119。',
     '看護師・主治医へ連絡し、様子とバイタル、けいれんの長さを記録する。'
   ]},
   fall: { label:'転倒・頭を打った・出血', theme:'fall', danger:false, steps:[
     'むやみに動かさない（頭・首・背中を打った可能性）。声をかけ、反応を確認する。',
-    '強い出血は、清潔な布やガーゼで傷口を直接、強く押さえ続ける（直接圧迫止血）。',
+    {t:'強い出血は、清潔な布やガーゼで傷口を直接、強く押さえ続ける（直接圧迫止血）。', img:'12_bleeding'},
     '頭を打った・意識がおかしい・手足が動かない・強い痛み・大量出血 のときは119。',
     '意識と呼吸を観察する。意識レベルはメニューのJCSナビで判定する。',
     '看護師・主治医へ連絡。受傷した時刻・状況・バイタルを記録する。'
@@ -246,11 +250,17 @@ function kyOpen(key){
 function kyRenderStep(){
   var s = KY[kyState.key], i = kyState.step, total = s.steps.length;
   var danger = s.danger;
+  var raw = s.steps[i];
+  var text = (typeof raw === 'string') ? raw : raw.t;
+  var img = (typeof raw === 'string') ? null : raw.img;
   document.getElementById('ky-m-step').textContent = (i+1)+' / '+total;
   document.getElementById('ky-m-bar').style.width = Math.round(i/total*100)+'%';
   document.getElementById('ky-m-cardbox').className = 'ky-card' + (danger?' danger':'');
   var num = document.getElementById('ky-m-num'); num.className = 'ky-num' + (danger?' danger':''); num.textContent = 'STEP '+(i+1);
-  document.getElementById('ky-m-text').textContent = s.steps[i];
+  document.getElementById('ky-m-text').textContent = text;
+  var imgEl = document.getElementById('ky-m-img');
+  if (img) { imgEl.src = '/static/kyukyu/' + img + '.jpg'; imgEl.style.display = 'block'; }
+  else { imgEl.style.display = 'none'; imgEl.removeAttribute('src'); }
   var next = document.getElementById('ky-m-next');
   next.className = 'next' + (danger?' danger':'');
   next.textContent = (i===total-1) ? '完了 ✓' : '次へ →';
