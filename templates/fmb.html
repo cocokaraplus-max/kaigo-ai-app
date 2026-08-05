@@ -4,7 +4,11 @@
 {% block extra_style %}
 <style>
 /* fmb-v1: 災害時ファーストミッションボックス（完全オフライン） */
-.fmb-wrap { max-width: 680px; margin: 0 auto; padding: 12px 14px 40px; }
+.fmb-wrap { max-width: 680px; margin: 0 auto; padding: 12px 14px 40px; position:relative; }
+/* fmb-gear-v1: 右上の歯車→BCP設定 */
+.fmb-gear { position:absolute; top:6px; right:10px; z-index:20; width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#f1f3f4; color:#5f6368; text-decoration:none; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+.fmb-gear:active { transform:scale(.94); }
+.fmb-gear .material-symbols-outlined { font-size:23px; }
 .fmb-screen { display: none; }
 .fmb-screen.active { display: block; animation: fmbIn .18s ease; }
 @keyframes fmbIn { from { opacity:0; transform: translateY(6px);} to {opacity:1; transform:none;} }
@@ -97,6 +101,11 @@
 
 {% block content %}
 <div class="fmb-wrap">
+
+  <!-- fmb-gear-v1: BCP設定（管理者）。防災の設定をここに集約 -->
+  <a href="/admin/bcp" class="fmb-gear" title="BCP設定" aria-label="BCP設定">
+    <span class="material-symbols-outlined">settings</span>
+  </a>
 
   <!-- 画面1: イントロ -->
   <div class="fmb-screen active" id="fmb-intro">
