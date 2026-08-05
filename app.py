@@ -2877,6 +2877,7 @@ def register():
 MENU_ITEMS = [   # top-grid-v1
     {"href": "/input",          "icon": "edit_note",              "label": "記録入力",       "need": None},
     {"href": "/fmb",            "icon": "health_and_safety",      "label": "防災",           "need": None},  # fmb-tile-v1
+    {"href": "/kyukyu",         "icon": "medical_services",       "label": "救急",           "need": None},  # kyukyu-v1
     {"href": "/daily_view",     "icon": "calendar_month",         "label": "ケース記録",     "need": None},
     # record-check-v1: 記録充足チェックは「ケース記録」の上のタブから入る導線に一本化した。
     # アイコンを別に立てると入口が2つになり、メニューも増える。タブだけ残す。
@@ -13174,6 +13175,13 @@ def api_tts_toggle():
 def fmb_view():
     """災害時ファーストミッションボックス（完全オフライン）。fmb-v1"""
     return render_template('fmb.html')
+
+
+@app.route('/kyukyu')
+@login_required
+def kyukyu_view():
+    """救急対応ボックス（JCS判定・応急対応。完全オフライン）。kyukyu-v1"""
+    return render_template('kyukyu.html')
 
 
 @app.route('/api/generate_daily_summary', methods=['POST'])

@@ -1067,19 +1067,22 @@ body.nav-editing {
   body.sw-offline .dw-app[data-href="/vitals"] .dw-label,
   body.sw-offline .dw-app[data-href="/calendar"] .dw-label,
   body.sw-offline .dw-app[data-href="/manual"] .dw-label { color:#e65100 !important; font-weight:800; }
-  body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]):not([data-href="/calendar"]):not([data-href="/manual"]):not([data-href="/fmb"]) { opacity:0.5; }
+  body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]):not([data-href="/calendar"]):not([data-href="/manual"]):not([data-href="/fmb"]):not([data-href="/kyukyu"]) { opacity:0.5; }
 
-  /* fmb-tile-v1: 「防災」タイルを丸型＋浮遊影で目立たせる（色は既定=赤／個人で変更可・影は色非依存） */
-  .dw-app[data-href="/fmb"] .dw-ic {
+  /* fmb-tile-v1 / kyukyu-v1: 「防災」「救急」タイルを丸型＋浮遊影で目立たせる（色は既定色／個人で変更可・影は色非依存） */
+  .dw-app[data-href="/fmb"] .dw-ic,
+  .dw-app[data-href="/kyukyu"] .dw-ic {
     border-radius: 50% !important;
     box-shadow: 0 9px 20px rgba(16,24,40,.30), 0 2px 6px rgba(0,0,0,.14) !important;
     transform: translateY(-3px) scale(1.06);
   }
-  .dw-app[data-href="/fmb"]:active .dw-ic {
+  .dw-app[data-href="/fmb"]:active .dw-ic,
+  .dw-app[data-href="/kyukyu"]:active .dw-ic {
     transform: translateY(-1px) scale(.94);
     box-shadow: 0 3px 8px rgba(16,24,40,.28) !important;
   }
-  .dw-app[data-href="/fmb"] .dw-label { font-weight:800; }
+  .dw-app[data-href="/fmb"] .dw-label,
+  .dw-app[data-href="/kyukyu"] .dw-label { font-weight:800; }
 </style>
 
 <div id="appDrawerHandle" data-side="{{ drawer_side }}" title="メニュー">
@@ -1593,6 +1596,7 @@ body.nav-editing {
   // アイコンの既定色（性格ごとの色分け）。
   function defaultColorOf(href) {
     if (href === '/fmb') return '#e53935';   // fmb-tile-v1: 防災は既定=赤（個人で変更可）
+    if (href === '/kyukyu') return '#00897b'; // kyukyu-v1: 救急は既定=ティール（個人で変更可）
     if (href === '/tasks' || href === '/board' || href === '/admin/meetings') return '#7c4dff';
     if (href === '/ledger' || href === '/rec_expense') return '#2f6b5e';
     if (href === '/admin' || href === '/dev' || href === '/manual') return '#5f6368';
@@ -2555,7 +2559,7 @@ window.addEventListener('online',  updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 updateOnlineStatus();
 // offline-nav-v1: オンラインのうちに、オフラインで使うページを取得してキャッシュに温めておく（SWがv14でHTMLを実行時キャッシュする）
-window.addEventListener('load', function(){ setTimeout(function(){ if (navigator.onLine) { ['/input','/vitals','/calendar','/manual','/fmb','/top'].forEach(function(u){ try{ fetch(u, {credentials:'include'}).catch(function(){}); }catch(e){} }); } }, 4500); });
+window.addEventListener('load', function(){ setTimeout(function(){ if (navigator.onLine) { ['/input','/vitals','/calendar','/manual','/fmb','/kyukyu','/top'].forEach(function(u){ try{ fetch(u, {credentials:'include'}).catch(function(){}); }catch(e){} }); } }, 4500); });
 
 // ========== オフラインキャッシュ ==========
 const OFFLINE_DB = 'tasukaru-offline';
