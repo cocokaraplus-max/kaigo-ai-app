@@ -1069,21 +1069,17 @@ body.nav-editing {
   body.sw-offline .dw-app[data-href="/manual"] .dw-label { color:#e65100 !important; font-weight:800; }
   body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]):not([data-href="/calendar"]):not([data-href="/manual"]) { opacity:0.5; }
 
-  /* fmb-fab-v2: 平常時=左下の常設ボタン / オフライン時=下中央で強調(脈打つ) */
+  /* fmb-fab-v3: 既定は非表示。メニューを開いた時にフロート表示／オフライン時は脈打って緊急表示 */
   #fmb-offline-fab {
-    display:flex; align-items:center; gap:7px;
-    position:fixed; left:16px; bottom:16px; z-index:9500;
-    padding:10px 15px; border-radius:999px;
+    display:none; align-items:center; gap:8px;
+    position:fixed; left:50%; transform:translateX(-50%); bottom:26px; z-index:9000;
+    padding:14px 22px; border-radius:999px;
     background:linear-gradient(135deg,#ef5350,#c62828); color:#fff; text-decoration:none;
-    font-size:.86rem; font-weight:800; box-shadow:0 5px 14px rgba(198,40,40,.38);
+    font-size:1rem; font-weight:800; box-shadow:0 8px 22px rgba(198,40,40,.5);
   }
-  #fmb-offline-fab .material-symbols-outlined { font-size:19px; }
-  body.sw-offline #fmb-offline-fab {
-    left:50%; right:auto; transform:translateX(-50%); bottom:20px;
-    padding:14px 22px; font-size:1rem;
-    box-shadow:0 8px 22px rgba(198,40,40,.5);
-    animation: fmbFabPulse 1.8s ease-in-out infinite;
-  }
+  #fmb-offline-fab .material-symbols-outlined { font-size:21px; }
+  body.dw-open #fmb-offline-fab { display:flex; }              /* メニューを開いた時にフロート */
+  body.sw-offline #fmb-offline-fab { display:flex; animation: fmbFabPulse 1.8s ease-in-out infinite; } /* オフラインは常に緊急表示 */
   @keyframes fmbFabPulse { 0%,100%{ box-shadow:0 8px 22px rgba(198,40,40,.5);} 50%{ box-shadow:0 8px 30px rgba(198,40,40,.82);} }
 </style>
 
@@ -1213,6 +1209,7 @@ body.nav-editing {
     dw.classList.remove('half');
     mask.classList.add('on');
     handle.classList.add('hide');               // 開いている間は取っ手を引っ込める
+    document.body.classList.add('dw-open');      // fmb-fab-v3: メニュー中はミッションボックスをフロート表示
     buzz(12);
   }
   function close() {
@@ -1221,6 +1218,7 @@ body.nav-editing {
     dw.classList.remove('half');
     mask.classList.remove('on');
     handle.classList.remove('hide');
+    document.body.classList.remove('dw-open');    // fmb-fab-v3
   }
   function isHalf() { return dw.classList.contains('half'); }
 
