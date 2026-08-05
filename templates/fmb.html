@@ -62,6 +62,19 @@
 .fmb-done .ic { font-size:64px; color:#2e7d32; }
 .fmb-done .msg { font-size:1.2rem; font-weight:900; color:#2e7d32; margin:10px 0 20px; }
 .fmb-backrow { margin-top:20px; }
+
+/* fmb-switch-v1: 担当の即時切替タブ（1台のスマホを回して使う想定） */
+.fmb-switch-hint { font-size:.78rem; color:#5f6368; text-align:center; margin-bottom:6px; }
+.fmb-switch { display:flex; gap:8px; overflow-x:auto; padding:2px 2px 12px; margin-bottom:8px; -webkit-overflow-scrolling:touch; }
+.fmb-chip { flex:0 0 auto; display:flex; flex-direction:column; align-items:center; gap:1px; min-width:84px; padding:9px 10px; border:2px solid #e0e0e0; background:#fff; border-radius:12px; cursor:pointer; }
+.fmb-chip:active { transform:scale(.97); }
+.fmb-chip .cn { font-size:.95rem; font-weight:900; color:#202124; line-height:1.1; }
+.fmb-chip .cr { font-size:.66rem; color:#5f6368; max-width:78px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.fmb-chip .cp { font-size:.68rem; font-weight:800; color:#c62828; }
+.fmb-chip.active { border-color:#c62828; background:#c62828; }
+.fmb-chip.active .cn, .fmb-chip.active .cr, .fmb-chip.active .cp { color:#fff; }
+.fmb-chip.done { border-color:#2e7d32; } .fmb-chip.done .cp { color:#2e7d32; }
+.fmb-chip.active.done { background:#2e7d32; border-color:#2e7d32; }
 </style>
 {% endblock %}
 
@@ -124,6 +137,8 @@
 
   <!-- 画面5: ミッション -->
   <div class="fmb-screen" id="fmb-mission">
+    <div class="fmb-switch-hint">▼ 自分の担当をタップ＝いつでも自分の手順に切り替わります</div>
+    <div class="fmb-switch" id="fmb-switch"></div>
     <div class="fmb-m-head">
       <span class="fmb-m-role" id="fmb-m-role"></span>
       <span class="fmb-m-step" id="fmb-m-step"></span>
@@ -261,7 +276,7 @@ const FMB_DEFAULT = {
 };
 const FMB = (window.__FMB_DATA && window.__FMB_DATA.earthquake) ? window.__FMB_DATA : FMB_DEFAULT;
 
-let fmbState = { disaster:null, n:3, assignments:[], person:0, step:0, steps:[] };
+let fmbState = { disaster:null, n:3, assignments:[], personSteps:[], progress:[], person:0 };
 
 function fmbGo(id){
   document.querySelectorAll('.fmb-screen').forEach(s=>s.classList.remove('active'));
@@ -300,6 +315,13 @@ function fmbStart(){
     }
   }
   fmbState.assignments = assign;
+  // 各担当のステップを平坦化＋進捗を個別に記憶（切替しても続きから）
+  fmbState.personSteps = assign.map(function(roles){
+    const steps = [];
+    roles.forEach(function(role){ role.missions.forEach(function(m){ steps.push({role:role.name, text:m}); }); });
+    return steps;
+  });
+  fmbState.progress = assign.map(function(){ return 0; });
   fmbRenderRoles();
   fmbBanner(document.getElementById('fmb-roles-banner'));
   fmbGo('fmb-roles');
@@ -319,37 +341,61 @@ function fmbRenderRoles(){
 }
 function fmbOpenPerson(i){
   fmbState.person = i;
-  // その人の全ステップを平坦化（役割ごとに順番に）
-  const steps = [];
-  fmbState.assignments[i].forEach(role=>{
-    role.missions.forEach((m, k)=>{ steps.push({role:role.name, text:m}); });
-  });
-  fmbState.steps = steps;
-  fmbState.step = 0;
+  fmbRenderSwitch();
   fmbRenderMission();
   fmbGo('fmb-mission');
 }
+function fmbSwitchPerson(i){
+  // 即時切替：誰の手順が出ていても、自分の担当をタップすれば自分の続きに切り替わる
+  fmbState.person = i;
+  fmbRenderSwitch();
+  fmbRenderMission();
+  window.scrollTo(0,0);
+}
+function fmbRenderSwitch(){
+  const bar = document.getElementById('fmb-switch');
+  bar.innerHTML = '';
+  fmbState.assignments.forEach(function(roles, i){
+    const steps = fmbState.personSteps[i];
+    const isDone = fmbState.progress[i] >= steps.length;
+    const cur = Math.min(fmbState.progress[i] + 1, steps.length);
+    const label = roles.map(function(r){ return r.name; })[0] + (roles.length > 1 ? ' 他' : '');
+    const b = document.createElement('button');
+    b.className = 'fmb-chip' + (i === fmbState.person ? ' active' : '') + (isDone ? ' done' : '');
+    b.onclick = function(){ fmbSwitchPerson(i); };
+    b.innerHTML = '<span class="cn">担当' + (i+1) + '</span><span class="cr">' + label + '</span><span class="cp">' + (isDone ? '✓完了' : (cur + '/' + steps.length)) + '</span>';
+    bar.appendChild(b);
+  });
+}
 function fmbRenderMission(){
-  const steps = fmbState.steps, i = fmbState.step, total = steps.length;
+  const p = fmbState.person;
+  const steps = fmbState.personSteps[p], i = fmbState.progress[p], total = steps.length;
   const body = document.getElementById('fmb-m-body');
   const done = document.getElementById('fmb-m-done');
-  if(i >= total){ body.style.display='none'; done.style.display='block'; return; }
+  if(i >= total){
+    body.style.display='none'; done.style.display='block';
+    document.getElementById('fmb-m-role').textContent = '担当'+(p+1)+'：完了';
+    document.getElementById('fmb-m-step').textContent = total+' / '+total;
+    document.getElementById('fmb-m-bar').style.width = '100%';
+    return;
+  }
   body.style.display='block'; done.style.display='none';
   const s = steps[i];
-  document.getElementById('fmb-m-role').textContent = '担当'+(fmbState.person+1)+'：'+s.role;
+  document.getElementById('fmb-m-role').textContent = '担当'+(p+1)+'：'+s.role;
   document.getElementById('fmb-m-step').textContent = (i+1)+' / '+total;
-  document.getElementById('fmb-m-bar').style.width = Math.round((i)/total*100)+'%';
+  document.getElementById('fmb-m-bar').style.width = Math.round(i/total*100)+'%';
   document.getElementById('fmb-m-num').textContent = 'STEP '+(i+1);
   document.getElementById('fmb-m-text').textContent = s.text;
   document.getElementById('fmb-m-next').textContent = (i===total-1) ? '完了する ✓' : '次へ →';
 }
 function fmbStep(delta){
-  const total = fmbState.steps.length;
-  const next = fmbState.step + delta;
-  if(next < 0) { fmbGo('fmb-roles'); return; }
-  fmbState.step = Math.min(total, next);
-  if(fmbState.step >= total){ document.getElementById('fmb-m-bar').style.width='100%'; }
+  const p = fmbState.person;
+  const total = fmbState.personSteps[p].length;
+  const next = fmbState.progress[p] + delta;
+  if(next < 0) { return; }   // 先頭で「戻る」は何もしない（役割一覧は下のボタンから）
+  fmbState.progress[p] = Math.min(total, next);
   fmbRenderMission();
+  fmbRenderSwitch();
 }
 </script>
 {% endblock %}
