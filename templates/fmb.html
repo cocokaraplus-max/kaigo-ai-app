@@ -13,6 +13,21 @@
 .fmb-sub { font-size: .92rem; color:#5f6368; text-align:center; line-height:1.7; margin-bottom: 18px; }
 .fmb-creed { background:#fff8e1; border:1.5px solid #ffcc80; border-radius:12px; padding:12px 14px; color:#e65100; font-size:.9rem; line-height:1.8; font-weight:700; text-align:center; margin-bottom:18px; }
 
+/* fmb-hero-v1: 洗練したイントロ */
+.fmb-hero { text-align:center; padding:18px 4px 8px; }
+.fmb-emblem { width:88px; height:88px; margin:6px auto 22px; border-radius:26px; background:linear-gradient(135deg,#ef5350,#b71c1c); display:flex; align-items:center; justify-content:center; box-shadow:0 14px 30px rgba(183,28,28,.30); }
+.fmb-emblem .material-symbols-outlined { font-size:46px; color:#fff; }
+.fmb-h1 { font-size:1.5rem; font-weight:900; color:#1f2430; letter-spacing:.01em; line-height:1.4; margin:0 0 12px; }
+.fmb-lead { font-size:.96rem; color:#5f6368; line-height:1.85; margin:0 0 26px; }
+.fmb-creed-row { display:flex; gap:10px; justify-content:center; margin-bottom:30px; }
+.fmb-creed-item { flex:1; max-width:118px; background:#fafafa; border:1px solid #eee; border-radius:14px; padding:14px 6px; font-size:.92rem; font-weight:800; color:#1f2430; }
+.fmb-creed-item span { display:block; font-size:.74rem; font-weight:900; color:#e53935; margin-bottom:7px; letter-spacing:.1em; }
+.fmb-cta { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:19px; border:none; border-radius:16px; background:linear-gradient(135deg,#ef5350,#c62828); color:#fff; font-size:1.2rem; font-weight:800; cursor:pointer; box-shadow:0 12px 26px rgba(198,40,40,.32); letter-spacing:.03em; }
+.fmb-cta:active { transform:translateY(1px); box-shadow:0 7px 16px rgba(198,40,40,.3); }
+.fmb-cta .material-symbols-outlined { font-size:24px; }
+.fmb-offline-badge { display:inline-flex; align-items:center; gap:5px; margin-top:20px; padding:7px 15px; border-radius:999px; background:#f1f3f4; color:#5f6368; font-size:.78rem; font-weight:700; }
+.fmb-offline-badge .material-symbols-outlined { font-size:15px; }
+
 .fmb-btn-open { display:flex; align-items:center; justify-content:center; gap:10px; width:100%; padding:20px; background:#c62828; color:#fff; border:none; border-radius:16px; font-size:1.3rem; font-weight:900; cursor:pointer; box-shadow:0 6px 16px rgba(198,40,40,.3); }
 .fmb-btn-open:active { transform: scale(.98); }
 
@@ -83,13 +98,20 @@
 
   <!-- 画面1: イントロ -->
   <div class="fmb-screen active" id="fmb-intro">
-    <div class="fmb-title">災害時ファーストミッションボックス</div>
-    <div class="fmb-sub">3人以上そろったら、開始します。<br>落ち着いて、順番に、無理をしない。</div>
-    <div class="fmb-creed">🧭 まず深呼吸。<br>この箱が、今やることを順番に指示します。<br>あわてず、書いてある通りに動けば大丈夫です。</div>
-    <button class="fmb-btn-open" onclick="fmbGo('fmb-disaster')">
-      <span class="material-symbols-outlined" style="font-size:32px;">inventory_2</span>
-      ボックスを開く
-    </button>
+    <div class="fmb-hero">
+      <div class="fmb-emblem"><span class="material-symbols-outlined">inventory_2</span></div>
+      <h1 class="fmb-h1">災害時ファースト<br>ミッションボックス</h1>
+      <p class="fmb-lead">3人そろったら、開く。<br>最初にやることを、順番に指示します。</p>
+      <div class="fmb-creed-row">
+        <div class="fmb-creed-item"><span>01</span>深呼吸</div>
+        <div class="fmb-creed-item"><span>02</span>順番に</div>
+        <div class="fmb-creed-item"><span>03</span>無理しない</div>
+      </div>
+      <button class="fmb-cta" onclick="fmbGo('fmb-disaster')">
+        ボックスを開く <span class="material-symbols-outlined">arrow_forward</span>
+      </button>
+      <div><span class="fmb-offline-badge"><span class="material-symbols-outlined">wifi_off</span> オフラインでも動作します</span></div>
+    </div>
   </div>
 
   <!-- 画面2: 災害種別選択 -->
