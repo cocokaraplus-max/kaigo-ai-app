@@ -1068,11 +1068,29 @@ body.nav-editing {
   body.sw-offline .dw-app[data-href="/calendar"] .dw-label,
   body.sw-offline .dw-app[data-href="/manual"] .dw-label { color:#e65100 !important; font-weight:800; }
   body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]):not([data-href="/calendar"]):not([data-href="/manual"]) { opacity:0.5; }
+
+  /* fmb-offline-fab-v1: オフライン時、画面下中央に「ミッションボックスを開く」を直接表示 */
+  #fmb-offline-fab { display:none; }
+  body.sw-offline #fmb-offline-fab {
+    display:flex; align-items:center; gap:8px;
+    position:fixed; left:50%; transform:translateX(-50%); bottom:20px; z-index:9500;
+    padding:14px 22px; border-radius:999px;
+    background:linear-gradient(135deg,#ef5350,#c62828); color:#fff; text-decoration:none;
+    font-size:1rem; font-weight:800; box-shadow:0 8px 22px rgba(198,40,40,.45);
+    animation: fmbFabPulse 1.8s ease-in-out infinite;
+  }
+  #fmb-offline-fab .material-symbols-outlined { font-size:22px; }
+  @keyframes fmbFabPulse { 0%,100%{ box-shadow:0 8px 22px rgba(198,40,40,.45);} 50%{ box-shadow:0 8px 30px rgba(198,40,40,.78);} }
 </style>
 
 <div id="appDrawerHandle" data-side="{{ drawer_side }}" title="メニュー">
   <span class="material-symbols-outlined">apps</span>
 </div>
+
+<!-- fmb-offline-fab-v1: オフライン時のみ表示（災害時のワンタップ起動） -->
+<a href="/fmb" id="fmb-offline-fab" aria-label="ファーストミッションボックスを開く">
+  <span class="material-symbols-outlined">inventory_2</span>ミッションボックスを開く
+</a>
 <div id="appDrawerMask"></div>
 <div id="appDrawer" data-side="{{ drawer_side }}">
   <div class="dw-head">
