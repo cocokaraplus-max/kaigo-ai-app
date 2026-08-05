@@ -1069,27 +1069,34 @@ body.nav-editing {
   body.sw-offline .dw-app[data-href="/manual"] .dw-label { color:#e65100 !important; font-weight:800; }
   body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]):not([data-href="/calendar"]):not([data-href="/manual"]) { opacity:0.5; }
 
-  /* fmb-fab-v3: 既定は非表示。メニューを開いた時にフロート表示／オフライン時は脈打って緊急表示 */
+  /* fmb-fab-v4: 防災アイコン（丸・赤・盾）。既定は非表示、メニューを開いた時に出る／オフライン時は脈打つ */
   #fmb-offline-fab {
-    display:none; align-items:center; gap:8px;
-    position:fixed; left:50%; transform:translateX(-50%); bottom:26px; z-index:9000;
-    padding:14px 22px; border-radius:999px;
-    background:linear-gradient(135deg,#ef5350,#c62828); color:#fff; text-decoration:none;
-    font-size:1rem; font-weight:800; box-shadow:0 8px 22px rgba(198,40,40,.5);
+    display:none; flex-direction:column; align-items:center; gap:6px;
+    position:fixed; left:50%; transform:translateX(-50%); bottom:24px; z-index:9000; text-decoration:none;
   }
-  #fmb-offline-fab .material-symbols-outlined { font-size:21px; }
-  body.dw-open #fmb-offline-fab { display:flex; }              /* メニューを開いた時にフロート */
-  body.sw-offline #fmb-offline-fab { display:flex; animation: fmbFabPulse 1.8s ease-in-out infinite; } /* オフラインは常に緊急表示 */
-  @keyframes fmbFabPulse { 0%,100%{ box-shadow:0 8px 22px rgba(198,40,40,.5);} 50%{ box-shadow:0 8px 30px rgba(198,40,40,.82);} }
+  #fmb-offline-fab .fmb-fab-ic {
+    width:58px; height:58px; border-radius:50%; background:#e53935; color:#fff;
+    display:flex; align-items:center; justify-content:center; box-shadow:0 6px 16px rgba(198,40,40,.45);
+  }
+  #fmb-offline-fab .fmb-fab-ic .material-symbols-outlined { font-size:30px; }
+  #fmb-offline-fab .fmb-fab-label {
+    font-size:.72rem; font-weight:800; color:#c62828; background:#fff;
+    padding:2px 9px; border-radius:8px; box-shadow:0 1px 4px rgba(0,0,0,.12);
+  }
+  body.dw-open #fmb-offline-fab { display:flex; }               /* メニューを開いた時に出る */
+  body.sw-offline #fmb-offline-fab { display:flex; }            /* オフラインは常に表示 */
+  body.sw-offline #fmb-offline-fab .fmb-fab-ic { animation: fmbFabPulse 1.6s ease-in-out infinite; }
+  @keyframes fmbFabPulse { 0%,100%{ box-shadow:0 6px 16px rgba(198,40,40,.45);} 50%{ box-shadow:0 6px 22px rgba(229,57,53,.85);} }
 </style>
 
 <div id="appDrawerHandle" data-side="{{ drawer_side }}" title="メニュー">
   <span class="material-symbols-outlined">apps</span>
 </div>
 
-<!-- fmb-offline-fab-v1: オフライン時のみ表示（災害時のワンタップ起動） -->
-<a href="/fmb" id="fmb-offline-fab" aria-label="ファーストミッションボックスを開く">
-  <span class="material-symbols-outlined">inventory_2</span>ミッションボックス
+<!-- fmb-fab-v4: 防災アイコン（丸・赤・盾）。メニューを開いた時に出る／オフライン時は脈打つ -->
+<a href="/fmb" id="fmb-offline-fab" aria-label="防災 ファーストミッションボックスを開く">
+  <span class="fmb-fab-ic"><span class="material-symbols-outlined">health_and_safety</span></span>
+  <span class="fmb-fab-label">防災</span>
 </a>
 <div id="appDrawerMask"></div>
 <div id="appDrawer" data-side="{{ drawer_side }}">
