@@ -2876,6 +2876,7 @@ def register():
 #     体験中(in_trial)は上位機能も開放しつつ badge を付ける。トライアル外の強制は将来対応(enforcement)。
 MENU_ITEMS = [   # top-grid-v1
     {"href": "/input",          "icon": "edit_note",              "label": "記録入力",       "need": None},
+    {"href": "/fmb",            "icon": "health_and_safety",      "label": "防災",           "need": None},  # fmb-tile-v1
     {"href": "/daily_view",     "icon": "calendar_month",         "label": "ケース記録",     "need": None},
     # record-check-v1: 記録充足チェックは「ケース記録」の上のタブから入る導線に一本化した。
     # アイコンを別に立てると入口が2つになり、メニューも増える。タブだけ残す。
