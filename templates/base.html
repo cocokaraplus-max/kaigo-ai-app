@@ -1069,18 +1069,22 @@ body.nav-editing {
   body.sw-offline .dw-app[data-href="/manual"] .dw-label { color:#e65100 !important; font-weight:800; }
   body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]):not([data-href="/calendar"]):not([data-href="/manual"]) { opacity:0.5; }
 
-  /* fmb-offline-fab-v1: オフライン時、画面下中央に「ミッションボックスを開く」を直接表示 */
-  #fmb-offline-fab { display:none; }
-  body.sw-offline #fmb-offline-fab {
-    display:flex; align-items:center; gap:8px;
-    position:fixed; left:50%; transform:translateX(-50%); bottom:20px; z-index:9500;
-    padding:14px 22px; border-radius:999px;
+  /* fmb-fab-v2: 平常時=左下の常設ボタン / オフライン時=下中央で強調(脈打つ) */
+  #fmb-offline-fab {
+    display:flex; align-items:center; gap:7px;
+    position:fixed; left:16px; bottom:16px; z-index:9500;
+    padding:10px 15px; border-radius:999px;
     background:linear-gradient(135deg,#ef5350,#c62828); color:#fff; text-decoration:none;
-    font-size:1rem; font-weight:800; box-shadow:0 8px 22px rgba(198,40,40,.45);
+    font-size:.86rem; font-weight:800; box-shadow:0 5px 14px rgba(198,40,40,.38);
+  }
+  #fmb-offline-fab .material-symbols-outlined { font-size:19px; }
+  body.sw-offline #fmb-offline-fab {
+    left:50%; right:auto; transform:translateX(-50%); bottom:20px;
+    padding:14px 22px; font-size:1rem;
+    box-shadow:0 8px 22px rgba(198,40,40,.5);
     animation: fmbFabPulse 1.8s ease-in-out infinite;
   }
-  #fmb-offline-fab .material-symbols-outlined { font-size:22px; }
-  @keyframes fmbFabPulse { 0%,100%{ box-shadow:0 8px 22px rgba(198,40,40,.45);} 50%{ box-shadow:0 8px 30px rgba(198,40,40,.78);} }
+  @keyframes fmbFabPulse { 0%,100%{ box-shadow:0 8px 22px rgba(198,40,40,.5);} 50%{ box-shadow:0 8px 30px rgba(198,40,40,.82);} }
 </style>
 
 <div id="appDrawerHandle" data-side="{{ drawer_side }}" title="メニュー">
@@ -1089,7 +1093,7 @@ body.nav-editing {
 
 <!-- fmb-offline-fab-v1: オフライン時のみ表示（災害時のワンタップ起動） -->
 <a href="/fmb" id="fmb-offline-fab" aria-label="ファーストミッションボックスを開く">
-  <span class="material-symbols-outlined">inventory_2</span>ミッションボックスを開く
+  <span class="material-symbols-outlined">inventory_2</span>ミッションボックス
 </a>
 <div id="appDrawerMask"></div>
 <div id="appDrawer" data-side="{{ drawer_side }}">
