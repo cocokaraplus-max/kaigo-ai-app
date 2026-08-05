@@ -13184,6 +13184,169 @@ def kyukyu_view():
     return render_template('kyukyu.html')
 
 
+# ===== kinmu-yotei-v1: 勤務予定（シフト）入力 =====
+def _shift_staff_names(supabase, f_code):
+    """在籍職員の名前一覧（保存済みの並び順を優先）。"""
+    order = _tc_staff_order_names(supabase, f_code)
+    try:
+        res = supabase.table("staffs").select("staff_name").eq(
+            "facility_code", f_code).eq("is_active", True).execute()
+        names = [r.get("staff_name") for r in (res.data or []) if r.get("staff_name")]
+    except Exception:
+        names = []
+    names = list(dict.fromkeys(names))
+    if order:
+        return [n for n in order if n in names] + sorted([n for n in names if n not in order])
+    return sorted(names)
+
+
+def _shift_default_map(supabase, f_code):
+    out = {}
+    try:
+        import json as _sj
+        r = supabase.table("staff_shift_defaults").select("*").eq("facility_code", f_code).execute()
+        for row in (r.data or []):
+            wd = row.get("weekdays")
+            if isinstance(wd, str):
+                try:
+                    wd = _sj.loads(wd)
+                except Exception:
+                    wd = None
+            if not (isinstance(wd, list) and len(wd) == 7):
+                wd = [True, True, True, True, True, False, False]
+            out[row.get("staff_name")] = {
+                "weekdays": [bool(x) for x in wd],
+                "start": row.get("start_time") or "09:00",
+                "end": row.get("end_time") or "18:00",
+            }
+    except Exception as e:
+        print(f"[shift defaults] {e}", flush=True)
+    return out
+
+
+@app.route('/kinmu_yotei')
+@login_required
+def kinmu_yotei_page():
+    """勤務予定入力ページ。kinmu-yotei-v1"""
+    return render_template('kinmu_yotei.html')
+
+
+@app.route('/api/shift/week', methods=['GET'])
+@login_required
+def api_shift_week():
+    f_code = session['f_code']
+    supabase = get_supabase()
+    start = request.args.get('start')
+    try:
+        d0 = datetime.strptime(start, '%Y-%m-%d').date()
+    except Exception:
+        _t = _tc_now_jst().date()
+        d0 = _t - timedelta(days=_t.weekday())
+    d0 = d0 - timedelta(days=d0.weekday())  # 必ず月曜起点
+    dates = [(d0 + timedelta(days=i)).isoformat() for i in range(7)]
+    names = _shift_staff_names(supabase, f_code)
+    defaults = _shift_default_map(supabase, f_code)
+    plan = {}
+    try:
+        r = supabase.table("staff_shift_plan").select("*").eq(
+            "facility_code", f_code).gte("plan_date", dates[0]).lte("plan_date", dates[6]).execute()
+        for row in (r.data or []):
+            plan[str(row.get("staff_name")) + '|' + str(row.get("plan_date"))] = {
+                "status": row.get("status"), "start": row.get("start_time"), "end": row.get("end_time")}
+    except Exception as e:
+        print(f"[shift week] {e}", flush=True)
+    return jsonify({"status": "success", "week": dates, "staff": names, "defaults": defaults, "plan": plan})
+
+
+@app.route('/api/shift/save', methods=['POST'])
+@login_required
+def api_shift_save():
+    f_code = session['f_code']
+    supabase = get_supabase()
+    data = request.get_json(silent=True) or {}
+    cells = data.get('cells') or []
+    saved = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for c in cells:
+        nm = (c.get('name') or '').strip()
+        dt = (c.get('date') or '').strip()
+        if not nm or not dt:
+            continue
+        try:
+            supabase.table("staff_shift_plan").upsert({
+                "facility_code": f_code, "staff_name": nm, "plan_date": dt,
+                "status": c.get('status') or 'off',
+                "start_time": c.get('start'), "end_time": c.get('end'),
+                "updated_at": now_iso,
+            }, on_conflict="facility_code,staff_name,plan_date").execute()
+            saved += 1
+        except Exception as e:
+            print(f"[shift save] {e}", flush=True)
+    return jsonify({"status": "success", "saved": saved})
+
+
+@app.route('/api/shift/default', methods=['POST'])
+@login_required
+def api_shift_default():
+    f_code = session['f_code']
+    supabase = get_supabase()
+    data = request.get_json(silent=True) or {}
+    nm = (data.get('name') or '').strip()
+    if not nm:
+        return jsonify({"status": "error", "message": "職員名が必要です"}), 400
+    wd = data.get('weekdays')
+    if not (isinstance(wd, list) and len(wd) == 7):
+        wd = [True, True, True, True, True, False, False]
+    try:
+        supabase.table("staff_shift_defaults").upsert({
+            "facility_code": f_code, "staff_name": nm,
+            "weekdays": [bool(x) for x in wd],
+            "start_time": data.get('start') or '09:00',
+            "end_time": data.get('end') or '18:00',
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="facility_code,staff_name").execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/shift/copy', methods=['POST'])
+@login_required
+def api_shift_copy():
+    f_code = session['f_code']
+    supabase = get_supabase()
+    data = request.get_json(silent=True) or {}
+    try:
+        src = datetime.strptime(data.get('from_start'), '%Y-%m-%d').date()
+        dst = datetime.strptime(data.get('to_start'), '%Y-%m-%d').date()
+    except Exception:
+        return jsonify({"status": "error", "message": "日付が不正です"}), 400
+    src_dates = [(src + timedelta(days=i)).isoformat() for i in range(7)]
+    try:
+        r = supabase.table("staff_shift_plan").select("*").eq(
+            "facility_code", f_code).gte("plan_date", src_dates[0]).lte("plan_date", src_dates[6]).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    n = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for row in (r.data or []):
+        try:
+            pd = datetime.strptime(str(row.get("plan_date")), '%Y-%m-%d').date()
+        except Exception:
+            continue
+        newd = (dst + timedelta(days=(pd - src).days)).isoformat()
+        try:
+            supabase.table("staff_shift_plan").upsert({
+                "facility_code": f_code, "staff_name": row.get("staff_name"), "plan_date": newd,
+                "status": row.get("status"), "start_time": row.get("start_time"), "end_time": row.get("end_time"),
+                "updated_at": now_iso,
+            }, on_conflict="facility_code,staff_name,plan_date").execute()
+            n += 1
+        except Exception as e:
+            print(f"[shift copy] {e}", flush=True)
+    return jsonify({"status": "success", "copied": n})
+
+
 @app.route('/api/generate_daily_summary', methods=['POST'])
 @login_required
 def api_generate_daily_summary():
@@ -17856,6 +18019,7 @@ def admin_timecard_youshiki():
             year, month = now.year, now.month
         if not (1 <= month <= 12):
             return jsonify({"status": "error", "message": "月が不正です。"}), 400
+        is_yotei = (request.args.get("mode") == "yotei")  # kinmu-yotei-v1: 勤務予定の様式出力
         if not _ys_os.path.exists(_YS_TEMPLATE):
             return jsonify({"status": "error", "message": "様式テンプレートが見つかりません。"}), 500
 
@@ -17871,43 +18035,62 @@ def admin_timecard_youshiki():
             split_by_name[_ys_norm(it.get("name"))] = {
                 _ys_norm(r.get("title")): r.get("ratio", 0) for r in it.get("roles", [])}
 
-        # 月の打刻を取得(1〜28日)
-        start_iso, end_iso = _tc_month_range_jst(year, month)
-        res = supabase.table("timecard_records").select("*").eq(
-            "facility_code", f_code).eq("is_deleted", False).gte(
-            "punched_at", start_iso).lt("punched_at", end_iso).order(
-            "punched_at", desc=False).execute()
-        rows = res.data or []
         # (name, 'YYYY-MM-DD') -> [(type, minute)]
         punches_map = {}
-        for r in rows:
-            at = _tc_parse_iso(r.get("punched_at"))
-            if at is None:
-                continue
-            at_jst = at.astimezone(_TC_JST)
-            ds = at_jst.strftime("%Y-%m-%d")
-            key = (_ys_norm(r.get("staff_name")), ds)
-            punches_map.setdefault(key, []).append(
-                (r.get("punch_type"), at_jst.hour * 60 + at_jst.minute))
+        if is_yotei:
+            # kinmu-yotei-v1: 勤務予定の work日を in/out 打刻として合成（既存の様式ロジックを再利用）
+            _pm_start = f"{year:04d}-{month:02d}-01"
+            _pm_end = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+            pres = supabase.table("staff_shift_plan").select("*").eq(
+                "facility_code", f_code).gte("plan_date", _pm_start).lt(
+                "plan_date", _pm_end).execute()
+            for r in (pres.data or []):
+                if (r.get("status") or "") != "work":
+                    continue
+                sm = _ys_hm(r.get("start_time")); em = _ys_hm(r.get("end_time"))
+                if sm is None or em is None or em <= sm:
+                    continue
+                ds = str(r.get("plan_date"))
+                key = (_ys_norm(r.get("staff_name")), ds)
+                punches_map.setdefault(key, []).append(("in", sm))
+                punches_map[key].append(("out", em))
+        else:
+            # 月の打刻を取得(1〜28日)
+            start_iso, end_iso = _tc_month_range_jst(year, month)
+            res = supabase.table("timecard_records").select("*").eq(
+                "facility_code", f_code).eq("is_deleted", False).gte(
+                "punched_at", start_iso).lt("punched_at", end_iso).order(
+                "punched_at", desc=False).execute()
+            rows = res.data or []
+            for r in rows:
+                at = _tc_parse_iso(r.get("punched_at"))
+                if at is None:
+                    continue
+                at_jst = at.astimezone(_TC_JST)
+                ds = at_jst.strftime("%Y-%m-%d")
+                key = (_ys_norm(r.get("staff_name")), ds)
+                punches_map.setdefault(key, []).append(
+                    (r.get("punch_type"), at_jst.hour * 60 + at_jst.minute))
         for k in punches_map:
             punches_map[k].sort(key=lambda x: x[1])
 
-        # 休暇を取得
-        lstart = f"{year:04d}-{month:02d}-01"
-        lend = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
-        lres = supabase.table("staff_leave_days").select("*").eq(
-            "facility_code", f_code).gte("leave_date", lstart).lt(
-            "leave_date", lend).execute()
+        # 休暇を取得（予定出力では使わない）
         leaves_map = {}
         note_rows = []  # timecard-leave-note-v1: 備考一覧（表の下に出す）
-        for r in (lres.data or []):
-            leaves_map[(_ys_norm(r.get("staff_name")), r.get("leave_date"))] = r.get("leave_type")
-            _nt = (r.get("note") or "").strip()
-            if _nt:
-                _lt = _LEAVE_TYPES.get(r.get("leave_type"))
-                _lbl = _lt["label"] if _lt else (r.get("leave_type") or "")
-                note_rows.append((r.get("leave_date"), r.get("staff_name"), _lbl, _nt, r.get("substitute_for")))
-        note_rows.sort(key=lambda x: (x[0] or "", x[1] or ""))
+        if not is_yotei:
+            lstart = f"{year:04d}-{month:02d}-01"
+            lend = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+            lres = supabase.table("staff_leave_days").select("*").eq(
+                "facility_code", f_code).gte("leave_date", lstart).lt(
+                "leave_date", lend).execute()
+            for r in (lres.data or []):
+                leaves_map[(_ys_norm(r.get("staff_name")), r.get("leave_date"))] = r.get("leave_type")
+                _nt = (r.get("note") or "").strip()
+                if _nt:
+                    _lt = _LEAVE_TYPES.get(r.get("leave_type"))
+                    _lbl = _lt["label"] if _lt else (r.get("leave_type") or "")
+                    note_rows.append((r.get("leave_date"), r.get("staff_name"), _lbl, _nt, r.get("substitute_for")))
+            note_rows.sort(key=lambda x: (x[0] or "", x[1] or ""))
 
         import openpyxl as _ys_xl
         from openpyxl.styles import Font as _YS_Font
@@ -17933,7 +18116,7 @@ def admin_timecard_youshiki():
                     _v = _cell.value
                     if not isinstance(_v, str):
                         continue
-                    if "予定" in _v:
+                    if (not is_yotei) and "予定" in _v:
                         _v = _v.replace("予定", "実績")
                     # 月表記「（令和X年Y月分）」を出力年月に置換
                     import re as _ys_re2
@@ -17944,13 +18127,24 @@ def admin_timecard_youshiki():
         # youshiki-d8-fix-v1: D8(起点日付)を出力対象月の1日で全シート上書き。
         #   -> E8以降の=D8+1 と D9以降の=TEXT(D8,"aaa") が日付・曜日とも自動追従。
         #   テンプレ固定値(12月始まり)によるズレを根絶する。
-        _ys_d1 = _ys_date(year, month, 1)
+        import calendar as _ys_cal
+        _ys_wd = ["月", "火", "水", "木", "金", "土", "日"]  # 月火水木金土日
+        _ys_ndays = _ys_cal.monthrange(year, month)[1]
         for _sn2 in wb.sheetnames:
             _ws2 = wb[_sn2]
-            _ws2["D8"] = _ys_d1
+            # youshiki-date-explicit-v1: 日付(行8)・曜日(行9)を明示値で書き込む
+            #   （openpyxlは =D8+1 / =TEXT(..,"aaa") を再計算しないため空欄になるのを防ぐ）
+            for _day in range(1, 29):
+                if _day > _ys_ndays:
+                    break
+                _c = 4 + (_day - 1)
+                _dd = _ys_date(year, month, _day)
+                _ws2.cell(row=8, column=_c).value = _dd
+                _ws2.cell(row=9, column=_c).value = _ys_wd[_dd.weekday()]
             # 1日型はタイトルが M2/Q2 に分裂しているため明示的に統一する
-            if isinstance(_ws2["Q2"].value, str) and "\u5b9f\u7e3e" in _ws2["Q2"].value:
-                _ws2["M2"] = "\u52e4\u52d9\u5b9f\u7e3e" + _ys_month_str
+            _ys_lbl = "\u4e88\u5b9a" if is_yotei else "\u5b9f\u7e3e"
+            if isinstance(_ws2["Q2"].value, str) and _ys_lbl in _ws2["Q2"].value:
+                _ws2["M2"] = "\u52e4\u52d9" + _ys_lbl + _ys_month_str
                 _ws2["Q2"] = None
 
         for sheet_name, is_full in ((_YS_SHEET_HALF, False), (_YS_SHEET_FULL, True)):
@@ -18033,7 +18227,7 @@ def admin_timecard_youshiki():
         wb.save(buf)
         buf.seek(0)
         from flask import send_file as _ys_send
-        fname = f"kinmu_{year}{month:02d}.xlsx"
+        fname = f"kinmu_{'yotei' if is_yotei else 'jisseki'}_{year}{month:02d}.xlsx"
         return _ys_send(buf, as_attachment=True, download_name=fname,
                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     except Exception as e:

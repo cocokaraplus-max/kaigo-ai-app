@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}勤務予定 - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* kinmu-yotei-v1: 勤務予定入力 */
+.ky2-wrap { max-width: 100%; margin: 0 auto; padding: 12px 12px 60px; }
+.ky2-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.ky2-head .material-symbols-outlined { color:#1a73e8; font-size:26px; }
+.ky2-title { font-size:1.2rem; font-weight:900; color:#1e3a5f; }
+.ky2-lead { font-size:.8rem; color:#5f6368; margin:0 2px 14px; line-height:1.6; }
+
+.ky2-nav { display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:12px; }
+.ky2-nav button { width:44px; height:44px; border-radius:12px; border:1.5px solid #dadce0; background:#fff; font-size:1.3rem; cursor:pointer; color:#1a73e8; font-weight:900; }
+.ky2-nav .rng { font-size:1.05rem; font-weight:900; color:#202124; min-width:170px; text-align:center; }
+
+.ky2-actions { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+.ky2-actions button { flex:1; min-width:130px; padding:12px; border-radius:12px; border:none; font-size:.92rem; font-weight:800; cursor:pointer; }
+.ky2-copy { background:#e8f0fe; color:#1a56c4; border:1.5px solid #aecbfa !important; }
+.ky2-save { background:#1a73e8; color:#fff; box-shadow:0 4px 12px rgba(26,115,232,.3); }
+.ky2-out { background:#e6f4ea; color:#1e7e34; border:1.5px solid #a8d5b5 !important; text-decoration:none; display:flex; align-items:center; justify-content:center; }
+
+.ky2-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; border:1px solid #e0e0e0; border-radius:12px; }
+table.ky2-grid { border-collapse:collapse; width:100%; min-width:640px; }
+.ky2-grid th, .ky2-grid td { border:1px solid #e6e8eb; text-align:center; }
+.ky2-grid thead th { background:#f5f7fa; font-size:.78rem; font-weight:800; color:#3c4043; padding:6px 4px; position:sticky; top:0; }
+.ky2-grid thead th.sat { color:#1a73e8; } .ky2-grid thead th.sun { color:#d93025; }
+.ky2-grid .nmcol { position:sticky; left:0; background:#fff; z-index:2; min-width:92px; max-width:110px; padding:8px 8px; text-align:left; font-weight:800; font-size:.9rem; color:#202124; cursor:pointer; border-right:2px solid #e0e0e0; }
+.ky2-grid thead .nmcol { background:#f5f7fa; z-index:3; }
+.ky2-grid .nmcol small { display:block; font-size:.62rem; color:#9aa0a6; font-weight:700; }
+.ky2-cell { width:76px; height:52px; cursor:pointer; font-size:.74rem; font-weight:800; line-height:1.25; }
+.ky2-cell.work { background:#e6f4ea; color:#1e7e34; }
+.ky2-cell.off { background:#fdecea; color:#c5221f; }
+.ky2-cell .t { font-size:.68rem; font-weight:700; }
+
+/* モーダル */
+.ky2-mask { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:12000; align-items:center; justify-content:center; padding:18px; }
+.ky2-mask.on { display:flex; }
+.ky2-modal { background:#fff; border-radius:16px; padding:18px; width:100%; max-width:360px; box-shadow:0 12px 40px rgba(0,0,0,.25); }
+.ky2-modal h3 { margin:0 0 4px; font-size:1.05rem; font-weight:900; color:#202124; }
+.ky2-modal .who { font-size:.8rem; color:#5f6368; margin-bottom:14px; }
+.ky2-seg { display:flex; gap:8px; margin-bottom:14px; }
+.ky2-seg button { flex:1; padding:12px; border-radius:10px; border:2px solid #e0e0e0; background:#fff; font-weight:800; cursor:pointer; font-size:.95rem; }
+.ky2-seg button.sel.work { background:#e6f4ea; border-color:#1e7e34; color:#1e7e34; }
+.ky2-seg button.sel.off { background:#fdecea; border-color:#c5221f; color:#c5221f; }
+.ky2-times { display:flex; align-items:center; gap:8px; margin-bottom:16px; }
+.ky2-times input[type=time] { flex:1; padding:10px; border:1.5px solid #cfd8dc; border-radius:10px; font-size:1rem; }
+.ky2-wd { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:14px; }
+.ky2-wd label { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:.78rem; font-weight:800; color:#3c4043; }
+.ky2-wd input { width:20px; height:20px; }
+.ky2-mbtns { display:flex; gap:8px; margin-top:6px; }
+.ky2-mbtns button { flex:1; padding:12px; border-radius:10px; border:none; font-weight:800; cursor:pointer; font-size:.95rem; }
+.ky2-mbtns .ok { background:#1a73e8; color:#fff; } .ky2-mbtns .cancel { background:#f1f3f4; color:#5f6368; }
+.ky2-field { font-size:.76rem; color:#5f6368; font-weight:700; margin:2px 0 6px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ky2-wrap">
+  <div class="ky2-head"><span class="material-symbols-outlined">edit_calendar</span><span class="ky2-title">勤務予定</span></div>
+  <div class="ky2-lead">職員名をタップで「通常出勤する曜日・標準時間」を設定。マスをタップで休み/時間変更。入力後「保存」。前週を次週へコピーできます。</div>
+
+  <div class="ky2-nav">
+    <button onclick="ky2Week(-7)">‹</button>
+    <span class="rng" id="ky2-range">—</span>
+    <button onclick="ky2Week(7)">›</button>
+  </div>
+
+  <div class="ky2-actions">
+    <button class="ky2-copy" onclick="ky2CopyNext()">この週を次週へコピー</button>
+    <a class="ky2-out" id="ky2-out" href="#">様式（予定）で出力</a>
+    <button class="ky2-save" onclick="ky2Save()">保存</button>
+  </div>
+
+  <div class="ky2-scroll">
+    <table class="ky2-grid">
+      <thead><tr id="ky2-thead"></tr></thead>
+      <tbody id="ky2-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- セル編集 -->
+<div class="ky2-mask" id="ky2-cellmask">
+  <div class="ky2-modal">
+    <h3 id="ky2-cell-title">勤務</h3>
+    <div class="who" id="ky2-cell-who"></div>
+    <div class="ky2-seg">
+      <button id="ky2-seg-work" class="work" onclick="ky2SegSet('work')">出勤</button>
+      <button id="ky2-seg-off" class="off" onclick="ky2SegSet('off')">休み</button>
+    </div>
+    <div id="ky2-time-wrap">
+      <div class="ky2-field">勤務時間</div>
+      <div class="ky2-times">
+        <input type="time" id="ky2-cell-start"><span>〜</span><input type="time" id="ky2-cell-end">
+      </div>
+    </div>
+    <div class="ky2-mbtns">
+      <button class="cancel" onclick="ky2Close('ky2-cellmask')">キャンセル</button>
+      <button class="ok" onclick="ky2CellApply()">決定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 既定設定 -->
+<div class="ky2-mask" id="ky2-defmask">
+  <div class="ky2-modal">
+    <h3>既定の設定</h3>
+    <div class="who" id="ky2-def-who"></div>
+    <div class="ky2-field">通常出勤する曜日</div>
+    <div class="ky2-wd" id="ky2-def-wd"></div>
+    <div class="ky2-field">標準の勤務時間</div>
+    <div class="ky2-times">
+      <input type="time" id="ky2-def-start"><span>〜</span><input type="time" id="ky2-def-end">
+    </div>
+    <div class="ky2-mbtns">
+      <button class="cancel" onclick="ky2Close('ky2-defmask')">キャンセル</button>
+      <button class="ok" onclick="ky2DefApply()">保存して反映</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* kinmu-yotei-v1 */
+const WD = ['月','火','水','木','金','土','日'];
+let S = { weekStart:null, staff:[], defaults:{}, plan:{}, cells:{} };  // cells[name|date] = {status,start,end}
+let editCell = null;   // {name,date}
+let editSeg = 'work';
+let editDefName = null;
+
+function iso(d){ return d.toISOString().slice(0,10); }
+function parseISO(s){ const p=s.split('-'); return new Date(Date.UTC(+p[0],+p[1]-1,+p[2])); }
+function mondayOf(d){ const x=new Date(d); const wd=(x.getUTCDay()+6)%7; x.setUTCDate(x.getUTCDate()-wd); return x; }
+function fmtMD(s){ const p=s.split('-'); return (+p[1])+'/'+(+p[2]); }
+function wdOf(s){ return (parseISO(s).getUTCDay()+6)%7; } // 0=月
+
+function defaultFor(name){
+  return S.defaults[name] || { weekdays:[true,true,true,true,true,false,false], start:'09:00', end:'18:00' };
+}
+function effCell(name, date){
+  const k = name+'|'+date;
+  if (S.cells[k]) return S.cells[k];
+  const p = S.plan[k];
+  if (p && p.status) { S.cells[k] = {status:p.status, start:p.start||defaultFor(name).start, end:p.end||defaultFor(name).end}; return S.cells[k]; }
+  const df = defaultFor(name); const w = wdOf(date);
+  S.cells[k] = df.weekdays[w] ? {status:'work', start:df.start, end:df.end} : {status:'off', start:df.start, end:df.end};
+  return S.cells[k];
+}
+
+async function ky2Load(startISO){
+  const r = await fetch('/api/shift/week?start='+startISO, {credentials:'same-origin'});
+  const j = await r.json();
+  S.weekStart = j.week[0];
+  S.staff = j.staff || [];
+  S.defaults = j.defaults || {};
+  S.plan = j.plan || {};
+  S.cells = {};
+  ky2Render(j.week);
+  // 出力リンク（その週の月）
+  const p = S.weekStart.split('-');
+  document.getElementById('ky2-out').href = '/admin/timecard/youshiki?mode=yotei&year='+(+p[0])+'&month='+(+p[1]);
+}
+function ky2Render(week){
+  document.getElementById('ky2-range').textContent = fmtMD(week[0])+' 〜 '+fmtMD(week[6]);
+  const th = document.getElementById('ky2-thead');
+  th.innerHTML = '<th class="nmcol">職員</th>' + week.map(function(d){
+    const w=wdOf(d); const cls = w===5?'sat':(w===6?'sun':'');
+    return '<th class="'+cls+'">'+WD[w]+'<br>'+fmtMD(d)+'</th>';
+  }).join('');
+  const tb = document.getElementById('ky2-tbody');
+  tb.innerHTML = S.staff.map(function(name){
+    let tds = '<td class="nmcol" onclick="ky2OpenDef(\''+escapeQ(name)+'\')">'+escapeH(name)+'<small>既定を設定 ⚙</small></td>';
+    week.forEach(function(d){
+      const c = effCell(name, d);
+      if (c.status==='work') tds += '<td class="ky2-cell work" onclick="ky2OpenCell(\''+escapeQ(name)+'\',\''+d+'\')">出勤<div class="t">'+ (c.start||'')+'<br>'+(c.end||'')+'</div></td>';
+      else tds += '<td class="ky2-cell off" onclick="ky2OpenCell(\''+escapeQ(name)+'\',\''+d+'\')">休</td>';
+    });
+    return '<tr>'+tds+'</tr>';
+  }).join('');
+}
+function escapeH(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+function escapeQ(s){ return String(s).replace(/'/g,"\\'"); }
+
+function ky2Week(delta){
+  const d = parseISO(S.weekStart); d.setUTCDate(d.getUTCDate()+delta); ky2Load(iso(mondayOf(d)));
+}
+
+/* セル編集 */
+function ky2OpenCell(name, date){
+  editCell = {name, date};
+  const c = effCell(name, date);
+  document.getElementById('ky2-cell-who').textContent = escapeH(name)+'　'+fmtMD(date)+'（'+WD[wdOf(date)]+'）';
+  ky2SegSet(c.status);
+  document.getElementById('ky2-cell-start').value = c.start || defaultFor(name).start;
+  document.getElementById('ky2-cell-end').value = c.end || defaultFor(name).end;
+  document.getElementById('ky2-cellmask').classList.add('on');
+}
+function ky2SegSet(st){
+  editSeg = st;
+  const w=document.getElementById('ky2-seg-work'), o=document.getElementById('ky2-seg-off');
+  w.classList.toggle('sel', st==='work'); o.classList.toggle('sel', st==='off');
+  document.getElementById('ky2-time-wrap').style.display = (st==='work') ? 'block' : 'none';
+}
+function ky2CellApply(){
+  if(!editCell) return;
+  const k = editCell.name+'|'+editCell.date;
+  S.cells[k] = { status:editSeg, start:document.getElementById('ky2-cell-start').value, end:document.getElementById('ky2-cell-end').value };
+  ky2Close('ky2-cellmask');
+  ky2Render(weekDates());
+}
+function weekDates(){ const out=[]; const d=parseISO(S.weekStart); for(let i=0;i<7;i++){ const x=new Date(d); x.setUTCDate(x.getUTCDate()+i); out.push(iso(x)); } return out; }
+
+/* 既定設定 */
+function ky2OpenDef(name){
+  editDefName = name;
+  const df = defaultFor(name);
+  document.getElementById('ky2-def-who').textContent = escapeH(name);
+  document.getElementById('ky2-def-wd').innerHTML = WD.map(function(w,i){
+    return '<label>'+w+'<input type="checkbox" data-wd="'+i+'" '+(df.weekdays[i]?'checked':'')+'></label>';
+  }).join('');
+  document.getElementById('ky2-def-start').value = df.start;
+  document.getElementById('ky2-def-end').value = df.end;
+  document.getElementById('ky2-defmask').classList.add('on');
+}
+async function ky2DefApply(){
+  const wd = [];
+  document.querySelectorAll('#ky2-def-wd input[data-wd]').forEach(function(cb){ wd[+cb.dataset.wd] = cb.checked; });
+  const body = { name:editDefName, weekdays:wd, start:document.getElementById('ky2-def-start').value, end:document.getElementById('ky2-def-end').value };
+  const r = await fetch('/api/shift/default', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(body)});
+  const j = await r.json();
+  if(j.status!=='success'){ alert(j.message||'保存に失敗しました'); return; }
+  S.defaults[editDefName] = { weekdays:wd, start:body.start, end:body.end };
+  // この職員の未編集セルを既定で更新
+  weekDates().forEach(function(d){ const k=editDefName+'|'+d; if(!S.plan[k]) delete S.cells[k]; });
+  ky2Close('ky2-defmask');
+  ky2Render(weekDates());
+}
+
+function ky2Close(id){ document.getElementById(id).classList.remove('on'); }
+
+/* 保存 */
+async function ky2Save(){
+  const cells = [];
+  weekDates().forEach(function(d){ S.staff.forEach(function(name){ const c=effCell(name,d); cells.push({name:name, date:d, status:c.status, start:c.start, end:c.end}); }); });
+  const r = await fetch('/api/shift/save', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({cells:cells})});
+  const j = await r.json();
+  if(j.status==='success'){ alert('保存しました（'+j.saved+'件）'); ky2Load(S.weekStart); }
+  else alert(j.message||'保存に失敗しました');
+}
+
+/* 前週→次週コピー */
+async function ky2CopyNext(){
+  if(!confirm('この週の内容を「次の週」にコピーします。よろしいですか？')) return;
+  const dst = parseISO(S.weekStart); dst.setUTCDate(dst.getUTCDate()+7);
+  const r = await fetch('/api/shift/copy', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({from_start:S.weekStart, to_start:iso(dst)})});
+  const j = await r.json();
+  if(j.status==='success'){ alert('次週へコピーしました（'+j.copied+'件）'); }
+  else alert(j.message||'コピーに失敗しました');
+}
+
+// 初期表示：今週
+ky2Load(iso(mondayOf(new Date())));
+</script>
+{% endblock %}
