@@ -24,8 +24,9 @@
 .ky-mbtn:active { transform:scale(.98); }
 .ky-mbtn .ic { flex:0 0 auto; width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#fff; }
 .ky-mbtn .ic .material-symbols-outlined { font-size:26px; }
-.ky-mbtn .tx { font-size:1.08rem; font-weight:800; color:#202124; line-height:1.4; }
-.ky-mbtn .sub { font-size:.76rem; color:#5f6368; margin-top:2px; }
+.ky-mbtn > span:last-child { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.ky-mbtn .tx { display:block; font-size:1.08rem; font-weight:800; color:#202124; line-height:1.4; }
+.ky-mbtn .sub { display:block; font-size:.76rem; color:#5f6368; line-height:1.5; }
 .ky-mbtn.star { border-color:#00897b; background:#e0f2f1; }
 .ic-jcs{background:#00897b;} .ic-bls{background:#e53935;} .ic-choke{background:#fb8c00;}
 .ic-seiz{background:#8e24aa;} .ic-fall{background:#3949ab;} .ic-hand{background:#00838f;}
@@ -73,6 +74,16 @@
 .ky-list li .material-symbols-outlined { color:#00897b; font-size:20px; flex:0 0 auto; margin-top:1px; }
 .ky-list li .h { font-weight:900; }
 
+/* kyukyu-record-v1: 申し送りの「これまでの確認」＋フロー内JCS */
+.ky-summary { background:#e0f2f1; border:1.5px solid #b2dfdb; border-radius:14px; padding:14px 16px; margin-bottom:16px; }
+.ky-summary-t { font-size:.8rem; font-weight:900; color:#00695c; margin-bottom:8px; }
+.ky-summary .row { display:flex; gap:10px; align-items:flex-start; padding:5px 0; font-size:.98rem; }
+.ky-summary .row .k { flex:0 0 84px; color:#5f6368; font-weight:700; }
+.ky-summary .row .v { font-weight:800; color:#202124; }
+.ky-summary .row .v.muted { color:#9aa0a6; font-weight:700; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.ky-summary .row .v.muted button { background:#00897b; color:#fff; border:none; border-radius:8px; padding:7px 13px; font-size:.84rem; font-weight:800; cursor:pointer; }
+.ky-jcsbtn { display:none; width:100%; padding:15px; margin-top:12px; background:#00897b; color:#fff; border:none; border-radius:12px; font-size:1.05rem; font-weight:900; cursor:pointer; box-shadow:0 4px 12px rgba(0,137,123,.28); }
+
 .ky-btn-ghost { display:block; width:100%; padding:14px; background:#fff; color:#5f6368; border:2px solid #e0e0e0;
   border-radius:12px; font-size:1rem; font-weight:800; cursor:pointer; margin-top:16px; }
 .ky-btn-primary { display:block; width:100%; padding:16px; background:#00897b; color:#fff; border:none;
@@ -112,7 +123,7 @@
         <span class="ic ic-fall"><span class="material-symbols-outlined">personal_injury</span></span>
         <span><span class="tx">転倒・頭を打った・出血</span><span class="sub">動かさない・止血・観察</span></span>
       </button>
-      <button class="ky-mbtn" onclick="kyGo('ky-tell')">
+      <button class="ky-mbtn" onclick="kyGoTell()">
         <span class="ic ic-hand"><span class="material-symbols-outlined">contact_phone</span></span>
         <span><span class="tx">救急隊に伝えることリスト</span><span class="sub">申し送りの確認</span></span>
       </button>
@@ -134,6 +145,7 @@
         <div class="ky-text" id="ky-m-text"></div>
       </div>
     </div>
+    <button class="ky-jcsbtn" id="ky-m-jcsbtn" onclick="kyStartJcsFromFlow()"></button>
     <div class="ky-nav">
       <button class="prev" onclick="kyStep(-1)">← 戻る</button>
       <button class="next" id="ky-m-next" onclick="kyStep(1)">次へ →</button>
@@ -160,7 +172,8 @@
       <div class="tell">あわてず、救急隊員に<br><b>「<span id="ky-jcs-tell"></span>」</b><br>と伝えてください。</div>
     </div>
     <a class="ky-call" href="tel:119">📞 119に電話する</a>
-    <button class="ky-btn-primary" onclick="kyGo('ky-tell')">救急隊に伝えることリストを見る</button>
+    <button class="ky-btn-ghost" id="ky-jcs-resume" style="display:none;" onclick="kyResumeFlow()">← 手順のつづきにもどる</button>
+    <button class="ky-btn-primary" onclick="kyGoTell()">救急隊に伝えることリストを見る</button>
     <button class="ky-btn-ghost" onclick="kyJcsStart(); kyGo('ky-jcs');">もう一度判定する</button>
     <button class="ky-btn-ghost" onclick="kyGo('ky-home')">メニューにもどる</button>
   </div>
@@ -168,6 +181,7 @@
   <!-- 救急隊に伝えることリスト -->
   <div class="ky-screen" id="ky-tell">
     <div class="ky-banner"><span class="material-symbols-outlined">contact_phone</span> 救急隊に伝えること</div>
+    <div id="ky-tell-summary" class="ky-summary"></div>
     <ul class="ky-list">
       <li><span class="material-symbols-outlined">neurology</span><span><span class="h">意識レベル（JCS）</span>：上のナビで判定した数字</span></li>
       <li><span class="material-symbols-outlined">pulmonology</span><span><span class="h">呼吸</span>：している／苦しそう／していない、脈・体温・血圧・SpO2</span></li>
@@ -218,6 +232,7 @@ const KY = {
     '押さえつけない。口の中に指や物を入れない。',
     'けいれんが始まった時刻を確認する（続いた時間がとても重要）。',
     {t:'けいれんが止まったら、体を横向き（回復体位）にして気道を確保し、嘔吐に備える。', img:'11_recovery'},
+    {t:'意識レベルを確認します。下のボタンでJCSを判定し、救急隊に伝えます。', jcs:true},
     '5分以上続く／繰り返す／初めての発作／呼吸がおかしい 場合は、すぐ119。',
     '看護師・主治医へ連絡し、様子とバイタル、けいれんの長さを記録する。'
   ]},
@@ -225,12 +240,14 @@ const KY = {
     'むやみに動かさない（頭・首・背中を打った可能性）。声をかけ、反応を確認する。',
     {t:'強い出血は、清潔な布やガーゼで傷口を直接、強く押さえ続ける（直接圧迫止血）。', img:'12_bleeding'},
     '頭を打った・意識がおかしい・手足が動かない・強い痛み・大量出血 のときは119。',
-    '意識と呼吸を観察する。意識レベルはメニューのJCSナビで判定する。',
+    {t:'意識と呼吸を観察します。下のボタンで意識レベル（JCS）を判定し、救急隊に伝えます。', jcs:true},
     '看護師・主治医へ連絡。受傷した時刻・状況・バイタルを記録する。'
   ]}
 };
 
 let kyState = { key:null, step:0 };
+let kyRecord = { situation:null, jcs:null };  // kyukyu-record-v1: たどった情報を蓄積
+let kyReturn = null;                           // フロー内でJCSに入った時の戻り先
 
 function kyGo(id){
   document.querySelectorAll('.ky-screen').forEach(function(s){ s.classList.remove('active'); });
@@ -240,6 +257,7 @@ function kyGo(id){
 function kyOpen(key){
   kyState.key = key; kyState.step = 0;
   var s = KY[key];
+  kyRecord.situation = s.label;   // 対応した状況を記録
   var banner = document.getElementById('ky-banner');
   banner.className = 'ky-banner ' + s.theme;
   banner.textContent = '対応：' + s.label;
@@ -261,6 +279,11 @@ function kyRenderStep(){
   var imgEl = document.getElementById('ky-m-img');
   if (img) { imgEl.src = '/static/kyukyu/' + img + '.jpg'; imgEl.style.display = 'block'; }
   else { imgEl.style.display = 'none'; imgEl.removeAttribute('src'); }
+  var jcsBtn = document.getElementById('ky-m-jcsbtn');
+  if (raw && typeof raw === 'object' && raw.jcs) {
+    jcsBtn.style.display = 'block';
+    jcsBtn.textContent = kyRecord.jcs ? ('判定済み：JCS ' + kyRecord.jcs.code + '　／　もう一度判定する') : '🧠 JCS判定を始める（意識レベル）';
+  } else { jcsBtn.style.display = 'none'; }
   var next = document.getElementById('ky-m-next');
   next.className = 'next' + (danger?' danger':'');
   next.textContent = (i===total-1) ? '完了 ✓' : '次へ →';
@@ -269,7 +292,7 @@ function kyStep(d){
   var total = KY[kyState.key].steps.length;
   var n = kyState.step + d;
   if(n < 0){ kyGo('ky-home'); return; }
-  if(n >= total){ kyGo('ky-tell'); return; }
+  if(n >= total){ kyGoTell(); return; }
   kyState.step = n; kyRenderStep();
 }
 
@@ -333,11 +356,42 @@ function kyJcsBack(){
 }
 function kyJcsResult(r){
   var info = JCS_INFO[r] || { code:r, yomi:r, desc:'' };
+  kyRecord.jcs = { r:r, code:info.code, yomi:info.yomi, desc:info.desc };  // 蓄積
   document.getElementById('ky-jcs-code').textContent = info.code;
   document.getElementById('ky-jcs-yomi').textContent = info.yomi;
   document.getElementById('ky-jcs-desc').textContent = info.desc;
   document.getElementById('ky-jcs-tell').textContent = info.code + '（ジェーシーエス ' + info.yomi + '）';
+  document.getElementById('ky-jcs-resume').style.display = kyReturn ? 'block' : 'none';
   kyGo('ky-jcs-result');
+}
+function kyStartJcsFromFlow(){
+  kyReturn = { key: kyState.key, step: kyState.step };
+  kyJcsStart(); kyGo('ky-jcs');
+}
+function kyResumeFlow(){
+  if(!kyReturn){ kyGo('ky-home'); return; }
+  var ret = kyReturn; kyReturn = null;
+  kyState.key = ret.key; kyState.step = ret.step;
+  var s = KY[ret.key];
+  var banner = document.getElementById('ky-banner');
+  banner.className = 'ky-banner ' + s.theme;
+  banner.textContent = '対応：' + s.label;
+  document.getElementById('ky-m-title').textContent = s.label;
+  kyRenderStep();
+  kyGo('ky-mission');
+}
+function kyStartJcsFromTell(){ kyReturn = null; kyJcsStart(); kyGo('ky-jcs'); }
+function kyGoTell(){ kyRenderTell(); kyGo('ky-tell'); }
+function kyRenderTell(){
+  var box = document.getElementById('ky-tell-summary');
+  if(!box) return;
+  var sit = kyRecord.situation ? kyRecord.situation : '—';
+  var jcsRow = kyRecord.jcs
+    ? '<div class="row"><span class="k">意識レベル</span><span class="v">JCS ' + kyRecord.jcs.code + '（ジェーシーエス ' + kyRecord.jcs.yomi + '）</span></div>'
+    : '<div class="row"><span class="k">意識レベル</span><span class="v muted">未判定 <button onclick="kyStartJcsFromTell()">JCS判定する</button></span></div>';
+  box.innerHTML = '<div class="ky-summary-t">これまでの確認</div>' +
+    '<div class="row"><span class="k">状況</span><span class="v">' + sit + '</span></div>' +
+    jcsRow;
 }
 </script>
 {% endblock %}
