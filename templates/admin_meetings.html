@@ -260,6 +260,18 @@
         <span class="mtg-rec-status" id="mtgRecStatus"></span>
       </div>
       <div class="mtg-chunks" id="mtgChunks"></div>
+      <!-- meetings-audio-safety-v1: 録音を必ず端末に保持し、失敗時にやり直し/保存できる保険 -->
+      <div class="mtg-safety" id="mtgSafety" style="display:none; margin-top:8px; padding:10px 12px; border:1px solid #e0b58a; background:#fff7ee; border-radius:10px;">
+        <div id="mtgSafetyMsg" style="font-size:0.82rem; color:#9a5a1a; font-weight:700; margin-bottom:8px;"></div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+          <button class="mtg-btn sec" type="button" onclick="mtgRetryTranscribe()">
+            <span class="material-symbols-outlined" style="font-size:18px;">refresh</span>文字起こしをやり直す
+          </button>
+          <button class="mtg-btn sec" type="button" onclick="mtgDownloadRecording()">
+            <span class="material-symbols-outlined" style="font-size:18px;">download</span>録音を保存（ダウンロード）
+          </button>
+        </div>
+      </div>
       <div class="mtg-note">
         その場で録音するか、既にある会議の音声ファイルを選んで文字起こしできます。
         長い会議にも対応できるよう、数分ごとに区切って順に処理します。
@@ -487,6 +499,7 @@ function mtgStartNew() {
                transcriptParts: {}, classifyResults: [], boardCards: [], cardSeq: 1,
                assessment: [], asmtSeq: 1, srcType: 'assessment',
                minutesStruct: null,
+               audioBlobs: [], failedChunks: 0, okChunks: 0,   // meetings-audio-safety-v1
                editingMeetingId: null };
   document.getElementById('mtgTitle').value = '';
   const today = new Date().toISOString().slice(0,10);
@@ -500,6 +513,7 @@ function mtgStartNew() {
   document.getElementById('mtgBoard').innerHTML = '';
   document.getElementById('mtgChunks').textContent = '';
   document.getElementById('mtgRecStatus').textContent = '';
+  if (typeof mtgHideSafety === 'function') mtgHideSafety();  // meetings-audio-safety-v1
   ['mtgPdfMinutes','mtgPdfAssess','mtgPdfIcf','mtgPdfAll'].forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display='none'; });
   mtgShow('edit');
 }
@@ -704,8 +718,10 @@ function mtgStopRec() {
 
 async function mtgSendChunk(blob) {
   const idx = mtgState.chunkIndex++;
+  if (mtgState.audioBlobs) mtgState.audioBlobs[idx] = blob;  // meetings-audio-safety-v1: 録音を端末に保持
+  const ext = ((blob.type||'audio/webm').split('/')[1]||'webm').split(';')[0];
   const fd = new FormData();
-  fd.append('audio', blob, 'chunk_'+idx+'.webm');
+  fd.append('audio', blob, 'chunk_'+idx+'.'+ext);
   fd.append('session_id', mtgState.sessionId);
   fd.append('chunk_index', idx);
   document.getElementById('mtgChunks').textContent = 'チャンク送信中... ('+(idx+1)+')';
@@ -715,14 +731,81 @@ async function mtgSendChunk(blob) {
     if (d.status === 'success') {
       mtgState.transcriptParts[d.chunk_index] = d.transcript || '';
       mtgRebuildTranscript();
+      mtgState.okChunks = (mtgState.okChunks||0)+1;
       document.getElementById('mtgChunks').textContent = '文字起こし済みチャンク: '+Object.keys(mtgState.transcriptParts).length;
     } else {
+      mtgState.failedChunks = (mtgState.failedChunks||0)+1;
       document.getElementById('mtgChunks').textContent = 'チャンク'+(idx+1)+'の文字起こし失敗: '+(d.message||'');
     }
   } catch(e) {
+    mtgState.failedChunks = (mtgState.failedChunks||0)+1;
     document.getElementById('mtgChunks').textContent = 'チャンク'+(idx+1)+'送信エラー: '+e;
   }
-  if (!mtgState.recording) document.getElementById('mtgRecStatus').textContent = '文字起こし完了';
+  if (!mtgState.recording) mtgFinalizeStatus();
+}
+
+// ===== meetings-audio-safety-v1: 録音の取りこぼしを防ぐ保険（保持・やり直し・保存・正直な状態表示）=====
+function mtgShowSafety(msg){
+  var s=document.getElementById('mtgSafety'), m=document.getElementById('mtgSafetyMsg');
+  if(m) m.textContent = msg||''; if(s) s.style.display='block';
+}
+function mtgHideSafety(){ var s=document.getElementById('mtgSafety'); if(s) s.style.display='none'; }
+function mtgFinalizeStatus(){
+  var fail=mtgState.failedChunks||0, ok=mtgState.okChunks||0;
+  var st=document.getElementById('mtgRecStatus');
+  var have=(mtgState.audioBlobs||[]).filter(Boolean).length;
+  if(fail>0){
+    if(st) st.textContent='⚠ 文字起こしに失敗した区間があります（成功'+ok+'／失敗'+fail+'）';
+    mtgShowSafety('文字起こしに失敗した区間があります。録音は端末に残っています。まず「録音を保存」で音声を手元に控え、「文字起こしをやり直す」を押してください。');
+  }else{
+    if(st) st.textContent='文字起こし完了';
+    if(have>0) mtgShowSafety('必要なら「録音を保存」で会議音声を手元に残せます（保険）。');
+  }
+}
+function mtgDownloadRecording(){
+  var blobs=(mtgState.audioBlobs||[]);
+  if(!blobs.filter(Boolean).length){ alert('保存できる録音データがありません。'); return; }
+  var date=(document.getElementById('mtgDate').value||'').replace(/[^0-9]/g,'')||'rec';
+  var n=0;
+  blobs.forEach(function(b,i){
+    if(!b) return;
+    var ext=((b.type||'audio/webm').split('/')[1]||'webm').split(';')[0];
+    var url=URL.createObjectURL(b);
+    var a=document.createElement('a');
+    a.href=url; a.download='会議録音_'+date+'_'+String(i).padStart(2,'0')+'.'+ext;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); },5000);
+    n++;
+  });
+  alert(n+'個の録音ファイルを保存しました。文字起こしをやり直せない時は、この音声を「音声ファイル」ボタンから読み込めます。');
+}
+async function mtgResendChunk(idx, blob){
+  var ext=((blob.type||'audio/webm').split('/')[1]||'webm').split(';')[0];
+  var fd=new FormData();
+  fd.append('audio', blob, 'chunk_'+idx+'.'+ext);
+  fd.append('session_id', mtgState.sessionId);
+  fd.append('chunk_index', idx);
+  document.getElementById('mtgChunks').textContent='やり直し中... 区間'+(idx+1);
+  try{
+    var r=await fetch('/api/meeting/transcribe', {method:'POST', body:fd});
+    var d=await r.json();
+    if(d.status==='success'){
+      mtgState.transcriptParts[d.chunk_index]=d.transcript||'';
+      mtgRebuildTranscript();
+      mtgState.okChunks=(mtgState.okChunks||0)+1;
+    } else { mtgState.failedChunks=(mtgState.failedChunks||0)+1; }
+  }catch(e){ mtgState.failedChunks=(mtgState.failedChunks||0)+1; }
+  document.getElementById('mtgChunks').textContent='文字起こし済みチャンク: '+Object.keys(mtgState.transcriptParts).length;
+}
+async function mtgRetryTranscribe(){
+  var blobs=(mtgState.audioBlobs||[]);
+  if(!blobs.filter(Boolean).length){ alert('やり直せる録音データがありません。'); return; }
+  if(mtgState.recording){ alert('録音を停止してからやり直してください。'); return; }
+  mtgHideSafety();
+  mtgState.failedChunks=0; mtgState.okChunks=0;
+  document.getElementById('mtgRecStatus').textContent='文字起こしをやり直し中...';
+  for(var i=0;i<blobs.length;i++){ if(blobs[i]) await mtgResendChunk(i, blobs[i]); }
+  mtgFinalizeStatus();
 }
 
 // ===== 音声ファイルのアップロード(ブラウザで時間分割→順次文字起こし) =====
