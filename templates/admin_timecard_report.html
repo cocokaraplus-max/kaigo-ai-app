@@ -147,6 +147,7 @@
     <button id="tcr-print"><span class="material-symbols-outlined" style="font-size:18px">picture_as_pdf</span>PDFで保存</button><!-- timecard-pdf-btn-v1 -->
     <button id="tcr-csv"><span class="material-symbols-outlined" style="font-size:18px">table_view</span>CSVで保存</button><!-- timecard-grid-csv-v1 -->
     <button id="tcr-youshiki"><span class="material-symbols-outlined" style="font-size:18px">description</span>様式で出力</button><!-- youshiki-btn-v1 -->
+    <button id="tcr-youshiki-yotei"><span class="material-symbols-outlined" style="font-size:18px">event_upcoming</span>様式（予定）で出力</button><!-- kinmu-yotei-v2 -->
     <button id="tcr-payexport"><span class="material-symbols-outlined" style="font-size:18px">download</span>給与出力</button><!-- pay-export-ui-v1 -->
     <button id="tcr-config"><span class="material-symbols-outlined" style="font-size:18px">settings</span>勤務設定</button><!-- timecard-config-ui-v1 -->
   </div>
@@ -511,6 +512,29 @@
       var url=URL.createObjectURL(blob);
       var a=document.createElement("a");
       a.href=url; a.download="kinmu_"+year+String(month).padStart(2,"0")+".xlsx";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }catch(e){ alert("通信エラーが発生しました"); }
+    finally{ btn.disabled=false; btn.innerHTML=old; }
+  });
+
+  // kinmu-yotei-v2: 勤務予定を参考様式4(.xlsx)で出力（mode=yotei）
+  var _ybtn=$("tcr-youshiki-yotei");
+  if(_ybtn) _ybtn.addEventListener("click",async function(){
+    var btn=this; btn.disabled=true; var old=btn.innerHTML;
+    btn.innerHTML='<span class="material-symbols-outlined" style="font-size:18px">hourglass_top</span>作成中…';
+    try{
+      var res=await fetch("/admin/timecard/youshiki?mode=yotei&year="+year+"&month="+month);
+      var ct=res.headers.get("content-type")||"";
+      if(ct.indexOf("spreadsheet")<0){
+        var j=await res.json().catch(function(){return {};});
+        alert(j.message||"様式(予定)の作成に失敗しました");
+        return;
+      }
+      var blob=await res.blob();
+      var url=URL.createObjectURL(blob);
+      var a=document.createElement("a");
+      a.href=url; a.download="kinmu_yotei_"+year+String(month).padStart(2,"0")+".xlsx";
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }catch(e){ alert("通信エラーが発生しました"); }

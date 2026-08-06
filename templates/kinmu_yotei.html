@@ -78,7 +78,6 @@
   </div>
 
   <div class="ky2-actions">
-    <a class="ky2-out" id="ky2-out" href="#">様式（予定）で出力</a>
     <button class="ky2-save" onclick="ky2Save()">保存</button>
   </div>
 
@@ -171,7 +170,6 @@ async function ky2LoadMonth(name, y, m){
   const sel = document.getElementById('ky2-who');
   sel.innerHTML = M.staff.map(function(n){ return '<option value="'+escapeH(n)+'"'+(n===M.name?' selected':'')+'>'+escapeH(n)+(n===M.me?'（本人）':'')+'</option>'; }).join('');
   document.getElementById('ky2-range').textContent = M.year+'年'+M.month+'月';
-  document.getElementById('ky2-out').href = '/admin/timecard/youshiki?mode=yotei&year='+M.year+'&month='+M.month;
   ky2RenderList();
 }
 function ky2RenderList(){
