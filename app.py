@@ -13258,6 +13258,43 @@ def api_shift_week():
     return jsonify({"status": "success", "week": dates, "staff": names, "defaults": defaults, "plan": plan})
 
 
+@app.route('/api/shift/month', methods=['GET'])
+@login_required
+def api_shift_month():
+    """一人・1ヶ月分の勤務予定。kinmu-yotei-v2"""
+    import calendar as _cal
+    f_code = session['f_code']
+    supabase = get_supabase()
+    me = session.get('my_name', '')
+    name = (request.args.get('name') or me or '').strip()
+    now = _tc_now_jst()
+    try:
+        year = int(request.args.get('year', now.year))
+        month = int(request.args.get('month', now.month))
+    except (TypeError, ValueError):
+        year, month = now.year, now.month
+    if not (1 <= month <= 12):
+        year, month = now.year, now.month
+    ndays = _cal.monthrange(year, month)[1]
+    days = [f"{year:04d}-{month:02d}-{d:02d}" for d in range(1, ndays + 1)]
+    staff = _shift_staff_names(supabase, f_code)
+    if staff and name not in staff:
+        name = me if me in staff else staff[0]
+    defaults = _shift_default_map(supabase, f_code)
+    dflt = defaults.get(name) or {"weekdays": [True, True, True, True, True, False, False], "start": "09:00", "end": "18:00"}
+    plan = {}
+    try:
+        r = supabase.table("staff_shift_plan").select("*").eq(
+            "facility_code", f_code).eq("staff_name", name).gte(
+            "plan_date", days[0]).lte("plan_date", days[-1]).execute()
+        for row in (r.data or []):
+            plan[str(row.get("plan_date"))] = {"status": row.get("status"), "start": row.get("start_time"), "end": row.get("end_time")}
+    except Exception as e:
+        print(f"[shift month] {e}", flush=True)
+    return jsonify({"status": "success", "me": me, "staff": staff, "name": name,
+                    "year": year, "month": month, "days": days, "default": dflt, "plan": plan})
+
+
 @app.route('/api/shift/save', methods=['POST'])
 @login_required
 def api_shift_save():
