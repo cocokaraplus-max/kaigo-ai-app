@@ -199,6 +199,7 @@
                     <th>接骨院</th>  <!-- dev-sekkotsu-toggle-v1 -->
                     <th>タイムカード</th>  <!-- timecard-devtoggle-html-v1 -->
                     <th>写真販売</th>  <!-- photo-sales-devtoggle-v1 -->
+                    <th>様式除外</th>  <!-- youshiki-exclude-v1: 様式(実績)に出さないトグルの表示可否 -->
                 </tr>
             </thead>
             <tbody>
@@ -282,6 +283,12 @@
                         <label style="cursor:pointer;">
                             <input type="checkbox" onchange="togglePhotoSales('{{ s.facility_code }}', this.checked)"
                                 {% if s.photo_sales_enabled %}checked{% endif %}>
+                        </label>
+                    </td>
+                    <td style="text-align:center;">  <!-- youshiki-exclude-v1: 既定OFF。弊社だけON -->
+                        <label style="cursor:pointer;">
+                            <input type="checkbox" onchange="toggleYoushikiExclude('{{ s.facility_code }}', this.checked)"
+                                {% if s.youshiki_exclude_enabled %}checked{% endif %}>
                         </label>
                     </td>
                 </tr>
@@ -562,6 +569,20 @@ async function togglePhotoSales(facilityCode, enabled) {  // photo-sales-devtogg
         });
         const j = await res.json();
         devToast(j.success ? ('写真販売: ' + facilityCode + ' を ' + (enabled ? 'ON' : 'OFF') + ' にしました')
+                           : ('更新に失敗しました: ' + (j.message || '')));
+    } catch (e) { devToast('通信エラー: ' + e); }
+}
+
+async function toggleYoushikiExclude(facilityCode, enabled) {  // youshiki-exclude-v1
+    // 既定OFF。ONにした施設だけ、勤怠集計の各日に「様式に出さない」トグルが出る。
+    try {
+        const res = await fetch('/api/dev/toggle_youshiki_exclude', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ facility_code: facilityCode, enabled: enabled })
+        });
+        const j = await res.json();
+        devToast(j.success ? ('様式除外トグル: ' + facilityCode + ' を ' + (enabled ? 'ON' : 'OFF') + ' にしました')
                            : ('更新に失敗しました: ' + (j.message || '')));
     } catch (e) { devToast('通信エラー: ' + e); }
 }

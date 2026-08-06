@@ -40,6 +40,11 @@
   .tcr-al-btn{background:#2f6b5e;color:#fff;border:0;border-radius:8px;padding:7px 10px;font-family:inherit;font-weight:700;font-size:.78rem;cursor:pointer;white-space:nowrap}
   .tcr-edit{background:none;border:0;color:#2f6b5e;cursor:pointer;padding:4px;display:flex;align-items:center}
   .tcr-edit .material-symbols-outlined{font-size:18px}
+  /* youshiki-exclude-v1: 様式（実績）に出さない日を切り替えるトグル（弊社のみ表示） */
+  .tcr-yx{background:#fff;border:1px solid #e0b3a8;color:#b3452b;border-radius:8px;padding:3px 8px;
+    font-size:.68rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;line-height:1.3}
+  .tcr-yx.on{background:#c0392b;border-color:#c0392b;color:#fff}
+  .tcr-day.tcr-yx-off .d,.tcr-day.tcr-yx-off .io,.tcr-day.tcr-yx-off .hrs{opacity:.45}
   .tcr-empty{color:#999;font-size:.86rem;text-align:center;padding:24px 0}
   .tcr-collapsed .tcr-days{display:none}
   .tcr-summary{background:#eef5f3;border:1px solid #d7e6e1;border-radius:12px;padding:12px 14px;
@@ -331,8 +336,19 @@
     }catch(e){ $("tcr-body").innerHTML='<div class="tcr-empty">通信エラー</div>'; }
   }
 
+  var YX_ENABLED=false;  // youshiki-exclude-v1: 弊社のみ true
+  function yxBtn(name,d){
+    // youshiki-exclude-v1: 打刻のある日だけ「様式に出さない」トグルを出す
+    if(!YX_ENABLED || (!d.in && !d.out)) return "";
+    var on=!!d.excluded;
+    return '<button class="tcr-yx'+(on?' on':'')+'" data-yx data-staff="'+esc(name)+'" data-date="'+d.date
+      +'" data-ex="'+(on?1:0)+'" title="'+(on?'この日は様式（実績）に出しません':'この日を様式（実績）から外します')+'">様式に出さない'+(on?' ✓':'')+'</button>';
+  }
+  function yxOffCls(d){ return (YX_ENABLED && d.excluded)?' tcr-yx-off':''; }
+
   function render(j){
     var staff=j.staff||[];
+    YX_ENABLED=!!j.youshiki_exclude_enabled;  // youshiki-exclude-v1
     window._tcrStaff=staff;  // pay-export-ui-v1
     // timecard-leave-grid-v1: 記録が無くても職員パネルを出し、休み登録を可能にする
     var grandMin=0,grandInc=0;
@@ -352,10 +368,11 @@
         var editBtn='<button class="tcr-edit" data-edit data-staff="'+esc(s.name)+'" data-date="'+d.date+'"><span class="material-symbols-outlined">edit</span></button>';
         var lv=d.leave, chip=lv?leaveChip(lv):"";
         var subref=(lv&&lv.substitute_for)?'<span class="tcr-subref">振替元 '+dayLabel(lv.substitute_for)+'</span>':"";
+        var yxb=yxBtn(s.name,d);
         if(d.incomplete){
-          html+='<div class="tcr-day bad"><span class="d">'+dayLabel(d.date)+'</span>'
+          html+='<div class="tcr-day bad'+yxOffCls(d)+'"><span class="d">'+dayLabel(d.date)+'</span>'
             +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+chip+'</span>'
-            +'<span class="tcr-flag">⚠ '+esc((d.flags||[]).join("／"))+'</span>'+editBtn+'</div>';
+            +'<span class="tcr-flag">⚠ '+esc((d.flags||[]).join("／"))+'</span>'+yxb+editBtn+'</div>';
         }else if(lv && !d.in && !d.out){
           // timecard-leave-grid-v1: 打刻なしの休暇日(有給/振替休/公休以外の申告)
           html+='<div class="tcr-day"><span class="d">'+dayLabel(d.date)+'</span>'
@@ -363,9 +380,9 @@
             +'<span class="hrs"></span>'+editBtn+'</div>';
         }else{
           var brk=d.break_min?'（休憩'+d.break_min+'分）':'';
-          html+='<div class="tcr-day"><span class="d">'+dayLabel(d.date)+'</span>'
+          html+='<div class="tcr-day'+yxOffCls(d)+'"><span class="d">'+dayLabel(d.date)+'</span>'
             +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+' '+brk+chip+subref+'</span>'
-            +'<span class="hrs">'+fmtHM(d.minutes)+'</span>'+editBtn+'</div>';
+            +'<span class="hrs">'+fmtHM(d.minutes)+'</span>'+yxb+editBtn+'</div>';
         }
       });
       html+='</div></div>';
@@ -376,6 +393,28 @@
     });
     document.querySelectorAll("[data-edit]").forEach(function(b){
       b.addEventListener("click",function(e){ e.stopPropagation(); openEdit(b.getAttribute("data-staff"), b.getAttribute("data-date")); });
+    });
+    // youshiki-exclude-v1: 「様式に出さない」トグル
+    document.querySelectorAll("[data-yx]").forEach(function(b){
+      b.addEventListener("click",async function(e){
+        e.stopPropagation();
+        var next=b.getAttribute("data-ex")!=="1";
+        b.disabled=true;
+        try{
+          var res=await fetch("/api/timecard/youshiki_exclude/toggle",{method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({staff_name:b.getAttribute("data-staff"),date:b.getAttribute("data-date"),exclude:next})});
+          var j=await res.json();
+          if(j.status==="success"){
+            b.setAttribute("data-ex",next?"1":"0");
+            b.classList.toggle("on",next);
+            b.innerHTML="様式に出さない"+(next?" ✓":"");
+            b.setAttribute("title",next?"この日は様式（実績）に出しません":"この日を様式（実績）から外します");
+            var row=b.closest(".tcr-day"); if(row) row.classList.toggle("tcr-yx-off",next);
+          }else{ alert(j.message||"切り替えに失敗しました"); }
+        }catch(err){ alert("通信エラー"); }
+        b.disabled=false;
+      });
     });
     document.querySelectorAll(".tcr-al-btn").forEach(function(b){
       b.addEventListener("click",function(e){ e.stopPropagation();

@@ -13513,7 +13513,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed,timecard_enabled,photo_sales_enabled").execute()  # dev-sekkotsu-allow-v1 / timecard-devtoggle-v1 / photo-sales-devtoggle-v1
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed,timecard_enabled,photo_sales_enabled,youshiki_exclude_enabled").execute()  # dev-sekkotsu-allow-v1 / timecard-devtoggle-v1 / photo-sales-devtoggle-v1 / youshiki-exclude-v1
         facilities = res.data or []
     except: pass
 
@@ -13549,6 +13549,7 @@ def dev_menu():
                 "sekkotsu_mode_allowed": fac.get("sekkotsu_mode_allowed", False),  # dev-sekkotsu-allow-v1
                 "timecard_enabled": fac.get("timecard_enabled", False),  # timecard-devtoggle-v1
                 "photo_sales_enabled": fac.get("photo_sales_enabled", False),  # photo-sales-devtoggle-v1
+                "youshiki_exclude_enabled": fac.get("youshiki_exclude_enabled", False),  # youshiki-exclude-v1
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -13737,6 +13738,24 @@ def api_dev_toggle_photo_sales():
     try:
         supabase = get_supabase()
         supabase.table('facilities').update({'photo_sales_enabled': enabled}).eq('facility_code', fc).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/dev/toggle_youshiki_exclude', methods=['POST'])  # youshiki-exclude-v1
+def api_dev_toggle_youshiki_exclude():
+    """施設ごとの「様式（実績）除外トグル」表示ON/OFF。既定OFF＝弊社だけで使う想定。開発者認証必須。"""
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json or {}
+    fc = (data.get('facility_code') or '').strip()
+    enabled = bool(data.get('enabled', False))
+    if not fc:
+        return jsonify({'success': False, 'message': 'facility_code required'}), 400
+    try:
+        supabase = get_supabase()
+        supabase.table('facilities').update({'youshiki_exclude_enabled': enabled}).eq('facility_code', fc).execute()
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -17007,6 +17026,65 @@ def _tc_compute_day(punches):
             "break_min": break_min}
 
 
+# youshiki-exclude-v1: 様式（実績）に出力しない日の管理
+#   接骨院勤務など介護以外の勤務を、様式（実績）の集計から除外するための仕組み。
+#   facilities.youshiki_exclude_enabled がTrueの施設だけUIにトグルが出る（開発者MENUで制御）。
+def _youshiki_exclude_enabled(supabase, f_code):
+    """施設で「様式除外トグル」を表示してよいか（開発者MENUの設定）。"""
+    try:
+        fa = supabase.table('facilities').select('youshiki_exclude_enabled').eq('facility_code', f_code).execute()
+        return bool(fa.data and fa.data[0].get('youshiki_exclude_enabled'))
+    except Exception:
+        return False
+
+
+def _youshiki_excluded_set(supabase, f_code, year, month):
+    """当月の除外指定 (_ys_norm(staff_name), 'YYYY-MM-DD') の集合を返す。"""
+    s = set()
+    try:
+        _st = f"{year:04d}-{month:02d}-01"
+        _en = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+        r = (supabase.table('youshiki_excluded_days').select('staff_name,work_date')
+             .eq('facility_code', f_code).gte('work_date', _st).lt('work_date', _en).execute())
+        for x in (r.data or []):
+            s.add((_ys_norm(x.get('staff_name')), str(x.get('work_date'))))
+    except Exception as e:
+        print(f"_youshiki_excluded_set error: {e}", flush=True)
+    return s
+
+
+@app.route("/api/timecard/youshiki_exclude/toggle", methods=["POST"])  # youshiki-exclude-v1
+@login_required
+def api_youshiki_exclude_toggle():
+    """個別の日を様式（実績）に出す/出さないを切り替え。管理者＋機能ON施設のみ。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        if not _youshiki_exclude_enabled(supabase, f_code):
+            return jsonify({"status": "error", "message": "この機能は無効です"}), 403
+        data = request.json or {}
+        staff_name = (data.get("staff_name") or "").strip()
+        date = (data.get("date") or "").strip()
+        exclude = bool(data.get("exclude", False))
+        if not staff_name or not date:
+            return jsonify({"status": "error", "message": "staff_name/date が必要です"}), 400
+        if exclude:
+            supabase.table("youshiki_excluded_days").upsert({
+                "facility_code": f_code, "staff_name": staff_name, "work_date": date,
+            }, on_conflict="facility_code,staff_name,work_date").execute()
+        else:
+            (supabase.table("youshiki_excluded_days").delete()
+             .eq("facility_code", f_code).eq("staff_name", staff_name)
+             .eq("work_date", date).execute())
+        return jsonify({"status": "success", "excluded": exclude})
+    except Exception as e:
+        print(f"api_youshiki_exclude_toggle error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/admin/timecard/monthly", methods=["GET"])
 @login_required
 def admin_timecard_monthly():
@@ -17076,8 +17154,19 @@ def admin_timecard_monthly():
 
         # timecard-leave-grid-v1: 休み申告を日次にマージ
         _tc_merge_leaves_into_monthly(supabase, f_code, year, month, result)
+
+        # youshiki-exclude-v1: 様式除外機能がON施設なら、各日に excluded を付与
+        yx_enabled = _youshiki_exclude_enabled(supabase, f_code)
+        if yx_enabled:
+            yx_set = _youshiki_excluded_set(supabase, f_code, year, month)
+            for s0 in result:
+                _nn = _ys_norm(s0.get("name"))
+                for d0 in s0.get("days", []):
+                    d0["excluded"] = (_nn, str(d0.get("date"))) in yx_set
+
         return jsonify({"status": "success", "year": year, "month": month,
-                        "staff": result})
+                        "staff": result,
+                        "youshiki_exclude_enabled": yx_enabled})
     except Exception as e:
         print(f"admin_timecard_monthly error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -18099,6 +18188,9 @@ def admin_timecard_youshiki():
                 "punched_at", start_iso).lt("punched_at", end_iso).order(
                 "punched_at", desc=False).execute()
             rows = res.data or []
+            # youshiki-exclude-v1: 「様式に出さない」指定の (職員, 日付) を除外
+            _yx_set = _youshiki_excluded_set(supabase, f_code, year, month) \
+                if _youshiki_exclude_enabled(supabase, f_code) else set()
             for r in rows:
                 at = _tc_parse_iso(r.get("punched_at"))
                 if at is None:
@@ -18106,6 +18198,8 @@ def admin_timecard_youshiki():
                 at_jst = at.astimezone(_TC_JST)
                 ds = at_jst.strftime("%Y-%m-%d")
                 key = (_ys_norm(r.get("staff_name")), ds)
+                if key in _yx_set:  # youshiki-exclude-v1: 除外日はスキップ
+                    continue
                 punches_map.setdefault(key, []).append(
                     (r.get("punch_type"), at_jst.hour * 60 + at_jst.minute))
         for k in punches_map:
