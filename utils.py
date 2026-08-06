@@ -106,7 +106,7 @@ def _is_transient(error_str: str) -> bool:
     return any(k in es for k in TRANSIENT_KEYWORDS)
 
 class FastGeminiModel:
-    def generate_content(self, contents):
+    def generate_content(self, contents, generation_config=None):
         api_key = get_secret("GEMINI_API_KEY")
         if not api_key:
             raise Exception("GEMINI_API_KEY が設定されていません。")
@@ -121,6 +121,15 @@ class FastGeminiModel:
             elif isinstance(item, dict) and "mime_type" in item:
                 parts.append(types.Part.from_bytes(data=item["data"], mime_type=item["mime_type"]))
 
+        # halluc-guard-compat-v1: generation_config(dict) を新SDKの config へ変換（temperature等）。
+        # 旧コードが generate_content(..., generation_config={...}) を渡しても TypeError で落ちないようにする。
+        _gen_cfg = None
+        if generation_config:
+            try:
+                _gen_cfg = types.GenerateContentConfig(**generation_config)
+            except Exception:
+                _gen_cfg = None
+
         last_error = None
         last_error_str = ""
 
@@ -128,7 +137,10 @@ class FastGeminiModel:
         for model_idx, model_name in enumerate(FALLBACK_MODELS):
             for attempt in range(3):  # 0, 1, 2 → 計3回
                 try:
-                    response = client.models.generate_content(model=model_name, contents=parts)
+                    if _gen_cfg is not None:
+                        response = client.models.generate_content(model=model_name, contents=parts, config=_gen_cfg)
+                    else:
+                        response = client.models.generate_content(model=model_name, contents=parts)
                     # 安全フィルタなどでcandidatesが空のときに備えて防御的に取る
                     try:
                         text = response.candidates[0].content.parts[0].text
