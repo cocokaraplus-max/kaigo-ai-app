@@ -499,7 +499,7 @@ function mtgStartNew() {
                transcriptParts: {}, classifyResults: [], boardCards: [], cardSeq: 1,
                assessment: [], asmtSeq: 1, srcType: 'assessment',
                minutesStruct: null,
-               audioBlobs: [], failedChunks: 0, okChunks: 0,   // meetings-audio-safety-v1
+               audioBlobs: [], failedChunks: 0, okChunks: 0, storeError: '',   // meetings-audio-safety-v1
                editingMeetingId: null };
   document.getElementById('mtgTitle').value = '';
   const today = new Date().toISOString().slice(0,10);
@@ -732,6 +732,7 @@ async function mtgSendChunk(blob) {
       mtgState.transcriptParts[d.chunk_index] = d.transcript || '';
       mtgRebuildTranscript();
       mtgState.okChunks = (mtgState.okChunks||0)+1;
+      if (d.store_error) mtgState.storeError = d.store_error;  // meetings-audio-diag-v1: サーバー保存の失敗理由を控える
       document.getElementById('mtgChunks').textContent = '文字起こし済みチャンク: '+Object.keys(mtgState.transcriptParts).length;
     } else {
       mtgState.failedChunks = (mtgState.failedChunks||0)+1;
@@ -754,12 +755,13 @@ function mtgFinalizeStatus(){
   var fail=mtgState.failedChunks||0, ok=mtgState.okChunks||0;
   var st=document.getElementById('mtgRecStatus');
   var have=(mtgState.audioBlobs||[]).filter(Boolean).length;
+  var storeNote = mtgState.storeError ? ('\n※ 録音のサーバー保存に失敗しています（原因: '+mtgState.storeError+'）。端末には保持済みです。') : '';
   if(fail>0){
     if(st) st.textContent='⚠ 文字起こしに失敗した区間があります（成功'+ok+'／失敗'+fail+'）';
-    mtgShowSafety('文字起こしに失敗した区間があります。録音は端末に残っています。まず「録音を保存」で音声を手元に控え、「文字起こしをやり直す」を押してください。');
+    mtgShowSafety('文字起こしに失敗した区間があります。録音は端末に残っています。まず「録音を保存」で音声を手元に控え、「文字起こしをやり直す」を押してください。'+storeNote);
   }else{
     if(st) st.textContent='文字起こし完了';
-    if(have>0) mtgShowSafety('必要なら「録音を保存」で会議音声を手元に残せます（保険）。');
+    if(have>0 || storeNote) mtgShowSafety('必要なら「録音を保存」で会議音声を手元に残せます（保険）。'+storeNote);
   }
 }
 function mtgDownloadRecording(){

@@ -28036,6 +28036,7 @@ def api_meeting_transcribe():
         if ext == "mpeg":
             ext = "mp3"
         audio_url = ""
+        store_error = ""  # meetings-audio-diag-v1: 保存失敗の理由をフロントに返して真因を掴む
         # meetings-audio-nostore-v1: アップロード音声(WAV等)はStorageに保存しない(容量対策)。録音のみ保持。
         _no_store = (request.form.get("no_store") or "") == "1"
         if session_id and not _no_store:
@@ -28048,9 +28049,10 @@ def api_meeting_transcribe():
                 )
                 audio_url = supabase.storage.from_("assessment-audio").get_public_url(path)
             except Exception as _ue:
-                # 保存失敗しても文字起こしは続行(fail-safe)。
+                # 保存失敗しても文字起こしは続行(fail-safe)。理由は握りつぶさずフロントへ返す。
                 print(f"[meeting] chunk upload failed: {_ue}", flush=True)
                 audio_url = ""
+                store_error = str(_ue)[:300]
 
         # mtg-transcribe-speaker-roles-v1
         prompt = """これは介護施設の担当者会議(サービス担当者会議)の録音です。
@@ -28073,7 +28075,7 @@ def api_meeting_transcribe():
         # 無音チャンク等でテキストが空でもエラーにしない(連結時に飛ばせるよう空文字返す)
         return jsonify({"status": "success", "transcript": text,
                         "chunk_index": chunk_index, "audio_url": audio_url,
-                        "session_id": session_id})
+                        "session_id": session_id, "store_error": store_error})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
