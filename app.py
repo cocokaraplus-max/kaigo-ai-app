@@ -13288,7 +13288,9 @@ def api_shift_month():
             "facility_code", f_code).eq("staff_name", name).gte(
             "plan_date", days[0]).lte("plan_date", days[-1]).execute()
         for row in (r.data or []):
-            plan[str(row.get("plan_date"))] = {"status": row.get("status"), "start": row.get("start_time"), "end": row.get("end_time")}
+            plan[str(row.get("plan_date"))] = {"status": row.get("status"), "start": row.get("start_time"),
+                                               "end": row.get("end_time"),
+                                               "day_type": row.get("day_type")}  # youshiki-daytype-v1
     except Exception as e:
         print(f"[shift month] {e}", flush=True)
     return jsonify({"status": "success", "me": me, "staff": staff, "name": name,
@@ -13310,10 +13312,14 @@ def api_shift_save():
         if not nm or not dt:
             continue
         try:
+            _dt = c.get('day_type')  # youshiki-daytype-v1: 'full'|'half'|None
+            if _dt not in ('full', 'half'):
+                _dt = None
             supabase.table("staff_shift_plan").upsert({
                 "facility_code": f_code, "staff_name": nm, "plan_date": dt,
                 "status": c.get('status') or 'off',
                 "start_time": c.get('start'), "end_time": c.get('end'),
+                "day_type": _dt,
                 "updated_at": now_iso,
             }, on_conflict="facility_code,staff_name,plan_date").execute()
             saved += 1
@@ -13376,6 +13382,7 @@ def api_shift_copy():
             supabase.table("staff_shift_plan").upsert({
                 "facility_code": f_code, "staff_name": row.get("staff_name"), "plan_date": newd,
                 "status": row.get("status"), "start_time": row.get("start_time"), "end_time": row.get("end_time"),
+                "day_type": row.get("day_type"),  # youshiki-daytype-v1: 型もコピー
                 "updated_at": now_iso,
             }, on_conflict="facility_code,staff_name,plan_date").execute()
             n += 1
@@ -17085,6 +17092,39 @@ def api_youshiki_exclude_toggle():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/timecard/day_type/set", methods=["POST"])  # youshiki-daytype-v1
+@login_required
+def api_timecard_day_type_set():
+    """個別の日の型（1日型/半日型）を手動指定。'auto'で指定解除。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.json or {}
+        staff_name = (data.get("staff_name") or "").strip()
+        date = (data.get("date") or "").strip()
+        day_type = (data.get("day_type") or "").strip()  # 'full' | 'half' | 'auto'
+        if not staff_name or not date:
+            return jsonify({"status": "error", "message": "staff_name/date が必要です"}), 400
+        if day_type in ("auto", "", "none"):
+            (supabase.table("youshiki_day_type").delete()
+             .eq("facility_code", f_code).eq("staff_name", staff_name)
+             .eq("work_date", date).execute())
+            return jsonify({"status": "success", "day_type": None})
+        if day_type not in ("full", "half"):
+            return jsonify({"status": "error", "message": "day_type が不正です"}), 400
+        supabase.table("youshiki_day_type").upsert({
+            "facility_code": f_code, "staff_name": staff_name,
+            "work_date": date, "day_type": day_type,
+        }, on_conflict="facility_code,staff_name,work_date").execute()
+        return jsonify({"status": "success", "day_type": day_type})
+    except Exception as e:
+        print(f"api_timecard_day_type_set error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/admin/timecard/monthly", methods=["GET"])
 @login_required
 def admin_timecard_monthly():
@@ -17164,9 +17204,31 @@ def admin_timecard_monthly():
                 for d0 in s0.get("days", []):
                     d0["excluded"] = (_nn, str(d0.get("date"))) in yx_set
 
+        # youshiki-daytype-v1: 各日に型情報（手動指定・自動判定結果）を付与
+        _dt_cfg = _tc_get_config(supabase, f_code)
+        _dt_staff_def = _ys_staff_default_types(supabase, f_code)
+        _dt_plan = _ys_plan_day_types(supabase, f_code, year, month)
+        _dt_manual = _ys_manual_day_types(supabase, f_code, year, month)
+        for s0 in result:
+            _nn = _ys_norm(s0.get("name"))
+            for d0 in s0.get("days", []):
+                _ds = str(d0.get("date"))
+                try:
+                    _pp = _ds.split("-")
+                    _dd = _ys_date(int(_pp[0]), int(_pp[1]), int(_pp[2]))
+                    _wt = _ys_weekday_rule_type(_dt_cfg, _dd)
+                except Exception:
+                    _wt = "none"
+                _rtype, _unres = _ys_resolve_day_type(
+                    _nn, _ds, _wt, _dt_manual, _dt_plan, _dt_staff_def)
+                d0["day_type"] = _dt_manual.get((_nn, _ds))  # 手動指定(なければnull=自動)
+                d0["day_type_resolved"] = _rtype             # 実際に使われる型 full/half/None
+                d0["day_type_unresolved"] = _unres           # both未指定ならTrue
+
         return jsonify({"status": "success", "year": year, "month": month,
                         "staff": result,
-                        "youshiki_exclude_enabled": yx_enabled})
+                        "youshiki_exclude_enabled": yx_enabled,
+                        "youshiki_daytype_enabled": True})
     except Exception as e:
         print(f"admin_timecard_monthly error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -17873,6 +17935,10 @@ _TC_CONFIG_DEFAULT = {
     ],
     "half_slot_hours": 4,                     # 半日型 1枠の時間
     "full_slot_hours": 8,                     # 1日型 1枠の時間
+    # youshiki-daytype-v1: 曜日→型ルール。月火水木金土日の7要素。
+    #   'full'=1日型 / 'half'=半日型 / 'both'=両方同時稼働(個別指定で振り分け) / 'none'=様式に出さない
+    #   既定は現行のハードコード踏襲: 日=1日型, 月〜金=半日型, 土=なし
+    "day_type_rule": ["half", "half", "half", "half", "half", "none", "full"],
     "role_splits": [],                        # 兼務: [{"name":職員名,"roles":[{"title":役職,"ratio":0.5},...]}]
     # pay-config-default-v1: 給与/残業計算用(社労士向け出力)。施設別に上書き可。
     "work_system": "standard",                # standard=通常制 / monthly_variable / yearly_variable(後者は将来枠)
@@ -18030,6 +18096,13 @@ def admin_timecard_config_save():
         if isinstance(_pc, int) and (_pc == 0 or 1 <= _pc <= 28):
             cfg["closing_day"] = _pc
 
+        # youshiki-daytype-v1: 曜日→型ルール(7要素 月〜日)
+        _dtr = data.get("day_type_rule")
+        if isinstance(_dtr, list) and len(_dtr) == 7:
+            _valid = {"full", "half", "both", "none"}
+            _clean_dtr = [(str(x).strip() if str(x).strip() in _valid else "none") for x in _dtr]
+            cfg["day_type_rule"] = _clean_dtr
+
         value_json = _tcfg_json.dumps(cfg, ensure_ascii=False)
         existing = supabase.table("admin_settings").select("id").eq(
             "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
@@ -18126,6 +18199,88 @@ def _ys_build_row_map(ws):
     return m
 
 
+# youshiki-daytype-v1: 1日型/半日型の判定
+def _ys_month_bounds(year, month):
+    _st = f"{year:04d}-{month:02d}-01"
+    _en = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+    return _st, _en
+
+
+def _ys_staff_default_types(supabase, f_code):
+    """{_ys_norm(name): 'full'|'half'} 職員ごとの既定の型。未設定は含めない。"""
+    m = {}
+    try:
+        r = supabase.table("staffs").select("name,youshiki_default_type").eq(
+            "facility_code", f_code).execute()
+        for x in (r.data or []):
+            v = (x.get("youshiki_default_type") or "").strip()
+            if v in ("full", "half"):
+                m[_ys_norm(x.get("name"))] = v
+    except Exception as e:
+        print(f"_ys_staff_default_types error: {e}", flush=True)
+    return m
+
+
+def _ys_manual_day_types(supabase, f_code, year, month):
+    """勤怠集計で手動指定した型 {(_ys_norm(name),'YYYY-MM-DD'): 'full'|'half'}。"""
+    m = {}
+    try:
+        _st, _en = _ys_month_bounds(year, month)
+        r = supabase.table("youshiki_day_type").select("staff_name,work_date,day_type").eq(
+            "facility_code", f_code).gte("work_date", _st).lt("work_date", _en).execute()
+        for x in (r.data or []):
+            v = (x.get("day_type") or "").strip()
+            if v in ("full", "half"):
+                m[(_ys_norm(x.get("staff_name")), str(x.get("work_date")))] = v
+    except Exception as e:
+        print(f"_ys_manual_day_types error: {e}", flush=True)
+    return m
+
+
+def _ys_plan_day_types(supabase, f_code, year, month):
+    """予定(staff_shift_plan)のシフト個別指定の型 {(_ys_norm(name),'YYYY-MM-DD'): 'full'|'half'}。"""
+    m = {}
+    try:
+        _st, _en = _ys_month_bounds(year, month)
+        r = supabase.table("staff_shift_plan").select("staff_name,plan_date,day_type").eq(
+            "facility_code", f_code).gte("plan_date", _st).lt("plan_date", _en).execute()
+        for x in (r.data or []):
+            v = (x.get("day_type") or "").strip()
+            if v in ("full", "half"):
+                m[(_ys_norm(x.get("staff_name")), str(x.get("plan_date")))] = v
+    except Exception as e:
+        print(f"_ys_plan_day_types error: {e}", flush=True)
+    return m
+
+
+def _ys_weekday_rule_type(cfg, d):
+    """曜日ルールの型。'full'|'half'|'both'|'none'。"""
+    rule = cfg.get("day_type_rule")
+    if not (isinstance(rule, list) and len(rule) == 7):
+        rule = _TC_CONFIG_DEFAULT["day_type_rule"]
+    v = rule[d.weekday()]
+    return v if v in ("full", "half", "both", "none") else "none"
+
+
+def _ys_resolve_day_type(name_norm, ds, wd_type, manual, plan_types, staff_def):
+    """(職員,日)の型を優先順位で決める。
+       返り値: (type or None, unresolved)
+       優先: ①手動(実績のみ渡す) ②予定の型(実績=継承/予定=個別指定) ③職員既定 ④曜日ルール
+       曜日ルールが'both'で①〜③どれも無い → (None, True) 警告対象。'none' → (None, False)出さない。"""
+    key = (name_norm, ds)
+    if key in manual:
+        return manual[key], False
+    if key in plan_types:
+        return plan_types[key], False
+    if name_norm in staff_def:
+        return staff_def[name_norm], False
+    if wd_type in ("full", "half"):
+        return wd_type, False
+    if wd_type == "none":
+        return None, False
+    return None, True  # both かつ未指定
+
+
 @app.route("/admin/timecard/youshiki", methods=["GET"])
 @login_required
 def admin_timecard_youshiki():
@@ -18160,6 +18315,13 @@ def admin_timecard_youshiki():
         for it in role_splits:
             split_by_name[_ys_norm(it.get("name"))] = {
                 _ys_norm(r.get("title")): r.get("ratio", 0) for r in it.get("roles", [])}
+
+        # youshiki-daytype-v1: 型判定用のマップを用意（曜日ルール＋職員既定＋予定/手動指定）
+        _dt_staff_def = _ys_staff_default_types(supabase, f_code)
+        _dt_plan = _ys_plan_day_types(supabase, f_code, year, month)
+        # 手動指定(youshiki_day_type)は実績のみ適用。予定出力では使わない。
+        _dt_manual = {} if is_yotei else _ys_manual_day_types(supabase, f_code, year, month)
+        _dt_unresolved = set()  # (name, ds) 曜日ルール'both'で型が決まらなかった日（警告用）
 
         # (name, 'YYYY-MM-DD') -> [(type, minute)]
         punches_map = {}
@@ -18284,22 +18446,29 @@ def admin_timecard_youshiki():
             ws = wb[sheet_name]
             rowmap = _ys_build_row_map(ws)
             cap = full_cap if is_full else half_cap
+            sheet_type = "full" if is_full else "half"
             for day in range(1, 29):
                 try:
                     d = _ys_date(year, month, day)
                 except ValueError:
                     break
-                wd = d.weekday()  # 月=0..日=6
-                # 御社運用: 半日型=平日(月〜金), 1日型=日曜。土曜は空欄。
-                if is_full and wd != 6:
-                    continue
-                if (not is_full) and wd >= 5:
-                    continue
+                # youshiki-daytype-v1: 曜日ルール＋個別指定で型を決め、一致するシートにだけ書く
+                #   （半日型と1日型は必ず別シート。同一シートに混在させない）
+                wd_type = _ys_weekday_rule_type(cfg, d)
                 col = 4 + (day - 1)
                 ds = f"{year:04d}-{month:02d}-{day:02d}"
                 for name, occurs in rowmap.items():
                     leave = leaves_map.get((name, ds))
                     punches = punches_map.get((name, ds))
+                    rtype, _dt_unres = _ys_resolve_day_type(
+                        name, ds, wd_type, _dt_manual, _dt_plan, _dt_staff_def)
+                    if _dt_unres:
+                        # 曜日ルール'both'で型が決まらない：実働/休暇がある日だけ警告に記録
+                        if punches or leave:
+                            _dt_unresolved.add((name, ds))
+                        continue
+                    if rtype != sheet_type:
+                        continue  # このシートの型と違う日は書かない
                     iv = _ys_to_intervals(punches) if punches else []
                     if is_full:
                         slots = [_ys_slot_value(_ys_side_minutes(iv, 0, 24 * 60), cap)] if punches else [None]
@@ -18322,6 +18491,27 @@ def admin_timecard_youshiki():
                         if sp and title in sp:
                             val = round(val * sp[title] * 2) / 2
                         _ys_set_cell(ws.cell(row=row, column=col), val, False)
+
+        # youshiki-daytype-v1: 曜日ルール'both'で型が決まらなかった日を警告として明示（黙って落とさない）
+        if _dt_unresolved:
+            from openpyxl.styles import Font as _WFont, PatternFill as _WFill
+            _wf = _WFont(name="MS PGothic", size=11, bold=True, color="FFCC0000")
+            _wfill = _WFill(fill_type="solid", fgColor="FFFFF2CC")
+            _wlist = sorted(_dt_unresolved, key=lambda x: (x[1], x[0]))
+            for _ns in (_YS_SHEET_HALF, _YS_SHEET_FULL):
+                if _ns not in wb.sheetnames:
+                    continue
+                _wsn = wb[_ns]
+                _wr = _wsn.max_row + 3
+                _wc = _wsn.cell(row=_wr, column=1,
+                                value="⚠ 区分（1日型/半日型）が未指定の日があります。勤怠集計で型を指定してください。")
+                _wc.font = _wf
+                for _cc in range(1, 6):
+                    _wsn.cell(row=_wr, column=_cc).fill = _wfill
+                for (_un, _uds) in _wlist:
+                    _wr += 1
+                    _wsn.cell(row=_wr, column=1, value=_uds)
+                    _wsn.cell(row=_wr, column=2, value=_un)
 
         # timecard-leave-note-v1 / prominent-v2: 表の下に「備考一覧」を追記（様式本体は崩さない）。
         # 様式の下部には長い説明文があり見落としやすいので、赤字・太字・区切り線で目立たせる。

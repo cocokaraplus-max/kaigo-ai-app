@@ -45,6 +45,10 @@
     font-size:.68rem;font-weight:700;cursor:pointer;white-space:nowrap;font-family:inherit;line-height:1.3}
   .tcr-yx.on{background:#c0392b;border-color:#c0392b;color:#fff}
   .tcr-day.tcr-yx-off .d,.tcr-day.tcr-yx-off .io,.tcr-day.tcr-yx-off .hrs{opacity:.45}
+  /* youshiki-daytype-v1: 1日型/半日型の指定セレクト */
+  .tcr-dt{font-family:inherit;font-size:.7rem;border:1px solid #cdd6d3;border-radius:8px;
+    padding:2px 4px;background:#fff;color:#2f6b5e;max-width:128px}
+  .tcr-dt-warn{border-color:#d08b00;background:#fff8e6;color:#a15c00;font-weight:700}
   .tcr-empty{color:#999;font-size:.86rem;text-align:center;padding:24px 0}
   .tcr-collapsed .tcr-days{display:none}
   .tcr-summary{background:#eef5f3;border:1px solid #d7e6e1;border-radius:12px;padding:12px 14px;
@@ -231,6 +235,12 @@
       </div>
     </div>
 
+    <div class="cfg-sec"><!-- youshiki-daytype-v1 -->
+      <h4>曜日ごとの型（様式の振り分け）</h4>
+      <p class="cfg-hint">様式（実績・予定）は半日型と1日型を別シートに出します。曜日ごとにどちらに出すか選んでください。「両方」は同じ日に両型が同時稼働する施設向けで、誰がどちらかは勤怠集計で個別指定します。「なし」はその曜日を様式に出しません（例: 御社の土曜）。</p>
+      <div id="cfg-daytype-list"></div>
+    </div>
+
     <div class="cfg-sec">
       <h4>兼務の分割</h4>
       <p class="cfg-hint">同じ職員が複数役職を兼ねる場合、勤務時間を役職ごとに配分します</p>
@@ -346,9 +356,25 @@
   }
   function yxOffCls(d){ return (YX_ENABLED && d.excluded)?' tcr-yx-off':''; }
 
+  var DT_ENABLED=false;  // youshiki-daytype-v1
+  function dtLabel(t){ return t==="full"?"1日型":(t==="half"?"半日型":""); }
+  function dtSel(name,d){
+    // youshiki-daytype-v1: 打刻のある日に型セレクト（自動/1日型/半日型）
+    if(!DT_ENABLED || (!d.in && !d.out)) return "";
+    var cur=d.day_type||"";           // "" | "full" | "half"
+    var res=d.day_type_resolved;      // "full" | "half" | null
+    var un=!!d.day_type_unresolved;
+    var autoTxt=un?"自動(未指定)":("自動"+(res?"・"+dtLabel(res):""));
+    function opt(v,l){ return '<option value="'+v+'"'+(cur===v?" selected":"")+'>'+l+'</option>'; }
+    var warnCls=un?" tcr-dt-warn":"";
+    return '<select class="tcr-dt'+warnCls+'" data-dt data-staff="'+esc(name)+'" data-date="'+d.date+'"'
+      +' title="様式のどちらのシートに出すか">'+opt("",autoTxt)+opt("full","1日型")+opt("half","半日型")+'</select>';
+  }
+
   function render(j){
     var staff=j.staff||[];
     YX_ENABLED=!!j.youshiki_exclude_enabled;  // youshiki-exclude-v1
+    DT_ENABLED=!!j.youshiki_daytype_enabled;  // youshiki-daytype-v1
     window._tcrStaff=staff;  // pay-export-ui-v1
     // timecard-leave-grid-v1: 記録が無くても職員パネルを出し、休み登録を可能にする
     var grandMin=0,grandInc=0;
@@ -369,10 +395,11 @@
         var lv=d.leave, chip=lv?leaveChip(lv):"";
         var subref=(lv&&lv.substitute_for)?'<span class="tcr-subref">振替元 '+dayLabel(lv.substitute_for)+'</span>':"";
         var yxb=yxBtn(s.name,d);
+        var dts=dtSel(s.name,d);
         if(d.incomplete){
           html+='<div class="tcr-day bad'+yxOffCls(d)+'"><span class="d">'+dayLabel(d.date)+'</span>'
             +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+chip+'</span>'
-            +'<span class="tcr-flag">⚠ '+esc((d.flags||[]).join("／"))+'</span>'+yxb+editBtn+'</div>';
+            +'<span class="tcr-flag">⚠ '+esc((d.flags||[]).join("／"))+'</span>'+dts+yxb+editBtn+'</div>';
         }else if(lv && !d.in && !d.out){
           // timecard-leave-grid-v1: 打刻なしの休暇日(有給/振替休/公休以外の申告)
           html+='<div class="tcr-day"><span class="d">'+dayLabel(d.date)+'</span>'
@@ -382,7 +409,7 @@
           var brk=d.break_min?'（休憩'+d.break_min+'分）':'';
           html+='<div class="tcr-day'+yxOffCls(d)+'"><span class="d">'+dayLabel(d.date)+'</span>'
             +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+' '+brk+chip+subref+'</span>'
-            +'<span class="hrs">'+fmtHM(d.minutes)+'</span>'+yxb+editBtn+'</div>';
+            +'<span class="hrs">'+fmtHM(d.minutes)+'</span>'+dts+yxb+editBtn+'</div>';
         }
       });
       html+='</div></div>';
@@ -414,6 +441,26 @@
           }else{ alert(j.message||"切り替えに失敗しました"); }
         }catch(err){ alert("通信エラー"); }
         b.disabled=false;
+      });
+    });
+    // youshiki-daytype-v1: 型セレクト（1日型/半日型/自動）
+    document.querySelectorAll("[data-dt]").forEach(function(sel){
+      sel.addEventListener("click",function(e){ e.stopPropagation(); });
+      sel.addEventListener("change",async function(e){
+        e.stopPropagation();
+        var v=sel.value;  // "" | "full" | "half"
+        sel.disabled=true;
+        try{
+          var res=await fetch("/api/timecard/day_type/set",{method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({staff_name:sel.getAttribute("data-staff"),date:sel.getAttribute("data-date"),day_type:v||"auto"})});
+          var j=await res.json();
+          if(j.status==="success"){
+            // 手動指定したら警告色を外す
+            sel.classList.remove("tcr-dt-warn");
+          }else{ alert(j.message||"型の指定に失敗しました"); }
+        }catch(err){ alert("通信エラー"); }
+        sel.disabled=false;
       });
     });
     document.querySelectorAll(".tcr-al-btn").forEach(function(b){
@@ -791,6 +838,28 @@
     d.querySelector(".cfg-role-del").addEventListener("click",function(){ d.remove(); });
     return d;
   }
+  // youshiki-daytype-v1: 曜日→型の設定UI
+  var DT_WD=["月","火","水","木","金","土","日"];
+  var DT_OPTS=[["half","半日型"],["full","1日型"],["both","両方"],["none","なし"]];
+  function cfgDayTypeRender(rule){
+    var wrap=$("cfg-daytype-list"); if(!wrap) return;
+    if(!(rule&&rule.length===7)) rule=["half","half","half","half","half","none","full"];
+    wrap.innerHTML="";
+    DT_WD.forEach(function(w,i){
+      var row=document.createElement("div"); row.className="cfg-row2"; row.style.margin="4px 0";
+      var opts=DT_OPTS.map(function(o){ return '<option value="'+o[0]+'"'+(rule[i]===o[0]?" selected":"")+'>'+o[1]+'</option>'; }).join("");
+      row.innerHTML='<label style="min-width:120px">'+w+'曜日 <select class="cfg-dt cfg-inp" data-wd="'+i+'">'+opts+'</select></label>';
+      wrap.appendChild(row);
+    });
+  }
+  function cfgDayTypeCollect(){
+    var rule=["half","half","half","half","half","none","full"];
+    document.querySelectorAll("#cfg-daytype-list .cfg-dt").forEach(function(sel){
+      var i=parseInt(sel.getAttribute("data-wd"),10);
+      if(i>=0&&i<7) rule[i]=sel.value;
+    });
+    return rule;
+  }
   function _tcMeasureNav(){  // timecard-config-navfix-v1 / nav-hide-v4
     var nav=document.querySelector(".bottom-nav");
     var off=document.body.classList.contains("nav-off");
@@ -813,6 +882,7 @@
       (c.service_times||[]).forEach(function(s){ sl.appendChild(cfgSvcRow(s)); });
       var rl=$("cfg-role-list"); rl.innerHTML="";
       (c.role_splits||[]).forEach(function(it){ rl.appendChild(cfgRoleRow(it)); });
+      cfgDayTypeRender(c.day_type_rule);  // youshiki-daytype-v1
       // pay-overtime-cfg-ui-v1: 残業設定の反映
       $("cfg-worksys").value=c.work_system||"standard";
       $("cfg-closing").value=String(c.closing_day==null?0:c.closing_day);
@@ -852,6 +922,7 @@
       half_slot_hours: parseFloat($("cfg-half").value)||4,
       full_slot_hours: parseFloat($("cfg-full").value)||8,
       role_splits: roles,
+      day_type_rule: cfgDayTypeCollect(),  // youshiki-daytype-v1
       // pay-overtime-cfg-ui-v1: 残業設定
       work_system: $("cfg-worksys").value,
       closing_day: parseInt($("cfg-closing").value,10),

@@ -96,6 +96,13 @@
     <div id="ky2-time-wrap">
       <div class="ky2-field">勤務時間</div>
       <div class="ky2-times"><input type="time" id="ky2-day-start"><span>〜</span><input type="time" id="ky2-day-end"></div>
+      <!-- youshiki-daytype-v1: 様式の型（1日型/半日型）。自動は施設の曜日ルールに従う -->
+      <div class="ky2-field" style="margin-top:10px">様式の型（1日型 / 半日型）</div>
+      <select id="ky2-day-type" style="width:100%;padding:10px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;font-size:.95rem;box-sizing:border-box">
+        <option value="">自動（施設の曜日ルール）</option>
+        <option value="full">1日型</option>
+        <option value="half">半日型</option>
+      </select>
     </div>
     <button class="ky2-bulk-open" onclick="ky2OpenBulk()">この内容を他の日にもまとめて適用 →</button>
     <div class="ky2-mbtns">
@@ -153,9 +160,9 @@ function defOf(){ return M.def || {weekdays:[true,true,true,true,true,false,fals
 function effDay(date){
   if (M.cells[date]) return M.cells[date];
   const p = M.plan[date];
-  if (p && p.status) { M.cells[date] = {status:p.status, start:p.start||defOf().start, end:p.end||defOf().end}; return M.cells[date]; }
+  if (p && p.status) { M.cells[date] = {status:p.status, start:p.start||defOf().start, end:p.end||defOf().end, day_type:p.day_type||null}; return M.cells[date]; }
   const df = defOf(); const w = wdOf(date);
-  M.cells[date] = df.weekdays[w] ? {status:'work', start:df.start, end:df.end} : {status:'off', start:df.start, end:df.end};
+  M.cells[date] = df.weekdays[w] ? {status:'work', start:df.start, end:df.end, day_type:null} : {status:'off', start:df.start, end:df.end, day_type:null};
   return M.cells[date];
 }
 
@@ -176,7 +183,8 @@ function ky2RenderList(){
   document.getElementById('ky2-list').innerHTML = M.days.map(function(d){
     const c = effDay(d); const w = wdOf(d);
     const cls = w===5?'sat':(w===6?'sun':'');
-    const val = c.status==='work' ? '<div class="val work">出勤　'+(c.start||'')+' 〜 '+(c.end||'')+'</div>' : '<div class="val off">休み</div>';
+    const dtBadge = (c.status==='work' && c.day_type) ? ' <small style="color:#2f6b5e;font-weight:700">['+(c.day_type==='full'?'1日型':'半日型')+']</small>' : '';
+    const val = c.status==='work' ? '<div class="val work">出勤　'+(c.start||'')+' 〜 '+(c.end||'')+dtBadge+'</div>' : '<div class="val off">休み</div>';
     return '<div class="ky2-drow '+cls+'" onclick="ky2OpenDay(\''+d+'\')">'+
       '<div class="dd">'+dayNum(d)+'日 <small>('+WD[w]+')</small></div>'+val+
       '<span class="material-symbols-outlined ed">edit</span></div>';
@@ -195,6 +203,7 @@ function ky2OpenDay(date){
   ky2SegSet(c.status);
   document.getElementById('ky2-day-start').value = c.start || defOf().start;
   document.getElementById('ky2-day-end').value = c.end || defOf().end;
+  document.getElementById('ky2-day-type').value = c.day_type || '';  // youshiki-daytype-v1
   document.getElementById('ky2-daymask').classList.add('on');
 }
 function ky2SegSet(st){
@@ -205,14 +214,16 @@ function ky2SegSet(st){
 }
 function ky2DayApply(){
   if(!editDate) return;
-  M.cells[editDate] = { status:editSeg, start:document.getElementById('ky2-day-start').value, end:document.getElementById('ky2-day-end').value };
+  M.cells[editDate] = { status:editSeg, start:document.getElementById('ky2-day-start').value, end:document.getElementById('ky2-day-end').value,
+    day_type:(editSeg==='work' ? (document.getElementById('ky2-day-type').value||null) : null) };  // youshiki-daytype-v1
   ky2Close('ky2-daymask'); ky2RenderList();
 }
 function ky2Close(id){ document.getElementById(id).classList.remove('on'); }
 
 /* 一括適用 */
 function ky2OpenBulk(){
-  bulk.content = { status:editSeg, start:document.getElementById('ky2-day-start').value, end:document.getElementById('ky2-day-end').value };
+  bulk.content = { status:editSeg, start:document.getElementById('ky2-day-start').value, end:document.getElementById('ky2-day-end').value,
+    day_type:(editSeg==='work' ? (document.getElementById('ky2-day-type').value||null) : null) };  // youshiki-daytype-v1
   bulk.sel = {};
   const label = bulk.content.status==='work' ? ('出勤 '+bulk.content.start+'〜'+bulk.content.end) : '休み';
   document.getElementById('ky2-bulk-who').textContent = '「'+label+'」を選んだ日に適用（'+M.year+'年'+M.month+'月）';
@@ -240,10 +251,10 @@ function ky2BulkSelWeekdays(){
 async function ky2BulkApply(){
   const dates = Object.keys(bulk.sel);
   if(!dates.length){ alert('日を選んでください'); return; }
-  dates.forEach(function(d){ M.cells[d] = {status:bulk.content.status, start:bulk.content.start, end:bulk.content.end}; });
+  dates.forEach(function(d){ M.cells[d] = {status:bulk.content.status, start:bulk.content.start, end:bulk.content.end, day_type:bulk.content.day_type||null}; });
   ky2Close('ky2-bulkmask'); ky2Close('ky2-daymask'); ky2RenderList();
   // その場でDBにも保存（月をまたいでも確実に）
-  const cells = dates.map(function(d){ return {name:M.name, date:d, status:bulk.content.status, start:bulk.content.start, end:bulk.content.end}; });
+  const cells = dates.map(function(d){ return {name:M.name, date:d, status:bulk.content.status, start:bulk.content.start, end:bulk.content.end, day_type:bulk.content.day_type||null}; });
   await fetch('/api/shift/save', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({cells:cells})});
   alert(dates.length+'日に適用しました');
 }
@@ -271,7 +282,7 @@ async function ky2DefApply(){
 
 /* 保存 */
 async function ky2Save(){
-  const cells = M.days.map(function(d){ const c=effDay(d); return {name:M.name, date:d, status:c.status, start:c.start, end:c.end}; });
+  const cells = M.days.map(function(d){ const c=effDay(d); return {name:M.name, date:d, status:c.status, start:c.start, end:c.end, day_type:c.day_type||null}; });
   const r = await fetch('/api/shift/save', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({cells:cells})});
   const j = await r.json();
   if(j.status==='success'){ alert('保存しました（'+j.saved+'件）'); ky2LoadMonth(M.name, M.year, M.month); }
