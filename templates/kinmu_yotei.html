@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}勤務予定 - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* kinmu-yotei-v2: 勤務予定（本人・1ヶ月入力） */
+.ky2-wrap { max-width: 640px; margin: 0 auto; padding: 12px 14px 60px; }
+.ky2-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.ky2-head .material-symbols-outlined { color:#1a73e8; font-size:26px; }
+.ky2-title { font-size:1.2rem; font-weight:900; color:#1e3a5f; }
+.ky2-lead { font-size:.8rem; color:#5f6368; margin:0 2px 14px; line-height:1.6; }
+
+.ky2-ctrls { display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap; }
+.ky2-who { flex:1 1 auto; min-width:130px; padding:11px 12px; border:1.5px solid #cfd8dc; border-radius:10px; font-size:1rem; font-weight:800; color:#1e3a5f; background:#fff; }
+.ky2-def-btn { padding:11px 14px; border:1.5px solid #aecbfa; background:#e8f0fe; color:#1a56c4; border-radius:10px; font-weight:800; cursor:pointer; font-size:.88rem; white-space:nowrap; }
+
+.ky2-nav { display:flex; align-items:center; justify-content:center; gap:14px; margin-bottom:12px; }
+.ky2-nav button { width:44px; height:44px; border-radius:12px; border:1.5px solid #dadce0; background:#fff; font-size:1.3rem; cursor:pointer; color:#1a73e8; font-weight:900; }
+.ky2-nav .rng { font-size:1.1rem; font-weight:900; color:#202124; min-width:150px; text-align:center; }
+
+.ky2-actions { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+.ky2-actions button, .ky2-actions a { flex:1; min-width:120px; padding:12px; border-radius:12px; border:none; font-size:.92rem; font-weight:800; cursor:pointer; text-align:center; text-decoration:none; }
+.ky2-save { background:#1a73e8; color:#fff; box-shadow:0 4px 12px rgba(26,115,232,.3); }
+.ky2-out { background:#e6f4ea; color:#1e7e34; border:1.5px solid #a8d5b5 !important; display:flex; align-items:center; justify-content:center; }
+
+.ky2-list { display:flex; flex-direction:column; gap:6px; }
+.ky2-drow { display:flex; align-items:center; gap:12px; padding:11px 14px; border:1px solid #e6e8eb; border-radius:12px; background:#fff; cursor:pointer; }
+.ky2-drow:active { background:#f5f7fa; }
+.ky2-drow .dd { flex:0 0 66px; font-size:1.02rem; font-weight:900; color:#202124; }
+.ky2-drow .dd small { font-weight:800; font-size:.82rem; color:#5f6368; }
+.ky2-drow.sat .dd small { color:#1a73e8; } .ky2-drow.sun .dd small { color:#d93025; }
+.ky2-drow .val { flex:1; font-size:1rem; font-weight:800; }
+.ky2-drow .val.work { color:#1e7e34; } .ky2-drow .val.off { color:#c5221f; }
+.ky2-drow .ed { color:#9aa0a6; font-size:20px; }
+
+/* モーダル */
+.ky2-mask { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:12000; align-items:center; justify-content:center; padding:18px; }
+.ky2-mask.on { display:flex; }
+.ky2-modal { background:#fff; border-radius:16px; padding:18px; width:100%; max-width:380px; box-shadow:0 12px 40px rgba(0,0,0,.25); max-height:88vh; overflow-y:auto; }
+.ky2-modal h3 { margin:0 0 4px; font-size:1.05rem; font-weight:900; color:#202124; }
+.ky2-modal .who2 { font-size:.85rem; color:#5f6368; margin-bottom:14px; }
+.ky2-seg { display:flex; gap:8px; margin-bottom:14px; }
+.ky2-seg button { flex:1; padding:12px; border-radius:10px; border:2px solid #e0e0e0; background:#fff; font-weight:800; cursor:pointer; font-size:.95rem; }
+.ky2-seg button.sel.work { background:#e6f4ea; border-color:#1e7e34; color:#1e7e34; }
+.ky2-seg button.sel.off { background:#fdecea; border-color:#c5221f; color:#c5221f; }
+.ky2-times { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+.ky2-times input[type=time] { flex:1; padding:10px; border:1.5px solid #cfd8dc; border-radius:10px; font-size:1rem; }
+.ky2-wd { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; margin-bottom:14px; }
+.ky2-wd label { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:.78rem; font-weight:800; color:#3c4043; }
+.ky2-wd input { width:20px; height:20px; }
+.ky2-field { font-size:.76rem; color:#5f6368; font-weight:700; margin:2px 0 6px; }
+.ky2-mbtns { display:flex; gap:8px; margin-top:6px; }
+.ky2-mbtns button { flex:1; padding:12px; border-radius:10px; border:none; font-weight:800; cursor:pointer; font-size:.95rem; }
+.ky2-mbtns .ok { background:#1a73e8; color:#fff; } .ky2-mbtns .cancel { background:#f1f3f4; color:#5f6368; }
+.ky2-bulk-open { display:block; width:100%; padding:11px; margin-bottom:12px; background:#e8f0fe; color:#1a56c4; border:1.5px solid #aecbfa; border-radius:10px; font-weight:800; cursor:pointer; font-size:.9rem; }
+.ky2-bulk-cal { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; margin-bottom:8px; }
+.ky2-bulk-cal .hd { font-size:.68rem; font-weight:800; color:#5f6368; text-align:center; }
+.ky2-bulk-cal .dcell { text-align:center; padding:9px 0; border-radius:8px; border:1px solid #eee; cursor:pointer; font-size:.85rem; font-weight:700; }
+.ky2-bulk-cal .dcell.wk { background:#eef6ff; color:#1a56c4; }
+.ky2-bulk-cal .dcell.on { background:#1a73e8 !important; color:#fff !important; border-color:#1a73e8 !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ky2-wrap">
+  <div class="ky2-head"><span class="material-symbols-outlined">edit_calendar</span><span class="ky2-title">勤務予定</span></div>
+  <div class="ky2-lead">自分の1ヶ月分の予定を入力します。まず「既定」で通常出勤の曜日・標準時間を設定すると自動で埋まり、休み・早退の日だけ直せばOK。</div>
+
+  <div class="ky2-ctrls">
+    <select class="ky2-who" id="ky2-who" onchange="ky2ChangeName()"></select>
+    <button class="ky2-def-btn" onclick="ky2OpenDef()">既定を設定 ⚙</button>
+  </div>
+
+  <div class="ky2-nav">
+    <button onclick="ky2MonthNav(-1)">‹</button>
+    <span class="rng" id="ky2-range">—</span>
+    <button onclick="ky2MonthNav(1)">›</button>
+  </div>
+
+  <div class="ky2-actions">
+    <button class="ky2-save" onclick="ky2Save()">保存</button>
+  </div>
+
+  <div class="ky2-list" id="ky2-list"></div>
+</div>
+
+<!-- 日の編集 -->
+<div class="ky2-mask" id="ky2-daymask">
+  <div class="ky2-modal">
+    <h3 id="ky2-day-title">この日の予定</h3>
+    <div class="who2" id="ky2-day-who"></div>
+    <div class="ky2-seg">
+      <button id="ky2-seg-work" class="work" onclick="ky2SegSet('work')">出勤</button>
+      <button id="ky2-seg-off" class="off" onclick="ky2SegSet('off')">休み</button>
+    </div>
+    <div id="ky2-time-wrap">
+      <div class="ky2-field">勤務時間</div>
+      <div class="ky2-times"><input type="time" id="ky2-day-start"><span>〜</span><input type="time" id="ky2-day-end"></div>
+      <!-- youshiki-daytype-v1: 様式の型（1日型/半日型）。自動は施設の曜日ルールに従う -->
+      <div class="ky2-field" style="margin-top:10px">様式の型（1日型 / 半日型）</div>
+      <select id="ky2-day-type" style="width:100%;padding:10px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;font-size:.95rem;box-sizing:border-box">
+        <option value="">自動（施設の曜日ルール）</option>
+        <option value="full">1日型</option>
+        <option value="half">半日型</option>
+      </select>
+    </div>
+    <button class="ky2-bulk-open" onclick="ky2OpenBulk()">この内容を他の日にもまとめて適用 →</button>
+    <div class="ky2-mbtns">
+      <button class="cancel" onclick="ky2Close('ky2-daymask')">キャンセル</button>
+      <button class="ok" onclick="ky2DayApply()">決定</button>
+    </div>
+  </div>
+</div>
+
+<!-- 一括適用（この月のカレンダー） -->
+<div class="ky2-mask" id="ky2-bulkmask">
+  <div class="ky2-modal">
+    <h3>他の日にもまとめて適用</h3>
+    <div class="who2" id="ky2-bulk-who"></div>
+    <div class="ky2-bulk-cal" id="ky2-bulk-cal"></div>
+    <div class="ky2-field" id="ky2-bulk-count">0日 選択中</div>
+    <div class="ky2-field" style="color:#1a56c4;cursor:pointer;font-weight:800;" onclick="ky2BulkSelWeekdays()">＋ 同じ曜日をまとめて選ぶ</div>
+    <div class="ky2-mbtns">
+      <button class="cancel" onclick="ky2Close('ky2-bulkmask')">キャンセル</button>
+      <button class="ok" onclick="ky2BulkApply()">選んだ日に適用</button>
+    </div>
+  </div>
+</div>
+
+<!-- 既定設定 -->
+<div class="ky2-mask" id="ky2-defmask">
+  <div class="ky2-modal">
+    <h3>既定の設定</h3>
+    <div class="who2" id="ky2-def-who"></div>
+    <div class="ky2-field">通常出勤する曜日</div>
+    <div class="ky2-wd" id="ky2-def-wd"></div>
+    <div class="ky2-field">標準の勤務時間</div>
+    <div class="ky2-times"><input type="time" id="ky2-def-start"><span>〜</span><input type="time" id="ky2-def-end"></div>
+    <div class="ky2-mbtns">
+      <button class="cancel" onclick="ky2Close('ky2-defmask')">キャンセル</button>
+      <button class="ok" onclick="ky2DefApply()">保存して反映</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* kinmu-yotei-v2: 本人・1ヶ月入力 */
+const WD = ['月','火','水','木','金','土','日'];
+let M = { me:'', staff:[], name:'', year:0, month:0, days:[], def:null, plan:{}, cells:{} };
+let editDate = null, editSeg = 'work';
+let bulk = { content:null, sel:{} };
+
+function wdOf(s){ const p=s.split('-'); return (new Date(Date.UTC(+p[0],+p[1]-1,+p[2])).getUTCDay()+6)%7; }
+function dayNum(s){ return +s.split('-')[2]; }
+function escapeH(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
+
+function defOf(){ return M.def || {weekdays:[true,true,true,true,true,false,false], start:'09:00', end:'18:00'}; }
+function effDay(date){
+  if (M.cells[date]) return M.cells[date];
+  const p = M.plan[date];
+  if (p && p.status) { M.cells[date] = {status:p.status, start:p.start||defOf().start, end:p.end||defOf().end, day_type:p.day_type||null}; return M.cells[date]; }
+  const df = defOf(); const w = wdOf(date);
+  M.cells[date] = df.weekdays[w] ? {status:'work', start:df.start, end:df.end, day_type:null} : {status:'off', start:df.start, end:df.end, day_type:null};
+  return M.cells[date];
+}
+
+async function ky2LoadMonth(name, y, m){
+  let q = '/api/shift/month?';
+  if(name) q += 'name='+encodeURIComponent(name)+'&';
+  if(y) q += 'year='+y+'&month='+m;
+  const r = await fetch(q, {credentials:'same-origin'});
+  const j = await r.json();
+  M.me=j.me; M.staff=j.staff||[]; M.name=j.name; M.year=j.year; M.month=j.month; M.days=j.days||[]; M.def=j.default; M.plan=j.plan||{}; M.cells={};
+  // 職員セレクト
+  const sel = document.getElementById('ky2-who');
+  sel.innerHTML = M.staff.map(function(n){ return '<option value="'+escapeH(n)+'"'+(n===M.name?' selected':'')+'>'+escapeH(n)+(n===M.me?'（本人）':'')+'</option>'; }).join('');
+  document.getElementById('ky2-range').textContent = M.year+'年'+M.month+'月';
+  ky2RenderList();
+}
+function ky2RenderList(){
+  document.getElementById('ky2-list').innerHTML = M.days.map(function(d){
+    const c = effDay(d); const w = wdOf(d);
+    const cls = w===5?'sat':(w===6?'sun':'');
+    const dtBadge = (c.status==='work' && c.day_type) ? ' <small style="color:#2f6b5e;font-weight:700">['+(c.day_type==='full'?'1日型':'半日型')+']</small>' : '';
+    const val = c.status==='work' ? '<div class="val work">出勤　'+(c.start||'')+' 〜 '+(c.end||'')+dtBadge+'</div>' : '<div class="val off">休み</div>';
+    return '<div class="ky2-drow '+cls+'" onclick="ky2OpenDay(\''+d+'\')">'+
+      '<div class="dd">'+dayNum(d)+'日 <small>('+WD[w]+')</small></div>'+val+
+      '<span class="material-symbols-outlined ed">edit</span></div>';
+  }).join('');
+}
+function ky2MonthNav(delta){
+  let y=M.year, m=M.month+delta; if(m<1){m=12;y--;} if(m>12){m=1;y++;}
+  ky2LoadMonth(M.name, y, m);
+}
+function ky2ChangeName(){ ky2LoadMonth(document.getElementById('ky2-who').value, M.year, M.month); }
+
+/* 日の編集 */
+function ky2OpenDay(date){
+  editDate = date; const c = effDay(date); const w = wdOf(date);
+  document.getElementById('ky2-day-who').textContent = escapeH(M.name)+'　'+M.month+'/'+dayNum(date)+'（'+WD[w]+'）';
+  ky2SegSet(c.status);
+  document.getElementById('ky2-day-start').value = c.start || defOf().start;
+  document.getElementById('ky2-day-end').value = c.end || defOf().end;
+  document.getElementById('ky2-day-type').value = c.day_type || '';  // youshiki-daytype-v1
+  document.getElementById('ky2-daymask').classList.add('on');
+}
+function ky2SegSet(st){
+  editSeg = st;
+  document.getElementById('ky2-seg-work').classList.toggle('sel', st==='work');
+  document.getElementById('ky2-seg-off').classList.toggle('sel', st==='off');
+  document.getElementById('ky2-time-wrap').style.display = (st==='work')?'block':'none';
+}
+function ky2DayApply(){
+  if(!editDate) return;
+  M.cells[editDate] = { status:editSeg, start:document.getElementById('ky2-day-start').value, end:document.getElementById('ky2-day-end').value,
+    day_type:(editSeg==='work' ? (document.getElementById('ky2-day-type').value||null) : null) };  // youshiki-daytype-v1
+  ky2Close('ky2-daymask'); ky2RenderList();
+}
+function ky2Close(id){ document.getElementById(id).classList.remove('on'); }
+
+/* 一括適用 */
+function ky2OpenBulk(){
+  bulk.content = { status:editSeg, start:document.getElementById('ky2-day-start').value, end:document.getElementById('ky2-day-end').value,
+    day_type:(editSeg==='work' ? (document.getElementById('ky2-day-type').value||null) : null) };  // youshiki-daytype-v1
+  bulk.sel = {};
+  const label = bulk.content.status==='work' ? ('出勤 '+bulk.content.start+'〜'+bulk.content.end) : '休み';
+  document.getElementById('ky2-bulk-who').textContent = '「'+label+'」を選んだ日に適用（'+M.year+'年'+M.month+'月）';
+  ky2BulkRender();
+  document.getElementById('ky2-bulkmask').classList.add('on');
+}
+function ky2BulkRender(){
+  const first = wdOf(M.days[0]);
+  let html = WD.map(function(w){return '<div class="hd">'+w+'</div>';}).join('');
+  for(let i=0;i<first;i++) html += '<div></div>';
+  M.days.forEach(function(d){
+    const on = bulk.sel[d]?' on':''; const w=wdOf(d); const wk=(w<5)?' wk':'';
+    html += '<div class="dcell'+on+wk+'" onclick="ky2BulkToggle(\''+d+'\')">'+dayNum(d)+'</div>';
+  });
+  document.getElementById('ky2-bulk-cal').innerHTML = html;
+  document.getElementById('ky2-bulk-count').textContent = Object.keys(bulk.sel).length+'日 選択中';
+}
+function ky2BulkToggle(d){ if(bulk.sel[d]) delete bulk.sel[d]; else bulk.sel[d]=true; ky2BulkRender(); }
+function ky2BulkSelWeekdays(){
+  // 今編集していた日の曜日と同じ曜日を全部選ぶ
+  const tw = editDate ? wdOf(editDate) : 0;
+  M.days.forEach(function(d){ if(wdOf(d)===tw) bulk.sel[d]=true; });
+  ky2BulkRender();
+}
+async function ky2BulkApply(){
+  const dates = Object.keys(bulk.sel);
+  if(!dates.length){ alert('日を選んでください'); return; }
+  dates.forEach(function(d){ M.cells[d] = {status:bulk.content.status, start:bulk.content.start, end:bulk.content.end, day_type:bulk.content.day_type||null}; });
+  ky2Close('ky2-bulkmask'); ky2Close('ky2-daymask'); ky2RenderList();
+  // その場でDBにも保存（月をまたいでも確実に）
+  const cells = dates.map(function(d){ return {name:M.name, date:d, status:bulk.content.status, start:bulk.content.start, end:bulk.content.end, day_type:bulk.content.day_type||null}; });
+  await fetch('/api/shift/save', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({cells:cells})});
+  alert(dates.length+'日に適用しました');
+}
+
+/* 既定 */
+function ky2OpenDef(){
+  const df = defOf();
+  document.getElementById('ky2-def-who').textContent = escapeH(M.name);
+  document.getElementById('ky2-def-wd').innerHTML = WD.map(function(w,i){ return '<label>'+w+'<input type="checkbox" data-wd="'+i+'" '+(df.weekdays[i]?'checked':'')+'></label>'; }).join('');
+  document.getElementById('ky2-def-start').value = df.start;
+  document.getElementById('ky2-def-end').value = df.end;
+  document.getElementById('ky2-defmask').classList.add('on');
+}
+async function ky2DefApply(){
+  const wd=[]; document.querySelectorAll('#ky2-def-wd input[data-wd]').forEach(function(cb){ wd[+cb.dataset.wd]=cb.checked; });
+  const body = { name:M.name, weekdays:wd, start:document.getElementById('ky2-def-start').value, end:document.getElementById('ky2-def-end').value };
+  const r = await fetch('/api/shift/default', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(body)});
+  const j = await r.json();
+  if(j.status!=='success'){ alert(j.message||'保存に失敗しました'); return; }
+  M.def = {weekdays:wd, start:body.start, end:body.end};
+  // 未保存・未編集の日を既定で更新
+  M.days.forEach(function(d){ if(!M.plan[d]) delete M.cells[d]; });
+  ky2Close('ky2-defmask'); ky2RenderList();
+}
+
+/* 保存 */
+async function ky2Save(){
+  const cells = M.days.map(function(d){ const c=effDay(d); return {name:M.name, date:d, status:c.status, start:c.start, end:c.end, day_type:c.day_type||null}; });
+  const r = await fetch('/api/shift/save', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({cells:cells})});
+  const j = await r.json();
+  if(j.status==='success'){ alert('保存しました（'+j.saved+'件）'); ky2LoadMonth(M.name, M.year, M.month); }
+  else alert(j.message||'保存に失敗しました');
+}
+
+ky2LoadMonth(null, 0, 0);
+</script>
+{% endblock %}

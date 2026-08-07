@@ -13184,6 +13184,213 @@ def kyukyu_view():
     return render_template('kyukyu.html')
 
 
+# ===== kinmu-yotei-v1: 勤務予定（シフト）入力 =====
+def _shift_staff_names(supabase, f_code):
+    """在籍職員の名前一覧（保存済みの並び順を優先）。"""
+    order = _tc_staff_order_names(supabase, f_code)
+    try:
+        res = supabase.table("staffs").select("staff_name").eq(
+            "facility_code", f_code).eq("is_active", True).execute()
+        names = [r.get("staff_name") for r in (res.data or []) if r.get("staff_name")]
+    except Exception:
+        names = []
+    names = list(dict.fromkeys(names))
+    if order:
+        return [n for n in order if n in names] + sorted([n for n in names if n not in order])
+    return sorted(names)
+
+
+def _shift_default_map(supabase, f_code):
+    out = {}
+    try:
+        import json as _sj
+        r = supabase.table("staff_shift_defaults").select("*").eq("facility_code", f_code).execute()
+        for row in (r.data or []):
+            wd = row.get("weekdays")
+            if isinstance(wd, str):
+                try:
+                    wd = _sj.loads(wd)
+                except Exception:
+                    wd = None
+            if not (isinstance(wd, list) and len(wd) == 7):
+                wd = [True, True, True, True, True, False, False]
+            out[row.get("staff_name")] = {
+                "weekdays": [bool(x) for x in wd],
+                "start": row.get("start_time") or "09:00",
+                "end": row.get("end_time") or "18:00",
+            }
+    except Exception as e:
+        print(f"[shift defaults] {e}", flush=True)
+    return out
+
+
+@app.route('/kinmu_yotei')
+@login_required
+def kinmu_yotei_page():
+    """勤務予定入力ページ。kinmu-yotei-v1"""
+    return render_template('kinmu_yotei.html')
+
+
+@app.route('/api/shift/week', methods=['GET'])
+@login_required
+def api_shift_week():
+    f_code = session['f_code']
+    supabase = get_supabase()
+    start = request.args.get('start')
+    try:
+        d0 = datetime.strptime(start, '%Y-%m-%d').date()
+    except Exception:
+        _t = _tc_now_jst().date()
+        d0 = _t - timedelta(days=_t.weekday())
+    d0 = d0 - timedelta(days=d0.weekday())  # 必ず月曜起点
+    dates = [(d0 + timedelta(days=i)).isoformat() for i in range(7)]
+    names = _shift_staff_names(supabase, f_code)
+    defaults = _shift_default_map(supabase, f_code)
+    plan = {}
+    try:
+        r = supabase.table("staff_shift_plan").select("*").eq(
+            "facility_code", f_code).gte("plan_date", dates[0]).lte("plan_date", dates[6]).execute()
+        for row in (r.data or []):
+            plan[str(row.get("staff_name")) + '|' + str(row.get("plan_date"))] = {
+                "status": row.get("status"), "start": row.get("start_time"), "end": row.get("end_time")}
+    except Exception as e:
+        print(f"[shift week] {e}", flush=True)
+    return jsonify({"status": "success", "week": dates, "staff": names, "defaults": defaults, "plan": plan})
+
+
+@app.route('/api/shift/month', methods=['GET'])
+@login_required
+def api_shift_month():
+    """一人・1ヶ月分の勤務予定。kinmu-yotei-v2"""
+    import calendar as _cal
+    f_code = session['f_code']
+    supabase = get_supabase()
+    me = session.get('my_name', '')
+    name = (request.args.get('name') or me or '').strip()
+    now = _tc_now_jst()
+    try:
+        year = int(request.args.get('year', now.year))
+        month = int(request.args.get('month', now.month))
+    except (TypeError, ValueError):
+        year, month = now.year, now.month
+    if not (1 <= month <= 12):
+        year, month = now.year, now.month
+    ndays = _cal.monthrange(year, month)[1]
+    days = [f"{year:04d}-{month:02d}-{d:02d}" for d in range(1, ndays + 1)]
+    staff = _shift_staff_names(supabase, f_code)
+    if staff and name not in staff:
+        name = me if me in staff else staff[0]
+    defaults = _shift_default_map(supabase, f_code)
+    dflt = defaults.get(name) or {"weekdays": [True, True, True, True, True, False, False], "start": "09:00", "end": "18:00"}
+    plan = {}
+    try:
+        r = supabase.table("staff_shift_plan").select("*").eq(
+            "facility_code", f_code).eq("staff_name", name).gte(
+            "plan_date", days[0]).lte("plan_date", days[-1]).execute()
+        for row in (r.data or []):
+            plan[str(row.get("plan_date"))] = {"status": row.get("status"), "start": row.get("start_time"),
+                                               "end": row.get("end_time"),
+                                               "day_type": row.get("day_type")}  # youshiki-daytype-v1
+    except Exception as e:
+        print(f"[shift month] {e}", flush=True)
+    return jsonify({"status": "success", "me": me, "staff": staff, "name": name,
+                    "year": year, "month": month, "days": days, "default": dflt, "plan": plan})
+
+
+@app.route('/api/shift/save', methods=['POST'])
+@login_required
+def api_shift_save():
+    f_code = session['f_code']
+    supabase = get_supabase()
+    data = request.get_json(silent=True) or {}
+    cells = data.get('cells') or []
+    saved = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for c in cells:
+        nm = (c.get('name') or '').strip()
+        dt = (c.get('date') or '').strip()
+        if not nm or not dt:
+            continue
+        try:
+            _dt = c.get('day_type')  # youshiki-daytype-v1: 'full'|'half'|None
+            if _dt not in ('full', 'half'):
+                _dt = None
+            supabase.table("staff_shift_plan").upsert({
+                "facility_code": f_code, "staff_name": nm, "plan_date": dt,
+                "status": c.get('status') or 'off',
+                "start_time": c.get('start'), "end_time": c.get('end'),
+                "day_type": _dt,
+                "updated_at": now_iso,
+            }, on_conflict="facility_code,staff_name,plan_date").execute()
+            saved += 1
+        except Exception as e:
+            print(f"[shift save] {e}", flush=True)
+    return jsonify({"status": "success", "saved": saved})
+
+
+@app.route('/api/shift/default', methods=['POST'])
+@login_required
+def api_shift_default():
+    f_code = session['f_code']
+    supabase = get_supabase()
+    data = request.get_json(silent=True) or {}
+    nm = (data.get('name') or '').strip()
+    if not nm:
+        return jsonify({"status": "error", "message": "職員名が必要です"}), 400
+    wd = data.get('weekdays')
+    if not (isinstance(wd, list) and len(wd) == 7):
+        wd = [True, True, True, True, True, False, False]
+    try:
+        supabase.table("staff_shift_defaults").upsert({
+            "facility_code": f_code, "staff_name": nm,
+            "weekdays": [bool(x) for x in wd],
+            "start_time": data.get('start') or '09:00',
+            "end_time": data.get('end') or '18:00',
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="facility_code,staff_name").execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+@app.route('/api/shift/copy', methods=['POST'])
+@login_required
+def api_shift_copy():
+    f_code = session['f_code']
+    supabase = get_supabase()
+    data = request.get_json(silent=True) or {}
+    try:
+        src = datetime.strptime(data.get('from_start'), '%Y-%m-%d').date()
+        dst = datetime.strptime(data.get('to_start'), '%Y-%m-%d').date()
+    except Exception:
+        return jsonify({"status": "error", "message": "日付が不正です"}), 400
+    src_dates = [(src + timedelta(days=i)).isoformat() for i in range(7)]
+    try:
+        r = supabase.table("staff_shift_plan").select("*").eq(
+            "facility_code", f_code).gte("plan_date", src_dates[0]).lte("plan_date", src_dates[6]).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    n = 0
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for row in (r.data or []):
+        try:
+            pd = datetime.strptime(str(row.get("plan_date")), '%Y-%m-%d').date()
+        except Exception:
+            continue
+        newd = (dst + timedelta(days=(pd - src).days)).isoformat()
+        try:
+            supabase.table("staff_shift_plan").upsert({
+                "facility_code": f_code, "staff_name": row.get("staff_name"), "plan_date": newd,
+                "status": row.get("status"), "start_time": row.get("start_time"), "end_time": row.get("end_time"),
+                "day_type": row.get("day_type"),  # youshiki-daytype-v1: 型もコピー
+                "updated_at": now_iso,
+            }, on_conflict="facility_code,staff_name,plan_date").execute()
+            n += 1
+        except Exception as e:
+            print(f"[shift copy] {e}", flush=True)
+    return jsonify({"status": "success", "copied": n})
+
+
 @app.route('/api/generate_daily_summary', methods=['POST'])
 @login_required
 def api_generate_daily_summary():
@@ -13313,7 +13520,7 @@ def dev_menu():
     # 全施設一覧
     facilities = []
     try:
-        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed,timecard_enabled,photo_sales_enabled").execute()  # dev-sekkotsu-allow-v1 / timecard-devtoggle-v1 / photo-sales-devtoggle-v1
+        res = supabase.table("facilities").select("facility_code,facility_name,is_active,expires_at,plan,is_monitor,contract_term,trial_ends_at,discount_rate,discount_until,sekkotsu_mode_allowed,timecard_enabled,photo_sales_enabled,youshiki_exclude_enabled").execute()  # dev-sekkotsu-allow-v1 / timecard-devtoggle-v1 / photo-sales-devtoggle-v1 / youshiki-exclude-v1
         facilities = res.data or []
     except: pass
 
@@ -13349,6 +13556,7 @@ def dev_menu():
                 "sekkotsu_mode_allowed": fac.get("sekkotsu_mode_allowed", False),  # dev-sekkotsu-allow-v1
                 "timecard_enabled": fac.get("timecard_enabled", False),  # timecard-devtoggle-v1
                 "photo_sales_enabled": fac.get("photo_sales_enabled", False),  # photo-sales-devtoggle-v1
+                "youshiki_exclude_enabled": fac.get("youshiki_exclude_enabled", False),  # youshiki-exclude-v1
             })
         except:
             stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
@@ -13537,6 +13745,24 @@ def api_dev_toggle_photo_sales():
     try:
         supabase = get_supabase()
         supabase.table('facilities').update({'photo_sales_enabled': enabled}).eq('facility_code', fc).execute()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@app.route('/api/dev/toggle_youshiki_exclude', methods=['POST'])  # youshiki-exclude-v1
+def api_dev_toggle_youshiki_exclude():
+    """施設ごとの「様式（実績）除外トグル」表示ON/OFF。既定OFF＝弊社だけで使う想定。開発者認証必須。"""
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json or {}
+    fc = (data.get('facility_code') or '').strip()
+    enabled = bool(data.get('enabled', False))
+    if not fc:
+        return jsonify({'success': False, 'message': 'facility_code required'}), 400
+    try:
+        supabase = get_supabase()
+        supabase.table('facilities').update({'youshiki_exclude_enabled': enabled}).eq('facility_code', fc).execute()
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -16807,6 +17033,98 @@ def _tc_compute_day(punches):
             "break_min": break_min}
 
 
+# youshiki-exclude-v1: 様式（実績）に出力しない日の管理
+#   接骨院勤務など介護以外の勤務を、様式（実績）の集計から除外するための仕組み。
+#   facilities.youshiki_exclude_enabled がTrueの施設だけUIにトグルが出る（開発者MENUで制御）。
+def _youshiki_exclude_enabled(supabase, f_code):
+    """施設で「様式除外トグル」を表示してよいか（開発者MENUの設定）。"""
+    try:
+        fa = supabase.table('facilities').select('youshiki_exclude_enabled').eq('facility_code', f_code).execute()
+        return bool(fa.data and fa.data[0].get('youshiki_exclude_enabled'))
+    except Exception:
+        return False
+
+
+def _youshiki_excluded_set(supabase, f_code, year, month):
+    """当月の除外指定 (_ys_norm(staff_name), 'YYYY-MM-DD') の集合を返す。"""
+    s = set()
+    try:
+        _st = f"{year:04d}-{month:02d}-01"
+        _en = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+        r = (supabase.table('youshiki_excluded_days').select('staff_name,work_date')
+             .eq('facility_code', f_code).gte('work_date', _st).lt('work_date', _en).execute())
+        for x in (r.data or []):
+            s.add((_ys_norm(x.get('staff_name')), str(x.get('work_date'))))
+    except Exception as e:
+        print(f"_youshiki_excluded_set error: {e}", flush=True)
+    return s
+
+
+@app.route("/api/timecard/youshiki_exclude/toggle", methods=["POST"])  # youshiki-exclude-v1
+@login_required
+def api_youshiki_exclude_toggle():
+    """個別の日を様式（実績）に出す/出さないを切り替え。管理者＋機能ON施設のみ。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        if not _youshiki_exclude_enabled(supabase, f_code):
+            return jsonify({"status": "error", "message": "この機能は無効です"}), 403
+        data = request.json or {}
+        staff_name = (data.get("staff_name") or "").strip()
+        date = (data.get("date") or "").strip()
+        exclude = bool(data.get("exclude", False))
+        if not staff_name or not date:
+            return jsonify({"status": "error", "message": "staff_name/date が必要です"}), 400
+        if exclude:
+            supabase.table("youshiki_excluded_days").upsert({
+                "facility_code": f_code, "staff_name": staff_name, "work_date": date,
+            }, on_conflict="facility_code,staff_name,work_date").execute()
+        else:
+            (supabase.table("youshiki_excluded_days").delete()
+             .eq("facility_code", f_code).eq("staff_name", staff_name)
+             .eq("work_date", date).execute())
+        return jsonify({"status": "success", "excluded": exclude})
+    except Exception as e:
+        print(f"api_youshiki_exclude_toggle error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/timecard/day_type/set", methods=["POST"])  # youshiki-daytype-v1
+@login_required
+def api_timecard_day_type_set():
+    """個別の日の型（1日型/半日型）を手動指定。'auto'で指定解除。管理者限定。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.json or {}
+        staff_name = (data.get("staff_name") or "").strip()
+        date = (data.get("date") or "").strip()
+        day_type = (data.get("day_type") or "").strip()  # 'full' | 'half' | 'auto'
+        if not staff_name or not date:
+            return jsonify({"status": "error", "message": "staff_name/date が必要です"}), 400
+        if day_type in ("auto", "", "none"):
+            (supabase.table("youshiki_day_type").delete()
+             .eq("facility_code", f_code).eq("staff_name", staff_name)
+             .eq("work_date", date).execute())
+            return jsonify({"status": "success", "day_type": None})
+        if day_type not in ("full", "half"):
+            return jsonify({"status": "error", "message": "day_type が不正です"}), 400
+        supabase.table("youshiki_day_type").upsert({
+            "facility_code": f_code, "staff_name": staff_name,
+            "work_date": date, "day_type": day_type,
+        }, on_conflict="facility_code,staff_name,work_date").execute()
+        return jsonify({"status": "success", "day_type": day_type})
+    except Exception as e:
+        print(f"api_timecard_day_type_set error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/admin/timecard/monthly", methods=["GET"])
 @login_required
 def admin_timecard_monthly():
@@ -16876,8 +17194,41 @@ def admin_timecard_monthly():
 
         # timecard-leave-grid-v1: 休み申告を日次にマージ
         _tc_merge_leaves_into_monthly(supabase, f_code, year, month, result)
+
+        # youshiki-exclude-v1: 様式除外機能がON施設なら、各日に excluded を付与
+        yx_enabled = _youshiki_exclude_enabled(supabase, f_code)
+        if yx_enabled:
+            yx_set = _youshiki_excluded_set(supabase, f_code, year, month)
+            for s0 in result:
+                _nn = _ys_norm(s0.get("name"))
+                for d0 in s0.get("days", []):
+                    d0["excluded"] = (_nn, str(d0.get("date"))) in yx_set
+
+        # youshiki-daytype-v1: 各日に型情報（手動指定・自動判定結果）を付与
+        _dt_cfg = _tc_get_config(supabase, f_code)
+        _dt_staff_def = _ys_staff_default_types(supabase, f_code)
+        _dt_plan = _ys_plan_day_types(supabase, f_code, year, month)
+        _dt_manual = _ys_manual_day_types(supabase, f_code, year, month)
+        for s0 in result:
+            _nn = _ys_norm(s0.get("name"))
+            for d0 in s0.get("days", []):
+                _ds = str(d0.get("date"))
+                try:
+                    _pp = _ds.split("-")
+                    _dd = _ys_date(int(_pp[0]), int(_pp[1]), int(_pp[2]))
+                    _wt = _ys_weekday_rule_type(_dt_cfg, _dd)
+                except Exception:
+                    _wt = "none"
+                _rtype, _unres = _ys_resolve_day_type(
+                    _nn, _ds, _wt, _dt_manual, _dt_plan, _dt_staff_def)
+                d0["day_type"] = _dt_manual.get((_nn, _ds))  # 手動指定(なければnull=自動)
+                d0["day_type_resolved"] = _rtype             # 実際に使われる型 full/half/None
+                d0["day_type_unresolved"] = _unres           # both未指定ならTrue
+
         return jsonify({"status": "success", "year": year, "month": month,
-                        "staff": result})
+                        "staff": result,
+                        "youshiki_exclude_enabled": yx_enabled,
+                        "youshiki_daytype_enabled": True})
     except Exception as e:
         print(f"admin_timecard_monthly error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -17584,6 +17935,10 @@ _TC_CONFIG_DEFAULT = {
     ],
     "half_slot_hours": 4,                     # 半日型 1枠の時間
     "full_slot_hours": 8,                     # 1日型 1枠の時間
+    # youshiki-daytype-v1: 曜日→型ルール。月火水木金土日の7要素。
+    #   'full'=1日型 / 'half'=半日型 / 'both'=両方同時稼働(個別指定で振り分け) / 'none'=様式に出さない
+    #   既定は現行のハードコード踏襲: 日=1日型, 月〜金=半日型, 土=なし
+    "day_type_rule": ["half", "half", "half", "half", "half", "none", "full"],
     "role_splits": [],                        # 兼務: [{"name":職員名,"roles":[{"title":役職,"ratio":0.5},...]}]
     # pay-config-default-v1: 給与/残業計算用(社労士向け出力)。施設別に上書き可。
     "work_system": "standard",                # standard=通常制 / monthly_variable / yearly_variable(後者は将来枠)
@@ -17741,6 +18096,13 @@ def admin_timecard_config_save():
         if isinstance(_pc, int) and (_pc == 0 or 1 <= _pc <= 28):
             cfg["closing_day"] = _pc
 
+        # youshiki-daytype-v1: 曜日→型ルール(7要素 月〜日)
+        _dtr = data.get("day_type_rule")
+        if isinstance(_dtr, list) and len(_dtr) == 7:
+            _valid = {"full", "half", "both", "none"}
+            _clean_dtr = [(str(x).strip() if str(x).strip() in _valid else "none") for x in _dtr]
+            cfg["day_type_rule"] = _clean_dtr
+
         value_json = _tcfg_json.dumps(cfg, ensure_ascii=False)
         existing = supabase.table("admin_settings").select("id").eq(
             "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
@@ -17837,6 +18199,88 @@ def _ys_build_row_map(ws):
     return m
 
 
+# youshiki-daytype-v1: 1日型/半日型の判定
+def _ys_month_bounds(year, month):
+    _st = f"{year:04d}-{month:02d}-01"
+    _en = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+    return _st, _en
+
+
+def _ys_staff_default_types(supabase, f_code):
+    """{_ys_norm(name): 'full'|'half'} 職員ごとの既定の型。未設定は含めない。"""
+    m = {}
+    try:
+        r = supabase.table("staffs").select("name,youshiki_default_type").eq(
+            "facility_code", f_code).execute()
+        for x in (r.data or []):
+            v = (x.get("youshiki_default_type") or "").strip()
+            if v in ("full", "half"):
+                m[_ys_norm(x.get("name"))] = v
+    except Exception as e:
+        print(f"_ys_staff_default_types error: {e}", flush=True)
+    return m
+
+
+def _ys_manual_day_types(supabase, f_code, year, month):
+    """勤怠集計で手動指定した型 {(_ys_norm(name),'YYYY-MM-DD'): 'full'|'half'}。"""
+    m = {}
+    try:
+        _st, _en = _ys_month_bounds(year, month)
+        r = supabase.table("youshiki_day_type").select("staff_name,work_date,day_type").eq(
+            "facility_code", f_code).gte("work_date", _st).lt("work_date", _en).execute()
+        for x in (r.data or []):
+            v = (x.get("day_type") or "").strip()
+            if v in ("full", "half"):
+                m[(_ys_norm(x.get("staff_name")), str(x.get("work_date")))] = v
+    except Exception as e:
+        print(f"_ys_manual_day_types error: {e}", flush=True)
+    return m
+
+
+def _ys_plan_day_types(supabase, f_code, year, month):
+    """予定(staff_shift_plan)のシフト個別指定の型 {(_ys_norm(name),'YYYY-MM-DD'): 'full'|'half'}。"""
+    m = {}
+    try:
+        _st, _en = _ys_month_bounds(year, month)
+        r = supabase.table("staff_shift_plan").select("staff_name,plan_date,day_type").eq(
+            "facility_code", f_code).gte("plan_date", _st).lt("plan_date", _en).execute()
+        for x in (r.data or []):
+            v = (x.get("day_type") or "").strip()
+            if v in ("full", "half"):
+                m[(_ys_norm(x.get("staff_name")), str(x.get("plan_date")))] = v
+    except Exception as e:
+        print(f"_ys_plan_day_types error: {e}", flush=True)
+    return m
+
+
+def _ys_weekday_rule_type(cfg, d):
+    """曜日ルールの型。'full'|'half'|'both'|'none'。"""
+    rule = cfg.get("day_type_rule")
+    if not (isinstance(rule, list) and len(rule) == 7):
+        rule = _TC_CONFIG_DEFAULT["day_type_rule"]
+    v = rule[d.weekday()]
+    return v if v in ("full", "half", "both", "none") else "none"
+
+
+def _ys_resolve_day_type(name_norm, ds, wd_type, manual, plan_types, staff_def):
+    """(職員,日)の型を優先順位で決める。
+       返り値: (type or None, unresolved)
+       優先: ①手動(実績のみ渡す) ②予定の型(実績=継承/予定=個別指定) ③職員既定 ④曜日ルール
+       曜日ルールが'both'で①〜③どれも無い → (None, True) 警告対象。'none' → (None, False)出さない。"""
+    key = (name_norm, ds)
+    if key in manual:
+        return manual[key], False
+    if key in plan_types:
+        return plan_types[key], False
+    if name_norm in staff_def:
+        return staff_def[name_norm], False
+    if wd_type in ("full", "half"):
+        return wd_type, False
+    if wd_type == "none":
+        return None, False
+    return None, True  # both かつ未指定
+
+
 @app.route("/admin/timecard/youshiki", methods=["GET"])
 @login_required
 def admin_timecard_youshiki():
@@ -17856,6 +18300,7 @@ def admin_timecard_youshiki():
             year, month = now.year, now.month
         if not (1 <= month <= 12):
             return jsonify({"status": "error", "message": "月が不正です。"}), 400
+        is_yotei = (request.args.get("mode") == "yotei")  # kinmu-yotei-v1: 勤務予定の様式出力
         if not _ys_os.path.exists(_YS_TEMPLATE):
             return jsonify({"status": "error", "message": "様式テンプレートが見つかりません。"}), 500
 
@@ -17871,43 +18316,74 @@ def admin_timecard_youshiki():
             split_by_name[_ys_norm(it.get("name"))] = {
                 _ys_norm(r.get("title")): r.get("ratio", 0) for r in it.get("roles", [])}
 
-        # 月の打刻を取得(1〜28日)
-        start_iso, end_iso = _tc_month_range_jst(year, month)
-        res = supabase.table("timecard_records").select("*").eq(
-            "facility_code", f_code).eq("is_deleted", False).gte(
-            "punched_at", start_iso).lt("punched_at", end_iso).order(
-            "punched_at", desc=False).execute()
-        rows = res.data or []
+        # youshiki-daytype-v1: 型判定用のマップを用意（曜日ルール＋職員既定＋予定/手動指定）
+        _dt_staff_def = _ys_staff_default_types(supabase, f_code)
+        _dt_plan = _ys_plan_day_types(supabase, f_code, year, month)
+        # 手動指定(youshiki_day_type)は実績のみ適用。予定出力では使わない。
+        _dt_manual = {} if is_yotei else _ys_manual_day_types(supabase, f_code, year, month)
+        _dt_unresolved = set()  # (name, ds) 曜日ルール'both'で型が決まらなかった日（警告用）
+
         # (name, 'YYYY-MM-DD') -> [(type, minute)]
         punches_map = {}
-        for r in rows:
-            at = _tc_parse_iso(r.get("punched_at"))
-            if at is None:
-                continue
-            at_jst = at.astimezone(_TC_JST)
-            ds = at_jst.strftime("%Y-%m-%d")
-            key = (_ys_norm(r.get("staff_name")), ds)
-            punches_map.setdefault(key, []).append(
-                (r.get("punch_type"), at_jst.hour * 60 + at_jst.minute))
+        if is_yotei:
+            # kinmu-yotei-v1: 勤務予定の work日を in/out 打刻として合成（既存の様式ロジックを再利用）
+            _pm_start = f"{year:04d}-{month:02d}-01"
+            _pm_end = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+            pres = supabase.table("staff_shift_plan").select("*").eq(
+                "facility_code", f_code).gte("plan_date", _pm_start).lt(
+                "plan_date", _pm_end).execute()
+            for r in (pres.data or []):
+                if (r.get("status") or "") != "work":
+                    continue
+                sm = _ys_hm(r.get("start_time")); em = _ys_hm(r.get("end_time"))
+                if sm is None or em is None or em <= sm:
+                    continue
+                ds = str(r.get("plan_date"))
+                key = (_ys_norm(r.get("staff_name")), ds)
+                punches_map.setdefault(key, []).append(("in", sm))
+                punches_map[key].append(("out", em))
+        else:
+            # 月の打刻を取得(1〜28日)
+            start_iso, end_iso = _tc_month_range_jst(year, month)
+            res = supabase.table("timecard_records").select("*").eq(
+                "facility_code", f_code).eq("is_deleted", False).gte(
+                "punched_at", start_iso).lt("punched_at", end_iso).order(
+                "punched_at", desc=False).execute()
+            rows = res.data or []
+            # youshiki-exclude-v1: 「様式に出さない」指定の (職員, 日付) を除外
+            _yx_set = _youshiki_excluded_set(supabase, f_code, year, month) \
+                if _youshiki_exclude_enabled(supabase, f_code) else set()
+            for r in rows:
+                at = _tc_parse_iso(r.get("punched_at"))
+                if at is None:
+                    continue
+                at_jst = at.astimezone(_TC_JST)
+                ds = at_jst.strftime("%Y-%m-%d")
+                key = (_ys_norm(r.get("staff_name")), ds)
+                if key in _yx_set:  # youshiki-exclude-v1: 除外日はスキップ
+                    continue
+                punches_map.setdefault(key, []).append(
+                    (r.get("punch_type"), at_jst.hour * 60 + at_jst.minute))
         for k in punches_map:
             punches_map[k].sort(key=lambda x: x[1])
 
-        # 休暇を取得
-        lstart = f"{year:04d}-{month:02d}-01"
-        lend = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
-        lres = supabase.table("staff_leave_days").select("*").eq(
-            "facility_code", f_code).gte("leave_date", lstart).lt(
-            "leave_date", lend).execute()
+        # 休暇を取得（予定出力では使わない）
         leaves_map = {}
         note_rows = []  # timecard-leave-note-v1: 備考一覧（表の下に出す）
-        for r in (lres.data or []):
-            leaves_map[(_ys_norm(r.get("staff_name")), r.get("leave_date"))] = r.get("leave_type")
-            _nt = (r.get("note") or "").strip()
-            if _nt:
-                _lt = _LEAVE_TYPES.get(r.get("leave_type"))
-                _lbl = _lt["label"] if _lt else (r.get("leave_type") or "")
-                note_rows.append((r.get("leave_date"), r.get("staff_name"), _lbl, _nt, r.get("substitute_for")))
-        note_rows.sort(key=lambda x: (x[0] or "", x[1] or ""))
+        if not is_yotei:
+            lstart = f"{year:04d}-{month:02d}-01"
+            lend = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+            lres = supabase.table("staff_leave_days").select("*").eq(
+                "facility_code", f_code).gte("leave_date", lstart).lt(
+                "leave_date", lend).execute()
+            for r in (lres.data or []):
+                leaves_map[(_ys_norm(r.get("staff_name")), r.get("leave_date"))] = r.get("leave_type")
+                _nt = (r.get("note") or "").strip()
+                if _nt:
+                    _lt = _LEAVE_TYPES.get(r.get("leave_type"))
+                    _lbl = _lt["label"] if _lt else (r.get("leave_type") or "")
+                    note_rows.append((r.get("leave_date"), r.get("staff_name"), _lbl, _nt, r.get("substitute_for")))
+            note_rows.sort(key=lambda x: (x[0] or "", x[1] or ""))
 
         import openpyxl as _ys_xl
         from openpyxl.styles import Font as _YS_Font
@@ -17933,7 +18409,7 @@ def admin_timecard_youshiki():
                     _v = _cell.value
                     if not isinstance(_v, str):
                         continue
-                    if "予定" in _v:
+                    if (not is_yotei) and "予定" in _v:
                         _v = _v.replace("予定", "実績")
                     # 月表記「（令和X年Y月分）」を出力年月に置換
                     import re as _ys_re2
@@ -17944,13 +18420,24 @@ def admin_timecard_youshiki():
         # youshiki-d8-fix-v1: D8(起点日付)を出力対象月の1日で全シート上書き。
         #   -> E8以降の=D8+1 と D9以降の=TEXT(D8,"aaa") が日付・曜日とも自動追従。
         #   テンプレ固定値(12月始まり)によるズレを根絶する。
-        _ys_d1 = _ys_date(year, month, 1)
+        import calendar as _ys_cal
+        _ys_wd = ["月", "火", "水", "木", "金", "土", "日"]  # 月火水木金土日
+        _ys_ndays = _ys_cal.monthrange(year, month)[1]
         for _sn2 in wb.sheetnames:
             _ws2 = wb[_sn2]
-            _ws2["D8"] = _ys_d1
+            # youshiki-date-explicit-v1: 日付(行8)・曜日(行9)を明示値で書き込む
+            #   （openpyxlは =D8+1 / =TEXT(..,"aaa") を再計算しないため空欄になるのを防ぐ）
+            for _day in range(1, 29):
+                if _day > _ys_ndays:
+                    break
+                _c = 4 + (_day - 1)
+                _dd = _ys_date(year, month, _day)
+                _ws2.cell(row=8, column=_c).value = _dd
+                _ws2.cell(row=9, column=_c).value = _ys_wd[_dd.weekday()]
             # 1日型はタイトルが M2/Q2 に分裂しているため明示的に統一する
-            if isinstance(_ws2["Q2"].value, str) and "\u5b9f\u7e3e" in _ws2["Q2"].value:
-                _ws2["M2"] = "\u52e4\u52d9\u5b9f\u7e3e" + _ys_month_str
+            _ys_lbl = "\u4e88\u5b9a" if is_yotei else "\u5b9f\u7e3e"
+            if isinstance(_ws2["Q2"].value, str) and _ys_lbl in _ws2["Q2"].value:
+                _ws2["M2"] = "\u52e4\u52d9" + _ys_lbl + _ys_month_str
                 _ws2["Q2"] = None
 
         for sheet_name, is_full in ((_YS_SHEET_HALF, False), (_YS_SHEET_FULL, True)):
@@ -17959,22 +18446,29 @@ def admin_timecard_youshiki():
             ws = wb[sheet_name]
             rowmap = _ys_build_row_map(ws)
             cap = full_cap if is_full else half_cap
+            sheet_type = "full" if is_full else "half"
             for day in range(1, 29):
                 try:
                     d = _ys_date(year, month, day)
                 except ValueError:
                     break
-                wd = d.weekday()  # 月=0..日=6
-                # 御社運用: 半日型=平日(月〜金), 1日型=日曜。土曜は空欄。
-                if is_full and wd != 6:
-                    continue
-                if (not is_full) and wd >= 5:
-                    continue
+                # youshiki-daytype-v1: 曜日ルール＋個別指定で型を決め、一致するシートにだけ書く
+                #   （半日型と1日型は必ず別シート。同一シートに混在させない）
+                wd_type = _ys_weekday_rule_type(cfg, d)
                 col = 4 + (day - 1)
                 ds = f"{year:04d}-{month:02d}-{day:02d}"
                 for name, occurs in rowmap.items():
                     leave = leaves_map.get((name, ds))
                     punches = punches_map.get((name, ds))
+                    rtype, _dt_unres = _ys_resolve_day_type(
+                        name, ds, wd_type, _dt_manual, _dt_plan, _dt_staff_def)
+                    if _dt_unres:
+                        # 曜日ルール'both'で型が決まらない：実働/休暇がある日だけ警告に記録
+                        if punches or leave:
+                            _dt_unresolved.add((name, ds))
+                        continue
+                    if rtype != sheet_type:
+                        continue  # このシートの型と違う日は書かない
                     iv = _ys_to_intervals(punches) if punches else []
                     if is_full:
                         slots = [_ys_slot_value(_ys_side_minutes(iv, 0, 24 * 60), cap)] if punches else [None]
@@ -17997,6 +18491,27 @@ def admin_timecard_youshiki():
                         if sp and title in sp:
                             val = round(val * sp[title] * 2) / 2
                         _ys_set_cell(ws.cell(row=row, column=col), val, False)
+
+        # youshiki-daytype-v1: 曜日ルール'both'で型が決まらなかった日を警告として明示（黙って落とさない）
+        if _dt_unresolved:
+            from openpyxl.styles import Font as _WFont, PatternFill as _WFill
+            _wf = _WFont(name="MS PGothic", size=11, bold=True, color="FFCC0000")
+            _wfill = _WFill(fill_type="solid", fgColor="FFFFF2CC")
+            _wlist = sorted(_dt_unresolved, key=lambda x: (x[1], x[0]))
+            for _ns in (_YS_SHEET_HALF, _YS_SHEET_FULL):
+                if _ns not in wb.sheetnames:
+                    continue
+                _wsn = wb[_ns]
+                _wr = _wsn.max_row + 3
+                _wc = _wsn.cell(row=_wr, column=1,
+                                value="⚠ 区分（1日型/半日型）が未指定の日があります。勤怠集計で型を指定してください。")
+                _wc.font = _wf
+                for _cc in range(1, 6):
+                    _wsn.cell(row=_wr, column=_cc).fill = _wfill
+                for (_un, _uds) in _wlist:
+                    _wr += 1
+                    _wsn.cell(row=_wr, column=1, value=_uds)
+                    _wsn.cell(row=_wr, column=2, value=_un)
 
         # timecard-leave-note-v1 / prominent-v2: 表の下に「備考一覧」を追記（様式本体は崩さない）。
         # 様式の下部には長い説明文があり見落としやすいので、赤字・太字・区切り線で目立たせる。
@@ -18033,7 +18548,7 @@ def admin_timecard_youshiki():
         wb.save(buf)
         buf.seek(0)
         from flask import send_file as _ys_send
-        fname = f"kinmu_{year}{month:02d}.xlsx"
+        fname = f"kinmu_{'yotei' if is_yotei else 'jisseki'}_{year}{month:02d}.xlsx"
         return _ys_send(buf, as_attachment=True, download_name=fname,
                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     except Exception as e:
