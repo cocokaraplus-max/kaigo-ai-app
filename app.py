@@ -29587,6 +29587,93 @@ def api_meeting_audio_cleanup():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/meeting/audio_list", methods=["GET"])
+@login_required
+def api_meeting_audio_list():
+    """保存済み録音セッションを一覧（会議タイトル・日時・サイズ付き）。整理UI用。"""
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        labelmap = {}
+        try:
+            mr = supabase.table("meetings").select("audio_session_id,title,meeting_date").eq("facility_code", f_code).execute()
+            for m in (mr.data or []):
+                sid = (m.get("audio_session_id") or "")
+                if sid:
+                    labelmap[sid] = {"title": m.get("title") or "", "date": m.get("meeting_date") or ""}
+        except Exception as _le:
+            print(f"[meeting] audio_list label fetch failed: {_le}", flush=True)
+        area_label = {"meetings": "担当者会議", "staff_minutes": "勉強会・会議"}
+        items = []
+        for area in _MTG_AUDIO_AREAS:
+            for z in _mtg_list_sessions(supabase, f_code, area):
+                lm = labelmap.get(z["session_id"], {})
+                items.append({
+                    "area": area,
+                    "area_label": area_label.get(area, area),
+                    "session_id": z["session_id"],
+                    "chunks": z.get("chunks", 0),
+                    "bytes": z.get("bytes", 0),
+                    "latest": z.get("latest", ""),
+                    "title": lm.get("title", ""),
+                    "date": lm.get("date", ""),
+                })
+        items.sort(key=lambda z: (z.get("latest") or ""), reverse=True)
+        return jsonify({"status": "success", "keep": _MTG_AUDIO_KEEP, "items": items})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/meeting/audio_delete", methods=["POST"])
+@login_required
+def api_meeting_audio_delete():
+    """選択した録音セッションの音声を削除（管理者のみ）。議事録テキストは残す。"""
+    import re as _re_ad
+    ok, f_code, my_name = _meetings_gate_ok()
+    if not ok:
+        return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
+    try:
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error", "message": "管理者のみ実行できます"}), 403
+        data = request.get_json(silent=True) or {}
+        targets = data.get("items") or []
+        if not isinstance(targets, list) or not targets:
+            return jsonify({"status": "error", "message": "削除対象が指定されていません"}), 400
+        deleted = 0
+        freed = 0
+        for t in targets:
+            if not isinstance(t, dict):
+                continue
+            area = t.get("area")
+            sid = _re_ad.sub(r"[^0-9a-zA-Z\-]", "", (t.get("session_id") or ""))[:64]
+            if area not in _MTG_AUDIO_AREAS or not sid:
+                continue
+            base = f"{f_code}/{area}/{sid}"
+            try:
+                files = supabase.storage.from_("assessment-audio").list(base) or []
+            except Exception:
+                files = []
+            paths = [f"{base}/{x.get('name')}" for x in files if x.get("name")]
+            if not paths:
+                continue
+            try:
+                for x in files:
+                    try:
+                        freed += int((x.get("metadata") or {}).get("size") or 0)
+                    except Exception:
+                        pass
+                supabase.storage.from_("assessment-audio").remove(paths)
+                deleted += 1
+            except Exception as _de:
+                print(f"[meeting] audio delete failed {area}/{sid}: {_de}", flush=True)
+        return jsonify({"status": "success", "deleted": deleted, "freed_bytes": freed})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/api/meeting/recover_transcribe", methods=["POST"])
 @login_required
 def api_meeting_recover_transcribe():

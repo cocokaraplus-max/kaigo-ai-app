@@ -279,6 +279,23 @@
       </div>
     </div>
 
+    <!-- meetings-audio-manage-v1: 保存録音を選んで削除する整理モーダル -->
+    <div id="mtgAudioBack" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;align-items:center;justify-content:center;padding:16px;">
+      <div style="background:#fff;width:100%;max-width:460px;max-height:82vh;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.28);">
+        <div style="padding:14px 16px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px;">
+          <span class="material-symbols-outlined" style="color:#2f6b5e;">cleaning_services</span>
+          <b style="flex:1;font-size:1rem;">保存録音の整理</b>
+          <button type="button" onclick="mtgCloseAudioManage()" style="background:none;border:0;font-size:1.4rem;color:#888;cursor:pointer;line-height:1;padding:0 4px;">×</button>
+        </div>
+        <div style="padding:9px 14px;font-size:.79rem;color:#8a8f8c;border-bottom:1px solid #f2f2f2;line-height:1.5;">削除したい録音にチェックを入れて「削除」を押してください。議事録・文字起こしのテキストは消えません（音声ファイルのみ削除）。</div>
+        <div id="mtgAudioList" style="flex:1;overflow-y:auto;min-height:80px;"></div>
+        <div style="padding:12px 14px;border-top:1px solid #eee;display:flex;gap:10px;">
+          <button type="button" onclick="mtgCloseAudioManage()" style="flex:0 0 auto;background:#eee;color:#555;border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer;">閉じる</button>
+          <button type="button" id="mtgAudioDelBtn" onclick="mtgAudioDeleteSelected()" disabled style="flex:1;background:#c0392b;color:#fff;border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer;opacity:1;">選択した音声を削除</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ステップ2: 文字起こし -->
     <div class="mtg-card">
       <h3><span class="material-symbols-outlined">subject</span>文字起こし</h3>
@@ -612,21 +629,64 @@ async function mtgPdf(type, style) {
 // ===== 録音(チャンク分割) =====
 const MTG_CHUNK_MS = 5 * 60 * 1000; // 5分ごとに区切る
 
-// meetings-audio-retention-v1: 古い会議音声を整理(最新5件を残して削除)。押した時だけ実行。
+// meetings-audio-manage-v1: 保存録音を一覧表示し、選んで削除できる整理モーダル。
 async function mtgCleanupAudio() {
-  const btn = document.getElementById('mtgCleanupBtn');
+  var back = document.getElementById('mtgAudioBack');
+  if (back) back.style.display = 'flex';
+  await mtgAudioReload();
+}
+function mtgCloseAudioManage() {
+  var b = document.getElementById('mtgAudioBack');
+  if (b) b.style.display = 'none';
+}
+function mtgEsc(s) {
+  return (s || '').replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; });
+}
+async function mtgAudioReload() {
+  var listEl = document.getElementById('mtgAudioList');
+  if (listEl) listEl.innerHTML = '<div style="padding:16px;color:#888;text-align:center;">読み込み中…</div>';
   try {
-    const st = await (await fetch('/api/meeting/audio_stats')).json();
-    if (st.status !== 'success') { alert(st.message || '取得に失敗しました'); return; }
-    if (!st.deletable_count) { alert('整理対象の古い音声はありません（現在' + st.count + '件、最新' + (st.keep || 5) + '件は保持）。'); return; }
-    const mb = (st.deletable_bytes / 1048576).toFixed(0);
-    if (!confirm('最新' + (st.keep || 5) + '会議分を残し、古い音声 ' + st.deletable_count + '件（約' + mb + 'MB）を削除します。よろしいですか？\n※議事録・文字起こしのテキストは残ります。音声ファイルのみ削除します。')) return;
-    if (btn) btn.disabled = true;
-    const r = await (await fetch('/api/meeting/audio_cleanup', { method: 'POST' })).json();
-    if (r.status === 'success') { alert(r.deleted_sessions + '件の音声を削除しました（約' + (r.freed_bytes / 1048576).toFixed(0) + 'MB）。'); }
-    else { alert(r.message || '整理に失敗しました'); }
-  } catch (e) { alert('通信エラーが発生しました'); }
-  finally { if (btn) btn.disabled = false; }
+    var d = await (await fetch('/api/meeting/audio_list')).json();
+    if (d.status !== 'success') { if (listEl) listEl.innerHTML = '<div style="padding:16px;color:#c0392b;">取得に失敗: ' + mtgEsc(d.message || '') + '</div>'; return; }
+    var items = d.items || [];
+    if (!items.length) { if (listEl) listEl.innerHTML = '<div style="padding:20px;color:#888;text-align:center;">保存されている録音はありません。</div>'; mtgAudioUpdateCount(); return; }
+    var html = '';
+    items.forEach(function(it) {
+      var mb = (it.bytes / 1048576).toFixed(1);
+      var dt = it.date || (it.latest ? String(it.latest).slice(0,10) : '');
+      var name = it.title ? it.title : '（未保存の録音）';
+      html += '<label style="display:flex;gap:10px;align-items:flex-start;padding:11px 14px;border-bottom:1px solid #eee;cursor:pointer;">'
+        + '<input type="checkbox" class="mtg-audio-chk" onchange="mtgAudioUpdateCount()" data-area="' + mtgEsc(it.area) + '" data-sid="' + mtgEsc(it.session_id) + '" style="margin-top:3px;width:18px;height:18px;flex:0 0 auto;">'
+        + '<span style="flex:1;min-width:0;">'
+        + '<span style="font-weight:700;color:#2f3b38;display:block;">' + mtgEsc(name) + '</span>'
+        + '<span style="font-size:.78rem;color:#8a8f8c;">' + mtgEsc(it.area_label || '') + '・' + mtgEsc(dt || '日付不明') + '・' + (it.chunks||0) + '区間・' + mb + 'MB</span>'
+        + '</span></label>';
+    });
+    if (listEl) listEl.innerHTML = html;
+    mtgAudioUpdateCount();
+  } catch (e) { if (listEl) listEl.innerHTML = '<div style="padding:16px;color:#c0392b;">通信エラー</div>'; }
+}
+function mtgAudioSelected() {
+  return Array.prototype.slice.call(document.querySelectorAll('.mtg-audio-chk:checked')).map(function(c){
+    return { area: c.getAttribute('data-area'), session_id: c.getAttribute('data-sid') };
+  });
+}
+function mtgAudioUpdateCount() {
+  var n = document.querySelectorAll('.mtg-audio-chk:checked').length;
+  var b = document.getElementById('mtgAudioDelBtn');
+  if (b) { b.textContent = n ? ('選択した' + n + '件を削除') : '選択した音声を削除'; b.disabled = !n; }
+}
+async function mtgAudioDeleteSelected() {
+  var sel = mtgAudioSelected();
+  if (!sel.length) { alert('削除する録音を選んでください。'); return; }
+  if (!confirm(sel.length + '件の録音音声を削除します。よろしいですか？\n※議事録・文字起こしのテキストは残ります。音声のみ削除します。')) return;
+  var b = document.getElementById('mtgAudioDelBtn');
+  if (b) b.disabled = true;
+  try {
+    var d = await (await fetch('/api/meeting/audio_delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ items: sel }) })).json();
+    if (d.status === 'success') { alert(d.deleted + '件を削除しました（約' + ((d.freed_bytes||0) / 1048576).toFixed(0) + 'MB）。'); await mtgAudioReload(); }
+    else { alert(d.message || '削除に失敗しました'); if (b) b.disabled = false; }
+  } catch (e) { alert('通信エラー'); if (b) b.disabled = false; }
 }
 
 async function mtgToggleRec() {
