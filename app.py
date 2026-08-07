@@ -2876,6 +2876,8 @@ def register():
 #     体験中(in_trial)は上位機能も開放しつつ badge を付ける。トライアル外の強制は将来対応(enforcement)。
 MENU_ITEMS = [   # top-grid-v1
     {"href": "/input",          "icon": "edit_note",              "label": "記録入力",       "need": None},
+    {"href": "/fmb",            "icon": "health_and_safety",      "label": "防災",           "need": None},  # fmb-tile-v1
+    {"href": "/kyukyu",         "icon": "medical_services",       "label": "救急",           "need": None},  # kyukyu-v1
     {"href": "/daily_view",     "icon": "calendar_month",         "label": "ケース記録",     "need": None},
     # record-check-v1: 記録充足チェックは「ケース記録」の上のタブから入る導線に一本化した。
     # アイコンを別に立てると入口が2つになり、メニューも増える。タブだけ残す。
@@ -3511,6 +3513,7 @@ def input_view():
         sel = request.form.get("patient", "")
         record_date = request.form.get("record_date", today)
         content = request.form.get("content", "").strip()
+        client_uid_val = (request.form.get("client_uid", "") or "").strip()  # offline-dedup-v1
         photos = request.files.getlist("photos")
 
         _cat_for_check = request.form.get("category", "")
@@ -3615,8 +3618,17 @@ def input_view():
                             content = _build_extra_content(_periodx, extra_reason_val)
                         except Exception as _cex2:
                             print(f"[追加利用連絡content生成エラー] {_cex2}", flush=True)
+                    # offline-dedup-v1: 同じ client_uid が既に登録済みなら二重登録しない（オフライン再送対策）
+                    if client_uid_val:
+                        try:
+                            _dup = supabase.table("records").select("id").eq("facility_code", f_code).eq("client_uid", client_uid_val).limit(1).execute()
+                            if _dup.data:
+                                return jsonify({"status": "success", "id": _dup.data[0]["id"], "duplicate": True})
+                        except Exception as _de:
+                            print(f"[input dedup] {_de}", flush=True)
                     insert_res = supabase.table("records").insert({
                         "facility_code": f_code,
+                        "client_uid": client_uid_val or None,
                         "chart_number": m.group(1),
                         "user_name": m.group(2),
                         "staff_name": my_name,
@@ -5994,8 +6006,19 @@ def api_add_vital():
         if not data.get("patient_id") or not data.get("measured_date"):
             return jsonify({"status": "error", "message": "patient_idとmeasured_dateは必須です"}), 400
 
+        # offline-dedup-v1: 同じ client_uid が既に登録済みなら二重登録しない（オフライン再送対策）
+        _cuid = (data.get("client_uid") or "").strip()
+        if _cuid:
+            try:
+                _dup = supabase.table("vitals").select("id").eq("facility_code", f_code).eq("client_uid", _cuid).limit(1).execute()
+                if _dup.data:
+                    return jsonify({"status": "success", "id": _dup.data[0]["id"], "duplicate": True})
+            except Exception as _de:
+                print(f"[add_vital dedup] {_de}", flush=True)
+
         payload = {
             "facility_code": f_code,
+            "client_uid": _cuid or None,
             "patient_id": str(data.get("patient_id")),
             "user_name": data.get("user_name", ""),
             "measured_date": data.get("measured_date"),
@@ -13146,6 +13169,20 @@ def api_tts_toggle():
         return jsonify({'enabled': enabled == 'true'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/fmb')
+@login_required
+def fmb_view():
+    """災害時ファーストミッションボックス（完全オフライン）。fmb-v1"""
+    return render_template('fmb.html')
+
+
+@app.route('/kyukyu')
+@login_required
+def kyukyu_view():
+    """救急対応ボックス（JCS判定・応急対応。完全オフライン）。kyukyu-v1"""
+    return render_template('kyukyu.html')
+
 
 @app.route('/api/generate_daily_summary', methods=['POST'])
 @login_required

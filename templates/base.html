@@ -471,6 +471,15 @@ body.nav-editing {
             <div id="offline-patients" style="font-size:0.82rem;color:#5f6368;">読み込み中...</div>
         </div>
 
+        <!-- fmb-v1: 災害時ファーストミッションボックス（オフライン初動指示） -->
+        <a href="/fmb" style="display:flex;align-items:center;gap:12px;text-decoration:none;background:#c62828;color:#fff;border-radius:14px;padding:16px 18px;margin-bottom:16px;box-shadow:0 4px 12px rgba(198,40,40,.3);">
+            <span class="material-symbols-outlined" style="font-size:32px;">inventory_2</span>
+            <span style="line-height:1.4;">
+                <span style="font-size:1.05rem;font-weight:900;">ファーストミッションボックス</span><br>
+                <span style="font-size:0.76rem;opacity:.92;">3人そろったら開く。地震・火災・水害の初動を順番に指示</span>
+            </span>
+        </a>
+
         <!-- bcp-offline-v1: BCPマニュアル(オフライン保存/閲覧) -->
         <div style="margin-bottom:16px;">
             <div style="font-size:0.85rem;font-weight:700;color:#5f6368;margin-bottom:8px;">
@@ -1045,11 +1054,42 @@ body.nav-editing {
   .dw-app[data-href="/admin"] .dw-ic, .dw-app[data-href="/dev"] .dw-ic,
   .dw-app[data-href="/manual"] .dw-ic { background: #5f6368; }
   .dw-app[data-href="/birthday"] .dw-ic, .dw-app[data-href="/numerology"] .dw-ic { background: #e8710a; }
+  /* offline-nav-v1: オフライン時、オフラインでも使えるメニュー(記録入力・バイタル・カレンダー・ガイド)にオレンジ印 */
+  body.sw-offline .dw-app[data-href="/input"] .dw-ic,
+  body.sw-offline .dw-app[data-href="/vitals"] .dw-ic,
+  body.sw-offline .dw-app[data-href="/calendar"] .dw-ic,
+  body.sw-offline .dw-app[data-href="/manual"] .dw-ic { box-shadow: 0 0 0 3px #ff6f00, 0 3px 10px rgba(255,111,0,.35) !important; }
+  body.sw-offline .dw-app[data-href="/input"] .dw-ic::after,
+  body.sw-offline .dw-app[data-href="/vitals"] .dw-ic::after,
+  body.sw-offline .dw-app[data-href="/calendar"] .dw-ic::after,
+  body.sw-offline .dw-app[data-href="/manual"] .dw-ic::after { content:''; position:absolute; top:-4px; right:-4px; width:14px; height:14px; border-radius:50%; background:#ff6f00; border:2px solid #fff; z-index:4; }
+  body.sw-offline .dw-app[data-href="/input"] .dw-label,
+  body.sw-offline .dw-app[data-href="/vitals"] .dw-label,
+  body.sw-offline .dw-app[data-href="/calendar"] .dw-label,
+  body.sw-offline .dw-app[data-href="/manual"] .dw-label { color:#e65100 !important; font-weight:800; }
+  body.sw-offline .dw-app:not([data-href="/input"]):not([data-href="/vitals"]):not([data-href="/calendar"]):not([data-href="/manual"]):not([data-href="/fmb"]):not([data-href="/kyukyu"]) { opacity:0.5; }
+
+  /* fmb-tile-v1 / kyukyu-v1: 「防災」「救急」タイルを丸型＋浮遊影で目立たせる（色は既定色／個人で変更可・影は色非依存） */
+  .dw-app[data-href="/fmb"] .dw-ic,
+  .dw-app[data-href="/kyukyu"] .dw-ic {
+    border-radius: 50% !important;
+    box-shadow: 0 9px 20px rgba(16,24,40,.30), 0 2px 6px rgba(0,0,0,.14) !important;
+    transform: translateY(-3px) scale(1.06);
+  }
+  .dw-app[data-href="/fmb"]:active .dw-ic,
+  .dw-app[data-href="/kyukyu"]:active .dw-ic {
+    transform: translateY(-1px) scale(.94);
+    box-shadow: 0 3px 8px rgba(16,24,40,.28) !important;
+  }
+  .dw-app[data-href="/fmb"] .dw-label,
+  .dw-app[data-href="/kyukyu"] .dw-label { font-weight:800; }
 </style>
 
 <div id="appDrawerHandle" data-side="{{ drawer_side }}" title="メニュー">
   <span class="material-symbols-outlined">apps</span>
 </div>
+
+<!-- fmb-tile-v1: ミッションボックスはドロワーの「防災」タイルへ集約（フロートは廃止） -->
 <div id="appDrawerMask"></div>
 <div id="appDrawer" data-side="{{ drawer_side }}">
   <div class="dw-head">
@@ -1168,6 +1208,7 @@ body.nav-editing {
     dw.classList.remove('half');
     mask.classList.add('on');
     handle.classList.add('hide');               // 開いている間は取っ手を引っ込める
+    document.body.classList.add('dw-open');      // fmb-fab-v3: メニュー中はミッションボックスをフロート表示
     buzz(12);
   }
   function close() {
@@ -1176,6 +1217,7 @@ body.nav-editing {
     dw.classList.remove('half');
     mask.classList.remove('on');
     handle.classList.remove('hide');
+    document.body.classList.remove('dw-open');    // fmb-fab-v3
   }
   function isHalf() { return dw.classList.contains('half'); }
 
@@ -1553,6 +1595,8 @@ body.nav-editing {
 
   // アイコンの既定色（性格ごとの色分け）。
   function defaultColorOf(href) {
+    if (href === '/fmb') return '#e53935';   // fmb-tile-v1: 防災は既定=赤（個人で変更可）
+    if (href === '/kyukyu') return '#00897b'; // kyukyu-v1: 救急は既定=ティール（個人で変更可）
     if (href === '/tasks' || href === '/board' || href === '/admin/meetings') return '#7c4dff';
     if (href === '/ledger' || href === '/rec_expense') return '#2f6b5e';
     if (href === '/admin' || href === '/dev' || href === '/manual') return '#5f6368';
@@ -2462,9 +2506,11 @@ setTimeout(function() {
 }, 3000);
 
 if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/static/sw.js').then(function(reg){
-          console.log('[PWA] Service Worker');
-          // 
+    navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).then(function(reg){
+          console.log('[PWA] Service Worker (scope=/)');
+          // sw-scope-fix-v1: 旧 /static/ スコープの登録が残っていたら掃除（アプリ全体を新スコープ / で制御させる）
+          try { navigator.serviceWorker.getRegistrations().then(function(rs){ rs.forEach(function(r){ if (r.scope && /\/static\/$/.test(r.scope)) { try{ r.unregister(); }catch(e){} } }); }); } catch(e){}
+          //
           if ('sync' in reg) {
             reg.sync.register('sync-offline-records').catch(function(){});
           }
@@ -2496,6 +2542,7 @@ if ('serviceWorker' in navigator) {
 
 // ========== オンライン/オフライン検知 ==========
 function updateOnlineStatus() {
+    document.body.classList.toggle('sw-offline', !navigator.onLine); // offline-nav-v1: オフライン印の切替
     const banner = document.getElementById('offline-banner');
     if (!banner) return;
     if (!navigator.onLine) {
@@ -2511,6 +2558,8 @@ function updateOnlineStatus() {
 window.addEventListener('online',  updateOnlineStatus);
 window.addEventListener('offline', updateOnlineStatus);
 updateOnlineStatus();
+// offline-nav-v1: オンラインのうちに、オフラインで使うページを取得してキャッシュに温めておく（SWがv14でHTMLを実行時キャッシュする）
+window.addEventListener('load', function(){ setTimeout(function(){ if (navigator.onLine) { ['/input','/vitals','/calendar','/manual','/fmb','/kyukyu','/top'].forEach(function(u){ try{ fetch(u, {credentials:'include'}).catch(function(){}); }catch(e){} }); } }, 4500); });
 
 // ========== オフラインキャッシュ ==========
 const OFFLINE_DB = 'tasukaru-offline';
@@ -2647,42 +2696,51 @@ async function loadOfflineQueue() {
 }
 
 // ネット復帰時に未送信記録を自動同期
+// offline-dedup-v1: 再送を「1回だけ・排他的」にして重複登録を防ぐ。
+// claim-before-send＝1件ずつ「取り出して即削除→送信」。削除がロック代わりになり、
+// 別トリガー（online復帰/SW sync/機内モード切替の連発）が同じ件を二重送信できない。
+function _ssqReadd(db, item) {
+    return new Promise(resolve => {
+        try {
+            const o = {}; for (const k in item) { if (k !== 'id') o[k] = item[k]; }
+            const tx = db.transaction('queue', 'readwrite');
+            tx.objectStore('queue').add(o);
+            tx.oncomplete = resolve; tx.onerror = resolve;
+        } catch (e) { resolve(); }
+    });
+}
 async function syncOfflineQueue() {
+    if (window.__ssqRunning) return;   // 排他: 同時実行を止める
+    window.__ssqRunning = true;
+    let synced = 0;
     try {
         const db = await openOfflineDB();
-        const items = await new Promise(resolve => {
-            const list = [];
-            const tx = db.transaction('queue', 'readonly');
-            const req = tx.objectStore('queue').openCursor();
-            req.onsuccess = e => {
-                const c = e.target.result;
-                if (c) { list.push({key: c.key, data: c.value}); c.continue(); }
-                else resolve(list);
-            };
-        });
-        if (!items.length) return;
-
-        let synced = 0;
-        for (const item of items) {
+        while (true) {
+            // 1件だけ atomically に取り出して削除（claim）
+            const item = await new Promise(resolve => {
+                let picked = null;
+                const tx = db.transaction('queue', 'readwrite');
+                const store = tx.objectStore('queue');
+                const req = store.openCursor();
+                req.onsuccess = e => { const c = e.target.result; if (c) { picked = c.value; store.delete(c.key); } };
+                tx.oncomplete = () => resolve(picked);
+                tx.onerror = () => resolve(null);
+            });
+            if (!item) break;
             try {
-                const res = await fetch(item.data.url, {
-                    method: item.data.method,
-                    body: item.data.body,
-                    headers: item.data.headers
-                });
-                if (res.ok) {
-                    const tx = db.transaction('queue', 'readwrite');
-                    tx.objectStore('queue').delete(item.key);
-                    synced++;
-                }
-            } catch(e) {}
+                const res = await fetch(item.url, { method: item.method, body: item.body, headers: item.headers });
+                if (res.ok) { synced++; }
+                else if (res.status >= 500) { await _ssqReadd(db, item); break; }   // サーバ一時エラー: 戻して中断
+                // 4xx はサーバ拒否＝戻すと無限ループになるので破棄
+            } catch (e) {
+                await _ssqReadd(db, item); break;   // オフライン等: 戻して中断
+            }
         }
         if (synced > 0) {
             const banner = document.getElementById('sync-banner');
-            banner.style.display = 'block';
-            setTimeout(() => { banner.style.display = 'none'; }, 3000);
+            if (banner) { banner.style.display = 'block'; setTimeout(() => { banner.style.display = 'none'; }, 3000); }
         }
-    } catch(e) {}
+    } catch (e) {} finally { window.__ssqRunning = false; }
 }
 
 // ページ読み込み時に利用者情報をキャッシュ

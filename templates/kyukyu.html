@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% block title %}救急対応ボックス - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* kyukyu-v1: 急変・救急対応ファーストミッションボックス（完全オフライン） */
+.ky-wrap { max-width: 680px; margin: 0 auto; padding: 12px 14px 44px; position: relative; }
+.ky-screen { display: none; }
+.ky-screen.active { display: block; animation: kyIn .18s ease; }
+@keyframes kyIn { from { opacity:0; transform: translateY(6px);} to {opacity:1; transform:none;} }
+
+.ky-emblem { width: 76px; height: 76px; margin: 8px auto 16px; border-radius: 22px;
+  background: linear-gradient(135deg,#26a69a,#00695c); display:flex; align-items:center; justify-content:center;
+  box-shadow: 0 12px 26px rgba(0,105,92,.30); }
+.ky-emblem .material-symbols-outlined { font-size: 40px; color:#fff; }
+.ky-h1 { font-size: 1.3rem; font-weight: 900; color:#1f2430; text-align:center; margin: 0 0 6px; }
+.ky-lead { font-size: .9rem; color:#5f6368; text-align:center; line-height:1.7; margin-bottom: 16px; }
+.ky-warn { background:#fff3e0; border:1.5px solid #ffcc80; border-radius:12px; padding:11px 14px; color:#e65100;
+  font-size:.86rem; font-weight:700; text-align:center; line-height:1.7; margin-bottom:20px; }
+
+.ky-menu { display:grid; grid-template-columns:1fr; gap:12px; }
+.ky-mbtn { display:flex; align-items:center; gap:14px; width:100%; padding:16px 18px; border:2px solid #e0e0e0;
+  background:#fff; border-radius:14px; cursor:pointer; text-align:left; transition:.12s; }
+.ky-mbtn:active { transform:scale(.98); }
+.ky-mbtn .ic { flex:0 0 auto; width:46px; height:46px; border-radius:12px; display:flex; align-items:center; justify-content:center; color:#fff; }
+.ky-mbtn .ic .material-symbols-outlined { font-size:26px; }
+.ky-mbtn > span:last-child { display:flex; flex-direction:column; gap:3px; min-width:0; }
+.ky-mbtn .tx { display:block; font-size:1.08rem; font-weight:800; color:#202124; line-height:1.4; }
+.ky-mbtn .sub { display:block; font-size:.76rem; color:#5f6368; line-height:1.5; }
+.ky-mbtn.star { border-color:#00897b; background:#e0f2f1; }
+.ic-jcs{background:#00897b;} .ic-bls{background:#e53935;} .ic-choke{background:#fb8c00;}
+.ic-seiz{background:#8e24aa;} .ic-fall{background:#3949ab;} .ic-hand{background:#00838f;}
+
+.ky-banner { display:flex; align-items:center; gap:8px; padding:10px 14px; border-radius:12px; font-weight:800;
+  color:#fff; margin-bottom:16px; font-size:1rem; background:#00897b; }
+.ky-banner.bls{background:#e53935;} .ky-banner.choke{background:#fb8c00;} .ky-banner.seiz{background:#8e24aa;} .ky-banner.fall{background:#3949ab;}
+
+/* 手順カード */
+.ky-m-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }
+.ky-m-step { font-size:.86rem; color:#5f6368; font-weight:700; }
+.ky-progress { height:8px; background:#eee; border-radius:6px; overflow:hidden; margin-bottom:18px; }
+.ky-progress > div { height:100%; background:#00897b; transition:width .2s; }
+.ky-card { background:#fff; border:2.5px solid #00897b; border-radius:18px; padding:24px 20px; min-height:150px;
+  display:flex; align-items:center; justify-content:center; text-align:center; margin-bottom:8px; }
+.ky-card.danger { border-color:#e53935; }
+.ky-num { display:inline-block; background:#00897b; color:#fff; font-size:.9rem; font-weight:900; border-radius:20px; padding:3px 14px; margin-bottom:14px; }
+.ky-num.danger { background:#e53935; }
+.ky-text { font-size:1.3rem; font-weight:800; color:#202124; line-height:1.7; }
+.ky-nav { display:flex; gap:12px; margin-top:14px; }
+.ky-nav button { flex:1; padding:17px; border-radius:14px; font-size:1.18rem; font-weight:900; cursor:pointer; border:none; }
+.ky-nav .prev { flex:0 0 34%; background:#fff; color:#5f6368; border:2px solid #e0e0e0; }
+.ky-nav .next { background:#00897b; color:#fff; box-shadow:0 5px 14px rgba(0,137,123,.28); }
+.ky-nav .next.danger { background:#e53935; box-shadow:0 5px 14px rgba(229,57,53,.3); }
+
+/* JCS ナビ */
+.ky-q { font-size:1.22rem; font-weight:900; color:#1f2430; text-align:center; line-height:1.6; margin:6px 0 20px; }
+.ky-opt { display:flex; flex-direction:column; gap:12px; }
+.ky-opt button { width:100%; padding:18px 16px; border:2px solid #b2dfdb; background:#fff; border-radius:14px;
+  font-size:1.08rem; font-weight:800; color:#00695c; cursor:pointer; text-align:left; line-height:1.5; transition:.12s; }
+.ky-opt button:active { transform:scale(.98); background:#e0f2f1; }
+
+/* JCS 結果 */
+.ky-result { text-align:center; padding:8px 4px; }
+.ky-result .lvl { display:inline-block; background:#00897b; color:#fff; border-radius:16px; padding:12px 26px;
+  font-size:2.2rem; font-weight:900; line-height:1.1; margin:10px 0 6px; box-shadow:0 8px 20px rgba(0,137,123,.35); }
+.ky-result .lvl small { font-size:.95rem; font-weight:800; display:block; margin-bottom:4px; opacity:.9; }
+.ky-result .say { font-size:1.05rem; font-weight:900; color:#00695c; margin:2px 0 6px; }
+.ky-result .desc { font-size:1.02rem; font-weight:800; color:#202124; margin:8px 0; line-height:1.6; }
+.ky-result .tell { font-size:.95rem; color:#00695c; font-weight:800; background:#e0f2f1; border-radius:12px; padding:12px 14px; margin:14px 0; line-height:1.7; }
+
+.ky-list { list-style:none; padding:0; margin:0; }
+.ky-list li { background:#fff; border:1.5px solid #e0e0e0; border-radius:12px; padding:13px 15px; margin-bottom:10px;
+  font-size:1rem; font-weight:700; color:#202124; display:flex; align-items:flex-start; gap:10px; line-height:1.6; }
+.ky-list li .material-symbols-outlined { color:#00897b; font-size:20px; flex:0 0 auto; margin-top:1px; }
+.ky-list li .h { font-weight:900; }
+
+/* kyukyu-record-v1: 申し送りの「これまでの確認」＋フロー内JCS */
+.ky-summary { background:#e0f2f1; border:1.5px solid #b2dfdb; border-radius:14px; padding:14px 16px; margin-bottom:16px; }
+.ky-summary-t { font-size:.8rem; font-weight:900; color:#00695c; margin-bottom:8px; }
+.ky-summary .row { display:flex; gap:10px; align-items:flex-start; padding:5px 0; font-size:.98rem; }
+.ky-summary .row .k { flex:0 0 84px; color:#5f6368; font-weight:700; }
+.ky-summary .row .v { font-weight:800; color:#202124; }
+.ky-summary .row .v.muted { color:#9aa0a6; font-weight:700; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.ky-summary .row .v.muted button { background:#00897b; color:#fff; border:none; border-radius:8px; padding:7px 13px; font-size:.84rem; font-weight:800; cursor:pointer; }
+.ky-jcsbtn { display:none; width:100%; padding:15px; margin-top:12px; background:#00897b; color:#fff; border:none; border-radius:12px; font-size:1.05rem; font-weight:900; cursor:pointer; box-shadow:0 4px 12px rgba(0,137,123,.28); }
+
+.ky-btn-ghost { display:block; width:100%; padding:14px; background:#fff; color:#5f6368; border:2px solid #e0e0e0;
+  border-radius:12px; font-size:1rem; font-weight:800; cursor:pointer; margin-top:16px; }
+.ky-btn-primary { display:block; width:100%; padding:16px; background:#00897b; color:#fff; border:none;
+  border-radius:14px; font-size:1.1rem; font-weight:900; cursor:pointer; margin-top:12px; }
+.ky-call { display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:15px; margin-top:12px;
+  background:#e53935; color:#fff; border-radius:14px; font-size:1.1rem; font-weight:900; text-decoration:none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ky-wrap">
+
+  <!-- ホーム -->
+  <div class="ky-screen active" id="ky-home">
+    <div class="ky-emblem"><span class="material-symbols-outlined">medical_services</span></div>
+    <div class="ky-h1">救急対応ボックス</div>
+    <div class="ky-lead">調子が悪い・倒れた人への対応を、<br>順番に確認しながら動けます。</div>
+    <div class="ky-warn">⚠ 迷ったら、ためらわず<b>119番</b>。<br>すぐに<b>看護師・主治医</b>へ連絡してください。</div>
+    <div class="ky-menu">
+      <button class="ky-mbtn star" onclick="kyGo('ky-jcs'); kyJcsStart();">
+        <span class="ic ic-jcs"><span class="material-symbols-outlined">neurology</span></span>
+        <span><span class="tx">意識レベルを調べる（JCS）</span><span class="sub">ボタンを押すと、救急隊に伝える数字が出ます</span></span>
+      </button>
+      <button class="ky-mbtn" onclick="kyOpen('bls')">
+        <span class="ic ic-bls"><span class="material-symbols-outlined">ecg_heart</span></span>
+        <span><span class="tx">反応がない・倒れている</span><span class="sub">一次救命処置・AED</span></span>
+      </button>
+      <button class="ky-mbtn" onclick="kyOpen('choke')">
+        <span class="ic ic-choke"><span class="material-symbols-outlined">restaurant</span></span>
+        <span><span class="tx">のどに詰まった・むせて苦しい</span><span class="sub">窒息・誤嚥</span></span>
+      </button>
+      <button class="ky-mbtn" onclick="kyOpen('seizure')">
+        <span class="ic ic-seiz"><span class="material-symbols-outlined">bolt</span></span>
+        <span><span class="tx">けいれん</span><span class="sub">安全確保・時間を測る</span></span>
+      </button>
+      <button class="ky-mbtn" onclick="kyOpen('fall')">
+        <span class="ic ic-fall"><span class="material-symbols-outlined">personal_injury</span></span>
+        <span><span class="tx">転倒・頭を打った・出血</span><span class="sub">動かさない・止血・観察</span></span>
+      </button>
+      <button class="ky-mbtn" onclick="kyGoTell()">
+        <span class="ic ic-hand"><span class="material-symbols-outlined">contact_phone</span></span>
+        <span><span class="tx">救急隊に伝えることリスト</span><span class="sub">申し送りの確認</span></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 手順カード（状況別） -->
+  <div class="ky-screen" id="ky-mission">
+    <div class="ky-banner" id="ky-banner"></div>
+    <div class="ky-m-head">
+      <span style="font-weight:900;color:#00695c;" id="ky-m-title"></span>
+      <span class="ky-m-step" id="ky-m-step"></span>
+    </div>
+    <div class="ky-progress"><div id="ky-m-bar" style="width:0%"></div></div>
+    <div class="ky-card" id="ky-m-cardbox">
+      <div style="width:100%;">
+        <img id="ky-m-img" alt="" style="display:none;width:100%;max-width:380px;border-radius:12px;margin:0 auto 14px;box-shadow:0 2px 8px rgba(0,0,0,.12);"/>
+        <span class="ky-num" id="ky-m-num"></span>
+        <div class="ky-text" id="ky-m-text"></div>
+      </div>
+    </div>
+    <button class="ky-jcsbtn" id="ky-m-jcsbtn" onclick="kyStartJcsFromFlow()"></button>
+    <div class="ky-nav">
+      <button class="prev" onclick="kyStep(-1)">← 戻る</button>
+      <button class="next" id="ky-m-next" onclick="kyStep(1)">次へ →</button>
+    </div>
+    <a class="ky-call" href="tel:119">📞 119に電話する</a>
+    <button class="ky-btn-ghost" onclick="kyGo('ky-home')">メニューにもどる</button>
+  </div>
+
+  <!-- JCS ナビ -->
+  <div class="ky-screen" id="ky-jcs">
+    <div class="ky-banner">意識レベルの判定（JCS）</div>
+    <div class="ky-q" id="ky-jcs-q"></div>
+    <div class="ky-opt" id="ky-jcs-opt"></div>
+    <button class="ky-btn-ghost" onclick="kyJcsBack()">← 前の質問／メニュー</button>
+  </div>
+
+  <!-- JCS 結果 -->
+  <div class="ky-screen" id="ky-jcs-result">
+    <div class="ky-result">
+      <div style="font-size:.95rem;color:#5f6368;font-weight:800;">救急隊員に伝える意識レベル</div>
+      <div class="lvl"><small>JCS</small><span id="ky-jcs-code"></span></div>
+      <div class="say">読み方：ジェーシーエス <span id="ky-jcs-yomi"></span></div>
+      <div class="desc" id="ky-jcs-desc"></div>
+      <div class="tell">あわてず、救急隊員に<br><b>「<span id="ky-jcs-tell"></span>」</b><br>と伝えてください。</div>
+    </div>
+    <a class="ky-call" href="tel:119">📞 119に電話する</a>
+    <button class="ky-btn-ghost" id="ky-jcs-resume" style="display:none;" onclick="kyResumeFlow()">← 手順のつづきにもどる</button>
+    <button class="ky-btn-primary" onclick="kyGoTell()">救急隊に伝えることリストを見る</button>
+    <button class="ky-btn-ghost" onclick="kyJcsStart(); kyGo('ky-jcs');">もう一度判定する</button>
+    <button class="ky-btn-ghost" onclick="kyGo('ky-home')">メニューにもどる</button>
+  </div>
+
+  <!-- 救急隊に伝えることリスト -->
+  <div class="ky-screen" id="ky-tell">
+    <div class="ky-banner"><span class="material-symbols-outlined">contact_phone</span> 救急隊に伝えること</div>
+    <div id="ky-tell-summary" class="ky-summary"></div>
+    <ul class="ky-list">
+      <li><span class="material-symbols-outlined">neurology</span><span><span class="h">意識レベル（JCS）</span>：上のナビで判定した数字</span></li>
+      <li><span class="material-symbols-outlined">pulmonology</span><span><span class="h">呼吸</span>：している／苦しそう／していない、脈・体温・血圧・SpO2</span></li>
+      <li><span class="material-symbols-outlined">schedule</span><span><span class="h">いつから・何が</span>：発症の時刻と、その時の様子・経過</span></li>
+      <li><span class="material-symbols-outlined">difference</span><span><span class="h">普段との違い</span>：いつもと比べてどう違うか</span></li>
+      <li><span class="material-symbols-outlined">medication</span><span><span class="h">既往・内服・かかりつけ</span>：持病、飲んでいる薬、かかりつけ医</span></li>
+      <li><span class="material-symbols-outlined">warning</span><span><span class="h">アレルギー</span>：薬・食物などのアレルギー</span></li>
+      <li><span class="material-symbols-outlined">family_restroom</span><span><span class="h">家族連絡</span>：家族へ連絡したか</span></li>
+    </ul>
+    <a class="ky-call" href="tel:119">📞 119に電話する</a>
+    <button class="ky-btn-ghost" onclick="kyGo('ky-home')">メニューにもどる</button>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* kyukyu-v1: 標準的な応急手当・一次救命に沿った内容（端末内で完結・オフライン動作） */
+
+// 状況別の手順
+const KY = {
+  bls: { label:'反応がない・倒れている', theme:'bls', danger:true, steps:[
+    '周囲の安全を確認する（自分の身の安全も守る）。',
+    {t:'肩を優しく叩きながら「大丈夫ですか？」と大きな声で呼びかける。', img:'01_response'},
+    {t:'反応がなければ、大声で応援を呼ぶ。「誰か来て！救急です！」', img:'02_callhelp'},
+    '人を指さして「あなたは119番通報を」「あなたはAEDを持ってきて」と頼む。（1人のときは先に119）',
+    {t:'胸とお腹の動きを見て、10秒以内で「普段どおりの呼吸」があるか確認する。', img:'03_breathing'},
+    '普段どおりの呼吸がなければ、ただちに胸骨圧迫を開始する。',
+    {t:'胸の真ん中を、強く（約5cm沈むまで）・速く（1分間に100〜120回）・絶え間なく押す。', img:'04_compression'},
+    '訓練を受けていれば胸骨圧迫30回＋人工呼吸2回。できなければ胸骨圧迫だけでよい。',
+    {t:'AEDが届いたら電源を入れ、音声ガイドに従う。パッドを貼る。', img:'05_aed_pads'},
+    {t:'「解析中」は傷病者に触れない。ショックの指示が出たら、周囲の安全を確認してボタンを押す。', img:'06_aed_shock'},
+    '救急隊が到着するまで、胸骨圧迫とAEDを続ける。'
+  ]},
+  choke: { label:'のどに詰まった・窒息', theme:'choke', danger:true, steps:[
+    {t:'「のどが詰まりましたか？」と聞く。声が出ない・咳ができない・顔色が悪いなら窒息を疑う。', img:'07_choke_sign'},
+    '咳ができるなら、できるだけ強く咳を続けさせる（無理に叩かない）。',
+    '咳ができない・苦しそうなら、応援を呼び119を要請する。',
+    {t:'背部叩打法：前かがみにさせ、左右の肩甲骨の間を手の付け根で数回、強く叩く。', img:'08_backblow'},
+    {t:'改善しなければ腹部突き上げ法：後ろから抱え、みぞおちの下でこぶしを手前上方へ突き上げる。', img:'09_heimlich'},
+    '※妊婦・高度肥満の人には腹部突き上げは行わず、背部叩打と胸部突き上げにする。',
+    '背部叩打と腹部突き上げを、詰まりが取れるまで交互に繰り返す。',
+    '反応がなくなったら、ただちに胸骨圧迫（心肺蘇生）を始め、119を確認する。'
+  ]},
+  seizure: { label:'けいれん', theme:'seiz', danger:false, steps:[
+    {t:'周囲の危険な物をどける。頭の下に柔らかい物を敷き、けがを防ぐ。', img:'10_seizure'},
+    '押さえつけない。口の中に指や物を入れない。',
+    'けいれんが始まった時刻を確認する（続いた時間がとても重要）。',
+    {t:'けいれんが止まったら、体を横向き（回復体位）にして気道を確保し、嘔吐に備える。', img:'11_recovery'},
+    {t:'意識レベルを確認します。下のボタンでJCSを判定し、救急隊に伝えます。', jcs:true},
+    '5分以上続く／繰り返す／初めての発作／呼吸がおかしい 場合は、すぐ119。',
+    '看護師・主治医へ連絡し、様子とバイタル、けいれんの長さを記録する。'
+  ]},
+  fall: { label:'転倒・頭を打った・出血', theme:'fall', danger:false, steps:[
+    'むやみに動かさない（頭・首・背中を打った可能性）。声をかけ、反応を確認する。',
+    {t:'強い出血は、清潔な布やガーゼで傷口を直接、強く押さえ続ける（直接圧迫止血）。', img:'12_bleeding'},
+    '頭を打った・意識がおかしい・手足が動かない・強い痛み・大量出血 のときは119。',
+    {t:'意識と呼吸を観察します。下のボタンで意識レベル（JCS）を判定し、救急隊に伝えます。', jcs:true},
+    '看護師・主治医へ連絡。受傷した時刻・状況・バイタルを記録する。'
+  ]}
+};
+
+let kyState = { key:null, step:0 };
+let kyRecord = { situation:null, jcs:null };  // kyukyu-record-v1: たどった情報を蓄積
+let kyReturn = null;                           // フロー内でJCSに入った時の戻り先
+
+function kyGo(id){
+  document.querySelectorAll('.ky-screen').forEach(function(s){ s.classList.remove('active'); });
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0,0);
+}
+function kyOpen(key){
+  kyState.key = key; kyState.step = 0;
+  var s = KY[key];
+  kyRecord.situation = s.label;   // 対応した状況を記録
+  var banner = document.getElementById('ky-banner');
+  banner.className = 'ky-banner ' + s.theme;
+  banner.textContent = '対応：' + s.label;
+  document.getElementById('ky-m-title').textContent = s.label;
+  kyRenderStep();
+  kyGo('ky-mission');
+}
+function kyRenderStep(){
+  var s = KY[kyState.key], i = kyState.step, total = s.steps.length;
+  var danger = s.danger;
+  var raw = s.steps[i];
+  var text = (typeof raw === 'string') ? raw : raw.t;
+  var img = (typeof raw === 'string') ? null : raw.img;
+  document.getElementById('ky-m-step').textContent = (i+1)+' / '+total;
+  document.getElementById('ky-m-bar').style.width = Math.round(i/total*100)+'%';
+  document.getElementById('ky-m-cardbox').className = 'ky-card' + (danger?' danger':'');
+  var num = document.getElementById('ky-m-num'); num.className = 'ky-num' + (danger?' danger':''); num.textContent = 'STEP '+(i+1);
+  document.getElementById('ky-m-text').textContent = text;
+  var imgEl = document.getElementById('ky-m-img');
+  if (img) { imgEl.src = '/static/kyukyu/' + img + '.jpg'; imgEl.style.display = 'block'; }
+  else { imgEl.style.display = 'none'; imgEl.removeAttribute('src'); }
+  var jcsBtn = document.getElementById('ky-m-jcsbtn');
+  if (raw && typeof raw === 'object' && raw.jcs) {
+    jcsBtn.style.display = 'block';
+    jcsBtn.textContent = kyRecord.jcs ? ('判定済み：JCS ' + kyRecord.jcs.code + '　／　もう一度判定する') : '🧠 JCS判定を始める（意識レベル）';
+  } else { jcsBtn.style.display = 'none'; }
+  var next = document.getElementById('ky-m-next');
+  next.className = 'next' + (danger?' danger':'');
+  next.textContent = (i===total-1) ? '完了 ✓' : '次へ →';
+}
+function kyStep(d){
+  var total = KY[kyState.key].steps.length;
+  var n = kyState.step + d;
+  if(n < 0){ kyGo('ky-home'); return; }
+  if(n >= total){ kyGoTell(); return; }
+  kyState.step = n; kyRenderStep();
+}
+
+/* ===== JCS 判定ナビ ===== */
+var JCS_TREE = {
+  start: { q:'呼びかけなくても、目を開けていますか？（起きていますか）', opts:[
+    { t:'開けている（起きている）', next:'awake' },
+    { t:'閉じている（眠っている・倒れている）', next:'stim' }
+  ]},
+  awake: { q:'話しかけると、どの状態ですか？', opts:[
+    { t:'自分の名前や生年月日が言えない', r:'3' },
+    { t:'日付・場所・人が分からない（見当識障害）', r:'2' },
+    { t:'少しぼんやりするが、ほぼ清明', r:'1' },
+    { t:'はっきりしている（問題ない）', r:'0' }
+  ]},
+  stim: { q:'呼びかけや刺激で、目を開けますか？', opts:[
+    { t:'普通の呼びかけで、目を開ける', r:'10' },
+    { t:'大声で呼ぶ・体を揺さぶると、目を開ける', r:'20' },
+    { t:'痛み刺激を加えながら呼ぶと、かろうじて開ける', r:'30' },
+    { t:'痛み刺激でも、目を開けない', next:'pain' }
+  ]},
+  pain: { q:'痛み刺激への反応はどれですか？', opts:[
+    { t:'痛いところを払いのけようとする', r:'100' },
+    { t:'手足を少し動かす・顔をしかめる', r:'200' },
+    { t:'まったく反応しない', r:'300' }
+  ]}
+};
+// code=群つき表記, yomi=声に出す読み方, desc=状態の説明
+var JCS_INFO = {
+  '0':   { code:'0',     yomi:'ゼロ',         desc:'意識清明' },
+  '1':   { code:'Ⅰ-1',   yomi:'いち の いち',   desc:'ほぼ清明だが、少しはっきりしない' },
+  '2':   { code:'Ⅰ-2',   yomi:'いち の に',     desc:'見当識障害（時・場所・人が分からない）' },
+  '3':   { code:'Ⅰ-3',   yomi:'いち の さん',   desc:'自分の名前・生年月日が言えない' },
+  '10':  { code:'Ⅱ-10',  yomi:'に の じゅう',   desc:'普通の呼びかけで目を開ける' },
+  '20':  { code:'Ⅱ-20',  yomi:'に の にじゅう', desc:'大声・体を揺さぶると目を開ける' },
+  '30':  { code:'Ⅱ-30',  yomi:'に の さんじゅう', desc:'痛み刺激＋呼びかけで、かろうじて目を開ける' },
+  '100': { code:'Ⅲ-100', yomi:'さん の ひゃく',   desc:'痛み刺激を払いのける' },
+  '200': { code:'Ⅲ-200', yomi:'さん の にひゃく', desc:'痛みで手足を動かす・顔をしかめる' },
+  '300': { code:'Ⅲ-300', yomi:'さん の さんびゃく', desc:'痛みに、まったく反応しない' }
+};
+var kyJcsNode = 'start';
+var kyJcsHist = [];
+function kyJcsStart(){ kyJcsNode = 'start'; kyJcsHist = []; kyJcsRender(); }
+function kyJcsRender(){
+  var node = JCS_TREE[kyJcsNode];
+  document.getElementById('ky-jcs-q').textContent = node.q;
+  var box = document.getElementById('ky-jcs-opt'); box.innerHTML = '';
+  node.opts.forEach(function(o){
+    var b = document.createElement('button');
+    b.textContent = o.t;
+    b.onclick = function(){
+      if(o.r !== undefined){ kyJcsResult(o.r); }
+      else { kyJcsHist.push(kyJcsNode); kyJcsNode = o.next; kyJcsRender(); }
+    };
+    box.appendChild(b);
+  });
+}
+function kyJcsBack(){
+  if(kyJcsHist.length){ kyJcsNode = kyJcsHist.pop(); kyJcsRender(); }
+  else { kyGo('ky-home'); }
+}
+function kyJcsResult(r){
+  var info = JCS_INFO[r] || { code:r, yomi:r, desc:'' };
+  kyRecord.jcs = { r:r, code:info.code, yomi:info.yomi, desc:info.desc };  // 蓄積
+  document.getElementById('ky-jcs-code').textContent = info.code;
+  document.getElementById('ky-jcs-yomi').textContent = info.yomi;
+  document.getElementById('ky-jcs-desc').textContent = info.desc;
+  document.getElementById('ky-jcs-tell').textContent = info.code + '（ジェーシーエス ' + info.yomi + '）';
+  document.getElementById('ky-jcs-resume').style.display = kyReturn ? 'block' : 'none';
+  kyGo('ky-jcs-result');
+}
+function kyStartJcsFromFlow(){
+  kyReturn = { key: kyState.key, step: kyState.step };
+  kyJcsStart(); kyGo('ky-jcs');
+}
+function kyResumeFlow(){
+  if(!kyReturn){ kyGo('ky-home'); return; }
+  var ret = kyReturn; kyReturn = null;
+  kyState.key = ret.key; kyState.step = ret.step;
+  var s = KY[ret.key];
+  var banner = document.getElementById('ky-banner');
+  banner.className = 'ky-banner ' + s.theme;
+  banner.textContent = '対応：' + s.label;
+  document.getElementById('ky-m-title').textContent = s.label;
+  kyRenderStep();
+  kyGo('ky-mission');
+}
+function kyStartJcsFromTell(){ kyReturn = null; kyJcsStart(); kyGo('ky-jcs'); }
+function kyGoTell(){ kyRenderTell(); kyGo('ky-tell'); }
+function kyRenderTell(){
+  var box = document.getElementById('ky-tell-summary');
+  if(!box) return;
+  var sit = kyRecord.situation ? kyRecord.situation : '—';
+  var jcsRow = kyRecord.jcs
+    ? '<div class="row"><span class="k">意識レベル</span><span class="v">JCS ' + kyRecord.jcs.code + '（ジェーシーエス ' + kyRecord.jcs.yomi + '）</span></div>'
+    : '<div class="row"><span class="k">意識レベル</span><span class="v muted">未判定 <button onclick="kyStartJcsFromTell()">JCS判定する</button></span></div>';
+  box.innerHTML = '<div class="ky-summary-t">これまでの確認</div>' +
+    '<div class="row"><span class="k">状況</span><span class="v">' + sit + '</span></div>' +
+    jcsRow;
+}
+</script>
+{% endblock %}

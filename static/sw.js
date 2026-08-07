@@ -1,6 +1,6 @@
 // TASUKARU Service Worker
 // バージョンを上げると古いキャッシュが自動削除される
-const CACHE_VERSION = 'tasukaru-v12';
+const CACHE_VERSION = 'tasukaru-v31';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -10,6 +10,19 @@ const STATIC_FILES = [
   '/static/manifest.json',
   '/static/admin.js',
   'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200',
+  // kyukyu-v1: 救急対応ボックスのイラスト（オフラインでも表示できるよう事前キャッシュ）
+  '/static/kyukyu/01_response.jpg',
+  '/static/kyukyu/02_callhelp.jpg',
+  '/static/kyukyu/03_breathing.jpg',
+  '/static/kyukyu/04_compression.jpg',
+  '/static/kyukyu/05_aed_pads.jpg',
+  '/static/kyukyu/06_aed_shock.jpg',
+  '/static/kyukyu/07_choke_sign.jpg',
+  '/static/kyukyu/08_backblow.jpg',
+  '/static/kyukyu/09_heimlich.jpg',
+  '/static/kyukyu/10_seizure.jpg',
+  '/static/kyukyu/11_recovery.jpg',
+  '/static/kyukyu/12_bleeding.jpg',
 ];
 
 // HTMLページのパス一覧(Network-First で扱う)
@@ -50,7 +63,7 @@ self.addEventListener('fetch', event => {
   if (event.request.method !== 'GET') {
     event.respondWith(
       fetch(event.request.clone()).catch(() => {
-        if (url.pathname.startsWith('/api/')) {
+        if (url.pathname.startsWith('/api/') || url.pathname === '/input') {
           return networkFirstWithOfflineQueue(event.request);
         }
         return new Response(JSON.stringify({ status: 'offline', message: 'オフラインです' }), {
@@ -71,6 +84,11 @@ self.addEventListener('fetch', event => {
   if (isHtmlRoute(url)) {
     event.respondWith(
       fetch(event.request).then(response => {
+        // offline-nav-v1: 成功したHTMLをキャッシュ（オフライン時にタップで復元できるように）
+        if (response && response.ok && event.request.method === 'GET') {
+          const clone = response.clone();
+          caches.open(STATIC_CACHE).then(cache => cache.put(event.request, clone)).catch(function(){});
+        }
         return response;
       }).catch(() => {
         return caches.match(event.request).then(cached => {
@@ -191,19 +209,28 @@ async function networkFirstWithOfflineQueue(request) {
   }
 }
 
-function saveOfflineRequest(data) {
+// offline-record-v1: ページ側(base.html openOfflineDB)と同じ v2 スキーマで開く。
+// バージョン不一致(旧: v1)だと VersionError で保存に失敗するため合わせる。
+function _swOpenOfflineDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('tasukaru-offline', 1);
-    req.onupgradeneeded = e => { e.target.result.createObjectStore('queue', { autoIncrement: true }); };
-    req.onsuccess = e => {
+    const req = indexedDB.open('tasukaru-offline', 2);
+    req.onupgradeneeded = e => {
       const db = e.target.result;
-      const tx = db.transaction('queue', 'readwrite');
-      tx.objectStore('queue').add(data);
-      tx.oncomplete = resolve;
-      tx.onerror = reject;
+      if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { autoIncrement: true, keyPath: 'id' });
+      if (!db.objectStoreNames.contains('cache')) db.createObjectStore('cache', { keyPath: 'key' });
     };
-    req.onerror = reject;
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = () => reject(req.error);
   });
+}
+
+function saveOfflineRequest(data) {
+  return _swOpenOfflineDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction('queue', 'readwrite');
+    tx.objectStore('queue').add(data);
+    tx.oncomplete = resolve;
+    tx.onerror = () => reject(tx.error);
+  }));
 }
 
 self.addEventListener('sync', event => {
@@ -212,27 +239,38 @@ self.addEventListener('sync', event => {
   }
 });
 
+// offline-dedup-v1: claim-before-send（1件ずつ取り出して即削除→送信）で二重再送を防ぐ。
+function _swReadd(db, item) {
+  return new Promise((resolve) => {
+    try {
+      const o = {}; for (const k in item) { if (k !== 'id') o[k] = item[k]; }
+      const tx = db.transaction('queue', 'readwrite');
+      tx.objectStore('queue').add(o);
+      tx.oncomplete = resolve; tx.onerror = resolve;
+    } catch (e) { resolve(); }
+  });
+}
 async function syncOfflineRecords() {
   const db = await openDB();
-  const items = await getAllItems(db);
-  for (const item of items) {
+  while (true) {
+    const item = await new Promise((resolve) => {
+      let picked = null;
+      const tx = db.transaction('queue', 'readwrite');
+      const store = tx.objectStore('queue');
+      const req = store.openCursor();
+      req.onsuccess = e => { const c = e.target.result; if (c) { picked = c.value; store.delete(c.key); } };
+      tx.oncomplete = () => resolve(picked);
+      tx.onerror = () => resolve(null);
+    });
+    if (!item) break;
     try {
-      await fetch(item.data.url, { method: item.data.method, body: item.data.body, headers: item.data.headers });
-      await deleteItem(db, item.key);
-    } catch (e) {
-      console.log('[SW] 同期失敗:', e);
-    }
+      const r = await fetch(item.url, { method: item.method, body: item.body, headers: item.headers });
+      if (!r.ok && r.status >= 500) { await _swReadd(db, item); break; }
+    } catch (e) { await _swReadd(db, item); break; }
   }
 }
 
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open('tasukaru-offline', 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore('queue', { autoIncrement: true });
-    req.onsuccess = e => resolve(e.target.result);
-    req.onerror = reject;
-  });
-}
+function openDB() { return _swOpenOfflineDB(); }
 
 function getAllItems(db) {
   return new Promise((resolve, reject) => {
