@@ -1489,7 +1489,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function showBanner(d){
     if($('mtg-draft-banner')) return;
     var bar=document.createElement('div'); bar.id='mtg-draft-banner';
-    bar.style.cssText='position:fixed;left:0;right:0;top:0;z-index:99999;background:#fff8e1;border-bottom:2px solid #f0b429;padding:10px 14px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;font-size:14px;color:#5c4a00;box-shadow:0 2px 10px rgba(0,0,0,.15);';
+    bar.style.cssText='position:fixed;left:0;right:0;top:0;z-index:99999;background:#fff8e1;border-bottom:2px solid #f0b429;padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;font-size:14px;color:#5c4a00;box-shadow:0 2px 10px rgba(0,0,0,.15);';
     var who=(d.patient_label||d.title||'').trim();
     var msg=document.createElement('span');
     msg.innerHTML='<b>未保存の下書きが見つかりました</b>（'+fmtTs(d.ts)+(who?('・'+who):'')+'）。復元しますか？';
