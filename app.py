@@ -17939,6 +17939,8 @@ _TC_CONFIG_DEFAULT = {
     "half_service_end": "12:30",
     "full_service_start": "09:00",           # 1日型 サービス提供時間
     "full_service_end": "16:00",
+    "half_service_slots": [{"start": "09:00", "end": "12:30"}],  # 型別-svc-v2: 複数単位可
+    "full_service_slots": [{"start": "09:00", "end": "16:00"}],
     # youshiki-daytype-v1: 曜日→型ルール。月火水木金土日の7要素。
     #   'full'=1日型 / 'half'=半日型 / 'both'=両方同時稼働(個別指定で振り分け) / 'none'=様式に出さない
     #   既定は現行のハードコード踏襲: 日=1日型, 月〜金=半日型, 土=なし
@@ -17972,6 +17974,13 @@ def _tc_get_config(supabase, f_code):
                 # デフォルトにマージ(欠けたキーを補完)
                 merged = dict(_TC_CONFIG_DEFAULT)
                 merged.update(cfg)
+                # 型別-svc-v2: 旧単一フィールドしか無い設定を slots に移行
+                for _pre in ("half", "full"):
+                    _sk = _pre + "_service_slots"
+                    if _sk not in cfg:
+                        _st = cfg.get(_pre + "_service_start"); _en = cfg.get(_pre + "_service_end")
+                        if _st and _en:
+                            merged[_sk] = [{"start": _st, "end": _en}]
                 return merged
     except Exception as e:
         print(f"_tc_get_config error: {e}", flush=True)
@@ -18046,6 +18055,20 @@ def admin_timecard_config_save():
             v = str(data.get(k, "")).strip()
             if v == "" or _TC_TIME_RE.match(v):
                 cfg[k] = v
+
+        # 型別サービス提供時間(複数単位。型別-svc-v2)
+        for _sk in ("half_service_slots", "full_service_slots"):
+            _arr = data.get(_sk)
+            if isinstance(_arr, list):
+                _clean = []
+                for _s in _arr:
+                    if not isinstance(_s, dict):
+                        continue
+                    _st = str(_s.get("start", "")).strip()
+                    _en = str(_s.get("end", "")).strip()
+                    if _TC_TIME_RE.match(_st) and _TC_TIME_RE.match(_en):
+                        _clean.append({"start": _st, "end": _en})
+                cfg[_sk] = _clean
 
         # 兼務マップ: [{name, roles:[{title, ratio}]}]
         rs = data.get("role_splits")
@@ -18345,13 +18368,36 @@ def admin_timecard_youshiki():
             for r in (pres.data or []):
                 if (r.get("status") or "") != "work":
                     continue
-                sm = _ys_hm(r.get("start_time")); em = _ys_hm(r.get("end_time"))
-                if sm is None or em is None or em <= sm:
-                    continue
                 ds = str(r.get("plan_date"))
-                key = (_ys_norm(r.get("staff_name")), ds)
-                punches_map.setdefault(key, []).append(("in", sm))
-                punches_map[key].append(("out", em))
+                name_norm = _ys_norm(r.get("staff_name"))
+                key = (name_norm, ds)
+                # 型別-svc-v2: 各日の型を解決し、その型のサービス提供時間(複数単位)で打刻を作る
+                _slots = None
+                try:
+                    _d = datetime.strptime(ds, "%Y-%m-%d")
+                    _wd = _ys_weekday_rule_type(cfg, _d)
+                    _rt = _ys_resolve_day_type(name_norm, ds, _wd, _dt_manual, _dt_plan, _dt_staff_def)[0]
+                    if _rt == "half":
+                        _slots = cfg.get("half_service_slots")
+                    elif _rt == "full":
+                        _slots = cfg.get("full_service_slots")
+                except Exception:
+                    _slots = None
+                _added = False
+                if _slots:
+                    for _s in _slots:
+                        if not isinstance(_s, dict):
+                            continue
+                        _ss = _ys_hm(_s.get("start")); _ee = _ys_hm(_s.get("end"))
+                        if _ss is not None and _ee is not None and _ee > _ss:
+                            punches_map.setdefault(key, []).append(("in", _ss))
+                            punches_map[key].append(("out", _ee))
+                            _added = True
+                if not _added:
+                    sm = _ys_hm(r.get("start_time")); em = _ys_hm(r.get("end_time"))
+                    if sm is not None and em is not None and em > sm:
+                        punches_map.setdefault(key, []).append(("in", sm))
+                        punches_map[key].append(("out", em))
         else:
             # 月の打刻を取得(1〜28日)
             start_iso, end_iso = _tc_month_range_jst(year, month)
