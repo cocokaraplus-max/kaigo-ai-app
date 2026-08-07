@@ -158,10 +158,10 @@
   <div class="tcr-actions">
     <button id="tcr-print"><span class="material-symbols-outlined" style="font-size:18px">picture_as_pdf</span>PDFで保存</button><!-- timecard-pdf-btn-v1 -->
     <button id="tcr-csv"><span class="material-symbols-outlined" style="font-size:18px">table_view</span>CSVで保存</button><!-- timecard-grid-csv-v1 -->
-    <button id="tcr-youshiki"><span class="material-symbols-outlined" style="font-size:18px">description</span>様式で出力（実績）</button><!-- youshiki-btn-v1 -->
     <button id="tcr-payexport"><span class="material-symbols-outlined" style="font-size:18px">download</span>給与出力</button><!-- pay-export-ui-v1 -->
-    <button id="tcr-config"><span class="material-symbols-outlined" style="font-size:18px">settings</span>勤務設定</button><!-- timecard-config-ui-v1 -->
     <button id="tcr-youshiki-yotei"><span class="material-symbols-outlined" style="font-size:18px">event_upcoming</span>様式で出力（予定）</button><!-- kinmu-yotei-v2 -->
+    <button id="tcr-youshiki"><span class="material-symbols-outlined" style="font-size:18px">description</span>様式で出力（実績）</button><!-- youshiki-btn-v1 -->
+    <button id="tcr-config"><span class="material-symbols-outlined" style="font-size:18px">settings</span>勤務設定</button><!-- timecard-config-ui-v1 -->
   </div>
 
   <div id="tcr-body"><div class="tcr-empty">読み込み中…</div></div>
@@ -235,6 +235,17 @@
       <div class="cfg-row2">
         <label>半日型 <input type="number" id="cfg-half" class="cfg-num" min="1" max="12" step="0.5"> 時間</label>
         <label>1日型 <input type="number" id="cfg-full" class="cfg-num" min="1" max="24" step="0.5"> 時間</label>
+      </div>
+    </div>
+
+    <div class="cfg-sec"><!-- 型別-svc-v1: 型ごとのサービス提供時間 -->
+      <h4>型ごとのサービス提供時間</h4>
+      <p class="cfg-hint">半日型・1日型それぞれの提供時間帯。空欄でも構いません。</p>
+      <div class="cfg-row2">
+        <label>半日型 <input type="time" id="cfg-half-svc-st" class="cfg-inp"> 〜 <input type="time" id="cfg-half-svc-en" class="cfg-inp"></label>
+      </div>
+      <div class="cfg-row2">
+        <label>1日型 <input type="time" id="cfg-full-svc-st" class="cfg-inp"> 〜 <input type="time" id="cfg-full-svc-en" class="cfg-inp"></label>
       </div>
     </div>
 
@@ -881,6 +892,8 @@
       $("cfg-split").value=(c.work_split_times&&c.work_split_times[0])||"";
       $("cfg-half").value=c.half_slot_hours!=null?c.half_slot_hours:4;
       $("cfg-full").value=c.full_slot_hours!=null?c.full_slot_hours:8;
+      $("cfg-half-svc-st").value=c.half_service_start||""; $("cfg-half-svc-en").value=c.half_service_end||"";
+      $("cfg-full-svc-st").value=c.full_service_start||""; $("cfg-full-svc-en").value=c.full_service_end||"";
       var sl=$("cfg-svc-list"); sl.innerHTML="";
       (c.service_times||[]).forEach(function(s){ sl.appendChild(cfgSvcRow(s)); });
       var rl=$("cfg-role-list"); rl.innerHTML="";
@@ -924,6 +937,8 @@
       service_times: svc,
       half_slot_hours: parseFloat($("cfg-half").value)||4,
       full_slot_hours: parseFloat($("cfg-full").value)||8,
+      half_service_start: $("cfg-half-svc-st").value||"", half_service_end: $("cfg-half-svc-en").value||"",
+      full_service_start: $("cfg-full-svc-st").value||"", full_service_end: $("cfg-full-svc-en").value||"",
       role_splits: roles,
       day_type_rule: cfgDayTypeCollect(),  // youshiki-daytype-v1
       // pay-overtime-cfg-ui-v1: 残業設定

@@ -17935,6 +17935,10 @@ _TC_CONFIG_DEFAULT = {
     ],
     "half_slot_hours": 4,                     # 半日型 1枠の時間
     "full_slot_hours": 8,                     # 1日型 1枠の時間
+    "half_service_start": "09:00",           # 半日型 サービス提供時間(型別-svc-v1)
+    "half_service_end": "12:30",
+    "full_service_start": "09:00",           # 1日型 サービス提供時間
+    "full_service_end": "16:00",
     # youshiki-daytype-v1: 曜日→型ルール。月火水木金土日の7要素。
     #   'full'=1日型 / 'half'=半日型 / 'both'=両方同時稼働(個別指定で振り分け) / 'none'=様式に出さない
     #   既定は現行のハードコード踏襲: 日=1日型, 月〜金=半日型, 土=なし
@@ -18035,6 +18039,12 @@ def admin_timecard_config_save():
         for k in ("half_slot_hours", "full_slot_hours"):
             v = data.get(k)
             if isinstance(v, (int, float)) and 0 < v <= 24:
+                cfg[k] = v
+
+        # 型別サービス提供時間(HH:MM。型別-svc-v1)
+        for k in ("half_service_start", "half_service_end", "full_service_start", "full_service_end"):
+            v = str(data.get(k, "")).strip()
+            if v == "" or _TC_TIME_RE.match(v):
                 cfg[k] = v
 
         # 兼務マップ: [{name, roles:[{title, ratio}]}]
