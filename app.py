@@ -18501,6 +18501,7 @@ def admin_timecard_youshiki():
                 continue
             ws = wb[sheet_name]
             rowmap = _ys_build_row_map(ws)
+            _num_units = max((u for _occ in rowmap.values() for (u, _rw, _tt) in _occ), default=1) or 1  # 型別-svc-hours-v2: シートの単位数(半日=2/1日=1)
             cap = full_cap if is_full else half_cap
             sheet_type = "full" if is_full else "half"
             for day in range(1, 29):
@@ -18525,27 +18526,20 @@ def admin_timecard_youshiki():
                         continue
                     if rtype != sheet_type:
                         continue  # このシートの型と違う日は書かない
-                    iv = _ys_to_intervals(punches) if punches else []
-                    if is_full:
-                        slots = [_ys_slot_value(_ys_side_minutes(iv, 0, 24 * 60), cap)] if punches else [None]
-                    else:
-                        am = _ys_slot_value(_ys_side_minutes(iv, 0, split_min), cap) if (punches and split_min) else None
-                        pm = _ys_slot_value(_ys_side_minutes(iv, split_min, 24 * 60), cap) if (punches and split_min) else None
-                        slots = [am, pm]
+                    # 型別-svc-hours-v2: 値は「時間」。基準＝1枠の時間(cap)、兼務は役職比率で按分。
+                    #   単位に属さない役職(unit=0。例:管理者)は1日分(単位数×枠)、単位に属する役職は枠1つ分。
                     sp = split_by_name.get(name)
                     for (unit, row, title) in occurs:
                         if leave:
                             _ys_set_cell(ws.cell(row=row, column=col), _YS_LEAVE_FORM.get(leave, leave), True)
                             continue
-                        if is_full:
-                            val = slots[0]
-                        else:
-                            idx = 0 if unit in (0, 1) else 1
-                            val = slots[idx] if idx < len(slots) else None
-                        if val is None:
+                        if not punches:
                             continue
-                        if sp and title in sp:
-                            val = round(val * sp[title] * 2) / 2
+                        ratio = sp[title] if (sp and title in sp) else 1.0
+                        base = (_num_units * cap) if unit == 0 else cap
+                        val = round(base * ratio * 2) / 2
+                        if val <= 0:
+                            continue
                         _ys_set_cell(ws.cell(row=row, column=col), val, False)
 
         # youshiki-daytype-v1: 曜日ルール'both'で型が決まらなかった日を警告として明示（黙って落とさない）
