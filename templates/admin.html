@@ -773,9 +773,7 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
         </span>
         <div style="flex:1;">
           <div style="font-weight:600;font-size:0.9rem;">{{ s.name }}</div>
-          {% if s.job_title %}
-          <div style="font-size:0.75rem;color:#1a73e8;margin-top:2px;">{{ s.job_title }}{% if s.job_title2 %}／{{ s.job_title2 }}{% endif %}</div>
-          {% endif %}
+          <div id="sjt-{{ loop.index }}" style="font-size:0.75rem;color:#1a73e8;margin-top:2px;{% if not s.job_title %}display:none;{% endif %}">{{ s.job_title }}{% if s.job_title2 %}／{{ s.job_title2 }}{% endif %}</div>
           {% if s.birth_text %}
           <div style="font-size:0.75rem;color:#80868b;margin-top:2px;">{{ s.birth_text }}</div>
           {% endif %}
