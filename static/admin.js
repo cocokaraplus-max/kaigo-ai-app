@@ -223,14 +223,36 @@ function toggleStaffBirth(idx, name, currentBirth) {
 }
 
 async function saveStaffBirth(name, idx) {
+    _ensureSpinStyle();
     const birth = document.getElementById('sbf-date-' + idx).value;
-    const res = await fetch('/api/update_staff_birth', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ name, birth })
-    });
-    if ((await res.json()).status === 'success') location.reload();
-    else alert('保存に失敗しました');
+    var btn = document.querySelector('#sbf-' + idx + ' .btn-primary');
+    var orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined kaigo-spin" style="font-size:15px;color:white;">progress_activity</span>保存中...'; }
+    try {
+        const res = await fetch('/api/update_staff_birth', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, birth })
+        });
+        const j = await res.json();
+        if (j.status === 'success') {
+            var sub = document.getElementById('sbt-' + idx);
+            if (sub) {
+                var txt = '';
+                if (birth) { var p = birth.split('-'); txt = toWareki(parseInt(p[0])) + parseInt(p[1]) + '月' + parseInt(p[2]) + '日'; }
+                sub.textContent = txt;
+                sub.style.display = txt ? '' : 'none';
+            }
+            var form = document.getElementById('sbf-' + idx); if (form) form.style.display = 'none';
+            showJobToast('保存しました');
+        } else {
+            alert('保存に失敗しました');
+        }
+    } catch (e) {
+        alert('保存に失敗しました（通信エラー）');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    }
 }
 
 async function unblockDevice(id) {
