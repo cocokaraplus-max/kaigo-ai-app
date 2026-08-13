@@ -13250,13 +13250,19 @@ def api_shift_week():
         d0 = _t - timedelta(days=_t.weekday())
     d0 = d0 - timedelta(days=d0.weekday())  # 必ず月曜起点
     dates = [(d0 + timedelta(days=i)).isoformat() for i in range(7)]
+    me = session.get('my_name', '')
+    _is_admin = is_admin_user(supabase, f_code, me)  # shift-self-only-v1
     names = _shift_staff_names(supabase, f_code)
+    if not _is_admin:
+        names = [me] if me else names
     defaults = _shift_default_map(supabase, f_code)
     plan = {}
     try:
         r = supabase.table("staff_shift_plan").select("*").eq(
             "facility_code", f_code).gte("plan_date", dates[0]).lte("plan_date", dates[6]).execute()
         for row in (r.data or []):
+            if (not _is_admin) and str(row.get("staff_name")) != me:  # 本人分のみ
+                continue
             plan[str(row.get("staff_name")) + '|' + str(row.get("plan_date"))] = {
                 "status": row.get("status"), "start": row.get("start_time"), "end": row.get("end_time")}
     except Exception as e:
@@ -13284,6 +13290,9 @@ def api_shift_month():
     ndays = _cal.monthrange(year, month)[1]
     days = [f"{year:04d}-{month:02d}-{d:02d}" for d in range(1, ndays + 1)]
     staff = _shift_staff_names(supabase, f_code)
+    if not is_admin_user(supabase, f_code, me):  # shift-self-only-v1: 管理者以外は本人のみ
+        staff = [me] if me else staff
+        name = me
     if staff and name not in staff:
         name = me if me in staff else staff[0]
     defaults = _shift_default_map(supabase, f_code)
@@ -13310,12 +13319,16 @@ def api_shift_save():
     supabase = get_supabase()
     data = request.get_json(silent=True) or {}
     cells = data.get('cells') or []
+    me = session.get('my_name', '')
+    _is_admin = is_admin_user(supabase, f_code, me)  # shift-self-only-v1
     saved = 0
     now_iso = datetime.now(timezone.utc).isoformat()
     for c in cells:
         nm = (c.get('name') or '').strip()
         dt = (c.get('date') or '').strip()
         if not nm or not dt:
+            continue
+        if (not _is_admin) and nm != me:  # 管理者以外は本人分のみ保存
             continue
         try:
             _dt = c.get('day_type')  # youshiki-daytype-v1: 'full'|'half'|None
@@ -13341,6 +13354,9 @@ def api_shift_default():
     supabase = get_supabase()
     data = request.get_json(silent=True) or {}
     nm = (data.get('name') or '').strip()
+    _me = session.get('my_name', '')
+    if not is_admin_user(supabase, f_code, _me):  # shift-self-only-v1: 管理者以外は本人のみ
+        nm = _me
     if not nm:
         return jsonify({"status": "error", "message": "職員名が必要です"}), 400
     wd = data.get('weekdays')
@@ -13378,7 +13394,11 @@ def api_shift_copy():
         return jsonify({"status": "error", "message": str(e)}), 500
     n = 0
     now_iso = datetime.now(timezone.utc).isoformat()
+    _me = session.get('my_name', '')
+    _is_admin = is_admin_user(supabase, f_code, _me)  # shift-self-only-v1
     for row in (r.data or []):
+        if (not _is_admin) and str(row.get("staff_name")) != _me:  # 本人分のみ
+            continue
         try:
             pd = datetime.strptime(str(row.get("plan_date")), '%Y-%m-%d').date()
         except Exception:
