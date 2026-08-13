@@ -223,14 +223,36 @@ function toggleStaffBirth(idx, name, currentBirth) {
 }
 
 async function saveStaffBirth(name, idx) {
+    _ensureSpinStyle();
     const birth = document.getElementById('sbf-date-' + idx).value;
-    const res = await fetch('/api/update_staff_birth', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ name, birth })
-    });
-    if ((await res.json()).status === 'success') location.reload();
-    else alert('保存に失敗しました');
+    var btn = document.querySelector('#sbf-' + idx + ' .btn-primary');
+    var orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined kaigo-spin" style="font-size:15px;color:white;">progress_activity</span>保存中...'; }
+    try {
+        const res = await fetch('/api/update_staff_birth', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name, birth })
+        });
+        const j = await res.json();
+        if (j.status === 'success') {
+            var sub = document.getElementById('sbt-' + idx);
+            if (sub) {
+                var txt = '';
+                if (birth) { var p = birth.split('-'); txt = toWareki(parseInt(p[0])) + parseInt(p[1]) + '月' + parseInt(p[2]) + '日'; }
+                sub.textContent = txt;
+                sub.style.display = txt ? '' : 'none';
+            }
+            var form = document.getElementById('sbf-' + idx); if (form) form.style.display = 'none';
+            showJobToast('保存しました');
+        } else {
+            alert('保存に失敗しました');
+        }
+    } catch (e) {
+        alert('保存に失敗しました（通信エラー）');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    }
 }
 
 async function unblockDevice(id) {
@@ -592,15 +614,54 @@ function toggleStaffJob(idx) {
     var el = document.getElementById('sjf-' + idx);
     if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
+function _ensureSpinStyle() {
+    if (document.getElementById('kaigo-spin-style')) return;
+    var st = document.createElement('style');
+    st.id = 'kaigo-spin-style';
+    st.textContent = '@keyframes kaigospin{to{transform:rotate(360deg)}} .kaigo-spin{display:inline-block;animation:kaigospin .8s linear infinite;vertical-align:middle;}';
+    document.head.appendChild(st);
+}
+function showJobToast(msg) {
+    var t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = 'position:fixed;left:50%;bottom:40px;transform:translateX(-50%);background:#323232;color:#fff;padding:10px 18px;border-radius:20px;font-size:0.85rem;z-index:99999;box-shadow:0 2px 10px rgba(0,0,0,0.3);opacity:0;transition:opacity .2s;';
+    document.body.appendChild(t);
+    requestAnimationFrame(function(){ t.style.opacity = '1'; });
+    setTimeout(function(){ t.style.opacity = '0'; setTimeout(function(){ t.remove(); }, 250); }, 1600);
+}
 async function saveStaffJob(name, idx) {
+    _ensureSpinStyle();
     var job = document.getElementById('sjf-job-' + idx).value;
     var job2 = document.getElementById('sjf-job2-' + idx).value;
     var emp = document.getElementById('sjf-emp-' + idx).value;
-    var res = await fetch('/api/update_staff_job', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ name: name, job_title: job, job_title2: job2, employment_type: emp })
-    });
-    if ((await res.json()).status === 'success') location.reload();
-    else alert('保存に失敗しました');
+    var btn = document.querySelector('#sjf-' + idx + ' .btn-primary');
+    var orig = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined kaigo-spin" style="font-size:15px;color:white;">progress_activity</span>保存中...'; }
+    try {
+        var res = await fetch('/api/update_staff_job', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ name: name, job_title: job, job_title2: job2, employment_type: emp })
+        });
+        var j = await res.json();
+        if (j.status === 'success') {
+            var sub = document.getElementById('sjt-' + idx);
+            if (sub) {
+                var txt = job + (job2 ? '／' + job2 : '');
+                sub.textContent = txt;
+                sub.style.display = txt ? '' : 'none';
+            }
+            var s1 = document.getElementById('sjf-job-' + idx); if (s1) s1.dataset.current = job;
+            var s2 = document.getElementById('sjf-job2-' + idx); if (s2) s2.dataset.current = job2;
+            var s3 = document.getElementById('sjf-emp-' + idx); if (s3) s3.dataset.current = emp;
+            var form = document.getElementById('sjf-' + idx); if (form) form.style.display = 'none';
+            showJobToast('保存しました');
+        } else {
+            alert(j.message || '保存に失敗しました');
+        }
+    } catch (e) {
+        alert('保存に失敗しました（通信エラー）');
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    }
 }
