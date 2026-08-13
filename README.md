@@ -3,7 +3,7 @@
 介護記録システム「TASUKARU」の開発引き継ぎドキュメントです。
 Session 56 までの完全な軌跡、技術的知見、作業方法論を記載しています。
 
-新しいAIとのチャットを開始する際は、このREADMEと `SESSION_57_HANDOFF.md` を必ず読んでください。
+新しいAIとのチャットを開始する際は、このREADMEと `SESSION_64_HANDOFF.md` を必ず読んでください。
 
 ---
 
@@ -2649,3 +2649,18 @@ git checkout tasukaru-dev
 - app.py=py_compile通過（ローカル＋デバイス両方）、テンプレJS=node --check通過。
 - DEV実機(`tasukaru-dev`)で確認済み: 「CSVで保存」ボタン表示、施設全体CSV(2026/7)=200・CSV・12列・全日×5名＋合計5行=161行、職員ごと(デモ職員A)=33行に絞り込み、公休/有給/振替も出力。モーダルの施設全体/職員ごと切替＋氏名セレクト表示もOK。
 - リリース: dev `2991f75`→`072ea2c`、本番(`tasukaru`)マージ `782bcdf`→`0e5e54c`。本番実機でもボタン表示＋エンドポイント200・12列を確認（件数のみ確認、個人データ本文は取得せず）。GitHub push→Cloud Build自動デプロイ。
+
+## 職種登録／様式の施設別動的転記・看護職員／勤務予定の本人制限／キャッシュ対策／保存UX 2026-08-13  <!-- staff-role-youshiki-suite-2026-08-13 -->
+
+**DEV・本番とも反映済み（完了）**。詳細な引き継ぎは `SESSION_64_HANDOFF.md` を参照。
+
+### やったこと
+- **職員登録に職種を追加（Phase1）**: `staffs` に `job_title`/`job_title2`/`employment_type`（DDL本番・DEV適用済み）。管理者MENU→職員管理で職種（管理者/生活相談員/介護職員/機能訓練指導員/看護師/その他）・兼務職種・勤務形態(A〜D)を登録。`api_add_staff`＋新規 `api_update_staff_job`。
+- **参考様式4の施設別・動的転記（Phase2）**: `templates/youshiki_kinmu.xlsx` の**ハードコード職員名（情報漏えい源）を撤去**し汎用化（赤フォント→既定色・枠線修正・**看護職員セクション新設**）。出力時に各施設の職種登録から氏名を役職行へ動的転記。行不足は自動挿入（`_ys_insert_rows_shift` が結合セルも追従）。半日型=2単位/1日型=1単位、値は時間・黒字、看護師→看護職員、兼務は両役職に出力。marker `youshiki-roster-v2` / `型別-svc-hours-v2`。
+- **勤務予定入力の本人制限**: 管理者以外は本人のみ表示・保存・既定・コピー。`/api/shift/month|week|save|default|copy` に `is_admin_user` 判定。marker `shift-self-only-v1`。
+- **静的JSキャッシュ対策**: `app.py` に `static_v(path)`（内容md5で `?v=` 付与）を追加し、実テンプレ6箇所を置換。旧JSキャッシュで新UIが出ない事象の恒久対策。marker `static-cachebust-v1`。
+- **職種／誕生日の保存UX**: 保存中スピナー＋成功トースト、保存後はリロードせずその場更新（管理者MENUトップに戻らない）。`showJobToast`/`_ensureSpinStyle`、小見出し `sjt-`/`sbt-`。
+
+### コミット
+DEV `tasukaru-dev`: `55c9e27`→`b4e2646`→`2e8f07a`→`1155963`→`dd5824c`→`89d498d`→`9cfbab9`。
+本番 `tasukaru`: `7990749`（前半5件マージ）→`8bca8b3`（保存UX2件マージ）。
