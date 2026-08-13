@@ -12041,18 +12041,24 @@ def admin():
             blocked = res_b.data
         except: pass
         try:
-            res_s = supabase.table("staffs").select("staff_name,birth_date").eq("facility_code", f_code).eq("is_active", True).execute()
+            res_s = supabase.table("staffs").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             staff_with_birth = {r["staff_name"]: r.get("birth_date") for r in res_s.data}
+            staff_job_map = {r["staff_name"]: r for r in res_s.data}
         except:
             staff_with_birth = {}
+            staff_job_map = {}
         try:
             for name, bd in sorted(staff_with_birth.items()):
                 is_b = len(supabase.table("blocked_devices").select("id").eq("staff_name", name).eq("facility_code", f_code).eq("is_active", True).execute().data) > 0
+                _jr = staff_job_map.get(name) or {}
                 staff_list.append({
                     "name": name,
                     "blocked": is_b,
                     "birth_date": bd or "",
-                    "birth_text": birth_to_wareki_text(bd) if bd else ""
+                    "birth_text": birth_to_wareki_text(bd) if bd else "",
+                    "job_title": _jr.get("job_title") or "",
+                    "job_title2": _jr.get("job_title2") or "",
+                    "employment_type": _jr.get("employment_type") or ""
                 })
         except: pass
         try:
@@ -14534,17 +14540,24 @@ def api_add_staff():
         f_code = session["f_code"]
         name = data["name"].strip()
         password = data["password"]
+        job_title = (data.get("job_title") or "").strip() or None
+        job_title2 = (data.get("job_title2") or "").strip() or None
+        employment_type = (data.get("employment_type") or "").strip() or None
         supabase = get_supabase()
         existing = supabase.table("staffs").select("id").eq("facility_code", f_code).eq("staff_name", name).eq("is_active", True).execute()
         if existing.data:
             return jsonify({"status": "error", "message": "同じ名前のスタッフが既に登録されています"})
         pw_hash = hashlib.sha256(password.encode()).hexdigest()
-        supabase.table("staffs").insert({
+        _ins = {
             "facility_code": f_code,
             "staff_name": name,
             "password_hash": pw_hash,
             "is_active": True
-        }).execute()
+        }
+        if job_title: _ins["job_title"] = job_title
+        if job_title2: _ins["job_title2"] = job_title2
+        if employment_type: _ins["employment_type"] = employment_type
+        supabase.table("staffs").insert(_ins).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -14585,6 +14598,24 @@ def api_update_staff_birth():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+@app.route('/api/update_staff_job', methods=['POST'])
+@login_required
+def api_update_staff_job():
+    """スタッフの職種・兼務職種・勤務形態を更新"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        upd = {
+            "job_title": (data.get("job_title") or "").strip() or None,
+            "job_title2": (data.get("job_title2") or "").strip() or None,
+            "employment_type": (data.get("employment_type") or "").strip() or None,
+        }
+        supabase.table("staffs").update(upd).eq("staff_name", data["name"]).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/unblock_device', methods=['POST'])
 @login_required
