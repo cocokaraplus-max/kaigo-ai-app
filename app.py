@@ -18263,6 +18263,128 @@ def _ys_build_row_map(ws):
     return m
 
 
+# youshiki-roster-v2: 職種登録(staffs.job_title)から様式へ氏名を動的転記
+_YS_ROLE_MAP = {
+    "管理者": "管理者",
+    "生活相談員": "生活相談員",
+    "介護職員": "介護職員",
+    "機能訓練指導員": "機能訓練指導員",
+    "看護師": "看護職員",
+    "看護職員": "看護職員",
+}
+_YS_ROLE_LABELS = ("管理者", "生活相談員", "介護職員", "看護職員", "機能訓練指導員")
+_YS_EMP_ORDER = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+
+def _ys_load_roster(supabase, f_code):
+    """職員登録から {様式の役職ラベル: [(氏名, 形態), ...]} を作る。
+    兼務職種(job_title2)も別役職として登録。並びは形態A→B→C→D、次に氏名。"""
+    roster = {}
+    try:
+        res = supabase.table("staffs").select("*").eq(
+            "facility_code", f_code).eq("is_active", True).execute()
+        rows = res.data or []
+    except Exception as e:
+        print(f"_ys_load_roster error: {e}", flush=True)
+        rows = []
+    seen = set()
+    for s in rows:
+        nm = (s.get("staff_name") or "").strip()
+        if not nm:
+            continue
+        emp = (s.get("employment_type") or "").strip().upper()
+        for jt in (s.get("job_title"), s.get("job_title2")):
+            t = _YS_ROLE_MAP.get((jt or "").strip())
+            if not t:
+                continue
+            k = (t, nm)
+            if k in seen:
+                continue
+            seen.add(k)
+            roster.setdefault(t, []).append((nm, emp))
+    for t in roster:
+        roster[t].sort(key=lambda x: (_YS_EMP_ORDER.get(x[1], 9), x[0]))
+    return roster
+
+
+def _ys_scan_blocks(ws):
+    """本文(10行目以降)を走査し [(unit, title, [rows...]), ...] を返す。"""
+    blocks = []
+    unit = 0
+    for row in range(10, ws.max_row + 1):
+        a = _ys_norm(ws.cell(row=row, column=1).value)
+        if a and "単位" in a:
+            unit += 1
+            continue
+        if a and ("申請する事業" in a or "勤務形態の区分" in a
+                  or a in ("常勤", "非常勤", "専従", "兼務")):
+            break
+        if a in _YS_ROLE_LABELS:
+            blocks.append((unit, a, [row]))
+        elif blocks and blocks[-1][2][-1] == row - 1:
+            blocks[-1][2].append(row)
+    return blocks
+
+
+def _ys_copy_row_style(ws, src_row, dst_row, ncols=34):
+    import copy as _c
+    for c in range(1, ncols + 1):
+        s = ws.cell(row=src_row, column=c)
+        d = ws.cell(row=dst_row, column=c)
+        d.border = _c.copy(s.border)
+        d.font = _c.copy(s.font)
+        d.alignment = _c.copy(s.alignment)
+        d.fill = _c.copy(s.fill)
+        d.number_format = s.number_format
+    ws.row_dimensions[dst_row].height = ws.row_dimensions[src_row].height or 18.0
+
+
+def _ys_insert_rows_shift(ws, at, n):
+    """insert_rowsは結合セルを移動しないため、挿入位置以降の結合セルをn行下へシフトする。"""
+    from openpyxl.worksheet.cell_range import CellRange
+    to_shift = [str(m) for m in list(ws.merged_cells.ranges) if m.min_row >= at]
+    for coord in to_shift:
+        ws.unmerge_cells(coord)
+    ws.insert_rows(at, n)
+    for coord in to_shift:
+        cr = CellRange(coord)
+        cr.shift(0, n)
+        ws.merge_cells(str(cr))
+
+
+def _ys_apply_roster(ws, roster):
+    """役職ブロックに氏名(C列)・形態(B列)を転記。行不足時は自動挿入。
+    (氏名->[(unit,row,title)] の rowmap, 単位数) を返す。"""
+    blocks = _ys_scan_blocks(ws)
+    num_units = max((u for (u, _t, _r) in blocks), default=1) or 1
+    # 不足行を下のブロックから順に挿入(上のブロックの行番号を保つ)
+    for (unit, title, rows) in sorted(blocks, key=lambda b: -b[2][0]):
+        staff = roster.get(title, [])
+        need = len(staff) - len(rows)
+        if need > 0:
+            at = rows[-1] + 1
+            _ys_insert_rows_shift(ws, at, need)
+            for i in range(need):
+                _ys_copy_row_style(ws, rows[-1], at + i)
+                ws.cell(row=at + i, column=2).value = None
+                ws.cell(row=at + i, column=3).value = None
+    # 再走査して最終行位置で転記
+    blocks = _ys_scan_blocks(ws)
+    rowmap = {}
+    for (unit, title, rows) in blocks:
+        staff = roster.get(title, [])
+        for idx, r in enumerate(rows):
+            if idx < len(staff):
+                nm, emp = staff[idx]
+                ws.cell(row=r, column=3).value = nm
+                ws.cell(row=r, column=2).value = emp or None
+                rowmap.setdefault(_ys_norm(nm), []).append((unit, r, title))
+            else:
+                ws.cell(row=r, column=3).value = None
+                ws.cell(row=r, column=2).value = None
+    return rowmap, num_units
+
+
 # youshiki-daytype-v1: 1日型/半日型の判定
 def _ys_month_bounds(year, month):
     _st = f"{year:04d}-{month:02d}-01"
@@ -18527,12 +18649,12 @@ def admin_timecard_youshiki():
                 _ws2["M2"] = "\u52e4\u52d9" + _ys_lbl + _ys_month_str
                 _ws2["Q2"] = None
 
+        _ys_roster = _ys_load_roster(supabase, f_code)  # youshiki-roster-v2: 職種登録から氏名を取得
         for sheet_name, is_full in ((_YS_SHEET_HALF, False), (_YS_SHEET_FULL, True)):
             if sheet_name not in wb.sheetnames:
                 continue
             ws = wb[sheet_name]
-            rowmap = _ys_build_row_map(ws)
-            _num_units = max((u for _occ in rowmap.values() for (u, _rw, _tt) in _occ), default=1) or 1  # 型別-svc-hours-v2: シートの単位数(半日=2/1日=1)
+            rowmap, _num_units = _ys_apply_roster(ws, _ys_roster)  # youshiki-roster-v2: 職種登録から氏名を動的転記(不足行は自動挿入)
             cap = full_cap if is_full else half_cap
             sheet_type = "full" if is_full else "half"
             for day in range(1, 29):
