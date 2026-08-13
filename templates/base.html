@@ -4183,8 +4183,8 @@ async function auRenderTop(){
 }
 </script>
 <!-- translation-v1: 外国人スタッフ向け翻訳入力バー・翻訳レンズ -->
-<script src="/static/tt_input.js"></script>
-<script src="/static/tt_lens.js"></script>
+<script src="{{ static_v('tt_input.js') }}"></script>
+<script src="{{ static_v('tt_lens.js') }}"></script>
 <!-- translation-v1: Googleウィジェットは非表示で機能だけ使う。言語切替はカスタムボタン経由。 -->
 <style>
   #tt-translate-widget { position:fixed; top:-200px; left:-200px; width:1px; height:1px; overflow:hidden; opacity:0; pointer-events:none; }

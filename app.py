@@ -27,6 +27,33 @@ app.secret_key = os.environ.get("SECRET_KEY")
 if not app.secret_key:
     raise RuntimeError("SECRET_KEY が設定されていません。環境変数を確認してください。")
 
+# ===== static-cachebust-v1: 静的JS/CSSに内容ハッシュを付与してキャッシュ更新を確実にする =====
+import hashlib as _sv_hashlib
+_STATIC_VER_CACHE = {}
+
+
+@app.template_global()
+def static_v(path):
+    """/static/<path> に ?v=<内容ハッシュ8桁> を付けて返す。内容が変わった時だけ値が変わる。"""
+    rel = str(path or "").lstrip("/")
+    if rel.startswith("static/"):
+        rel = rel[len("static/"):]
+    full = os.path.join(app.static_folder, rel)
+    ver = "0"
+    try:
+        st = os.path.getmtime(full)
+        cached = _STATIC_VER_CACHE.get(full)
+        if cached and cached[0] == st:
+            ver = cached[1]
+        else:
+            with open(full, "rb") as _f:
+                ver = _sv_hashlib.md5(_f.read()).hexdigest()[:8]
+            _STATIC_VER_CACHE[full] = (st, ver)
+    except OSError:
+        ver = "0"
+    return f"/static/{rel}?v={ver}"
+
+
 # ===== Session persistence for PWA/mobile =====
 # Keep users logged in across browser restarts (up to 30 days)
 from datetime import timedelta
@@ -12041,18 +12068,24 @@ def admin():
             blocked = res_b.data
         except: pass
         try:
-            res_s = supabase.table("staffs").select("staff_name,birth_date").eq("facility_code", f_code).eq("is_active", True).execute()
+            res_s = supabase.table("staffs").select("*").eq("facility_code", f_code).eq("is_active", True).execute()
             staff_with_birth = {r["staff_name"]: r.get("birth_date") for r in res_s.data}
+            staff_job_map = {r["staff_name"]: r for r in res_s.data}
         except:
             staff_with_birth = {}
+            staff_job_map = {}
         try:
             for name, bd in sorted(staff_with_birth.items()):
                 is_b = len(supabase.table("blocked_devices").select("id").eq("staff_name", name).eq("facility_code", f_code).eq("is_active", True).execute().data) > 0
+                _jr = staff_job_map.get(name) or {}
                 staff_list.append({
                     "name": name,
                     "blocked": is_b,
                     "birth_date": bd or "",
-                    "birth_text": birth_to_wareki_text(bd) if bd else ""
+                    "birth_text": birth_to_wareki_text(bd) if bd else "",
+                    "job_title": _jr.get("job_title") or "",
+                    "job_title2": _jr.get("job_title2") or "",
+                    "employment_type": _jr.get("employment_type") or ""
                 })
         except: pass
         try:
@@ -13244,13 +13277,19 @@ def api_shift_week():
         d0 = _t - timedelta(days=_t.weekday())
     d0 = d0 - timedelta(days=d0.weekday())  # 必ず月曜起点
     dates = [(d0 + timedelta(days=i)).isoformat() for i in range(7)]
+    me = session.get('my_name', '')
+    _is_admin = is_admin_user(supabase, f_code, me)  # shift-self-only-v1
     names = _shift_staff_names(supabase, f_code)
+    if not _is_admin:
+        names = [me] if me else names
     defaults = _shift_default_map(supabase, f_code)
     plan = {}
     try:
         r = supabase.table("staff_shift_plan").select("*").eq(
             "facility_code", f_code).gte("plan_date", dates[0]).lte("plan_date", dates[6]).execute()
         for row in (r.data or []):
+            if (not _is_admin) and str(row.get("staff_name")) != me:  # 本人分のみ
+                continue
             plan[str(row.get("staff_name")) + '|' + str(row.get("plan_date"))] = {
                 "status": row.get("status"), "start": row.get("start_time"), "end": row.get("end_time")}
     except Exception as e:
@@ -13278,6 +13317,9 @@ def api_shift_month():
     ndays = _cal.monthrange(year, month)[1]
     days = [f"{year:04d}-{month:02d}-{d:02d}" for d in range(1, ndays + 1)]
     staff = _shift_staff_names(supabase, f_code)
+    if not is_admin_user(supabase, f_code, me):  # shift-self-only-v1: 管理者以外は本人のみ
+        staff = [me] if me else staff
+        name = me
     if staff and name not in staff:
         name = me if me in staff else staff[0]
     defaults = _shift_default_map(supabase, f_code)
@@ -13304,12 +13346,16 @@ def api_shift_save():
     supabase = get_supabase()
     data = request.get_json(silent=True) or {}
     cells = data.get('cells') or []
+    me = session.get('my_name', '')
+    _is_admin = is_admin_user(supabase, f_code, me)  # shift-self-only-v1
     saved = 0
     now_iso = datetime.now(timezone.utc).isoformat()
     for c in cells:
         nm = (c.get('name') or '').strip()
         dt = (c.get('date') or '').strip()
         if not nm or not dt:
+            continue
+        if (not _is_admin) and nm != me:  # 管理者以外は本人分のみ保存
             continue
         try:
             _dt = c.get('day_type')  # youshiki-daytype-v1: 'full'|'half'|None
@@ -13335,6 +13381,9 @@ def api_shift_default():
     supabase = get_supabase()
     data = request.get_json(silent=True) or {}
     nm = (data.get('name') or '').strip()
+    _me = session.get('my_name', '')
+    if not is_admin_user(supabase, f_code, _me):  # shift-self-only-v1: 管理者以外は本人のみ
+        nm = _me
     if not nm:
         return jsonify({"status": "error", "message": "職員名が必要です"}), 400
     wd = data.get('weekdays')
@@ -13372,7 +13421,11 @@ def api_shift_copy():
         return jsonify({"status": "error", "message": str(e)}), 500
     n = 0
     now_iso = datetime.now(timezone.utc).isoformat()
+    _me = session.get('my_name', '')
+    _is_admin = is_admin_user(supabase, f_code, _me)  # shift-self-only-v1
     for row in (r.data or []):
+        if (not _is_admin) and str(row.get("staff_name")) != _me:  # 本人分のみ
+            continue
         try:
             pd = datetime.strptime(str(row.get("plan_date")), '%Y-%m-%d').date()
         except Exception:
@@ -14534,17 +14587,24 @@ def api_add_staff():
         f_code = session["f_code"]
         name = data["name"].strip()
         password = data["password"]
+        job_title = (data.get("job_title") or "").strip() or None
+        job_title2 = (data.get("job_title2") or "").strip() or None
+        employment_type = (data.get("employment_type") or "").strip() or None
         supabase = get_supabase()
         existing = supabase.table("staffs").select("id").eq("facility_code", f_code).eq("staff_name", name).eq("is_active", True).execute()
         if existing.data:
             return jsonify({"status": "error", "message": "同じ名前のスタッフが既に登録されています"})
         pw_hash = hashlib.sha256(password.encode()).hexdigest()
-        supabase.table("staffs").insert({
+        _ins = {
             "facility_code": f_code,
             "staff_name": name,
             "password_hash": pw_hash,
             "is_active": True
-        }).execute()
+        }
+        if job_title: _ins["job_title"] = job_title
+        if job_title2: _ins["job_title2"] = job_title2
+        if employment_type: _ins["employment_type"] = employment_type
+        supabase.table("staffs").insert(_ins).execute()
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -14585,6 +14645,24 @@ def api_update_staff_birth():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+@app.route('/api/update_staff_job', methods=['POST'])
+@login_required
+def api_update_staff_job():
+    """スタッフの職種・兼務職種・勤務形態を更新"""
+    try:
+        data = request.json
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        upd = {
+            "job_title": (data.get("job_title") or "").strip() or None,
+            "job_title2": (data.get("job_title2") or "").strip() or None,
+            "employment_type": (data.get("employment_type") or "").strip() or None,
+        }
+        supabase.table("staffs").update(upd).eq("staff_name", data["name"]).eq("facility_code", f_code).execute()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/api/unblock_device', methods=['POST'])
 @login_required
@@ -18232,6 +18310,128 @@ def _ys_build_row_map(ws):
     return m
 
 
+# youshiki-roster-v2: 職種登録(staffs.job_title)から様式へ氏名を動的転記
+_YS_ROLE_MAP = {
+    "管理者": "管理者",
+    "生活相談員": "生活相談員",
+    "介護職員": "介護職員",
+    "機能訓練指導員": "機能訓練指導員",
+    "看護師": "看護職員",
+    "看護職員": "看護職員",
+}
+_YS_ROLE_LABELS = ("管理者", "生活相談員", "介護職員", "看護職員", "機能訓練指導員")
+_YS_EMP_ORDER = {"A": 0, "B": 1, "C": 2, "D": 3}
+
+
+def _ys_load_roster(supabase, f_code):
+    """職員登録から {様式の役職ラベル: [(氏名, 形態), ...]} を作る。
+    兼務職種(job_title2)も別役職として登録。並びは形態A→B→C→D、次に氏名。"""
+    roster = {}
+    try:
+        res = supabase.table("staffs").select("*").eq(
+            "facility_code", f_code).eq("is_active", True).execute()
+        rows = res.data or []
+    except Exception as e:
+        print(f"_ys_load_roster error: {e}", flush=True)
+        rows = []
+    seen = set()
+    for s in rows:
+        nm = (s.get("staff_name") or "").strip()
+        if not nm:
+            continue
+        emp = (s.get("employment_type") or "").strip().upper()
+        for jt in (s.get("job_title"), s.get("job_title2")):
+            t = _YS_ROLE_MAP.get((jt or "").strip())
+            if not t:
+                continue
+            k = (t, nm)
+            if k in seen:
+                continue
+            seen.add(k)
+            roster.setdefault(t, []).append((nm, emp))
+    for t in roster:
+        roster[t].sort(key=lambda x: (_YS_EMP_ORDER.get(x[1], 9), x[0]))
+    return roster
+
+
+def _ys_scan_blocks(ws):
+    """本文(10行目以降)を走査し [(unit, title, [rows...]), ...] を返す。"""
+    blocks = []
+    unit = 0
+    for row in range(10, ws.max_row + 1):
+        a = _ys_norm(ws.cell(row=row, column=1).value)
+        if a and "単位" in a:
+            unit += 1
+            continue
+        if a and ("申請する事業" in a or "勤務形態の区分" in a
+                  or a in ("常勤", "非常勤", "専従", "兼務")):
+            break
+        if a in _YS_ROLE_LABELS:
+            blocks.append((unit, a, [row]))
+        elif blocks and blocks[-1][2][-1] == row - 1:
+            blocks[-1][2].append(row)
+    return blocks
+
+
+def _ys_copy_row_style(ws, src_row, dst_row, ncols=34):
+    import copy as _c
+    for c in range(1, ncols + 1):
+        s = ws.cell(row=src_row, column=c)
+        d = ws.cell(row=dst_row, column=c)
+        d.border = _c.copy(s.border)
+        d.font = _c.copy(s.font)
+        d.alignment = _c.copy(s.alignment)
+        d.fill = _c.copy(s.fill)
+        d.number_format = s.number_format
+    ws.row_dimensions[dst_row].height = ws.row_dimensions[src_row].height or 18.0
+
+
+def _ys_insert_rows_shift(ws, at, n):
+    """insert_rowsは結合セルを移動しないため、挿入位置以降の結合セルをn行下へシフトする。"""
+    from openpyxl.worksheet.cell_range import CellRange
+    to_shift = [str(m) for m in list(ws.merged_cells.ranges) if m.min_row >= at]
+    for coord in to_shift:
+        ws.unmerge_cells(coord)
+    ws.insert_rows(at, n)
+    for coord in to_shift:
+        cr = CellRange(coord)
+        cr.shift(0, n)
+        ws.merge_cells(str(cr))
+
+
+def _ys_apply_roster(ws, roster):
+    """役職ブロックに氏名(C列)・形態(B列)を転記。行不足時は自動挿入。
+    (氏名->[(unit,row,title)] の rowmap, 単位数) を返す。"""
+    blocks = _ys_scan_blocks(ws)
+    num_units = max((u for (u, _t, _r) in blocks), default=1) or 1
+    # 不足行を下のブロックから順に挿入(上のブロックの行番号を保つ)
+    for (unit, title, rows) in sorted(blocks, key=lambda b: -b[2][0]):
+        staff = roster.get(title, [])
+        need = len(staff) - len(rows)
+        if need > 0:
+            at = rows[-1] + 1
+            _ys_insert_rows_shift(ws, at, need)
+            for i in range(need):
+                _ys_copy_row_style(ws, rows[-1], at + i)
+                ws.cell(row=at + i, column=2).value = None
+                ws.cell(row=at + i, column=3).value = None
+    # 再走査して最終行位置で転記
+    blocks = _ys_scan_blocks(ws)
+    rowmap = {}
+    for (unit, title, rows) in blocks:
+        staff = roster.get(title, [])
+        for idx, r in enumerate(rows):
+            if idx < len(staff):
+                nm, emp = staff[idx]
+                ws.cell(row=r, column=3).value = nm
+                ws.cell(row=r, column=2).value = emp or None
+                rowmap.setdefault(_ys_norm(nm), []).append((unit, r, title))
+            else:
+                ws.cell(row=r, column=3).value = None
+                ws.cell(row=r, column=2).value = None
+    return rowmap, num_units
+
+
 # youshiki-daytype-v1: 1日型/半日型の判定
 def _ys_month_bounds(year, month):
     _st = f"{year:04d}-{month:02d}-01"
@@ -18496,11 +18696,12 @@ def admin_timecard_youshiki():
                 _ws2["M2"] = "\u52e4\u52d9" + _ys_lbl + _ys_month_str
                 _ws2["Q2"] = None
 
+        _ys_roster = _ys_load_roster(supabase, f_code)  # youshiki-roster-v2: 職種登録から氏名を取得
         for sheet_name, is_full in ((_YS_SHEET_HALF, False), (_YS_SHEET_FULL, True)):
             if sheet_name not in wb.sheetnames:
                 continue
             ws = wb[sheet_name]
-            rowmap = _ys_build_row_map(ws)
+            rowmap, _num_units = _ys_apply_roster(ws, _ys_roster)  # youshiki-roster-v2: 職種登録から氏名を動的転記(不足行は自動挿入)
             cap = full_cap if is_full else half_cap
             sheet_type = "full" if is_full else "half"
             for day in range(1, 29):
@@ -18525,27 +18726,20 @@ def admin_timecard_youshiki():
                         continue
                     if rtype != sheet_type:
                         continue  # このシートの型と違う日は書かない
-                    iv = _ys_to_intervals(punches) if punches else []
-                    if is_full:
-                        slots = [_ys_slot_value(_ys_side_minutes(iv, 0, 24 * 60), cap)] if punches else [None]
-                    else:
-                        am = _ys_slot_value(_ys_side_minutes(iv, 0, split_min), cap) if (punches and split_min) else None
-                        pm = _ys_slot_value(_ys_side_minutes(iv, split_min, 24 * 60), cap) if (punches and split_min) else None
-                        slots = [am, pm]
+                    # 型別-svc-hours-v2: 値は「時間」。基準＝1枠の時間(cap)、兼務は役職比率で按分。
+                    #   単位に属さない役職(unit=0。例:管理者)は1日分(単位数×枠)、単位に属する役職は枠1つ分。
                     sp = split_by_name.get(name)
                     for (unit, row, title) in occurs:
                         if leave:
                             _ys_set_cell(ws.cell(row=row, column=col), _YS_LEAVE_FORM.get(leave, leave), True)
                             continue
-                        if is_full:
-                            val = slots[0]
-                        else:
-                            idx = 0 if unit in (0, 1) else 1
-                            val = slots[idx] if idx < len(slots) else None
-                        if val is None:
+                        if not punches:
                             continue
-                        if sp and title in sp:
-                            val = round(val * sp[title] * 2) / 2
+                        ratio = sp[title] if (sp and title in sp) else 1.0
+                        base = (_num_units * cap) if unit == 0 else cap
+                        val = round(base * ratio * 2) / 2
+                        if val <= 0:
+                            continue
                         _ys_set_cell(ws.cell(row=row, column=col), val, False)
 
         # youshiki-daytype-v1: 曜日ルール'both'で型が決まらなかった日を警告として明示（黙って落とさない）

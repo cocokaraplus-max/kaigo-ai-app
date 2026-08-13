@@ -723,6 +723,18 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
         <label class="form-label">パスワード確認</label>
         <input type="password" id="new-staff-pw2" class="form-control" placeholder="もう一度入力">
       </div>
+      <div class="form-group">
+        <label class="form-label">職種</label>
+        <select id="new-staff-job" class="form-control js-job-select" data-current=""></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">兼務職種（任意）</label>
+        <select id="new-staff-job2" class="form-control js-job2-select" data-current=""></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">勤務形態</label>
+        <select id="new-staff-emp" class="form-control js-emp-select" data-current=""></select>
+      </div>
       <div id="new-staff-error" class="alert alert-error" style="display:none;margin-bottom:12px;">
         <span class="material-symbols-outlined">error</span>
         <span id="new-staff-error-msg"></span>
@@ -761,6 +773,9 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
         </span>
         <div style="flex:1;">
           <div style="font-weight:600;font-size:0.9rem;">{{ s.name }}</div>
+          {% if s.job_title %}
+          <div style="font-size:0.75rem;color:#1a73e8;margin-top:2px;">{{ s.job_title }}{% if s.job_title2 %}／{{ s.job_title2 }}{% endif %}</div>
+          {% endif %}
           {% if s.birth_text %}
           <div style="font-size:0.75rem;color:#80868b;margin-top:2px;">{{ s.birth_text }}</div>
           {% endif %}
@@ -796,6 +811,9 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
           <button class="btn btn-sm edit-btn" onclick="toggleStaffBirth('{{ loop.index }}','{{ s.name }}','{{ s.birth_date or '' }}')" title="誕生日設定">
             <span class="material-symbols-outlined" style="font-size:15px;">cake</span>
           </button>
+          <button class="btn btn-sm edit-btn" onclick="toggleStaffJob('{{ loop.index }}')" title="職種設定">
+            <span class="material-symbols-outlined" style="font-size:15px;">badge</span>
+          </button>
           {% if not s.blocked %}
           <button class="btn btn-sm delete-btn" onclick="blockStaff('{{ s.name }}')" title="ブロック">
             <span class="material-symbols-outlined" style="font-size:15px;color:white;">block</span>
@@ -822,6 +840,28 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
             <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>保存
           </button>
           <button class="btn btn-sm" onclick="document.getElementById('sbf-{{ loop.index }}').style.display='none'">
+            <span class="material-symbols-outlined" style="font-size:15px;">close</span>閉じる
+          </button>
+        </div>
+      </div>
+      <div class="edit-form-area" id="sjf-{{ loop.index }}" style="display:none;">
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label" style="font-size:0.75rem;">職種</label>
+          <select id="sjf-job-{{ loop.index }}" class="form-control js-job-select" data-current="{{ s.job_title }}"></select>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label" style="font-size:0.75rem;">兼務職種（任意）</label>
+          <select id="sjf-job2-{{ loop.index }}" class="form-control js-job2-select" data-current="{{ s.job_title2 }}"></select>
+        </div>
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label" style="font-size:0.75rem;">勤務形態</label>
+          <select id="sjf-emp-{{ loop.index }}" class="form-control js-emp-select" data-current="{{ s.employment_type }}"></select>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <button class="btn btn-primary btn-sm" onclick="saveStaffJob('{{ s.name }}','{{ loop.index }}')">
+            <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>保存
+          </button>
+          <button class="btn btn-sm" onclick="document.getElementById('sjf-{{ loop.index }}').style.display='none'">
             <span class="material-symbols-outlined" style="font-size:15px;">close</span>閉じる
           </button>
         </div>
@@ -1240,7 +1280,7 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 {% endblock %}
 
 {% block extra_script %}
-<script src="/static/admin.js"></script>
+<script src="{{ static_v('admin.js') }}"></script>
 <script>
 // ========================================
 // 管理者MENU追加スクリプト（Session 43）

@@ -261,10 +261,16 @@ async function addStaff() {
     if (pw.length < 4) return showErr('パスワードは4文字以上にしてください');
     if (pw !== pw2) return showErr('パスワードが一致しません');
 
+    const jobEl = document.getElementById('new-staff-job');
+    const job2El = document.getElementById('new-staff-job2');
+    const empEl = document.getElementById('new-staff-emp');
     const res = await fetch('/api/add_staff', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ name, password: pw })
+        body: JSON.stringify({ name, password: pw,
+            job_title: jobEl ? jobEl.value : '',
+            job_title2: job2El ? job2El.value : '',
+            employment_type: empEl ? empEl.value : '' })
     });
     const data = await res.json();
     if (data.status === 'success') {
@@ -545,3 +551,56 @@ window.registerScannedPatients = async function() {
         alert('登録に失敗しました: ' + (data.message || ''));
     }
 };
+
+
+// ========== 職種・勤務形態 ==========
+const KAIGO_JOB_TITLES = ['管理者','生活相談員','介護職員','機能訓練指導員','看護師','その他'];
+const KAIGO_EMP_TYPES = [
+    ['A','A：常勤・専従'],
+    ['B','B：常勤・兼務'],
+    ['C','C：常勤以外・専従'],
+    ['D','D：常勤以外・兼務'],
+];
+function fillJobSelect(sel, current, kind) {
+    if (!sel) return;
+    let html = '<option value="">— 未設定 —</option>';
+    if (kind === 'emp') {
+        KAIGO_EMP_TYPES.forEach(function(pair){
+            var v = pair[0], l = pair[1];
+            html += '<option value="' + v + '"' + (current===v?' selected':'') + '>' + l + '</option>';
+        });
+    } else {
+        KAIGO_JOB_TITLES.forEach(function(t){
+            html += '<option value="' + t + '"' + (current===t?' selected':'') + '>' + t + '</option>';
+        });
+    }
+    sel.innerHTML = html;
+    if (current) sel.value = current;
+}
+function initJobSelects(root) {
+    var scope = root || document;
+    scope.querySelectorAll('.js-job-select').forEach(function(s){ fillJobSelect(s, s.dataset.current||'', 'job'); });
+    scope.querySelectorAll('.js-job2-select').forEach(function(s){ fillJobSelect(s, s.dataset.current||'', 'job'); });
+    scope.querySelectorAll('.js-emp-select').forEach(function(s){ fillJobSelect(s, s.dataset.current||'', 'emp'); });
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function(){ initJobSelects(); });
+} else {
+    initJobSelects();
+}
+function toggleStaffJob(idx) {
+    var el = document.getElementById('sjf-' + idx);
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+async function saveStaffJob(name, idx) {
+    var job = document.getElementById('sjf-job-' + idx).value;
+    var job2 = document.getElementById('sjf-job2-' + idx).value;
+    var emp = document.getElementById('sjf-emp-' + idx).value;
+    var res = await fetch('/api/update_staff_job', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name: name, job_title: job, job_title2: job2, employment_type: emp })
+    });
+    if ((await res.json()).status === 'success') location.reload();
+    else alert('保存に失敗しました');
+}
