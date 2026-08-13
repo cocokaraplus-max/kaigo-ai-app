@@ -1280,7 +1280,7 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 {% endblock %}
 
 {% block extra_script %}
-<script src="/static/admin.js"></script>
+<script src="{{ static_v('admin.js') }}"></script>
 <script>
 // ========================================
 // 管理者MENU追加スクリプト（Session 43）

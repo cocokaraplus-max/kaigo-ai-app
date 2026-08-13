@@ -27,6 +27,33 @@ app.secret_key = os.environ.get("SECRET_KEY")
 if not app.secret_key:
     raise RuntimeError("SECRET_KEY が設定されていません。環境変数を確認してください。")
 
+# ===== static-cachebust-v1: 静的JS/CSSに内容ハッシュを付与してキャッシュ更新を確実にする =====
+import hashlib as _sv_hashlib
+_STATIC_VER_CACHE = {}
+
+
+@app.template_global()
+def static_v(path):
+    """/static/<path> に ?v=<内容ハッシュ8桁> を付けて返す。内容が変わった時だけ値が変わる。"""
+    rel = str(path or "").lstrip("/")
+    if rel.startswith("static/"):
+        rel = rel[len("static/"):]
+    full = os.path.join(app.static_folder, rel)
+    ver = "0"
+    try:
+        st = os.path.getmtime(full)
+        cached = _STATIC_VER_CACHE.get(full)
+        if cached and cached[0] == st:
+            ver = cached[1]
+        else:
+            with open(full, "rb") as _f:
+                ver = _sv_hashlib.md5(_f.read()).hexdigest()[:8]
+            _STATIC_VER_CACHE[full] = (st, ver)
+    except OSError:
+        ver = "0"
+    return f"/static/{rel}?v={ver}"
+
+
 # ===== Session persistence for PWA/mobile =====
 # Keep users logged in across browser restarts (up to 30 days)
 from datetime import timedelta
