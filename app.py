@@ -220,7 +220,7 @@ def get_supabase():
     global _SUPABASE_CLIENT
     if _SUPABASE_CLIENT is None:
         url = get_secret("SUPABASE_URL").strip()
-        key = get_secret("SUPABASE_KEY").strip()
+        key = (get_secret("SUPABASE_SERVICE_KEY").strip() or get_secret("SUPABASE_KEY").strip())
         _SUPABASE_CLIENT = create_client(url, key)
     return _SUPABASE_CLIENT
 
@@ -12230,6 +12230,26 @@ def api_get_patient_profile_by_number():
         return jsonify({'data': res.data})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+@app.route('/api/mapping/save', methods=['POST'])
+@login_required
+def api_mapping_save():
+    import os, json
+    from flask import request, jsonify
+    data = request.get_json(silent=True) or {}
+    payload = data.get('mapping', data)
+    fcode = os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
+    try:
+        sb = get_supabase()
+        ex = sb.table('admin_settings').select('id').eq('facility_code', fcode).eq('setting_key', 'field_mapping').execute()
+        val = json.dumps(payload, ensure_ascii=False)
+        if ex.data:
+            sb.table('admin_settings').update({'setting_value': val}).eq('facility_code', fcode).eq('setting_key', 'field_mapping').execute()
+        else:
+            sb.table('admin_settings').insert({'facility_code': fcode, 'setting_key': 'field_mapping', 'setting_value': val}).execute()
+        return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
 @app.route('/mapping')
 @login_required
 def mapping():
@@ -12237,8 +12257,6 @@ def mapping():
     from flask import Response
     html = open('static/mapping.html', encoding='utf-8').read()
     config = json.dumps({
-        'supabaseUrl': os.environ.get('SUPABASE_URL', ''),
-        'supabaseKey': os.environ.get('SUPABASE_KEY', ''),
         'facilityCode': os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
     })
     cfg = '<script>window.TASUKARU_CONFIG=' + config + ';</script>'

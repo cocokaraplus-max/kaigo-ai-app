@@ -790,20 +790,11 @@ function saveMapping() {
 async function saveToSupabase(data) {
   try {
     const cfg = window.TASUKARU_CONFIG || {};
-    if (!cfg.supabaseUrl || !cfg.supabaseKey) return;
-    await fetch(cfg.supabaseUrl + '/rest/v1/admin_settings', {
+    await fetch('/api/mapping/save', {
       method: 'POST',
-      headers: {
-        'apikey': cfg.supabaseKey,
-        'Authorization': 'Bearer ' + cfg.supabaseKey,
-        'Content-Type': 'application/json',
-        'Prefer': 'resolution=merge-duplicates'
-      },
-      body: JSON.stringify({
-        facility_code: cfg.facilityCode,
-        setting_key: 'field_mapping',
-        setting_value: JSON.stringify(data)
-      })
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ mapping: data })
     });
   } catch(e) { console.warn('Supabase保存エラー:', e); }
 }
