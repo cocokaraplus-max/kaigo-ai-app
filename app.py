@@ -12325,6 +12325,32 @@ def api_transcribe():
         # halluc-guard-v2: 極端に短い(=ほぼ無音)録音はAIに送らない。創作の入口を塞ぐ。
         if len(audio_bytes) < 2048:
             return jsonify({"error": "音声が短すぎます。もう一度お話しください。", "no_retry": True}), 400
+        # asr-name-hint-v1: 選択中の利用者の氏名・読み仮名を聞き取りヒントに加える。
+        #   クライアント入力はそのまま使わず、施設の名簿に実在する氏名だけを採用する（偽名の混入防止）。
+        _name_hint = ""
+        try:
+            _sel = (data.get("patient") or "").strip()
+            _m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', _sel)
+            if _m:
+                _cand = (_m.group(2) or "").strip()
+                if _cand and len(_cand) <= 40:
+                    _pr = get_supabase().table("patient_profiles").select(
+                        "user_name,user_name_kana"
+                    ).eq("facility_code", session["f_code"]).eq("user_name", _cand).limit(1).execute()
+                    if _pr.data:
+                        _n = (_pr.data[0].get("user_name") or "").strip()
+                        _k = (_pr.data[0].get("user_name_kana") or "").strip()
+                        if _n:
+                            _name_hint = (
+                                "・この記録の対象は「" + _n + "」さん"
+                                + ("（読み：" + _k + "）" if _k else "")
+                                + "です。音声にこの読みの名前が出てきたら、必ずこの漢字表記で書いてください"
+                                "（当て字・難読名の取り違え防止）。\n"
+                                "　ただし名前が呼ばれていないのに書き足してはいけません。\n"
+                            )
+        except Exception as _nh_e:
+            print(f"[transcribe name-hint skip] {_nh_e}", flush=True)
+            _name_hint = ""
         model = get_generative_model()
         # halluc-guard-v3: 介護語彙は「聞き取りのヒント」として渡し（同音語の誤変換対策）、
         #   「書くべき内容」ではないと明示することで創作は封じたままにする。
@@ -12339,8 +12365,9 @@ def api_transcribe():
             "レクリエーション／送迎／入所／通所／バイタル／血圧／体温／脈拍／酸素／"
             "転倒／誤嚥／褥瘡／認知症／発熱／浮腫／拘縮／"
             "利用者／ご家族／ケアマネ／看護師／相談員\n"
-            "※このリストは「聞き取りのヒント」であって「書くべき内容」ではありません。"
-            "聞こえていない語をこのリストから持ってきては絶対にいけません。\n"
+            + _name_hint +
+            "※上記はすべて「聞き取りのヒント」であって「書くべき内容」ではありません。"
+            "聞こえていない語や名前を、ここから持ってきては絶対にいけません。\n"
             "\n"
             "【厳守ルール】\n"
             "・実際に聞こえた言葉だけを書く。聞こえていないことは絶対に追加・推測・創作しない。\n"
