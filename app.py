@@ -2383,6 +2383,11 @@ def _assess_extract_prompt(mode="doc"):
             "会話の中で実際に話された情報だけを、次のJSON形式で抽出してください。"
         )
         extra = "  \"transcript\":\"会話の全文書き起こし（フィラーは省略）\",\n"
+        # halluc-guard-v2: 無音・聞き取れない音声で会話を創作させない
+        intro += (
+            "音声が無音・雑音のみ・聞き取れない場合は、もっともらしい会話を作らず、"
+            "transcriptを空文字にし全項目を空にすること。"
+        )
     else:
         intro = (
             "あなたは介護のケアマネジャーが作成した書類（新規ケース紹介票・FAX送信票・"
@@ -2512,7 +2517,8 @@ def api_assessment_voice():
         mime = next((v for k, v in ext_mime.items() if filename.endswith(k)), 'audio/webm')
         model = get_generative_model()
         prompt = _assess_extract_prompt("voice")
-        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt],
+                                      generation_config={"temperature": 0.1})  # halluc-guard-v2
         text = (resp.text or "").strip()
         m = _re.search(r'\{.*\}', text, _re.DOTALL)
         if not m:
@@ -5799,6 +5805,7 @@ def api_vital_voice_parse():
 - 数値以外の発話(様子・気づき)があれば memo に格納
 - 言及のない項目は null
 - 数値の言い間違い(例:「ひゃくにじゅう」=120)も整数化する
+- 【最重要】音声が無音・雑音のみ・聞き取れない場合は、絶対に内容を推測・創作しないこと。その場合は transcript を空文字 "" にし、数値項目はすべて null、memo も空文字にすること。聞こえないのにもっともらしい発話や数値を作ってはいけない。
 
 JSON形式のみで返してください(説明文・コードブロック禁止):
 
@@ -5813,7 +5820,8 @@ JSON形式のみで返してください(説明文・コードブロック禁止
 }"""
 
         model = get_generative_model()
-        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt],
+                                      generation_config={"temperature": 0.1})  # halluc-guard-v2
         import re as _re, json as _json
         m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
         if m:
@@ -12310,16 +12318,35 @@ def api_transcribe():
         if not data or not data.get("audio_data"):
             return jsonify({"error": "音声データがありません"}), 400
         from utils import get_generative_model, upload_audio_to_supabase
-        model = get_generative_model()
-        prompt = "以下の音声を介護記録として文章に起こしてください。\n【ルール】\n・話した内容をできるだけ忠実に文章化する\n・「あー」「えー」「えっと」などのフィラーは省略する\n・職員名や「利用者様は」などの主語は不要\n・です・ます調に整える\n・事実のみを記載し、余計な装飾は不要"
         try:
             audio_bytes = base64.b64decode(data["audio_data"])
         except Exception:
             return jsonify({"error": "音声データのデコードに失敗しました"}), 400
+        # halluc-guard-v2: 極端に短い(=ほぼ無音)録音はAIに送らない。創作の入口を塞ぐ。
+        if len(audio_bytes) < 2048:
+            return jsonify({"error": "音声が短すぎます。もう一度お話しください。", "no_retry": True}), 400
+        model = get_generative_model()
+        # halluc-guard-v2: 「介護記録として書く」ではなく「聞こえた言葉だけを書き起こす」に徹させる。
+        prompt = (
+            "これは介護施設の職員が記録用に吹き込んだ音声です。音声の文字起こしだけを行ってください。\n"
+            "【厳守ルール】\n"
+            "・実際に聞こえた言葉だけを書く。聞こえていないことは絶対に追加・推測・創作しない。\n"
+            "・介護記録らしく整えるために内容を足さない。短い発話は短いまま書く。\n"
+            "・音声が無音・雑音のみ・聞き取れない場合は、内容を作らず [NO_SPEECH] とだけ出力する"
+            "（もっともらしい介護記録の文章を作ってはいけない）。\n"
+            "・「あー」「えー」「えっと」などのフィラーは省略する。\n"
+            "・職員名や「利用者様は」などの主語は補わない。\n"
+            "・語尾はです・ます調に整えてよいが、内容は変えない。\n"
+            "出力は文字起こし本文のみ。前置き・説明・マークダウンは不要。"
+        )
         mime = data.get("audio_mime", "audio/webm")
         contents = [prompt, {"mime_type": mime, "data": audio_bytes}]
-        result = model.generate_content(contents)
-        return jsonify({"text": result.text.strip()})
+        result = model.generate_content(contents, generation_config={"temperature": 0.1})  # halluc-guard-v2
+        _txt = (result.text or "").strip()
+        # halluc-guard-v2: 聞き取れなかった合図。テキスト欄には何も入れない。
+        if (not _txt) or ("[NO_SPEECH]" in _txt.upper()):
+            return jsonify({"error": "音声を聞き取れませんでした。もう一度お話しください。", "no_retry": True}), 200
+        return jsonify({"text": _txt})
     except Exception as e:
         print(f"[transcribe error] {e}")
         return jsonify({"error": f"音声変換に失敗しました: {str(e)}"}), 500
@@ -12360,17 +12387,28 @@ def api_translate_voice():
         audio_bytes = base64.b64decode(audio_data)
     except Exception:
         return jsonify({'status': 'error', 'message': '音声データのデコードに失敗しました'}), 400
+    # halluc-guard-v2: 極端に短い(=ほぼ無音)録音はAIに送らない。
+    if len(audio_bytes) < 2048:
+        return jsonify({'status': 'error', 'message': '音声が短すぎます。もう一度お話しください。'}), 400
     mime = data.get('audio_mime', 'audio/webm')
     from utils import get_generative_model
     model = get_generative_model()
     try:
+        # halluc-guard-v2: 聞こえた言葉だけを訳す。無音時は空で返させる。
         prompt = (
             "この音声を文字起こしし、日本語で出力してください。"
             "音声が日本語以外の場合は日本語に翻訳してから出力してください。"
-            "介護記録として自然な日本語にしてください。テキストのみ出力してください。"
+            "【厳守】実際に聞こえた言葉だけを出力し、聞こえていないことは絶対に追加・推測・創作しないこと。"
+            "介護記録らしく整えるために内容を足さないこと。"
+            "音声が無音・雑音のみ・聞き取れない場合は、内容を作らず [NO_SPEECH] とだけ出力すること。"
+            "テキストのみ出力してください。"
         )
-        result = model.generate_content([prompt, {"mime_type": mime, "data": audio_bytes}])
-        return jsonify({'status': 'success', 'translated': result.text.strip()})
+        result = model.generate_content([prompt, {"mime_type": mime, "data": audio_bytes}],
+                                        generation_config={"temperature": 0.1})  # halluc-guard-v2
+        _tt = (result.text or "").strip()
+        if (not _tt) or ("[NO_SPEECH]" in _tt.upper()):
+            return jsonify({'status': 'error', 'message': '音声を聞き取れませんでした。もう一度お話しください。'})
+        return jsonify({'status': 'success', 'translated': _tt})
     except Exception as e:
         print(f"api_translate_voice error: {e}", flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -25678,6 +25716,9 @@ def api_vital_bulk_temp():
         audio_bytes = audio.read()
         if not audio_bytes:
             return jsonify({"status": "error", "message": "音声データが空です"})
+        # halluc-guard-v2: 極端に短い(=ほぼ無音)録音はAIに送らない。
+        if len(audio_bytes) < 2048:
+            return jsonify({"status": "error", "message": "音声が短すぎます。もう一度お話しください。"})
         ext_mime = {
             '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4',
             '.wav': 'audio/wav',  '.aac': 'audio/aac',
@@ -25719,7 +25760,8 @@ JSON形式のみで返してください（説明文・コードブロック・�
   ]
 }}"""
         model = get_generative_model()
-        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt],
+                                      generation_config={"temperature": 0.1})  # halluc-guard-v2
         import re as _re
         m = _re.search(r'\{.*\}', resp.text.strip(), _re.DOTALL)
         if not m:
@@ -29977,7 +30019,8 @@ def api_meeting_recover_transcribe():
             path = f"{base}/{nm}"
             try:
                 blob = supabase.storage.from_("assessment-audio").download(path)
-                resp = model.generate_content([{"mime_type": mime, "data": blob}, _MTG_TRANSCRIBE_PROMPT])
+                resp = model.generate_content([{"mime_type": mime, "data": blob}, _MTG_TRANSCRIBE_PROMPT],
+                                              generation_config={"temperature": 0.1})  # halluc-guard-v2
                 t = (resp.text or "").strip()
                 if t:
                     parts.append(t)
@@ -30078,10 +30121,15 @@ def api_staff_minutes_transcribe():
 ・役割は不明だが別人だと分かる場合は「発言者A:」「発言者B:」のように仮ラベルで区別する(同一録音内で一貫)。
 ・数値・固有名詞(制度名・薬名・手技名等)は聞き取れた通りに残す。
 ・要約や解釈はせず、あくまで発話の文字起こしに徹する。
+・【最重要】音声が無音・雑音のみ・聞き取れない場合は、絶対に内容を推測・創作せず、[NO_SPEECH] とだけ出力すること。
 出力は文字起こし本文のみ。前置き・説明・マークダウンは不要。"""
         model = get_generative_model()
-        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt])
+        resp = model.generate_content([{"mime_type": mime, "data": audio_bytes}, prompt],
+                                      generation_config={"temperature": 0.1})  # halluc-guard-v2
         text = (resp.text or "").strip()
+        # halluc-guard-v2: 無音チャンクは空文字扱い（創作文を混ぜない）
+        if "[NO_SPEECH]" in text.upper():
+            text = ""
         return jsonify({"status": "success", "transcript": text,
                         "chunk_index": chunk_index, "audio_url": audio_url,
                         "session_id": session_id})

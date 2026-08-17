@@ -1200,6 +1200,8 @@ async function inpSendToGemini() {
                     inpShowState('done');
                     return;
                 }
+                // halluc-guard-v2: 無音・短すぎは再試行しても同じなので即終了
+                if (data.no_retry) { lastError = new Error(data.error || '音声を聞き取れませんでした'); break; }
                 throw new Error(data.error || 'テキストが取得できませんでした');
             } catch(e) {
                 lastError = e;
