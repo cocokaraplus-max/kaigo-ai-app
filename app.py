@@ -3564,21 +3564,31 @@ def _fix_name_kanji(content, name, kana):
         kana_toks = [t for t in kana.replace("\u3000", " ").split(" ") if t]
         if not name_toks or not kana_toks:
             return content
-        full_kana  = _kana_to_hira("".join(kana_toks))
-        sur_kana   = _kana_to_hira(kana_toks[0]) if len(kana_toks) >= 2 else ""
-        full_kanji = name.strip()
-        sur_kanji  = name_toks[0]
+        full_kana   = _kana_to_hira("".join(kana_toks))
+        sur_kana    = _kana_to_hira(kana_toks[0]) if len(kana_toks) >= 2 else ""
+        given_kana  = _kana_to_hira("".join(kana_toks[1:])) if len(kana_toks) >= 2 else ""
+        full_kanji  = name.strip()
+        sur_kanji   = name_toks[0]
+        given_kanji = "".join(name_toks[1:]) if len(name_toks) >= 2 else ""
 
         def _resolve(run):
-            """仮名のかたまり run（ひらがな化済み）が誰を指すかを返す。該当なしは None。"""
+            """仮名のかたまり run（ひらがな化済み）が誰を指すかを返す。該当なしは None。
+
+            呼ばれ方は3通り想定する：フルネーム／姓だけ／下の名前だけ。
+            現場では「みさきさん」のように下の名前で呼ぶことが多い。
+            """
             if run == full_kana:
                 return full_kanji
             if sur_kana and run == sur_kana:
                 return sur_kanji
-            # ふりがなが姓名つづきで登録されている場合：読みの先頭と一致すれば姓とみなす
-            if (not sur_kana) and len(name_toks) >= 2 and len(run) >= 2 \
-               and run != full_kana and full_kana.startswith(run):
-                return sur_kanji
+            if given_kana and given_kanji and run == given_kana:
+                return given_kanji
+            # ふりがなが姓名つづきで登録されている場合は、読みの前後一致で姓／名を判定する
+            if (not sur_kana) and len(name_toks) >= 2 and len(run) >= 2 and run != full_kana:
+                if full_kana.startswith(run):
+                    return sur_kanji
+                if full_kana.endswith(run):
+                    return "".join(name_toks[1:])
             return None
 
         out, pos = [], 0
@@ -3586,15 +3596,22 @@ def _fix_name_kanji(content, name, kana):
             h_start = mm.start()
             if h_start < pos:
                 continue
-            # 敬称の直前にある仮名のかたまりを、最大12文字までさかのぼって取る
+            # 敬称の直前にある仮名のかたまりを、最大14文字までさかのぼって取る。
+            # 姓名の間の空白（「たかはし みさき様」）も含めて拾い、照合時に無視する。
             k = h_start
-            limit = max(pos, h_start - 12)
-            while k > limit and _is_kana_ch(content[k - 1]):
+            limit = max(pos, h_start - 14)
+            while k > limit and (_is_kana_ch(content[k - 1]) or content[k - 1] in (" ", "\u3000")):
                 k -= 1
-            run = content[k:h_start]
-            if len(run) < 2:
+            # 空白を除いた読み（run_h）と、その各文字が本文のどこにあったか（run_at）を作る
+            run_h, run_at = "", []
+            for _i in range(k, h_start):
+                _c = content[_i]
+                if _c in (" ", "\u3000"):
+                    continue
+                run_h += _kana_to_hira(_c)
+                run_at.append(_i)
+            if len(run_h) < 2:
                 continue
-            run_h = _kana_to_hira(run)
             hit = None
             for ln in range(len(run_h), 1, -1):          # 末尾から長い順に照合
                 r = _resolve(run_h[len(run_h) - ln:])
@@ -3604,7 +3621,7 @@ def _fix_name_kanji(content, name, kana):
             if not hit:
                 continue
             ln, kanji = hit
-            out.append(content[pos:h_start - ln])        # 置換しない前半部分
+            out.append(content[pos:run_at[len(run_h) - ln]])   # 置換しない前半部分
             out.append(kanji + mm.group(0))
             pos = mm.end()
         out.append(content[pos:])
@@ -12446,11 +12463,23 @@ def api_transcribe():
                         _n = (_pr.data[0].get("user_name") or "").strip()
                         _k = (_pr.data[0].get("user_name_kana") or "").strip()
                         if _n:
+                            # asr-name-hint-v2: 介護現場は下の名前で呼ぶことが多い。姓・名の読みを個別に示す。
+                            _nt = [t for t in _n.replace("\u3000", " ").split(" ") if t]
+                            _kt = [t for t in (_k or "").replace("\u3000", " ").split(" ") if t]
+                            _parts = ""
+                            if len(_nt) >= 2 and len(_kt) >= 2:
+                                _parts = (
+                                    "　介護現場では下の名前で呼ぶことが多いため、"
+                                    "「" + _kt[0] + "」と聞こえたら「" + _nt[0] + "」、"
+                                    "「" + "".join(_kt[1:]) + "」と聞こえたら「" + "".join(_nt[1:]) + "」"
+                                    "と書いてください。\n"
+                                )
                             _name_hint = (
                                 "・この記録の対象は「" + _n + "」さん"
                                 + ("（読み：" + _k + "）" if _k else "")
                                 + "です。音声にこの読みの名前が出てきたら、必ずこの漢字表記で書いてください"
                                 "（当て字・難読名の取り違え防止）。\n"
+                                + _parts +
                                 "　ただし名前が呼ばれていないのに書き足してはいけません。\n"
                             )
         except Exception as _nh_e:
