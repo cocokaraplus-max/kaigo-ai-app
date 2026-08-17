@@ -1188,7 +1188,9 @@ async function inpSendToGemini() {
                 const res = await fetch('/api/transcribe', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ audio_data: base64, audio_mime: inpMimeType }),
+                    // asr-name-hint-v1: 選択中の利用者を渡して聞き取り精度を上げる（サーバー側で名簿照合）
+                    body: JSON.stringify({ audio_data: base64, audio_mime: inpMimeType,
+                                           patient: (document.getElementById('patient-value')||{}).value || '' }),
                     signal: controller.signal
                 });
                 clearTimeout(tid);
