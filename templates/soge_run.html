@@ -115,7 +115,7 @@
 .sr-picked .chg { margin-left:auto; color:#5f6368; font-size:0.75rem; font-weight:600; cursor:pointer; }
 
 .sr-empty { color:#9aa3b2; font-size:0.88rem; padding:20px 6px; text-align:center; line-height:1.7; }
-.sr-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
+.sr-toast { position:fixed; left:50%; top:calc(env(safe-area-inset-top, 0px) + 12px); transform:translate(-50%,-140%); z-index:9999;
   background:#137333; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
   transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; max-width:min(90vw,420px);
   text-align:center; }

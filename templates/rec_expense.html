@@ -139,7 +139,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
 .rec-ph-tbl td.num { text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .rec-ph-nos { color:#64748b; font-size:0.74rem; line-height:1.6; word-break:break-all; }
 
-.rec-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
+.rec-toast { position:fixed; left:50%; top:calc(env(safe-area-inset-top, 0px) + 12px); transform:translate(-50%,-140%); z-index:9999;
   background:#c5221f; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
   box-shadow:0 6px 20px rgba(0,0,0,0.18); max-width:min(90vw,420px); text-align:center;
   transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; }

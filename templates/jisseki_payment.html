@@ -35,7 +35,7 @@
 .jp-day[data-src="override"] { box-shadow:0 0 0 2px #94a3b8 inset; }
 
 .jp-empty { color:#8a94a6; text-align:center; padding:28px 0; }
-.jp-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
+.jp-toast { position:fixed; left:50%; top:calc(env(safe-area-inset-top, 0px) + 12px); transform:translate(-50%,-140%); z-index:9999;
   background:#137333; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
   transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; }
 .jp-toast.show { transform:translate(-50%,0); opacity:1; }
