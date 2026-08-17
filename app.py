@@ -3530,6 +3530,7 @@ def monitoring_check():
 
 
 # ===== asr-name-kanji-v1: 読み仮名のままの利用者名を漢字表記へ直す =====
+import re as _re_mod
 def _kana_to_hira(t):
     return "".join(chr(ord(c) - 0x60) if "\u30a1" <= c <= "\u30f6" else c for c in (t or ""))
 
@@ -3538,43 +3539,87 @@ def _kana_to_kata(t):
 
 _NAME_HONORIFICS = ("さん", "サン", "様", "さま", "ちゃん", "君", "くん", "氏")
 
+# 敬称。「様子」「氏名」を敬称と取り違えないよう除外条件を付ける。
+_NAME_HONOR_RE = _re_mod.compile(
+    r'\u3055\u3093|\u30b5\u30f3|\u3055\u307e|\u69d8(?!\u5b50)|\u3061\u3083\u3093|\u304f\u3093|\u541b(?!\u4e3b)|\u6c0f(?!\u540d)'
+)
+
+def _is_kana_ch(c):
+    return ("\u3041" <= c <= "\u3096") or ("\u30a1" <= c <= "\u30f6") or (c == "\u30fc")
+
 def _fix_name_kanji(content, name, kana):
     """本文中の「ますこさん」のような読み仮名表記を「倍子さん」へ直す。
 
     ・対象は保存時に選択されている利用者ひとりの読みだけ（他人の名前や一般語には触らない）。
-    ・原則として敬称（さん・様 等）が続くときだけ置換する。一般語の巻き添えを防ぐため。
+    ・敬称（さん・様・ちゃん・君・氏）の直前にある仮名のかたまりだけを見て照合する。
+      → 「みずのみを介助しました」のような一般語の巻き添えを防ぐ。
+    ・ふりがなが「やまだ たろう」でも「やまだたろう」でも、姓だけ呼ばれた場合に対応する。
     ・姓名そろった4文字以上の読みは、敬称が無くても置換する。
     ・失敗しても本文はそのまま返す（保存は絶対に止めない）。
     """
     try:
         if not content or not name or not kana:
             return content
-        toks = [t for t in kana.replace("\u3000", " ").split(" ") if t]
         name_toks = [t for t in name.replace("\u3000", " ").split(" ") if t]
-        if not toks or not name_toks:
+        kana_toks = [t for t in kana.replace("\u3000", " ").split(" ") if t]
+        if not name_toks or not kana_toks:
             return content
-        kanji_full = name.strip()   # 名簿の表記（姓名の間の空白など）をそのまま使う
-        # (読みの形, 置換後の漢字, 敬称なしでも置換してよいか)
-        cands = []
-        if len("".join(toks)) >= 3:
-            for sep in ("", " ", "\u3000"):
-                cands.append((sep.join(toks), kanji_full, len("".join(toks)) >= 4 and len(toks) >= 2))
-        if len(toks) >= 2 and len(toks[0]) >= 3:
-            cands.append((toks[0], name_toks[0], False))
-        out = content
-        for kana_form, kanji, bare_ok in cands:
-            for v in (kana_form, _kana_to_hira(kana_form), _kana_to_kata(kana_form)):
-                if not v or v not in out:
-                    continue
-                for h in _NAME_HONORIFICS:
-                    out = out.replace(v + h, kanji + h)
-                if bare_ok and v in out:
-                    out = out.replace(v, kanji)
-        return out
+        full_kana  = _kana_to_hira("".join(kana_toks))
+        sur_kana   = _kana_to_hira(kana_toks[0]) if len(kana_toks) >= 2 else ""
+        full_kanji = name.strip()
+        sur_kanji  = name_toks[0]
+
+        def _resolve(run):
+            """仮名のかたまり run（ひらがな化済み）が誰を指すかを返す。該当なしは None。"""
+            if run == full_kana:
+                return full_kanji
+            if sur_kana and run == sur_kana:
+                return sur_kanji
+            # ふりがなが姓名つづきで登録されている場合：読みの先頭と一致すれば姓とみなす
+            if (not sur_kana) and len(name_toks) >= 2 and len(run) >= 2 \
+               and run != full_kana and full_kana.startswith(run):
+                return sur_kanji
+            return None
+
+        out, pos = [], 0
+        for mm in _NAME_HONOR_RE.finditer(content):
+            h_start = mm.start()
+            if h_start < pos:
+                continue
+            # 敬称の直前にある仮名のかたまりを、最大12文字までさかのぼって取る
+            k = h_start
+            limit = max(pos, h_start - 12)
+            while k > limit and _is_kana_ch(content[k - 1]):
+                k -= 1
+            run = content[k:h_start]
+            if len(run) < 2:
+                continue
+            run_h = _kana_to_hira(run)
+            hit = None
+            for ln in range(len(run_h), 1, -1):          # 末尾から長い順に照合
+                r = _resolve(run_h[len(run_h) - ln:])
+                if r:
+                    hit = (ln, r)
+                    break
+            if not hit:
+                continue
+            ln, kanji = hit
+            out.append(content[pos:h_start - ln])        # 置換しない前半部分
+            out.append(kanji + mm.group(0))
+            pos = mm.end()
+        out.append(content[pos:])
+        res = "".join(out)
+
+        # 敬称なしのフルネーム（4文字以上）も置換
+        if len(full_kana) >= 4:
+            for v in (full_kana, _kana_to_kata(full_kana),
+                      " ".join(kana_toks), "\u3000".join(kana_toks), "".join(kana_toks)):
+                if v and v in res:
+                    res = res.replace(v, full_kanji)
+        return res
     except Exception as _fe:
         print(f"[name-kanji skip] {_fe}", flush=True)
         return content
-
 
 @app.route('/input', methods=['GET', 'POST'])
 @login_required
@@ -12418,12 +12463,37 @@ def api_transcribe():
             "これは介護施設(デイサービス)の職員が、その場の出来事を記録用に吹き込んだ音声です。\n"
             "あなたの仕事は「聞こえた言葉を正確に文字にすること」だけです。文章を作る仕事ではありません。\n"
             "\n"
-            "【聞き取りのヒント】\n"
-            "介護現場の言葉がよく出てきます。同じ音・似た音でどちらか迷ったときは、次の語を優先して聞き取ってください。\n"
-            "入浴／清拭／更衣／排泄／おむつ交換／トイレ誘導／食事／水分／服薬／口腔ケア／"
-            "移乗／移動／歩行／車椅子／見守り／声かけ／傾聴／介助／介護／機能訓練／リハビリ／"
-            "レクリエーション／送迎／入所／通所／バイタル／血圧／体温／脈拍／酸素／"
-            "転倒／誤嚥／褥瘡／認知症／発熱／浮腫／拘縮／"
+            "【同じ音で迷いやすい言葉（介護記録ではこちらが正解）】\n"
+            "・かいじょ → 介助（「解除」ではない）"
+            "※センサー・アラーム・ロックなど機器の話のときだけ「解除」\n"
+            "・にゅうよく → 入浴（「ニューヨーク」ではない）\n"
+            "・いじょう → 体を移す話なら「移乗」／様子の話なら「異常」／数量の話なら「以上」\n"
+            "・せいしき → 清拭（「正式」ではない）\n"
+            "・こうい → 更衣（「行為」「好意」ではない）\n"
+            "・ごえん → 誤嚥（「ご縁」ではない）\n"
+            "・けいちょう → 傾聴（「軽重」ではない）\n"
+            "・そうげい → 送迎（「造影」ではない）\n"
+            "・ほこう → 歩行（「奉公」ではない）\n"
+            "・てんとう → 転倒（「店頭」ではない）\n"
+            "・こうくうケア → 口腔ケア／じょくそう → 褥瘡／ふしゅ → 浮腫／こうしゅく → 拘縮\n"
+            "・はいせつ → 排泄／ふくやく → 服薬／たいいへんかん → 体位変換／きのうくんれん → 機能訓練\n"
+            "\n"
+            "【文脈から判断する】\n"
+            "・介護記録は「利用者の生活を支えた行動」の記録です。音の候補で迷ったら、"
+            "体のケア・食事・排泄・移動・見守りに関する言葉を選んでください。\n"
+            "・同じ文の中に「入浴」「食事」「排泄」「移乗」「更衣」などのケア動作があれば、"
+            "その文の「かいじょ」は必ず「介助」です。\n"
+            "・一文だけで判断せず、前後の文の話題（入浴の話か、食事の話か等）も踏まえて漢字を選んでください。\n"
+            "\n"
+            "【よくある誤変換（絶対にこう書かない）】\n"
+            "×「ニューヨークを解除しました」→ ○「入浴を介助しました」\n"
+            "×「異常の際に見守りを行いました」→ ○「移乗の際に見守りを行いました」\n"
+            "×「正式と行為で対応しました」→ ○「清拭と更衣で対応しました」\n"
+            "×「ご縁に注意しました」→ ○「誤嚥に注意しました」\n"
+            "\n"
+            "【その他よく出る言葉】\n"
+            "おむつ交換／トイレ誘導／水分／口腔ケア／車椅子／声かけ／リハビリ／"
+            "レクリエーション／通所／バイタル／血圧／体温／脈拍／発熱／認知症／"
             "利用者／ご家族／ケアマネ／看護師／相談員\n"
             + _name_hint +
             "※上記はすべて「聞き取りのヒント」であって「書くべき内容」ではありません。"
