@@ -3529,6 +3529,53 @@ def monitoring_check():
 # ===== /monitoring-check-v1 =====
 
 
+# ===== asr-name-kanji-v1: 読み仮名のままの利用者名を漢字表記へ直す =====
+def _kana_to_hira(t):
+    return "".join(chr(ord(c) - 0x60) if "\u30a1" <= c <= "\u30f6" else c for c in (t or ""))
+
+def _kana_to_kata(t):
+    return "".join(chr(ord(c) + 0x60) if "\u3041" <= c <= "\u3096" else c for c in (t or ""))
+
+_NAME_HONORIFICS = ("さん", "サン", "様", "さま", "ちゃん", "君", "くん", "氏")
+
+def _fix_name_kanji(content, name, kana):
+    """本文中の「ますこさん」のような読み仮名表記を「倍子さん」へ直す。
+
+    ・対象は保存時に選択されている利用者ひとりの読みだけ（他人の名前や一般語には触らない）。
+    ・原則として敬称（さん・様 等）が続くときだけ置換する。一般語の巻き添えを防ぐため。
+    ・姓名そろった4文字以上の読みは、敬称が無くても置換する。
+    ・失敗しても本文はそのまま返す（保存は絶対に止めない）。
+    """
+    try:
+        if not content or not name or not kana:
+            return content
+        toks = [t for t in kana.replace("\u3000", " ").split(" ") if t]
+        name_toks = [t for t in name.replace("\u3000", " ").split(" ") if t]
+        if not toks or not name_toks:
+            return content
+        kanji_full = name.strip()   # 名簿の表記（姓名の間の空白など）をそのまま使う
+        # (読みの形, 置換後の漢字, 敬称なしでも置換してよいか)
+        cands = []
+        if len("".join(toks)) >= 3:
+            for sep in ("", " ", "\u3000"):
+                cands.append((sep.join(toks), kanji_full, len("".join(toks)) >= 4 and len(toks) >= 2))
+        if len(toks) >= 2 and len(toks[0]) >= 3:
+            cands.append((toks[0], name_toks[0], False))
+        out = content
+        for kana_form, kanji, bare_ok in cands:
+            for v in (kana_form, _kana_to_hira(kana_form), _kana_to_kata(kana_form)):
+                if not v or v not in out:
+                    continue
+                for h in _NAME_HONORIFICS:
+                    out = out.replace(v + h, kanji + h)
+                if bare_ok and v in out:
+                    out = out.replace(v, kanji)
+        return out
+    except Exception as _fe:
+        print(f"[name-kanji skip] {_fe}", flush=True)
+        return content
+
+
 @app.route('/input', methods=['GET', 'POST'])
 @login_required
 def input_view():
@@ -3556,6 +3603,19 @@ def input_view():
             try:
                 m = re.search(r'\(No\.(.*?)\) \[(.*?)\]', sel)
                 if m:
+                    # asr-name-kanji-v1: 音声入力で読み仮名のまま残った利用者名を漢字へ直す。
+                    #   名簿(patients)から読みを引くので追加のDB問い合わせは無し。
+                    try:
+                        _un = (m.group(2) or "").strip()
+                        _kn = next((p.get("user_kana") or "" for p in patients
+                                    if (p.get("user_name") or "") == _un), "")
+                        if content and _un and _kn:
+                            _before = content
+                            content = _fix_name_kanji(content, _un, _kn)
+                            if content != _before:
+                                print(f"[name-kanji applied] {f_code}", flush=True)
+                    except Exception as _nke:
+                        print(f"[name-kanji skip] {_nke}", flush=True)
                     from utils import upload_images_to_supabase
                     image_urls = []
                     if photos and photos[0].filename:
