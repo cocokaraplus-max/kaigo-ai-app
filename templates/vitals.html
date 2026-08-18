@@ -2705,7 +2705,17 @@ async function nativeScheduleRecheck(s){
         if(!(await _rcEnsurePerm())) return;
         var who=s.user_name||'利用者';
         var note=s.note?('（'+s.note+'）'):'';
-        await ln.schedule({notifications:[{ id:_rcNotifId(s.id), title:'再検査の時間です', body:who+' さんの再検査です'+note, schedule:{at:at, allowWhileIdle:true}, sound:'default' }]});
+        // recheck-timesensitive-v1: 集中モードを貫通させる。Xcodeで
+        //   「Time Sensitive Notifications」capability の追加が必要（申請は不要）。
+        //   ※消音(マナー)モードの貫通には Critical Alerts（Appleへの申請）が別途必要。
+        await ln.schedule({notifications:[{
+            id:_rcNotifId(s.id),
+            title:'再検査の時間です',
+            body:who+' さんの再検査です'+note,
+            schedule:{at:at, allowWhileIdle:true},
+            sound:'default',
+            interruptionLevel:'timeSensitive'
+        }]});
     }catch(e){ console.warn('nativeScheduleRecheck error', e); }
 }
 async function nativeCancelRecheck(rid){
@@ -2729,7 +2739,14 @@ async function rcPermTest(){
         var st = res && res.display;
         if(st !== 'granted'){ alert('通知が許可されませんでした（状態: ' + st + '）。設定→通知→TASUKARU で許可してください。'); return; }
         var at = new Date(Date.now() + 15000);
-        await L.schedule({notifications:[{ id: 999001, title:'テスト通知', body:'15秒後テスト：これが出れば通知は正常です', schedule:{ at: at, allowWhileIdle:true }, sound:'default' }]});
+        await L.schedule({notifications:[{
+            id: 999001,
+            title:'テスト通知',
+            body:'15秒後テスト：これが出れば通知は正常です',
+            schedule:{ at: at, allowWhileIdle:true },
+            sound:'default',
+            interruptionLevel:'timeSensitive'   // recheck-timesensitive-v1
+        }]});
         alert('通知を許可しました。15秒後にテスト通知を予約したので、画面をロックして待ってください。');
     }catch(e){ alert('診断エラー: ' + (e && e.message ? e.message : e)); }
 }
