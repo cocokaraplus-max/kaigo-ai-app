@@ -37,11 +37,30 @@
     top: -1px; /* 1px上に食い込ませて隙間を完全に消す */
     z-index: 100;
     background: #f1f3f4;
-    /* page-wrapper の padding (1.5rem 1.2rem) を相殺してフルブリード化 */
+    /* board-sticky-safearea-v3 (2026-08-18):
+       v1 で margin/padding にも env(safe-area-inset-top) を足したところ、
+       ヘッダーがセーフエリアぶん(約60px)まるごと下がって余白が大きくなりすぎた。
+       位置は元のままで良く、問題は「上に背景が無いこと」だけだったので、
+       margin/padding は元に戻し、上の塗りつぶしは下の ::before に任せる。 */
     margin: -1.5rem -1.2rem 1rem -1.2rem;
     padding: 4px 1.2rem 0 1.2rem;
-    /* 上方向にも背景を広げて、stickyで止まったときの上の隙間を完全カバー */
-    box-shadow: 0 -50px 0 #f1f3f4;
+}
+/* board-sticky-safearea-v2 (2026-08-18):
+   上方向の塗りつぶしに box-shadow を使ってはいけない。
+   `box-shadow: 0 -200px 0` は「200px上にずらした同じ形の影」なので、
+   描かれるのは要素の高さぶんだけ。要素が200pxより低いと影と要素の“間”に
+   隙間が空き、そこから投稿の画像や文字が帯状に透けて見える
+   （-50px のときは要素の高さより小さかったので偶然つながっていた）。
+   擬似要素で上を丸ごと塗りつぶすのが確実。 */
+.board-sticky-stack::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 100%;      /* 要素のすぐ上から */
+    height: 300px;     /* セーフエリア+慣性スクロールのはみ出しを十分に覆う */
+    background: #f1f3f4;
+    pointer-events: none;
 }
 
 .board-tabs {
