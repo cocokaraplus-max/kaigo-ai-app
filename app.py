@@ -7363,6 +7363,184 @@ def api_calendar_events():
     except Exception as e:
         return jsonify({"events": [], "error": str(e)})
 
+
+# ===== cal-notify-v1 : カレンダー予定のローカル通知＋「今日の予定」 =====
+#   ・DBには繰り返しの未来の行が無いので、展開はここ（サーバ側）で行う。
+#   ・可視判定は calendar_view() と同じ（自分が作成 / 招待されている / 施設の共有）。
+def _cal_visible_calendars(supabase, f_code, my_name):
+    """自分が見られるカレンダーを {id: {...}} で返す"""
+    cals = {}
+    try:
+        own = supabase.table("calendars").select("id,name,color") \
+            .eq("facility_code", f_code).eq("owner_name", my_name).execute()
+        for c in (own.data or []):
+            cals[c["id"]] = c
+    except Exception as e:
+        print(f"[cal-notify] own calendars error: {e}")
+    try:
+        mem = supabase.table("calendar_members").select("calendar_id") \
+            .eq("facility_code", f_code).eq("staff_name", my_name).execute()
+        ids = [r["calendar_id"] for r in (mem.data or []) if r.get("calendar_id") not in cals]
+        if ids:
+            inv = supabase.table("calendars").select("id,name,color").in_("id", ids).execute()
+            for c in (inv.data or []):
+                cals[c["id"]] = c
+    except Exception as e:
+        print(f"[cal-notify] invited calendars error: {e}")
+    try:
+        sh = supabase.table("calendars").select("id,name,color") \
+            .eq("facility_code", f_code).eq("is_shared", True).execute()
+        for c in (sh.data or []):
+            cals[c["id"]] = c
+    except Exception as e:
+        print(f"[cal-notify] shared calendars error: {e}")
+    return cals
+
+
+def _cal_occurrence_start(ev, day):
+    """予定 ev が day(date) に掛かっていれば、その回の開始日(date)を返す。
+    掛かっていなければ None。calendar.html の __calcRepeatOccurrences() と同じ規則。"""
+    try:
+        sd = datetime.strptime((ev.get("event_date") or "")[:10], "%Y-%m-%d").date()
+    except Exception:
+        return None
+    try:
+        ed = datetime.strptime((ev.get("end_date") or ev.get("event_date") or "")[:10], "%Y-%m-%d").date()
+    except Exception:
+        ed = sd
+    dur = (ed - sd).days
+    if dur < 0:
+        dur = 0
+    if dur > 60:
+        dur = 60          # 異常データでループが膨らまないように
+    rt = (ev.get("repeat_type") or "none")
+
+    if rt == "none":
+        return sd if sd <= day <= ed else None
+
+    until = None
+    if ev.get("repeat_until"):
+        try:
+            until = datetime.strptime(str(ev["repeat_until"])[:10], "%Y-%m-%d").date()
+        except Exception:
+            until = None
+
+    for back in range(0, dur + 1):
+        cand = day - timedelta(days=back)
+        if cand < sd:
+            continue
+        if until and cand > until:
+            continue
+        hit = False
+        if rt == "daily":
+            hit = True
+        elif rt == "weekly":
+            hit = (cand.weekday() == sd.weekday())
+        elif rt == "monthly":
+            hit = (cand.day == sd.day)
+        elif rt == "yearly":
+            hit = (cand.month == sd.month and cand.day == sd.day)
+        if hit:
+            return cand
+    return None
+
+
+@app.route('/api/my_upcoming_events')
+@login_required
+def api_my_upcoming_events():
+    """cal-notify-v1: 今日から days 日ぶんの「自分が見える予定」を返す。
+    ・端末側(base.html)がこれを見て Capacitor のローカル通知を予約する
+    ・TOPページの「今日の予定」もこれを使う
+    """
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+
+        try:
+            days = int(request.args.get("days", 2))
+        except Exception:
+            days = 2
+        days = max(1, min(days, 7))
+
+        today = datetime.now(tokyo_tz).date()
+        last = today + timedelta(days=days - 1)
+        s_today = today.strftime("%Y-%m-%d")
+        s_last = last.strftime("%Y-%m-%d")
+
+        cals = _cal_visible_calendars(supabase, f_code, my_name)
+        cal_ids = list(cals.keys())
+        if not cal_ids:
+            return jsonify({"today": s_today, "count": 0, "events": []})
+
+        rows = {}
+
+        def _collect(res):
+            for x in (res.data or []):
+                rows[x.get("id")] = x
+
+        # (a) 期間内に始まる予定
+        try:
+            _collect(supabase.table("calendar_events").select("*")
+                     .in_("calendar_id", cal_ids)
+                     .gte("event_date", s_today).lte("event_date", s_last).execute())
+        except Exception as e:
+            print(f"[cal-notify] fetch(a) error: {e}")
+        # (b) 期間をまたいでいる予定（複数日）
+        try:
+            _collect(supabase.table("calendar_events").select("*")
+                     .in_("calendar_id", cal_ids)
+                     .lte("event_date", s_last).gte("end_date", s_today).execute())
+        except Exception as e:
+            print(f"[cal-notify] fetch(b) error: {e}")
+        # (c) 繰り返し予定（過去の1行が今日に効く）
+        try:
+            _collect(supabase.table("calendar_events").select("*")
+                     .in_("calendar_id", cal_ids)
+                     .neq("repeat_type", "none")
+                     .lte("event_date", s_last).execute())
+        except Exception as e:
+            print(f"[cal-notify] fetch(c) error: {e}")
+
+        out = []
+        for i in range(days):
+            day = today + timedelta(days=i)
+            ds = day.strftime("%Y-%m-%d")
+            for ev in rows.values():
+                occ = _cal_occurrence_start(ev, day)
+                if not occ:
+                    continue
+                cal = cals.get(ev.get("calendar_id")) or {}
+                st = ev.get("start_time")
+                et = ev.get("end_time")
+                out.append({
+                    "id": ev.get("id"),
+                    "date": ds,
+                    "title": (ev.get("title") or "(無題)"),
+                    "start_time": (str(st)[:5] if st else None),
+                    "end_time": (str(et)[:5] if et else None),
+                    "all_day": bool(ev.get("all_day")),
+                    "color": ev.get("color") or cal.get("color") or "#1a73e8",
+                    "sticker": ev.get("sticker") or "",
+                    "memo": ev.get("memo") or "",
+                    "notify_before": int(ev.get("notify_before") or 0),
+                    "calendar_id": ev.get("calendar_id"),
+                    "calendar_name": cal.get("name") or "",
+                    "is_repeat": (ev.get("repeat_type") or "none") != "none",
+                })
+
+        # 日付順 → 終日を先頭 → 開始時刻順
+        out.sort(key=lambda e: (
+            e["date"],
+            0 if (e["all_day"] or not e["start_time"]) else 1,
+            e["start_time"] or "",
+            e["title"],
+        ))
+        return jsonify({"today": s_today, "count": len(out), "events": out})
+    except Exception as e:
+        print(f"[cal-notify] api_my_upcoming_events error: {e}")
+        return jsonify({"today": "", "count": 0, "events": [], "error": str(e)})
+
 # ==========================================
 
 @app.route('/assessment')
