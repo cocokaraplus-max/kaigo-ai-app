@@ -314,6 +314,82 @@
     <span class="material-symbols-outlined" style="font-size:20px;">edit_calendar</span>勤務予定を入力する
 </a>
 
+<!-- ===== cal-notify-ui-v1 : 予定の通知設定（アプリ内のみ表示） =====
+     ブラウザでは鳴らせられないので出さない（vitals.html のアラーム設定と同じ方針）。
+     音の選択は端末ごとに localStorage へ保存される（施設共通ではない）。 -->
+<div id="cal-notify-panel" style="display:none;margin:0 12px 12px;padding:11px 12px;border:1px solid #e0e3e7;border-radius:12px;background:#fff;">
+  <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+    <input type="checkbox" id="cal-notify-on" style="width:20px;height:20px;flex:0 0 auto;">
+    <span style="font-size:0.88rem;font-weight:700;color:#202124;">予定の時間に通知を受け取る</span>
+  </label>
+  <div style="font-size:0.72rem;color:#9aa0a6;margin:6px 0 0 28px;line-height:1.5;">
+    予定ごとの「通知」の設定（10分前など）に従って鳴ります。<br>
+    「通知なし」の予定は鳴りません。TASUKARUを閉じていても鳴ります。
+  </div>
+  <div id="cal-notify-detail" style="margin-top:10px;">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span style="font-size:0.8rem;color:#555;white-space:nowrap;">🔊 通知音</span>
+      <select id="cal-notify-sound" style="flex:1;min-width:0;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:0.85rem;background:#fff;"></select>
+    </div>
+    <button type="button" id="cal-notify-test"
+      style="display:block;width:100%;margin-top:8px;padding:11px;background:#1a73e8;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.86rem;">
+      🔔 通知を許可 / 15秒後にテスト
+    </button>
+    <div id="cal-notify-status" style="font-size:0.72rem;color:#9aa0a6;margin-top:7px;text-align:center;"></div>
+  </div>
+</div>
+<script>
+(function(){
+  /* cal-notify-ui-v1 : 中身の実体は base.html の window.CAL_NOTIFY。
+     ここはその操作UIだけ。アプリ外（ブラウザ）では何も出さない。 */
+  function mount(){
+    var CN = window.CAL_NOTIFY;
+    if(!CN || !CN.isNative()) return;
+    var panel = document.getElementById('cal-notify-panel');
+    if(!panel) return;
+    panel.style.display = 'block';
+
+    var chk  = document.getElementById('cal-notify-on');
+    var sel  = document.getElementById('cal-notify-sound');
+    var det  = document.getElementById('cal-notify-detail');
+    var stat = document.getElementById('cal-notify-status');
+
+    CN.sounds.forEach(function(x){
+      var o = document.createElement('option');
+      o.value = x.file; o.textContent = x.label;
+      sel.appendChild(o);
+    });
+    sel.value = CN.getSound();
+    chk.checked = CN.isOn();
+    det.style.display = chk.checked ? 'block' : 'none';
+
+    function refreshStatus(n){
+      if(!CN.isOn()){ stat.textContent = '通知はオフです'; return; }
+      stat.textContent = '今日＋明日の予定を ' + (n || 0) + ' 件予約しました';
+    }
+    function resync(){ CN.sync().then(refreshStatus); }
+
+    chk.onchange = function(){
+      CN.setOn(chk.checked);
+      det.style.display = chk.checked ? 'block' : 'none';
+      resync();
+    };
+    sel.onchange = function(){ CN.setSound(sel.value); resync(); };
+    document.getElementById('cal-notify-test').onclick = function(){ CN.test(); };
+
+    resync();
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
+  else mount();
+
+  /* 予定を保存/削除した直後に、通知の予約と「今日の予定」の帯を取り直す */
+  window.__calAfterChange = function(){
+    try{ if(window.CAL_NOTIFY) window.CAL_NOTIFY.sync(); }catch(e){}
+    try{ if(window.__calTodayReload) window.__calTodayReload(); }catch(e){}
+  };
+})();
+</script>
+
   <!-- ハンバーガーメニュー (Phase 3c-5 v2) -->
   <div class="cal-menu-wrap">
     <button type="button" class="cal-menu-btn" onclick="toggleCalMenu(event)" aria-label="カレンダー一覧">
@@ -1199,6 +1275,7 @@ window.saveEvent = async function() {
         }
         closeModal('event-modal');
         renderCalendar();
+        if(window.__calAfterChange) window.__calAfterChange();   // cal-notify-ui-v1
     } else { alert('保存に失敗しました'); }
     } catch (e) {
         console.error('[saveEvent] error:', e);
@@ -1222,6 +1299,7 @@ window.deleteEvent = async function() {
             editingEventId = null;
             closeModal('event-modal');
             renderCalendar();
+            if(window.__calAfterChange) window.__calAfterChange();   // cal-notify-ui-v1
         } else {
             alert('削除に失敗しました: ' + (data.message || ''));
         }

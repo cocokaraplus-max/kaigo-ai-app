@@ -798,6 +798,135 @@ body.nav-editing {
         <div style="width:4px;height:30px;background:#9aa0a6;border-radius:2px;"></div>
     </div>
     <div class="page-wrapper">
+{% if session.get('f_code') %}
+<!-- ===== cal-today-bar-v1 : 今日の予定（全画面共通の細い帯） =====
+     予定が0件の日は帯ごと出さないので、普段の画面の見た目は変わらない。
+     タップで中身が開く。開閉の状態は端末に保存する。 -->
+<div id="cal-today-bar" style="display:none;margin:0 0 10px;border:1px solid #e0e3e7;border-radius:12px;background:#fff;overflow:hidden;">
+  <div id="cal-today-head" style="display:flex;align-items:center;gap:8px;padding:10px 12px;cursor:pointer;">
+    <span style="font-size:15px;">📅</span>
+    <span style="font-size:0.86rem;font-weight:700;color:#1a73e8;">今日の予定</span>
+    <span id="cal-today-count" style="background:#1a73e8;color:#fff;font-size:0.7rem;font-weight:700;border-radius:10px;padding:1px 8px;">0</span>
+    <span id="cal-today-peek" style="flex:1;min-width:0;font-size:0.78rem;color:#5f6368;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+    <span class="material-symbols-outlined" id="cal-today-chevron" style="font-size:18px;color:#9aa0a6;transition:transform .2s;">expand_more</span>
+  </div>
+  <div id="cal-today-body" style="display:none;border-top:1px solid #eef1f4;"></div>
+</div>
+<script>
+(function(){
+  /* cal-today-bar-v1 : /api/my_upcoming_events?days=1 を読んで帯に出す。
+     同じセッション内は5分キャッシュして、ページ遷移のたびに叩かないようにする。 */
+  var CACHE_KEY = 'cal_today_cache_v1';
+  var CACHE_MS  = 5 * 60 * 1000;
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  }
+  function timeLabel(ev){
+    if(ev.all_day || !ev.start_time) return '終日';
+    return ev.start_time + (ev.end_time ? '〜' + ev.end_time : '');
+  }
+  /* TOPページは既定で開いておく（ここが「今日の予定」の定位置）。
+     他の画面は既定で閉じておく（普段の作業の邪魔をしない）。 */
+  function isTopPage(){
+    var p = (location.pathname || '').replace(/\/+$/, '');
+    return p === '' || p === '/top';
+  }
+  function openKey(){ return isTopPage() ? 'cal_today_open_top' : 'cal_today_open'; }
+  function isOpen(){
+    try{
+      var v = localStorage.getItem(openKey());
+      if(v === null) return isTopPage();
+      return v === '1';
+    }catch(e){ return isTopPage(); }
+  }
+  function setOpen(v){ try{ localStorage.setItem(openKey(), v ? '1' : '0'); }catch(e){} }
+
+  function render(events){
+    var bar = document.getElementById('cal-today-bar');
+    if(!bar) return;
+    if(!events || !events.length){ bar.style.display = 'none'; return; }
+
+    document.getElementById('cal-today-count').textContent = events.length + '件';
+    document.getElementById('cal-today-peek').textContent =
+        timeLabel(events[0]) + ' ' + (events[0].title || '');
+
+    var html = '';
+    events.forEach(function(ev){
+      html += '<div style="display:flex;align-items:flex-start;gap:8px;padding:9px 12px;border-top:1px solid #f1f3f4;">'
+           +   '<span style="flex:0 0 4px;align-self:stretch;border-radius:2px;background:' + esc(ev.color || '#1a73e8') + ';"></span>'
+           +   '<span style="flex:0 0 auto;font-size:0.76rem;font-weight:700;color:#5f6368;min-width:76px;">' + esc(timeLabel(ev)) + '</span>'
+           +   '<span style="flex:1;min-width:0;font-size:0.84rem;color:#202124;word-break:break-word;">'
+           +     (ev.sticker ? esc(ev.sticker) + ' ' : '') + esc(ev.title)
+           +     (ev.calendar_name ? '<span style="color:#9aa0a6;font-size:0.72rem;"> ・' + esc(ev.calendar_name) + '</span>' : '')
+           +   '</span>'
+           + '</div>';
+    });
+    html += '<div style="padding:9px 12px;border-top:1px solid #f1f3f4;text-align:right;">'
+         +    '<a href="/calendar" style="font-size:0.78rem;color:#1a73e8;font-weight:700;text-decoration:none;">カレンダーを開く →</a>'
+         + '</div>';
+    document.getElementById('cal-today-body').innerHTML = html;
+
+    var open = isOpen();
+    document.getElementById('cal-today-body').style.display = open ? 'block' : 'none';
+    document.getElementById('cal-today-chevron').style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+    bar.style.display = 'block';
+
+    /* TOPページだけは、ロゴ・ユーザー名の【下】に移動させる。
+       他の画面は各ページの見出しの上でよいが、TOPでロゴより上に出ると不自然なため。 */
+    if(isTopPage()){
+      var ui = document.querySelector('.user-info');
+      if(ui && ui.parentNode && ui.nextElementSibling !== bar){
+        ui.parentNode.insertBefore(bar, ui.nextSibling);
+      }
+    }
+  }
+
+  function bindToggle(){
+    var head = document.getElementById('cal-today-head');
+    if(!head) return;
+    head.onclick = function(){
+      var body = document.getElementById('cal-today-body');
+      var open = body.style.display === 'none';
+      body.style.display = open ? 'block' : 'none';
+      document.getElementById('cal-today-chevron').style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+      setOpen(open);
+    };
+  }
+
+  async function load(){
+    bindToggle();
+    var today = new Date();
+    var ymd = today.getFullYear() + '-' +
+              String(today.getMonth()+1).padStart(2,'0') + '-' +
+              String(today.getDate()).padStart(2,'0');
+    try{
+      var c = JSON.parse(sessionStorage.getItem(CACHE_KEY) || 'null');
+      if(c && c.ymd === ymd && (Date.now() - c.ts) < CACHE_MS){ render(c.events); return; }
+    }catch(e){}
+    try{
+      var r = await fetch('/api/my_upcoming_events?days=1', {credentials:'same-origin'});
+      if(!r.ok) return;
+      var ct = r.headers.get('content-type') || '';
+      if(ct.indexOf('application/json') < 0) return;   // 未ログイン時にHTMLが返るケース
+      var j = await r.json();
+      var events = (j.events || []).filter(function(e){ return e.date === (j.today || ymd); });
+      try{ sessionStorage.setItem(CACHE_KEY, JSON.stringify({ymd: ymd, ts: Date.now(), events: events})); }catch(e){}
+      render(events);
+    }catch(e){ /* 失敗しても帯を出さないだけ */ }
+  }
+
+  window.__calTodayReload = function(){
+    try{ sessionStorage.removeItem(CACHE_KEY); }catch(e){}
+    load();
+  };
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
+  else load();
+})();
+</script>
+{% endif %}
         {% block content %}{% endblock %}
     </div>
     {% block above_nav %}{% endblock %}
@@ -4675,6 +4804,217 @@ function ttResetLang() {
   };
 })();
 
+</script>
+
+<script>
+/* ============================================================================
+   cal-notify-v1 : カレンダーの予定を iOS のローカル通知で知らせる
+   ----------------------------------------------------------------------------
+   なぜ base.html に入れているか：
+     通知の「予約」はアプリを開いたときにしか入らない。TOPページだけに置くと
+     「TOPを必ず経由する」前提になってしまうので、全ページ共通の base.html に置く。
+     これでバイタルでも掲示板でも、どの画面を開いても予約が同期される。
+
+   仕組み（templates/vitals.html の再検査アラームと同じ）：
+     iOS 本体に「○時○分に鳴らして」と前もって予約を渡す。鳴らすのは iOS なので、
+     TASUKARU を閉じていても（完全終了していても）鳴る。APNs も Apple への申請も不要。
+
+   注意点：
+     ・ iOS の保留中ローカル通知は 1アプリ 64件が上限。再検査アラームと共用なので
+        ここでは最大 55 件までに絞る（今日＋明日ぶんだけ取得）。
+     ・ 通知id は 1000000000 以上の範囲を使う。再検査アラームは小さいidを使うので衝突しない。
+     ・ sound は「アプリバンドル内のファイル名」。バンドルに無い名前を渡すと
+        iOS は標準音も鳴らず【無音】になる。sound を渡さなければ「表示のみ・無音」。
+     ・ 他の端末で今日追加された予定は、この端末でアプリを開くまで予約されない。
+   ============================================================================ */
+(function(){
+  var ID_BASE = 1000000000;   // 通知idの名前空間（再検査アラームと衝突させない）
+  var ID_SPAN = 900000000;
+  var MAX_SCHEDULE = 55;      // iOSの64件制限対策（再検査と共用のため余裕を残す）
+  var POLL_MS = 10 * 60 * 1000;
+
+  var CAL_SOUNDS = [
+    {file:'alarm_chime.wav',     label:'A やさしいチャイム'},
+    {file:'alarm_soft.wav',      label:'B やわらかい二音'},
+    {file:'alarm_monitor.wav',   label:'C 患者モニター風'},
+    {file:'alarm_nursecall.wav', label:'D ナースコール風'},
+    {file:'none',                label:'音なし（表示のみ）'}
+  ];
+  var CAL_SOUND_DEFAULT = 'alarm_chime.wav';   // 再検査（ナースコール風）と区別する
+
+  function isNative(){
+    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  }
+  function LN(){
+    // vitals.html の _rcLN() と同じ。リモート表示だと Plugins.LocalNotifications が
+    // 未定義になりがちなので registerPlugin で橋渡しする。
+    if(!window.Capacitor) return null;
+    var P = window.Capacitor.Plugins;
+    if(P && P.LocalNotifications) return P.LocalNotifications;
+    if(typeof window.Capacitor.registerPlugin === 'function'){
+      try{ return window.Capacitor.registerPlugin('LocalNotifications'); }catch(e){}
+    }
+    return null;
+  }
+
+  function getSound(){
+    try{
+      var v = localStorage.getItem('cal_alarm_sound');
+      if(v && CAL_SOUNDS.some(function(x){ return x.file === v; })) return v;
+    }catch(e){}
+    return CAL_SOUND_DEFAULT;
+  }
+  function setSound(v){ try{ localStorage.setItem('cal_alarm_sound', v); }catch(e){} }
+  function isOn(){ try{ return localStorage.getItem('cal_notify_on') !== '0'; }catch(e){ return true; } }
+  function setOn(v){ try{ localStorage.setItem('cal_notify_on', v ? '1' : '0'); }catch(e){} }
+
+  function notifId(evId, ds){
+    var s = String(evId) + '|' + String(ds);
+    var h = 5381;
+    for(var i=0;i<s.length;i++){ h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; }
+    return ID_BASE + (h % ID_SPAN);
+  }
+
+  function fireTimeOf(ev){
+    // 終日・時刻なしの予定はその日の 9:00 を基準にする
+    var t = (!ev.all_day && ev.start_time) ? ev.start_time : '09:00';
+    var base = new Date(ev.date + 'T' + t + ':00');
+    if(isNaN(base.getTime())) return null;
+    var nb = parseInt(ev.notify_before || 0, 10) || 0;
+    return new Date(base.getTime() - nb * 60000);
+  }
+
+  function bodyOf(ev){
+    var d = new Date(ev.date + 'T00:00:00');
+    var s = (d.getMonth()+1) + '月' + d.getDate() + '日 ';
+    s += (ev.all_day || !ev.start_time)
+        ? '終日'
+        : (ev.start_time + (ev.end_time ? '〜' + ev.end_time : ''));
+    if(ev.calendar_name) s += '・' + ev.calendar_name;
+    if(ev.memo) s += '\n' + String(ev.memo).slice(0, 80);
+    return s;
+  }
+
+  var _syncing = false;
+  async function sync(){
+    if(!isNative()) return 0;
+    var ln = LN();
+    if(!ln) return 0;
+    if(_syncing) return 0;
+    _syncing = true;
+    try{
+      // ここでは許可を【要求しない】。ページを開くたびにポップアップが
+      // 出るのを避けるため。許可はカレンダー画面のボタンから取る。
+      var perm = await ln.checkPermissions();
+      if(!perm || perm.display !== 'granted') return 0;
+
+      var wanted = [];
+      if(isOn()){
+        var r = await fetch('/api/my_upcoming_events?days=2', {credentials:'same-origin'});
+        if(!r.ok) return 0;
+        var j = await r.json();
+        var now = Date.now();
+        (j.events || []).forEach(function(ev){
+          var nb = parseInt(ev.notify_before || 0, 10) || 0;
+          if(nb <= 0) return;                            // 0 = 「通知なし」
+          var at = fireTimeOf(ev);
+          if(!at || at.getTime() <= now + 5000) return;  // 過去は予約しない
+          wanted.push({ev: ev, at: at});
+        });
+        wanted.sort(function(a, b){ return a.at - b.at; });
+        if(wanted.length > MAX_SCHEDULE){
+          console.log('[cal-notify] 上限のため ' + (wanted.length - MAX_SCHEDULE) + ' 件を予約しませんでした');
+          wanted = wanted.slice(0, MAX_SCHEDULE);
+        }
+      }
+
+      var keep = {};
+      var snd = getSound();
+      var list = wanted.map(function(w){
+        var id = notifId(w.ev.id, w.ev.date);
+        keep[id] = true;
+        var n = {
+          id: id,
+          title: (w.ev.sticker ? (w.ev.sticker + ' ') : '📅 ') + (w.ev.title || '予定'),
+          body: bodyOf(w.ev),
+          schedule: {at: w.at, allowWhileIdle: true},
+          interruptionLevel: 'timeSensitive',
+          extra: {kind: 'calendar', event_id: w.ev.id, date: w.ev.date}
+        };
+        if(snd && snd !== 'none') n.sound = snd;   // 「音なし」は sound キーごと付けない
+        return n;
+      });
+
+      // この機能が作った古い予約だけを取り消す（再検査アラームには触らない）
+      try{
+        var pend = await ln.getPending();
+        var stale = ((pend && pend.notifications) || []).filter(function(p){
+          var pid = parseInt(p.id, 10);
+          return pid >= ID_BASE && pid < (ID_BASE + ID_SPAN) && !keep[pid];
+        }).map(function(p){ return {id: parseInt(p.id, 10)}; });
+        if(stale.length) await ln.cancel({notifications: stale});
+      }catch(e){}
+
+      if(list.length) await ln.schedule({notifications: list});
+      window.__calNotifyLast = {at: new Date().toISOString(), scheduled: list.length};
+      console.log('[cal-notify] 予約 ' + list.length + ' 件');
+      return list.length;
+    }catch(e){
+      console.warn('[cal-notify] sync error', e);
+      return 0;
+    }finally{
+      _syncing = false;
+    }
+  }
+
+  async function requestPerm(){
+    var ln = LN();
+    if(!ln) return false;
+    try{
+      var pm = await ln.checkPermissions();
+      if(!pm || pm.display !== 'granted') pm = await ln.requestPermissions();
+      return !!(pm && pm.display === 'granted');
+    }catch(e){ return false; }
+  }
+
+  async function test(){
+    var ln = LN();
+    if(!ln){ alert('診断: 通知プラグインが取得できません（アプリ内でお試しください）。'); return; }
+    if(!(await requestPerm())){ alert('通知が許可されていません。設定→通知→TASUKARU で許可してください。'); return; }
+    try{
+      var n = {
+        id: ID_BASE + 999,
+        title: '📅 予定のテスト通知',
+        body: '15秒後テスト：これが出ればカレンダー通知は正常です',
+        schedule: {at: new Date(Date.now() + 15000), allowWhileIdle: true},
+        interruptionLevel: 'timeSensitive'
+      };
+      var snd = getSound();
+      if(snd && snd !== 'none') n.sound = snd;
+      await ln.schedule({notifications: [n]});
+      var lb = (CAL_SOUNDS.filter(function(x){ return x.file === snd; })[0] || {}).label || snd;
+      alert('15秒後にテスト通知を予約しました（音: ' + lb + '）。画面をロックしてお待ちください。');
+      sync();
+    }catch(e){ alert('テストエラー: ' + (e && e.message ? e.message : e)); }
+  }
+
+  window.CAL_NOTIFY = {
+    sounds: CAL_SOUNDS, getSound: getSound, setSound: setSound,
+    isOn: isOn, setOn: setOn, sync: sync, requestPerm: requestPerm,
+    test: test, isNative: isNative
+  };
+
+  function boot(){
+    if(!isNative()) return;
+    setTimeout(sync, 1500);                  // Capacitorのブリッジが揃うのを待つ
+    setInterval(sync, POLL_MS);
+    document.addEventListener('visibilitychange', function(){
+      if(document.visibilityState === 'visible') sync();
+    });
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
 </script>
 </body>
 </html>
