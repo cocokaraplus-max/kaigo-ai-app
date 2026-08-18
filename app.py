@@ -15263,6 +15263,15 @@ def api_board_create_post():
         is_private = request.form.get("is_private", "0") == "1"
         if mentions:  # board-mention-force-private: メンションありは限定公開
             is_private = True
+        # board-empty-mention-fix-v1 (2026-08-18):
+        #   「メンションのみ」を選んだまま誰も指名せずに投稿すると
+        #   is_private=True / mention_names=[] の投稿ができてしまう。
+        #   /board の可視判定は (my_name in mention_names or staff_name == my_name) なので、
+        #   この投稿は【投稿者本人以外の全員に一切表示されない】。
+        #   現場からの「投稿しても出てこない」の原因。宛先の居ない限定公開は成立しないため
+        #   全員公開に倒す。UI側(board.html)でも投稿前に警告する。
+        if is_private and not mentions:
+            is_private = False
         insert_payload = {
             "facility_code": f_code, "staff_name": my_name,
             "content": content, "image_urls": image_urls,
@@ -15273,6 +15282,19 @@ def api_board_create_post():
         }
         if category_id is not None:
             insert_payload["category_id"] = category_id
+        # board-empty-post-guard-v1 (2026-08-18):
+        #   本文も画像も音声もPDFも一切無い投稿は、まず間違いなく
+        #   リクエスト本文の取りこぼし（ServiceWorkerによるPOST再送でbodyが消える等）。
+        #   そのまま保存すると「投稿者名だけ・未分類」の空投稿が掲示板に並び、
+        #   現場は投稿できたつもりで内容が消える。保存せずエラーを返す。
+        if (not content) and (not image_urls) and (not audio_url) and (not pdf_url):
+            print(f"[board] empty post blocked f_code={f_code} staff={my_name} "
+                  f"ct={request.content_type} len={request.content_length}", flush=True)
+            return jsonify({
+                "status": "error",
+                "message": "投稿内容が正しく送信されませんでした。もう一度お試しください。"
+                           "（続く場合はアプリを一度完全に終了してから開き直してください）"
+            }), 400
         res = supabase.table("board_posts").insert(insert_payload).execute()
         return jsonify({"status": "success", "post_id": res.data[0]["id"] if res.data else None})
     except Exception as e:

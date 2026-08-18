@@ -2693,6 +2693,28 @@ function _rcLN(){
     }
     return null;
 }
+// recheck-alarm-sound-v2: アラーム音を4種類から切り替えできるようにする（端末ごとに保存）
+//   ※ここに並ぶ .wav は【4つとも】Xcodeでアプリバンドルに追加しておくこと。
+//     バンドルに無いファイル名を指定すると iOS は標準音も鳴らさず【無音】になる。
+var RC_SOUNDS = [
+    {file:'alarm_chime.wav',     label:'A やさしいチャイム'},
+    {file:'alarm_soft.wav',      label:'B やわらかい二音'},
+    {file:'alarm_monitor.wav',   label:'C 患者モニター風'},
+    {file:'alarm_nursecall.wav', label:'D ナースコール風'},
+    // recheck-alarm-mute-v1: sound を渡さないと iOS は「表示のみ・無音」になる
+    //   （Capacitor は sound 未指定なら content.sound を設定しないため）。
+    {file:'none',                label:'音なし（表示のみ）'}
+];
+var RC_SOUND_DEFAULT = 'alarm_nursecall.wav';
+function _rcSound(){
+    try{
+        var v = localStorage.getItem('rc_alarm_sound');
+        if(v && RC_SOUNDS.some(function(x){ return x.file === v; })) return v;
+    }catch(e){}
+    return RC_SOUND_DEFAULT;
+}
+function _rcSetSound(v){ try{ localStorage.setItem('rc_alarm_sound', v); }catch(e){} }
+
 function _rcNotifId(rid){ var n = Math.abs(parseInt(rid, 10)) % 2000000000; return n || 1; }
 async function _rcEnsurePerm(){ var ln=_rcLN(); if(!ln) return false; try{ var pm=await ln.checkPermissions(); if(!pm || pm.display!=='granted'){ pm=await ln.requestPermissions(); } return !!(pm && pm.display==='granted'); }catch(e){ return false; } }
 async function nativeScheduleRecheck(s){
@@ -2705,7 +2727,24 @@ async function nativeScheduleRecheck(s){
         if(!(await _rcEnsurePerm())) return;
         var who=s.user_name||'利用者';
         var note=s.note?('（'+s.note+'）'):'';
-        await ln.schedule({notifications:[{ id:_rcNotifId(s.id), title:'再検査の時間です', body:who+' さんの再検査です'+note, schedule:{at:at, allowWhileIdle:true}, sound:'default' }]});
+        // recheck-timesensitive-v1: 集中モードを貫通させる。Xcodeで
+        //   「Time Sensitive Notifications」capability の追加が必要（申請は不要）。
+        //   ※消音(マナー)モードの貫通には Critical Alerts（Appleへの申請）が別途必要。
+        // recheck-alarm-sound-v2 / recheck-alarm-mute-v1:
+        //   sound は「アプリバンドル内のファイル名」を指定する項目。
+        //   ・バンドルに無いファイル名を指定すると iOS は標準音も鳴らさず【無音】になる
+        //     （'default' という名前のファイルは存在しないので指定してはいけない）。
+        //   ・sound を渡さなければ「表示のみ・無音」になる ＝ 音なし設定。
+        var _n = {
+            id:_rcNotifId(s.id),
+            title:'再検査の時間です',
+            body:who+' さんの再検査です'+note,
+            schedule:{at:at, allowWhileIdle:true},
+            interruptionLevel:'timeSensitive'
+        };
+        var _snd = _rcSound();
+        if(_snd && _snd !== 'none') _n.sound = _snd;
+        await ln.schedule({notifications:[_n]});
     }catch(e){ console.warn('nativeScheduleRecheck error', e); }
 }
 async function nativeCancelRecheck(rid){
@@ -2729,20 +2768,60 @@ async function rcPermTest(){
         var st = res && res.display;
         if(st !== 'granted'){ alert('通知が許可されませんでした（状態: ' + st + '）。設定→通知→TASUKARU で許可してください。'); return; }
         var at = new Date(Date.now() + 15000);
-        await L.schedule({notifications:[{ id: 999001, title:'テスト通知', body:'15秒後テスト：これが出れば通知は正常です', schedule:{ at: at, allowWhileIdle:true }, sound:'default' }]});
-        alert('通知を許可しました。15秒後にテスト通知を予約したので、画面をロックして待ってください。');
+        // recheck-alarm-mute-v1: 「音なし」のときは sound を渡さない（渡さない＝表示のみ・無音）
+        var _tn = {
+            id: 999001,
+            title:'テスト通知',
+            body:'15秒後テスト：これが出れば通知は正常です',
+            schedule:{ at: at, allowWhileIdle:true },
+            interruptionLevel:'timeSensitive'
+        };
+        var _tsnd = _rcSound();
+        if(_tsnd && _tsnd !== 'none') _tn.sound = _tsnd;
+        await L.schedule({notifications:[_tn]});
+        var _lb = (RC_SOUNDS.filter(function(x){ return x.file === _rcSound(); })[0] || {}).label || _rcSound();
+        alert('15秒後にテスト通知を予約しました（音: ' + _lb + '）。画面をロックして待ってください。');
     }catch(e){ alert('診断エラー: ' + (e && e.message ? e.message : e)); }
 }
 (function(){
     function mount(){
         if(!_rcIsNative()) return;                       // アプリ内のみ
         if(document.getElementById('rc-permtest-btn')) return;
+        // recheck-alarm-sound-v2: 許可/テストボタン＋アラーム音の切替をひとまとめに表示
+        var wrap = document.createElement('div');
+        wrap.id = 'rc-alarm-panel';
+        wrap.style.cssText = 'margin:calc(env(safe-area-inset-top, 20px) + 12px) 12px 6px;position:relative;z-index:5;';
+
         var b = document.createElement('button');
         b.id = 'rc-permtest-btn'; b.type = 'button';
         b.textContent = '🔔 通知を許可 / テスト（初回のみ）';
-        b.style.cssText = 'display:block;width:calc(100% - 24px);margin:calc(env(safe-area-inset-top, 20px) + 12px) 12px 6px;padding:12px;background:#e65100;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.9rem;position:relative;z-index:5;';
+        b.style.cssText = 'display:block;width:100%;padding:12px;background:#e65100;color:#fff;border:none;border-radius:10px;font-weight:700;font-size:0.9rem;';
         b.onclick = rcPermTest;
-        document.body.insertBefore(b, document.body.firstChild);
+        wrap.appendChild(b);
+
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:6px;';
+        var lb = document.createElement('span');
+        lb.textContent = '🔊 アラーム音';
+        lb.style.cssText = 'font-size:0.8rem;color:#555;white-space:nowrap;';
+        var sel = document.createElement('select');
+        sel.id = 'rc-alarm-sound-sel';
+        sel.style.cssText = 'flex:1;min-width:0;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:0.85rem;background:#fff;';
+        RC_SOUNDS.forEach(function(x){
+            var o = document.createElement('option');
+            o.value = x.file; o.textContent = x.label;
+            sel.appendChild(o);
+        });
+        sel.value = _rcSound();
+        sel.onchange = function(){
+            _rcSetSound(sel.value);
+            // 予約済み通知は同じidで上書きスケジュールし直すと新しい音になる
+            if(typeof checkRecheckAlarms === 'function'){ try{ checkRecheckAlarms(); }catch(e){} }
+        };
+        row.appendChild(lb); row.appendChild(sel);
+        wrap.appendChild(row);
+
+        document.body.insertBefore(wrap, document.body.firstChild);
     }
     if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
     else mount();

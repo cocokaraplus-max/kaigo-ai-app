@@ -2233,6 +2233,11 @@ document.getElementById('new-post-btn').addEventListener('touchend', function(e)
 
 function openPostModal() {
     if (typeof resetPostCategory === 'function') resetPostCategory();
+    // board-empty-mention-fix-v1: 前回「メンションのみ」のまま閉じた状態が
+    //   残っていると、気づかないうちに誰にも見えない投稿になる。開くたびに全員公開へ戻す。
+    selectedMentions = [];
+    if (typeof setScope === 'function') setScope('all');
+    currentScope = 'all';
     hideNav();
     document.getElementById('post-modal').classList.add('show');
     lockBodyScroll();
@@ -2425,6 +2430,12 @@ async function submitPost() {
     var content = document.getElementById('post-textarea').value.trim();
     if (!content && selectedPhotos.length === 0 && !selectedAudio) {
         alert('内容を入力してください'); return;
+    }
+    // board-empty-mention-fix-v1: 公開範囲が「メンションのみ」なのに宛先が空だと、
+    //   投稿者本人以外の誰にも表示されない投稿になってしまう。投稿前に必ず気づけるようにする。
+    if (currentScope === 'mention' && selectedMentions.length === 0) {
+        if (!confirm('公開範囲が「メンションのみ」ですが、宛先のスタッフが選ばれていません。\n\nこのまま「全員に公開」で投稿しますか？\n\n特定の人だけに送りたい場合は「キャンセル」を押して、メンションからスタッフを選んでください。')) return;
+        setScope('all'); currentScope = 'all';
     }
     var btn = document.getElementById('post-submit-btn');
     btn.disabled = true; btn.textContent = '投稿中...';

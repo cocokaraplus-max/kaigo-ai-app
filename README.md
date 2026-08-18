@@ -2804,3 +2804,124 @@ where vd.facility_code = 'cocokaraplus-5526' and p.id is null;
 - **音声入力のハルシネーション対策**（本番反映済み）: `halluc-guard-v2/v3`・`asr-homophone-v1`・`asr-name-hint-v2`・`asr-name-kanji-v5`。詳細は `SESSION_65_HANDOFF.md`。
 - **上部トーストのセーフエリア対応**（`toast-safearea-v1`・DEVのみ・7箇所）: iPhoneのカメラに「保存しました！」が隠れる問題。
 - **計画書・利用者情報シートの読み取り**（`sheet-ocr-v1/v2`・DEVのみ）: 基本情報6欄＋ICF付箋を複数枚まとめて読み取る。**`v2` の再検証が未実施**。
+
+## Apple Developer Program 法人登録 完了（契約同意・$99支払い済み）2026-08-18  <!-- apple-enroll-paid-2026-08-18 -->
+
+### 経過
+- 2026-08-17 法人フォーム送信 → 登録ID **`WAVNW2S5G6`**（「現在登録を処理しています」表示）
+- 2026-08-18 10:15 Apple から「登録手続きを完了してください」メール（`noreply-appledev@email.apple.com`）
+  → 使用許諾契約（Apple Developer Program License Agreement）が発行される
+- 2026-08-18 **使用許諾契約に同意・$99/年の支払いを完了**
+
+### ★ 確定した値（次回のために必ず参照）
+| 項目 | 値 |
+|---|---|
+| **Team ID（法人）** | **`6AX82WT38B`** ※契約書PDFのファイル名から判明 |
+| Team ID（旧・無料Apple IDの個人チーム） | `BB7M7M88HC` ※Xcodeプロジェクトに設定済み。**法人チームへ切替が必要** |
+| 登録ID（Enrollment ID） | `WAVNW2S5G6` |
+| D-U-N-S番号 | `692505882` |
+| 法人名 | `LIFE PLUS, LIMITED LIABILITY COMPANY` |
+| 勤務先メール（Apple IDではない） | `hiro@lifeplusllc.com`（Zoho / mail.zoho.jp） |
+| Bundle ID | `jp.lifeplus.tasukaru` |
+| **Apple ID（アカウント責任者）** | ★未記録。`developer.apple.com/account` →「プロファイル」で確認して追記すること |
+
+### 注意点
+- **支払い後もD-U-N-S登録の電話番号にAppleから確認の電話が来ることがある。** 取り逃すと止まる。
+- 支払い直後はアカウントが有効化されるまで時間がかかる場合がある（数時間〜48時間程度）。
+- **年会費は自動更新。** 更新が止まると配布中のアプリが配信停止になる。ドメイン(`lifeplusllc.com`・更新期限2027/07/22)と
+  Zohoメールもあわせて自動更新を維持すること。
+
+### 次にやること（順番）
+1. アカウントが有効になったことを `developer.apple.com/account` で確認（メンバーシップが表示される）。
+2. **Xcodeの署名を法人チームへ切替**：`tasukaru-app/ios/App/App.xcodeproj` の
+   `DEVELOPMENT_TEAM` を `BB7M7M88HC` → `6AX82WT38B` に変更（Xcode の Signing & Capabilities から選び直す）。
+3. **App ID(Bundle ID `jp.lifeplus.tasukaru`)を Certificates, Identifiers & Profiles で登録**し、
+   **Push Notifications capability を有効化**。
+4. **APNs認証キー（`.p8`）を発行**（Keys → 新規 → Apple Push Notifications service）。
+   - **`.p8` は1度しかダウンロードできない。** 紛失したら再発行になるので確実に保管する。
+   - Key ID と Team ID (`6AX82WT38B`) も控える。**`.p8` の中身はチャット等に貼らない。**
+5. 再検査アラームのプッシュ通知実装へ。
+6. その後、非公開App配信(Unlisted)またはCustom App Distributionで施設スタッフへ配布。
+
+### 契約について（参考・法的助言ではない）
+- Apple Developer Program License Agreement は**交渉不可の定型契約**。全登録者が同一のものに同意する。
+- TASUKARU は無料アプリ＋Stripeでの法人契約のため、アプリ内課金の別契約（Schedule 2）は現時点で不要の見込み。
+- 介護記録は要配慮個人情報を含むため、Appleのプライバシー要件と国内の個人情報保護法の**両方**の遵守が必要。
+  判断が必要な場面は専門家に相談すること。
+
+---
+
+## 再検査アラーム通知が【無音】だった件と、アラーム音の切替実装 2026-08-18  <!-- recheck-alarm-sound-v2 -->
+
+### 症状
+バイタルの再検査予約の通知が iPhone に**届くが音が鳴らない**。現場からは
+「通知がポロンと控えめになるだけ。TASUKARUのときだけはしっかりアラームを鳴らしたい」との要望。
+
+### 原因（7月からずっと壊れていた）
+`templates/vitals.html` の `ln.schedule()` に `sound:'default'` を指定していた。
+**Capacitor の `sound` は「アプリバンドル内のファイル名」を指定する項目**であり、
+`default` という名前のファイルは存在しない。存在しないファイル名を指定すると
+iOS は標準音にフォールバックせず**完全に無音**になる。
+当初これを「マナーモードのせい」と誤診したが、それは誤り。
+
+- `sound` の指定を外す → iOS の標準通知音が鳴る（`recheck-sound-fix-v1`）
+- 長いアラーム音にしたい → `.wav` をアプリバンドルに入れて `sound:'ファイル名.wav'`
+
+### 集中モード貫通
+`interruptionLevel:'timeSensitive'` を指定（`recheck-timesensitive-v1`）。
+Xcode 側で **「Time Sensitive Notifications」capability** の追加が必要。**Appleへの申請は不要**。
+※消音（マナー）モードまで貫通させるには `critical` が必要で、こちらは **Appleへの申請と承認が必要**。
+iOS 側の通知設定画面では「時間指定通知」ではなく**「即時通知」**というラベルで表示される。
+
+### 用意したアラーム音（4種・各20秒 / 44.1kHz 16bit mono）
+`_alarm_sounds/` に生成スクリプト（`gen_alarm2.py` / `gen_alarm3.py`）付きで保管。
+
+| 記号 | ファイル | 音の性格 |
+|---|---|---|
+| A | `alarm_chime.wav` | やさしいチャイム |
+| B | `alarm_soft.wav` | やわらかい二音 |
+| C | `alarm_monitor.wav` | 患者モニター風 |
+| D | `alarm_nursecall.wav` | ナースコール風（**既定**） |
+
+iOS の通知音は**最長30秒**。それを超えると標準音に置き換えられる。
+
+### 切替の実装（recheck-alarm-sound-v2）
+`templates/vitals.html`。
+
+- `RC_SOUNDS` に4音を定義。`_rcSound()` / `_rcSetSound()` で **`localStorage['rc_alarm_sound']` に端末ごと保存**。
+  施設共通ではなく端末ごとにしたのは、DBのスキーマ変更（`vital_alert_settings` への列追加）を伴わず、
+  夜勤・日勤で好みが違っても各自で選べるため。
+- 本番の再検査スケジュールと15秒テスト通知の**両方**が `sound:_rcSound()` を参照する。
+- UIは**アプリ内のみ**表示。画面上部の「🔔 通知を許可 / テスト」ボタンの下にプルダウンを置いた
+  （`rc-alarm-panel`）。ブラウザでは音が確認できないため出さない。
+- 選択を変えたら `checkRecheckAlarms()` を呼び、予約済み通知を**同じ通知idで上書きスケジュール**して
+  新しい音に差し替える。
+
+### 【重要】Xcode 側の作業（これをしないと無音のまま）
+4つの `.wav` は `tasukaru-app/ios/App/App/` にコピー済み。Xcode で:
+
+1. 左のファイル一覧の **`App` グループ**（青いプロジェクト直下の `App` フォルダ）に4ファイルをドラッグ
+2. **「Copy items if needed」にチェック**、**Add to targets: `App` にチェック**
+3. `App` ターゲット → **Build Phases → Copy Bundle Resources** に4ファイルが並んでいることを確認
+4. アプリを再インストール
+
+**バンドルに入っていないファイル名を指定すると iOS は無音**になる。4つとも入れること。
+
+### Xcodeへの .wav 追加でハマった点（2026-08-18 実作業メモ）
+- `tasukaru-app/ios/App/App/` に置いたファイルを **File → Add Files** すると、Xcode 16 のダイアログの
+  Action が既定で **「Copy files to destination」**になっており、同名ファイルが既にあるため
+  **`alarm_chime 2.wav` のように「 2」付きでコピー**されてしまう。この名前ではコードの
+  `sound:'alarm_chime.wav'` と一致せず**無音**になる。
+  → Action を **「Reference files in place」** に変え、**Targets の `App` にチェック**して Finish する。
+- ダイアログの **Targets のチェックは既定で外れている**。外れたまま追加すると
+  Copy Bundle Resources に入らず、やはり無音になる。
+- Downloads など**リポジトリ外のファイルを追加すると `project.pbxproj` に絶対パスで記録される**
+  （`path = "/Users/.../Downloads/alarm_chime.wav"; sourceTree = "<absolute>"`）。
+  Downloads を整理した瞬間にビルドが壊れるため、`path = App/alarm_chime.wav; sourceTree = "<group>"`
+  に修正済み。バックアップは `App.xcodeproj/project.pbxproj.bak_20260818`。
+- 左の一覧が「⚠️ 問題一覧」になっていると Add Files の入れ先が見えない。
+  **左上の一番左の📁アイコン**でファイル一覧に切り替えること。
+- Xcode の **「Update to recommended settings」は実行しない**。
+  `Enable User Script Sandboxing` が Capacitor のビルドスクリプトを壊すことがある。
+
+**結果：4音とも iPhone で鳴ることを実機確認済み（2026-08-18）。**
