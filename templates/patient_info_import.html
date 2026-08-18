@@ -7,10 +7,27 @@
 .import-wrap { max-width: 720px; margin: 0 auto; }
 
 .info-msg { background: #e8f0fe; color: #1967d2; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; line-height: 1.6; }
-.error-msg { background: #fce8e6; color: #c5221f; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; display: none; }
-.error-msg.show { display: block; }
-.success-msg { background: #e6f4ea; color: #1e8e3e; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; display: none; }
-.success-msg.show { display: block; }
+/* patient-info-toast-v1: ページ最上部だと下へスクロールした状態では見えないため、画面上部へ固定表示する */
+.error-msg, .success-msg {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-240px);
+    z-index: 10000;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin: 0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    transition: transform 0.3s ease;
+    pointer-events: none;
+}
+.error-msg   { background: #fce8e6; color: #c5221f; }
+.success-msg { background: #e6f4ea; color: #1e8e3e; }
+.error-msg.show, .success-msg.show { transform: translateX(-50%) translateY(0); }
 .warning-msg { background: #fff8e1; color: #7a5a00; border-radius: 10px; padding: 12px; font-size: 0.78rem; margin-bottom: 12px; line-height: 1.6; }
 
 .drop-zone { border: 2px dashed #1a73e8; border-radius: 14px; padding: 40px 20px; text-align: center; background: #f8fbff; cursor: pointer; transition: all 0.15s; }
