@@ -2906,3 +2906,22 @@ iOS の通知音は**最長30秒**。それを超えると標準音に置き換�
 4. アプリを再インストール
 
 **バンドルに入っていないファイル名を指定すると iOS は無音**になる。4つとも入れること。
+
+### Xcodeへの .wav 追加でハマった点（2026-08-18 実作業メモ）
+- `tasukaru-app/ios/App/App/` に置いたファイルを **File → Add Files** すると、Xcode 16 のダイアログの
+  Action が既定で **「Copy files to destination」**になっており、同名ファイルが既にあるため
+  **`alarm_chime 2.wav` のように「 2」付きでコピー**されてしまう。この名前ではコードの
+  `sound:'alarm_chime.wav'` と一致せず**無音**になる。
+  → Action を **「Reference files in place」** に変え、**Targets の `App` にチェック**して Finish する。
+- ダイアログの **Targets のチェックは既定で外れている**。外れたまま追加すると
+  Copy Bundle Resources に入らず、やはり無音になる。
+- Downloads など**リポジトリ外のファイルを追加すると `project.pbxproj` に絶対パスで記録される**
+  （`path = "/Users/.../Downloads/alarm_chime.wav"; sourceTree = "<absolute>"`）。
+  Downloads を整理した瞬間にビルドが壊れるため、`path = App/alarm_chime.wav; sourceTree = "<group>"`
+  に修正済み。バックアップは `App.xcodeproj/project.pbxproj.bak_20260818`。
+- 左の一覧が「⚠️ 問題一覧」になっていると Add Files の入れ先が見えない。
+  **左上の一番左の📁アイコン**でファイル一覧に切り替えること。
+- Xcode の **「Update to recommended settings」は実行しない**。
+  `Enable User Script Sandboxing` が Capacitor のビルドスクリプトを壊すことがある。
+
+**結果：4音とも iPhone で鳴ることを実機確認済み（2026-08-18）。**
