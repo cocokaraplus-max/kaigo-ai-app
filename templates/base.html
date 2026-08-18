@@ -847,11 +847,10 @@ body.nav-editing {
   function render(events){
     var bar = document.getElementById('cal-today-bar');
     if(!bar) return;
+    window.__calTodayEvents = events || [];
     if(!events || !events.length){ bar.style.display = 'none'; return; }
 
     document.getElementById('cal-today-count').textContent = events.length + '件';
-    document.getElementById('cal-today-peek').textContent =
-        timeLabel(events[0]) + ' ' + (events[0].title || '');
 
     var html = '';
     events.forEach(function(ev){
@@ -870,18 +869,50 @@ body.nav-editing {
     document.getElementById('cal-today-body').innerHTML = html;
 
     var open = isOpen();
-    document.getElementById('cal-today-body').style.display = open ? 'block' : 'none';
-    document.getElementById('cal-today-chevron').style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+    applyOpen(open, events);
     bar.style.display = 'block';
+    place(bar, events);
+  }
 
-    /* TOPページだけは、ロゴ・ユーザー名の【下】に移動させる。
-       他の画面は各ページの見出しの上でよいが、TOPでロゴより上に出ると不自然なため。 */
-    if(isTopPage()){
-      var ui = document.querySelector('.user-info');
-      if(ui && ui.parentNode && ui.nextElementSibling !== bar){
-        ui.parentNode.insertBefore(bar, ui.nextSibling);
-      }
+  /* 閉じているときだけ、先頭の予定を1行だけ横に出す（開いているときは重複するので消す） */
+  function applyOpen(open, events){
+    var body = document.getElementById('cal-today-body');
+    var peek = document.getElementById('cal-today-peek');
+    body.style.display = open ? 'block' : 'none';
+    document.getElementById('cal-today-chevron').style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+    if(peek){
+      peek.textContent = (open || !events || !events.length)
+        ? '' : (timeLabel(events[0]) + ' ' + (events[0].title || ''));
     }
+  }
+
+  /* 帯を出す位置を決める。
+     ・TOPページ  : ロゴ／ユーザー名の【下】（ロゴより上に出ると不自然なため）
+     ・その他     : ページ上部に貼り付く見出し(position:sticky)がある画面
+                    （掲示板など）では、その見出しの【下】へ移す。
+                    貼り付く見出しは帯より手前に描かれるので、上に置くと隠れてしまう。 */
+  function place(bar, events){
+    try{
+      if(isTopPage()){
+        var ui = document.querySelector('.user-info');
+        if(ui && ui.parentNode && ui.nextElementSibling !== bar){
+          ui.parentNode.insertBefore(bar, ui.nextSibling);
+        }
+        return;
+      }
+      var wrap = bar.parentElement;
+      if(!wrap) return;
+      var kids = Array.prototype.slice.call(wrap.children, 0, 6);
+      for(var i = 0; i < kids.length; i++){
+        var k = kids[i];
+        if(k === bar || k.tagName === 'SCRIPT') continue;
+        var cs = getComputedStyle(k);
+        if(cs.position === 'sticky' && parseFloat(cs.top || '999') <= 0){
+          if(k.nextElementSibling !== bar) k.parentNode.insertBefore(bar, k.nextSibling);
+          return;
+        }
+      }
+    }catch(e){}
   }
 
   function bindToggle(){
@@ -890,8 +921,7 @@ body.nav-editing {
     head.onclick = function(){
       var body = document.getElementById('cal-today-body');
       var open = body.style.display === 'none';
-      body.style.display = open ? 'block' : 'none';
-      document.getElementById('cal-today-chevron').style.transform = open ? 'rotate(180deg)' : 'rotate(0deg)';
+      applyOpen(open, window.__calTodayEvents);
       setOpen(open);
     };
   }
