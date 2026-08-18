@@ -2804,3 +2804,47 @@ where vd.facility_code = 'cocokaraplus-5526' and p.id is null;
 - **音声入力のハルシネーション対策**（本番反映済み）: `halluc-guard-v2/v3`・`asr-homophone-v1`・`asr-name-hint-v2`・`asr-name-kanji-v5`。詳細は `SESSION_65_HANDOFF.md`。
 - **上部トーストのセーフエリア対応**（`toast-safearea-v1`・DEVのみ・7箇所）: iPhoneのカメラに「保存しました！」が隠れる問題。
 - **計画書・利用者情報シートの読み取り**（`sheet-ocr-v1/v2`・DEVのみ）: 基本情報6欄＋ICF付箋を複数枚まとめて読み取る。**`v2` の再検証が未実施**。
+
+## Apple Developer Program 法人登録 完了（契約同意・$99支払い済み）2026-08-18  <!-- apple-enroll-paid-2026-08-18 -->
+
+### 経過
+- 2026-08-17 法人フォーム送信 → 登録ID **`WAVNW2S5G6`**（「現在登録を処理しています」表示）
+- 2026-08-18 10:15 Apple から「登録手続きを完了してください」メール（`noreply-appledev@email.apple.com`）
+  → 使用許諾契約（Apple Developer Program License Agreement）が発行される
+- 2026-08-18 **使用許諾契約に同意・$99/年の支払いを完了**
+
+### ★ 確定した値（次回のために必ず参照）
+| 項目 | 値 |
+|---|---|
+| **Team ID（法人）** | **`6AX82WT38B`** ※契約書PDFのファイル名から判明 |
+| Team ID（旧・無料Apple IDの個人チーム） | `BB7M7M88HC` ※Xcodeプロジェクトに設定済み。**法人チームへ切替が必要** |
+| 登録ID（Enrollment ID） | `WAVNW2S5G6` |
+| D-U-N-S番号 | `692505882` |
+| 法人名 | `LIFE PLUS, LIMITED LIABILITY COMPANY` |
+| 勤務先メール（Apple IDではない） | `hiro@lifeplusllc.com`（Zoho / mail.zoho.jp） |
+| Bundle ID | `jp.lifeplus.tasukaru` |
+| **Apple ID（アカウント責任者）** | ★未記録。`developer.apple.com/account` →「プロファイル」で確認して追記すること |
+
+### 注意点
+- **支払い後もD-U-N-S登録の電話番号にAppleから確認の電話が来ることがある。** 取り逃すと止まる。
+- 支払い直後はアカウントが有効化されるまで時間がかかる場合がある（数時間〜48時間程度）。
+- **年会費は自動更新。** 更新が止まると配布中のアプリが配信停止になる。ドメイン(`lifeplusllc.com`・更新期限2027/07/22)と
+  Zohoメールもあわせて自動更新を維持すること。
+
+### 次にやること（順番）
+1. アカウントが有効になったことを `developer.apple.com/account` で確認（メンバーシップが表示される）。
+2. **Xcodeの署名を法人チームへ切替**：`tasukaru-app/ios/App/App.xcodeproj` の
+   `DEVELOPMENT_TEAM` を `BB7M7M88HC` → `6AX82WT38B` に変更（Xcode の Signing & Capabilities から選び直す）。
+3. **App ID(Bundle ID `jp.lifeplus.tasukaru`)を Certificates, Identifiers & Profiles で登録**し、
+   **Push Notifications capability を有効化**。
+4. **APNs認証キー（`.p8`）を発行**（Keys → 新規 → Apple Push Notifications service）。
+   - **`.p8` は1度しかダウンロードできない。** 紛失したら再発行になるので確実に保管する。
+   - Key ID と Team ID (`6AX82WT38B`) も控える。**`.p8` の中身はチャット等に貼らない。**
+5. 再検査アラームのプッシュ通知実装へ。
+6. その後、非公開App配信(Unlisted)またはCustom App Distributionで施設スタッフへ配布。
+
+### 契約について（参考・法的助言ではない）
+- Apple Developer Program License Agreement は**交渉不可の定型契約**。全登録者が同一のものに同意する。
+- TASUKARU は無料アプリ＋Stripeでの法人契約のため、アプリ内課金の別契約（Schedule 2）は現時点で不要の見込み。
+- 介護記録は要配慮個人情報を含むため、Appleのプライバシー要件と国内の個人情報保護法の**両方**の遵守が必要。
+  判断が必要な場面は専門家に相談すること。
