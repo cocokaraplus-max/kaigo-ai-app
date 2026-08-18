@@ -2925,3 +2925,105 @@ iOS の通知音は**最長30秒**。それを超えると標準音に置き換�
   `Enable User Script Sandboxing` が Capacitor のビルドスクリプトを壊すことがある。
 
 **結果：4音とも iPhone で鳴ることを実機確認済み（2026-08-18）。**
+
+---
+
+## 掲示板に投稿できない（空投稿・見えない投稿）2026-08-18  <!-- board-empty-post-incident-2026-08-18 -->
+
+現場から「掲示板に投稿が全くできない。画像も何もかも投稿できない。投稿するまでの操作はできるが投稿されていない」と報告。
+調べた結果、**別々の2つの不具合が同時に起きていた**。
+
+### 不具合① 空投稿（本命）: ServiceWorker が POST の body を落としていた
+
+**症状**：掲示板に「投稿者名と時刻だけ・本文なし・カテゴリ未分類・画像なし」のカードが並ぶ。
+
+**原因**：`static/sw.js`（2026-08-05 更新）の fetch ハンドラが、非GETリクエストを
+`event.respondWith(fetch(event.request.clone()))` で**送り直していた**。
+iOS（ホーム画面PWA / Safari）では、この送り直しで **multipart/form-data の body が丸ごと失われる**ことがある。
+サーバ側では `request.form` / `request.files` が空になり、`api_board_create_post` は
+`content=""` / `image_urls=[]` / `category_id=None` のまま insert に成功してしまう。
+つまり **「投稿は成功したが中身が空」** という最悪の壊れ方をしていた。
+
+**修正（`sw-post-passthrough-v1`）**：オンライン時は `event.respondWith` を使わず、
+SW が非GETに一切介入しない。オフライン時のみ `/api/*` と `/input` をキューに積む。
+`CACHE_VERSION` を `tasukaru-v31` → `tasukaru-v32` に更新。
+
+```js
+if (event.request.method !== 'GET') {
+    if (navigator.onLine === false &&
+        (url.pathname.startsWith('/api/') || url.pathname === '/input')) {
+        event.respondWith(networkFirstWithOfflineQueue(event.request));
+    }
+    return;   // オンライン時はブラウザにそのまま送らせる
+}
+```
+
+**併せて追加（`board-empty-post-guard-v1`）**：`api_board_create_post` で、本文・画像・音声・PDF が
+**すべて空**なら保存せず 400 を返す。空投稿が二度と DB に入らないようにする保険。
+Cloud Run のログに `[board] empty post blocked ... ct=... len=...` を出す。
+
+### 不具合② 誰にも見えない投稿: 「メンションのみ」＋宛先ゼロ
+
+**症状**：投稿は保存されているのに、投稿者本人以外の誰にも表示されない。
+
+**原因**：投稿モーダルの公開範囲で「メンションのみ」を選び、宛先スタッフを1人も選ばずに投稿すると
+`is_private = true` / `mention_names = []` になる。`/board` の可視判定は
+
+```python
+if p.get("is_private"):
+    if my_name in (p.get("mention_names") or []) or p.get("staff_name") == my_name:
+        posts.append(p)
+```
+
+なので、**宛先が空 = 投稿者本人しか見えない**投稿が成立してしまっていた。
+
+**影響範囲は41件。** 最も古いのは id 67（2026年春頃）。つまりこの不具合は**数ヶ月前から続いていた**。
+「投稿したのに誰も見てくれない」という現場の感覚はずっと正しかった。
+
+**修正（`board-empty-mention-fix-v1`）**：
+- `app.py`：`is_private and not mentions` なら `is_private = False` に倒す（サーバ側の最終防波堤）
+- `templates/board.html`：投稿前に確認ダイアログを出す／`openPostModal()` で毎回「全員に公開」へリセット
+
+**既存データの復旧**（実行済み・41件が全員に見えるようになった）：
+
+```sql
+update board_posts set is_private = false
+where facility_code = 'cocokaraplus-5526'
+  and is_private = true
+  and (mention_names is null or mention_names::text in ('[]', 'null'));
+```
+
+### 調査でやってしまった遠回り（次回のために）
+
+- **最初に「保存は動いている」と結論づけたのが誤り。** DBの直近40件を見て content が入っていたので
+  正常と判断したが、**壊れた投稿は現場が削除済み**で、id 342〜348 が欠番になっていただけだった。
+  **欠番＝壊れた投稿の痕跡**であり、これを見た時点で気づくべきだった。
+- **決め手は現場のスクリーンショット。** 「名前だけ・未分類・本文なし」のカードが写った1枚で、
+  「サーバに届いた時点で中身が空」と確定できた。**推測を重ねる前に画面を1枚もらうのが最短。**
+- **「2件です」と断言して実際は41件だった。** id 336〜400 の範囲しか見ていないのに全体を語った。
+  範囲を限定して調べたら、結論も範囲を明示すること。
+- ブラウザから DEV / 本番へ直接 `fetch` で投稿して検証する方法が有効だった。
+  ただし `/board?partial=1` は JSON（`\uXXXX` エスケープ）で返るので、
+  日本語で検索するときは `JSON.parse` してから探すこと。
+
+### 検証結果（DEV・本番とも合格 2026-08-18）
+
+| 検証項目 | 結果 |
+|---|---|
+| ServiceWorker が v32・修正入り | ✅ |
+| 中身が空の投稿 → 保存されず 400 | ✅ |
+| 通常の投稿（本文あり） | ✅ 保存・表示 |
+| 「メンションのみ」で宛先ゼロ | ✅ 全員公開に倒れて表示される |
+| 画像つきの投稿 | ✅ 保存・画像URL付与 |
+
+### 現場への周知（必須）
+
+**アプリを一度完全に終了して開き直すこと。** ServiceWorker は古いものが端末に残り続けるため、
+これをしないと修正版に入れ替わらない。
+
+### 再検査アラームの「音なし」追加（`recheck-alarm-mute-v1`）
+
+同時に `templates/vitals.html` のアラーム音の選択肢に「音なし（表示のみ）」を追加した。
+Capacitor iOS は `sound` を渡さなければ `content.sound` を設定しないため、**通知は出るが無音**になる
+（`LocalNotificationsPlugin.swift`: `if let sound = notification["sound"] as? String { content.sound = ... }`）。
+選択値が `'none'` のときは `sound` キー自体を付けずに `schedule()` する。
