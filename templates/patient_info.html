@@ -310,6 +310,21 @@
           </div>
           <div class="goal-section-hint">既往歴・家族構成・職歴・趣味嗜好・好き嫌いはここに入力します（旧・編集ページの欄はこちらに統合）。</div>
 
+          <!-- sheet-ocr-v1: 計画書・利用者情報シートをまとめて読み取り、下の各欄とICF付箋を埋める -->
+          <div style="margin:8px 0 12px;">
+            <button type="button" class="ocr-btn" style="font-size:0.8rem; padding:9px 14px; white-space:normal; text-align:left; line-height:1.35;"
+                    onclick="document.getElementById('hobbyOcrFile').click()">
+              <span class="material-symbols-outlined" style="font-size:18px;">photo_camera</span>利用者書類をカメラで読み取る
+            </button>
+            <input type="file" id="hobbyOcrFile" accept="image/*" multiple style="display:none;">
+            <div class="goal-section-hint" style="margin-top:5px;">
+              居宅サービス計画書・利用者情報シート・フェイスシート・アセスメント表などが読み取れます。
+              複数ページある場合はまとめて選べます（最大8枚）。読み取った内容は下の各欄と<b>ICF付箋ボード</b>に入ります。
+              内容を確認してから「基本情報を保存」「ICF付箋を保存」を押してください。
+            </div>
+            <div id="ocrStatus" style="font-size:0.72rem; color:#5f6368; margin-top:4px;"></div>
+          </div>
+
           <div class="field-row">
             <label>既往歴</label>
             <textarea data-basic="medical_history" placeholder="例: 脳梗塞（2020年）、高血圧、糖尿病"></textarea>
@@ -323,14 +338,8 @@
             <textarea data-basic="job_history" placeholder="例: 元・小学校教諭"></textarea>
           </div>
           <div class="field-row">
-            <label>趣味・嗜好
-              <button type="button" class="ocr-btn" onclick="document.getElementById('hobbyOcrFile').click()">
-                <span class="material-symbols-outlined" style="font-size:16px;">photo_camera</span>シートをカメラで読み取り
-              </button>
-            </label>
+            <label>趣味・嗜好</label>
             <textarea data-basic="hobbies" placeholder="例: 手芸、園芸、演歌"></textarea>
-            <input type="file" id="hobbyOcrFile" accept="image/*" capture="environment" style="display:none;">
-            <div id="ocrStatus" style="font-size:0.72rem; color:#5f6368; margin-top:4px;"></div>
           </div>
           <div class="field-row-inline">
             <div class="field-row" style="margin:0;">
@@ -558,7 +567,8 @@ const PATIENTS = {{ patients | tojson }};
             // patient-hub-v1: 基本情報保存・趣味嗜好OCR
             document.getElementById("saveBasicBtn").addEventListener("click", () => this.saveBasic());
             document.getElementById("hobbyOcrFile").addEventListener("change", (e) => {
-                if (e.target.files[0]) this.hobbyOcr(e.target.files[0]);
+                if (e.target.files && e.target.files.length) this.hobbyOcr(e.target.files);
+                e.target.value = "";   // 同じ写真を選び直しても再実行できるように
                 e.target.value = "";
             });
 
@@ -1304,18 +1314,65 @@ const PATIENTS = {{ patients | tojson }};
             } catch (e) { this.showError(e.message); }
         },
 
-        async hobbyOcr(file) {
-            if (!file || !this.hubPid) { if (!this.hubPid) this.showError("先に利用者を選択してください"); return; }
-            const st = document.getElementById("ocrStatus"); st.textContent = "読み取り中…";
+        // sheet-ocr-v1: 計画書・利用者情報シートを複数枚まとめて読み取り、
+        //   基本情報6欄とICF付箋ボードに反映する（保存はユーザーが押す）。
+        async hobbyOcr(files) {
+            const list = Array.from(files || []).slice(0, 8);
+            if (!list.length) return;
+            if (!this.hubPid) { this.showError("先に利用者を選択してください"); return; }
+            const st = document.getElementById("ocrStatus");
+            st.textContent = `読み取り中…（${list.length}枚）`;
             try {
-                const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(",")[1]); fr.onerror = rej; fr.readAsDataURL(file); });
-                const r = await fetch("/api/patient-hub/hobby-ocr", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: b64, mime_type: file.type || "image/jpeg" }) });
+                const images = await Promise.all(list.map(f => new Promise((res, rej) => {
+                    const fr = new FileReader();
+                    fr.onload = () => res({ data: String(fr.result).split(",")[1], mime_type: f.type || "image/jpeg" });
+                    fr.onerror = rej;
+                    fr.readAsDataURL(f);
+                })));
+                const r = await fetch("/api/patient-hub/sheet-ocr", {
+                    method: "POST", headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ pid: this.hubPid, images })
+                });
                 const j = await r.json();
                 if (j.status !== "success") throw new Error(j.message || "読み取りに失敗しました");
+
+                // --- 基本情報6欄（既存の内容は消さず、改行して追記）---
                 const o = j.ocr || {};
-                const setv = (k, v) => { if (v) { const el = document.querySelector(`[data-basic="${k}"]`); el.value = (el.value ? el.value + "\n" : "") + v; } };
-                setv("hobbies", o.hobbies); setv("likes", o.likes); setv("dislikes", o.dislikes); setv("job_history", o.job_history);
-                st.textContent = "読み取り完了。内容を確認して「基本情報を保存」を押してください。";
+                const setv = (k, v) => {
+                    if (!v) return 0;
+                    const el = document.querySelector(`[data-basic="${k}"]`);
+                    if (!el) return 0;
+                    if (el.value && el.value.indexOf(v) >= 0) return 0;   // 同じ内容の二重追記を防ぐ
+                    el.value = (el.value ? el.value + "\n" : "") + v;
+                    return 1;
+                };
+                let filled = 0;
+                ["medical_history", "family_structure", "job_history", "hobbies", "likes", "dislikes"]
+                    .forEach(k => { filled += setv(k, o[k]); });
+
+                // --- ICF付箋（ボードに未保存で積む。重複はスキップ）---
+                const seen = new Set((this.icfStickies || []).map(x =>
+                    ((x.text || "").trim().toLowerCase() + "|" + (x.polarity === "cannot" ? "cannot" : "can"))));
+                let icf = 0;
+                (j.stickies || []).forEach(sk => {
+                    const pol = sk.polarity === "cannot" ? "cannot" : "can";
+                    const key = (sk.text || "").trim().toLowerCase() + "|" + pol;
+                    if (!sk.text || seen.has(key)) return;
+                    seen.add(key);
+                    this.icfStickies.push({ zone: sk.zone || "unsorted", text: sk.text, icf_code: "", polarity: pol });
+                    icf++;
+                });
+                if (icf) this.renderIcf();
+
+                if (!filled && !icf) {
+                    st.textContent = "読み取れる情報がありませんでした。写真の写り（明るさ・ピント・全体が入っているか）をご確認ください。";
+                    return;
+                }
+                const msg = [];
+                if (filled) msg.push(`基本情報 ${filled}件`);
+                if (icf) msg.push(`ICF付箋 ${icf}件`);
+                st.textContent = `${j.pages || list.length}枚から ${msg.join(" / ")} を反映しました。内容を確認して「基本情報を保存」`
+                               + (icf ? "「ICF付箋を保存」" : "") + "を押してください。";
             } catch (e) { st.textContent = ""; this.showError(e.message); }
         },
         

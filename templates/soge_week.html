@@ -106,7 +106,7 @@
   padding:10px; font-size:0.8rem; line-height:1.6; margin-bottom:8px; }
 .sg-info { font-size:0.75rem; color:#8a93a0; line-height:1.6; }
 
-.sg-toast { position:fixed; left:50%; top:12px; transform:translate(-50%,-140%); z-index:9999;
+.sg-toast { position:fixed; left:50%; top:calc(env(safe-area-inset-top, 0px) + 12px); transform:translate(-50%,-140%); z-index:9999;
   background:#137333; color:#fff; padding:10px 16px; border-radius:10px; font-size:0.85rem; font-weight:700;
   transition:transform .22s ease, opacity .22s ease; opacity:0; pointer-events:none; max-width:min(90vw,420px);
   text-align:center; }

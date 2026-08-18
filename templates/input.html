@@ -127,9 +127,10 @@
 /* 保存完了トースト */
 .save-toast {
     position: fixed;
-    top: 20px;
+    /* toast-safearea-v1: iPhoneのカメラ(ノッチ)に隠れないようセーフエリア分だけ下げる */
+    top: calc(env(safe-area-inset-top, 0px) + 20px);
     left: 50%;
-    transform: translateX(-50%) translateY(-80px);
+    transform: translateX(-50%) translateY(-200px);
     background: #34a853;
     color: #fff;
     padding: 12px 24px;

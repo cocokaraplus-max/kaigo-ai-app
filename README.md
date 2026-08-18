@@ -2664,3 +2664,143 @@ git checkout tasukaru-dev
 ### コミット
 DEV `tasukaru-dev`: `55c9e27`→`b4e2646`→`2e8f07a`→`1155963`→`dd5824c`→`89d498d`→`9cfbab9`。
 本番 `tasukaru`: `7990749`（前半5件マージ）→`8bca8b3`（保存UX2件マージ）。
+
+## Apple Developer Program 法人登録の再開・申請完了 2026-08-17  <!-- apple-enroll-submitted-2026-08-17 -->
+
+### 経緯（7/23 に止まっていた理由が判明）
+- 7/23 に法人登録を開始していたが、**「勤務先メールアドレスの確認」工程で中断**していた。
+  Apple が `hiro@lifeplusllc.com` に送る**有効期限10分のワンタイムコード**を入力できないまま失効し、手続きが消えていた。
+  （7/23 は Zoho メール開設当日。受信設定の最中でコード受け取りが間に合わなかったとみられる）
+- そのため developer.apple.com/account には「今すぐ登録」ボタンが出たまま＝**申請なし**の状態だった。
+
+### 重要な整理（次回混乱しないために）
+- **`hiro@lifeplusllc.com` は Apple ID ではない。**登録フォームに入れる「**勤務先メールアドレス（work email）**」。
+  → このアドレスでパスワード再設定を試すと「Appleアカウントが有効ではない」と出る。正常。
+- **Apple ID は別物**。developer.apple.com にサインインしているアカウントがそれ。**このApple IDがアカウント責任者になる**（後から変更は手間）。
+  → ★次回のために `developer.apple.com/account` →「プロファイル」で確認したメールアドレスをここに追記すること。
+- D-U-N-S 番号の申請は Apple ID 不要（メールアドレスだけ）。だから「Apple からメールは届くのに Apple ID は無い」という状態が起こりうる。
+
+### 登録に使った情報
+- 法人名: `LIFE PLUS, LIMITED LIABILITY COMPANY`（**D-U-N-S の登録表記と完全一致させること**。不一致で審査停止）
+- **D-U-N-S 番号: 692505882**（機密ではなく法人識別番号。控えてよい）
+- 住所: 〒471-0832 愛知県豊田市丸山町7-49-6
+- 勤務先メール: `hiro@lifeplusllc.com`（Zoho / mail.zoho.jp）
+- 会社サイト: `https://lifeplusllc.com`（Netlify・Apple審査のWebサイト要件用）
+
+### 現在の状態（2026-08-17）
+- **申請送信済み → Apple の確認待ち（審査中）**。
+- 画面表示：「法的な契約に対して署名権限をお持ちであることが確認できたら、登録完了までの手順をEメールでお送りします」
+- **Enrollment ID（登録ID）= `WAVNW2S5G6`**（2026-08-17 取得）。サポート照会に必須。
+  ※登録IDは機密ではない（申請を特定するための整理番号）。控えて共有してよい。
+  ※一方で **ワンタイム確認コード・パスワード・APIキーは絶対に貼らない/転送しない**。
+- developer.apple.com/account の表示：「**現在登録を処理しています。あなたの登録IDは WAVNW2S5G6 です。**」
+  → この表示が出ていれば申請は生きている（7/23 は「今すぐ登録」のままだった＝申請なし）。
+
+### 次にやること / 注意点
+1. **D-U-N-S 登録の電話番号に Apple から確認の電話が来ることがある。取り逃すと審査が止まる**（7/23と同じ失敗パターン）。
+2. 承認まで **2〜4週間**が目安。**2026-09-中旬**を過ぎても連絡が無ければ、
+   developer.apple.com/support →「Membership and Account」→「Program Enrollment」→ **電話（折り返し）**で照会。
+   Webフォームより明らかに速い。Enrollment ID を伝える。
+3. **重複申請・先行しての $99 支払いはしない**（二重登録で遅延する）。
+4. 承認 → 案内メールに従い **$99/年を支払い** → 登録完了 → **APNs `.p8` 発行** → 再検査アラームのプッシュ通知実装へ。
+5. 進捗は developer.apple.com/account で随時確認できる（審査中の表示になる）。
+
+### 待機中に無料で進められること
+- **iPhone 実機インストール**（審査不要・費用ゼロ）: Xcodeで実機に入れて、ネイティブ通知とオフライン災害モードを検証。
+  `tasukaru-app/ios/App/App.xcodeproj` に **DEVELOPMENT_TEAM = BB7M7M88HC** / Bundle ID `jp.lifeplus.tasukaru` が設定済み。
+- **Android 内部テスト**（Google Play は $25 支払い済み・追加費用なし）: `npx cap add android` → 内部テストで最大100人に配布。
+- アイコン一式・表示名・起動画面の整備（Claude 担当）。
+
+### セキュリティ上の注意（今回の学び）
+- Apple の**ワンタイム確認コードは他人に見せない／転送しない**（10分で失効するが本人確認そのもの）。
+- 新規ドメイン取得後、「あなたのサイトに重大なエラーがあります」系の**営業スパム／フィッシング**が届く。
+  （例: `Major Errors in Lifeplusllc...` / `LIFE PLUSのウェブサイト...`）→ **開かず削除・リンクを踏まない**。
+
+## バイタル「本日の利用者を追加」が効かない問題の解決＋日付単位の臨時追加 2026-08-18  <!-- vital-daily-include-2026-08-18 -->
+
+### ★ 最重要：本番の施設コードは `cocokaraplus-5526`（`cocokaraplus` ではない）
+今回の調査で `facility_code = 'cocokaraplus'` を条件にした診断SQLを使い、**「0件」という結果を3回続けて誤った証拠として扱った**。
+条件が合わず0件だっただけで、実際にはデータが存在していた。原因究明が大幅に遠回りになった。
+→ **診断SQLを書く前に必ず施設コードを確認する。**
+```sql
+select facility_code, count(*) from patient_profiles group by 1 order by 2 desc;
+```
+
+### ★ 利用者IDが2系統ある（混同するとデータが迷子になる）
+| 用途 | 使うID | 型 | 例 |
+|---|---|---|---|
+| 画面の利用者一覧 / `vital_daily_excludes` / `vital_daily_includes` | `patient_profiles.id` | **UUID** | `06d9dcf6-a0c1-…` |
+| `patient_visit_days`（曜日設定） / `vitals` | `patients.id` | **整数** | `13` |
+
+- `get_patients()` は両方返す：`id`（profiles/UUID）と `patient_int_id`（patients/整数）。
+- 曜日設定UIは `{{ p.patient_int_id or p.id }}` を送る（正しい）。
+- **バイタルの追加モーダルは `p.id`（UUID）を送っていた**（誤り）→ 誰も読まない孤児行を量産していた（本番で9件確認）。
+
+### ★ `nth_per_day`（第N週指定）は表示直前に強制上書きする
+`/vitals` は画面を組む直前に次を実行する。**DBに何が入っていても関係なく非表示になる。**
+```python
+if not visit_nth_ok(p["nth_per_day"], _today_wd, today):
+    p["weekdays"] = str(p["weekdays"]).replace(str(_today_wd), "")
+    apd[str(_today_wd)] = "NONE"
+```
+→ 「追加したのに出ない」の**主因**。曜日設定を書き換えるアプローチでは絶対に解決しない。
+
+### 発端と実データ
+現場から「バイタルで本日の利用者を追加しても表示されない。追加した端末では一時的に出るがリロードで消える。他端末では最初から出ない」との報告。
+対象は長松軒茂子さん（`patients.id = 13`）。本番の実データは次のとおりだった。
+```
+weekdays     = "24"                    → 火曜・木曜
+ampm_per_day = {"2":"AM", "4":"AM"}    → どちらも午前のみ
+nth_per_day  = {"2": 2}                → 火曜は「第2火曜」だけ
+```
+報告日 2026-08-18 は**第3火曜**（8/4=第1, 8/11=第2, 8/18=第3）。よって表示直前に `NONE` へ上書きされ、何度追加しても出なかった。
+なお入力済みのバイタル値は `vitals` に正常保存されており、表示されないだけでデータ欠損は無かった。
+
+### 対応（3コミット・すべて本番反映済み）
+1. **`vital-add-today-fix-v1`**（本番 `a8b5945`）
+   `weekdays` に今日の曜日が既にあるとサーバーが `ampm_per_day` を更新せず success を返す詰み状態を修正。
+   モーダルの「本日表示中」判定を一覧と同じ基準にそろえ、JS側で `'NONE'` が上書きされないバグも修正。
+   （実在する不具合だが**主因ではなかった**）
+2. **`vital-add-id-fix-v1`**（本番 `64521a0`）
+   追加モーダルが送る UUID を氏名経由で `patients.id` に解決。
+   （これも実在する不具合だが**主因ではなかった**）
+3. **`vital-daily-include-v1`**（本番 `83f6aef`）★本命
+   **「本日の利用者を追加」を曜日の恒久設定ではなく【その日だけ】の記録に変更。あわせて 午前／午後／終日 の3択を追加。**
+
+### `vital-daily-include-v1` の設計
+- 新テーブル **`vital_daily_includes`**（DDL: `db/vital_daily_includes.sql`）。**DEV・本番とも作成済み**。
+- `patient_id` は**画面と同じUUID**で持つ（`vital_daily_excludes` と同じ）。ID不一致が構造的に起きない。
+- 判定を1か所に集約（`templates/vitals.html` の `todayStateOf()`）:
+  ```
+  今日だけ削除 ＞ 今日だけ追加(AM/PM/ALL) ＞ 曜日の設定(第N週含む)
+  ```
+  **その日だけの指定が最優先**なので、第N週指定も確実に上書きできる。
+- 追加処理は `patient_visit_days` を**一切触らない** → 臨時追加が翌週以降に持ち越されない
+  （旧実装は曜日を恒久追加していたため、体験・臨時利用の人が毎週出続けていた）。
+- 新規「臨時」利用者は `patient_profiles` に作る（旧実装は `patients` にしか作らず、リロードで消えていた）。
+- 日付切替時は `/api/vital_includes?date=` で取り直す。
+- テーブル未作成でも表示は落ちない（追加時のみ明示エラー）。
+
+### DEVでの実地検証（2026-08-18・全項目合格）
+3択UIが出る（既定=終日）／追加すると一覧に出る／**リロードしても残る**／午前指定が効く（午後タブで非表示）／翌週に持ち越さない（翌火曜0件）。
+本番でも現場が「消えずに追加できています」と確認。
+
+### 孤児データについて（未処理・急がない）
+`patient_id` が UUID の `patient_visit_days` 行が本番に9件ある。読まれないだけで害は無いため削除していない。
+整理する場合は**中身を確認してから**。
+```sql
+select vd.* from patient_visit_days vd
+left join patients p on p.facility_code = vd.facility_code and p.id::text = vd.patient_id::text
+where vd.facility_code = 'cocokaraplus-5526' and p.id is null;
+```
+
+### 教訓
+1. **診断SQLが「0件」でも、まず条件が正しいかを疑う**（特に facility_code）。
+2. **コードだけで原因を断定しない。** 今回は実データを見るまで3回外した。早い段階でデータを取りに行くべきだった。
+3. 「表示されない」系は、**書き込み先**と**読み取り元**のIDが一致しているかを最初に確認する。
+4. 表示直前の上書き処理（`nth_per_day` のような）はDBをいくら直しても勝てない。**判定の優先順位を1か所に集約する**設計にする。
+
+### 同日のその他の作業
+- **音声入力のハルシネーション対策**（本番反映済み）: `halluc-guard-v2/v3`・`asr-homophone-v1`・`asr-name-hint-v2`・`asr-name-kanji-v5`。詳細は `SESSION_65_HANDOFF.md`。
+- **上部トーストのセーフエリア対応**（`toast-safearea-v1`・DEVのみ・7箇所）: iPhoneのカメラに「保存しました！」が隠れる問題。
+- **計画書・利用者情報シートの読み取り**（`sheet-ocr-v1/v2`・DEVのみ）: 基本情報6欄＋ICF付箋を複数枚まとめて読み取る。**`v2` の再検証が未実施**。
