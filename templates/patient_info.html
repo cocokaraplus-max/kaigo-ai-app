@@ -7,10 +7,30 @@
 .patient-info-wrap { max-width: 680px; margin: 0 auto; }
 
 .info-msg { background: #e8f0fe; color: #1967d2; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; }
-.error-msg { background: #fce8e6; color: #c5221f; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; display: none; }
-.error-msg.show { display: block; }
-.success-msg { background: #e6f4ea; color: #1e8e3e; border-radius: 10px; padding: 12px; font-size: 0.82rem; margin-bottom: 12px; display: none; }
-.success-msg.show { display: block; }
+/* patient-info-toast-v1: 保存メッセージはページ最上部に置くと、
+   下へスクロールした状態（保存ボタンの位置）では画面外で見えない。
+   ケース記録と同じように、画面上部へ固定表示するトーストにする。 */
+.error-msg, .success-msg {
+    position: fixed;
+    /* iPhoneのカメラ(ノッチ)に隠れないようセーフエリア分だけ下げる */
+    top: calc(env(safe-area-inset-top, 0px) + 16px);
+    left: 50%;
+    transform: translateX(-50%) translateY(-240px);
+    z-index: 10000;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+    border-radius: 10px;
+    padding: 12px 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin: 0;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    transition: transform 0.3s ease;
+    pointer-events: none;
+}
+.error-msg   { background: #fce8e6; color: #c5221f; }
+.success-msg { background: #e6f4ea; color: #1e8e3e; }
+.error-msg.show, .success-msg.show { transform: translateX(-50%) translateY(0); }
 
 .section-card { background: #fff; border: 1.5px solid #e0e0e0; border-radius: 14px; padding: 16px; margin-bottom: 12px; }
 .section-title { font-size: 0.88rem; font-weight: 700; color: #1a73e8; margin-bottom: 12px; padding-bottom: 6px; border-bottom: 1px solid #e8eaed; display: flex; align-items: center; gap: 8px; }
@@ -565,6 +585,12 @@ const PATIENTS = {{ patients | tojson }};
             document.getElementById("saveBtn").addEventListener("click", () => this.save());
 
             // patient-hub-v1: 基本情報保存・趣味嗜好OCR
+            // patient-info-toast-v1: 親要素の transform/filter で position:fixed が効かなくなるのを避けるため、
+            //   メッセージ要素を body 直下へ移す（vitals.html と同じ対策）。
+            ["errorMsg", "successMsg"].forEach(function(id) {
+                const el = document.getElementById(id);
+                if (el && el.parentElement !== document.body) document.body.appendChild(el);
+            });
             document.getElementById("saveBasicBtn").addEventListener("click", () => this.saveBasic());
             document.getElementById("hobbyOcrFile").addEventListener("change", (e) => {
                 if (e.target.files && e.target.files.length) this.hobbyOcr(e.target.files);
