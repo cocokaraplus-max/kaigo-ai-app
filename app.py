@@ -5754,6 +5754,18 @@ def vitals():
     except Exception as e:
         print(f"vitals data fetch error: {e}", flush=True)
 
+    # vital-daily-include-v1: その日だけ追加された利用者（曜日設定より優先して表示する）
+    #   テーブルが未作成でも落ちないよう、失敗時は空で続行する。
+    includes_today = {}
+    try:
+        res = (supabase.table("vital_daily_includes").select("patient_id,ampm")
+               .eq("facility_code", f_code).eq("include_date", today).execute())
+        for r in (res.data or []):
+            a = (r.get("ampm") or "ALL").upper()
+            includes_today[str(r["patient_id"])] = a if a in ("AM", "PM", "ALL") else "ALL"
+    except Exception as e:
+        print(f"vitals includes fetch skip: {e}", flush=True)
+
     # 今日除外されている利用者ID一覧を取得
     excludes_today = []
     try:
@@ -5776,6 +5788,7 @@ def vitals():
         ampm_per_day=ampm_per_day_map,
         vitals_data=vitals_data,
         excludes_today=excludes_today,
+        includes_today=includes_today,   # vital-daily-include-v1
         settings=settings,
         today=today,
     )
@@ -6576,144 +6589,182 @@ def api_vital_excludes_delete():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 def _resolve_visit_pid(supabase, f_code, patient_id, user_name=""):
-    """vital-add-id-fix-v1: patient_visit_days.patient_id は patients.id（整数ID）。
-    ただしバイタルの追加モーダルは patient_profiles.id を送ってくるため、
-    どちらを渡されても patients.id に解決して返す。解決できなければ None。
+    """vital-add-id-fix-v2: patient_visit_days.patient_id は patients.id（整数ID）。
+    バイタルの画面は patient_profiles.id を送ってくるので、氏名を介して patients.id に解決する。
+
+    重要: patients に行が無い利用者は /vitals が patient_visit_days と紐づけられず、
+    何度追加しても表示されない。そのため行が無ければここで作る。
+
+    戻り値: (patients.id の文字列 or None, 解決に使った氏名, どう解決したかの記録)
     """
     pid = str(patient_id or "").strip()
-    if not pid:
-        return None
-    # まず patients.id としてそのまま存在するか
-    try:
-        r = (supabase.table("patients").select("id")
-             .eq("facility_code", f_code).eq("id", pid).limit(1).execute())
-        if r.data:
-            return str(r.data[0]["id"])
-    except Exception:
-        pass   # 型不一致（uuid を bigint 列で引く等）はここで無視して次へ
-    # patient_profiles.id → user_name → patients.id
     name = (user_name or "").strip()
-    if not name:
+    kana, chart = "", ""
+
+    # 1) 氏名を確定する（patient_profiles.id から引く）
+    if pid:
         try:
-            r = (supabase.table("patient_profiles").select("user_name")
+            r = (supabase.table("patient_profiles")
+                 .select("user_name,user_name_kana,patient_number")
                  .eq("facility_code", f_code).eq("id", pid).limit(1).execute())
             if r.data:
-                name = (r.data[0].get("user_name") or "").strip()
+                name = (r.data[0].get("user_name") or "").strip() or name
+                kana = (r.data[0].get("user_name_kana") or "").strip()
+                chart = str(r.data[0].get("patient_number") or "").strip()
         except Exception:
-            pass
-    if name:
-        try:
-            r = (supabase.table("patients").select("id")
-                 .eq("facility_code", f_code).eq("user_name", name).limit(1).execute())
-            if r.data:
-                return str(r.data[0]["id"])
-        except Exception:
-            pass
-    return None
+            pass   # pid が patients.id だった場合など。次で氏名から解決する。
+
+    if not name:
+        return None, "", "no_name"
+
+    # 2) 氏名から patients.id を引く
+    try:
+        r = (supabase.table("patients").select("id")
+             .eq("facility_code", f_code).eq("user_name", name).limit(1).execute())
+        if r.data:
+            return str(r.data[0]["id"]), name, "found"
+    except Exception as e:
+        print(f"_resolve_visit_pid lookup error: {e}", flush=True)
+
+    # 3) 無ければ作る（これをしないと永久に表示されない）
+    try:
+        ins = supabase.table("patients").insert({
+            "facility_code": f_code,
+            "user_name": name,
+            "user_kana": kana,
+            "chart_number": chart or "臨時",
+        }).execute()
+        if ins.data:
+            print(f"[vital-add] patients 行を新規作成: {f_code}", flush=True)
+            return str(ins.data[0]["id"]), name, "created"
+    except Exception as e:
+        print(f"_resolve_visit_pid create error: {e}", flush=True)
+
+    return None, name, "failed"
+
+
+@app.route('/api/vital_includes', methods=['GET'])   # vital-daily-include-v1
+@login_required
+def api_vital_includes_get():
+    """指定日に「その日だけ追加」された利用者を返す。{patient_id: 'AM'|'PM'|'ALL'}"""
+    try:
+        f_code = session["f_code"]
+        date_str = request.args.get("date") or datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+        supabase = get_supabase()
+        res = (supabase.table("vital_daily_includes").select("patient_id,ampm")
+               .eq("facility_code", f_code).eq("include_date", date_str).execute())
+        out = {}
+        for r in (res.data or []):
+            a = (r.get("ampm") or "ALL").upper()
+            out[str(r["patient_id"])] = a if a in ("AM", "PM", "ALL") else "ALL"
+        return jsonify({"status": "success", "includes": out, "date": date_str})
+    except Exception as e:
+        print(f"vital_includes get error: {e}", flush=True)
+        return jsonify({"status": "success", "includes": {}, "error": str(e)})
 
 
 @app.route('/api/add_today_patient', methods=['POST'])
 @login_required
 def api_add_today_patient():
-    """利用者を本日の曜日に追加する(既存利用者の場合はvisit_daysに今日の曜日を追記)"""
+    """vital-daily-include-v1: 利用者を【その日だけ】バイタル一覧に出す。
+
+    旧実装は patient_visit_days（曜日の恒久設定）を書き換えていたため、
+      ・翌週以降も出続ける
+      ・第N週指定(nth_per_day)がある人は /vitals 側で NONE に上書きされて出ない
+    という問題があった。ここでは vital_daily_includes（日付単位）に記録する。
+    判定の強さ: 今日だけ削除 > 今日だけ追加 > 曜日の設定
+    """
     try:
-        data = request.json
+        data = request.json or {}
         f_code = session["f_code"]
         supabase = get_supabase()
         date_str = data.get("date") or datetime.now(tokyo_tz).strftime("%Y-%m-%d")
-        # 曜日番号(0=日, 1=月, ..., 6=土)を計算
-        target_date = datetime.strptime(date_str, "%Y-%m-%d")
-        weekday_num = str((target_date.weekday() + 1) % 7)  # Python: 月=0,...,日=6 → JS: 日=0,...,土=6 に変換
+        datetime.strptime(date_str, "%Y-%m-%d")   # 形式チェック
+
+        ampm = str(data.get("ampm") or "ALL").upper()
+        if ampm not in ("AM", "PM", "ALL"):
+            ampm = "ALL"
 
         patient_id = data.get("patient_id")
+        is_new = False
+        user_name = (data.get("user_name") or "").strip()
+
         if patient_id:
             patient_id = str(patient_id)
-            # vital-add-id-fix-v1: 画面は patient_profiles.id を送ってくるが、
-            #   patient_visit_days は patients.id で管理されている。ここで解決する。
-            #   （解決できない場合は従来どおり渡された値を使う＝後方互換）
-            visit_pid = _resolve_visit_pid(supabase, f_code, patient_id, data.get("user_name", "")) or patient_id
-            # 既存利用者: visit_daysに該当曜日を追記
-            existing = supabase.table("patient_visit_days").select("id,weekdays,user_name,ampm_per_day").eq("facility_code", f_code).eq("patient_id", visit_pid).execute()
-            if existing.data:
-                # vital-add-today-fix-v1:
-                #   旧実装は「weekdays に今日の曜日が既にある」と何も更新せず success を返していた。
-                #   表示側(renderPatientList)は ampm_per_day を見るため、ampm_per_day が
-                #   未設定/NONE のままだと「追加済みなのに一覧に出ない」詰み状態になっていた。
-                #   → weekdays と ampm_per_day を別々に判定し、必要な方だけ直す。
-                old_days = existing.data[0].get("weekdays") or ""
-                new_days = old_days
-                changed = False
-                if weekday_num not in old_days:
-                    new_days = old_days + weekday_num
-                    changed = True
-                apd = existing.data[0].get("ampm_per_day")
-                if not isinstance(apd, dict):
-                    apd = {}
-                if apd.get(weekday_num) in (None, "", "NONE"):
-                    apd[weekday_num] = "ALL"
-                    changed = True
-                if changed:
-                    supabase.table("patient_visit_days").update({
-                        "weekdays": new_days,
-                        "ampm_per_day": apd,
-                    }).eq("id", existing.data[0]["id"]).execute()
-            else:
-                # patient_visit_days行が無い場合は新規作成(user_name必要)
-                user_name = data.get("user_name", "")
-                if not user_name:
-                    p_res = supabase.table("patient_profiles").select("user_name").eq("facility_code", f_code).eq("id", patient_id).execute()
-                    if p_res.data:
-                        user_name = p_res.data[0].get("user_name", "")
-                supabase.table("patient_visit_days").insert({
-                    "facility_code": f_code,
-                    "patient_id": visit_pid,
-                    "user_name": user_name,
-                    "weekdays": weekday_num,
-                    "ampm_per_day": {weekday_num: "ALL"},
-                }).execute()
-            # 除外フラグが残っていたら解除(再追加=表示復活)
-            supabase.table("vital_daily_excludes").delete().eq("facility_code", f_code).eq("patient_id", patient_id).eq("excluded_date", date_str).execute()
-            return jsonify({"status": "success", "patient_id": patient_id})
+            if not user_name:
+                try:
+                    r = (supabase.table("patient_profiles").select("user_name")
+                         .eq("facility_code", f_code).eq("id", patient_id).limit(1).execute())
+                    if r.data:
+                        user_name = (r.data[0].get("user_name") or "").strip()
+                except Exception:
+                    pass
         else:
-            # 新規利用者作成
-            user_name = (data.get("user_name") or "").strip()
+            # 新規（臨時）利用者を作る
             if not user_name:
                 return jsonify({"status": "error", "message": "user_name required"}), 400
-            new_p = supabase.table("patients").insert({
-                "facility_code": f_code,
-                "user_name": user_name,
-                "user_kana": data.get("user_kana", ""),
-                "chart_number": data.get("chart_number", "臨時"),
-            }).execute()
-            new_id = str(new_p.data[0]["id"])
-            supabase.table("patient_visit_days").insert({
-                "facility_code": f_code,
-                "patient_id": new_id,
-                "user_name": user_name,
-                "weekdays": weekday_num,
-                "ampm_per_day": {weekday_num: "ALL"},
-            }).execute()
-            # vital-add-id-fix-v1: 画面の利用者一覧は patient_profiles から作られる。
-            #   patients だけに作ると、その場では出てもリロードで消えてしまう。
-            profile_id = new_id
+            is_new = True
+            kana = data.get("user_kana", "")
+            chart = data.get("chart_number", "臨時")
+            # 画面の一覧は patient_profiles から作られるので、まずこちらを作る
             try:
                 pf = (supabase.table("patient_profiles").select("id")
                       .eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute())
                 if pf.data:
-                    profile_id = str(pf.data[0]["id"])
+                    patient_id = str(pf.data[0]["id"])
+                    is_new = False
                 else:
                     ins = supabase.table("patient_profiles").insert({
-                        "facility_code": f_code,
-                        "user_name": user_name,
-                        "user_name_kana": data.get("user_kana", ""),
-                        "patient_number": data.get("chart_number", "臨時"),
+                        "facility_code": f_code, "user_name": user_name,
+                        "user_name_kana": kana, "patient_number": chart,
                     }).execute()
-                    if ins.data:
-                        profile_id = str(ins.data[0]["id"])
-            except Exception as _pe:
-                print(f"add_today_patient profile create skip: {_pe}", flush=True)
-            return jsonify({"status": "success", "patient_id": profile_id,
-                            "user_name": user_name, "is_new": True})
+                    patient_id = str(ins.data[0]["id"])
+            except Exception as e:
+                print(f"add_today_patient profile insert error: {e}", flush=True)
+                return jsonify({"status": "error", "message": f"利用者の作成に失敗しました: {e}"}), 500
+            # patients 側にも行を用意しておく（他機能が patients.id を使うため）
+            try:
+                pt = (supabase.table("patients").select("id")
+                      .eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute())
+                if not pt.data:
+                    supabase.table("patients").insert({
+                        "facility_code": f_code, "user_name": user_name,
+                        "user_kana": kana, "chart_number": chart,
+                    }).execute()
+            except Exception as e:
+                print(f"add_today_patient patients insert skip: {e}", flush=True)
+
+        # その日だけの追加を記録（同じ日に2回押しても1行）
+        try:
+            supabase.table("vital_daily_includes").delete() \
+                .eq("facility_code", f_code).eq("patient_id", patient_id) \
+                .eq("include_date", date_str).execute()
+            supabase.table("vital_daily_includes").insert({
+                "facility_code": f_code,
+                "patient_id": patient_id,
+                "user_name": user_name,
+                "include_date": date_str,
+                "ampm": ampm,
+                "created_by": session.get("my_name"),
+            }).execute()
+        except Exception as e:
+            print(f"add_today_patient include insert error: {e}", flush=True)
+            return jsonify({"status": "error",
+                            "message": "本日分の追加に失敗しました（vital_daily_includes テーブルが未作成の可能性があります）"}), 500
+
+        # 「今日だけ削除」が残っていたら解除（追加が勝つ）
+        try:
+            supabase.table("vital_daily_excludes").delete() \
+                .eq("facility_code", f_code).eq("patient_id", patient_id) \
+                .eq("excluded_date", date_str).execute()
+        except Exception as e:
+            print(f"add_today_patient exclude clear skip: {e}", flush=True)
+
+        out = {"status": "success", "patient_id": patient_id, "ampm": ampm, "date": date_str}
+        if is_new:
+            out["is_new"] = True
+            out["user_name"] = user_name
+        return jsonify(out)
     except Exception as e:
         print(f"add_today_patient error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500

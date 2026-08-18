@@ -349,6 +349,11 @@
 .daily-page-dot { width:8px; height:8px; border-radius:50%; background:#e0e0e0; transition:background 0.15s; }
 .daily-page-dot.active { background:#1a73e8; width:24px; border-radius:4px; }
 
+/* vital-daily-include-v1: 追加モーダルの 午前/午後/終日 切替 */
+.add-ampm-btn { flex:1; padding:10px 6px; border:1.5px solid #e0e0e0; border-radius:10px; background:#fff;
+    color:#5f6368; font-size:0.85rem; font-weight:700; cursor:pointer; }
+.add-ampm-btn.on { border-color:#1a73e8; background:#e8f0fe; color:#1a73e8; }
+
 /* ===== 追加ボタン ===== */
 .add-today-btn {
     width:100%; padding:10px; border-radius:10px;
@@ -1073,6 +1078,21 @@
         </div>
         <div id="add-patient-list" style="max-height:50vh; overflow-y:auto; border:1px solid #e0e0e0; border-radius:10px; background:#fafafa;"></div>
 
+        <!-- vital-daily-include-v1: 追加する時間帯（午前/午後/終日） -->
+        <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #e0e0e0;">
+            <div style="font-size:0.78rem; font-weight:700; color:#1a73e8; margin-bottom:6px;">
+                いつ来られますか？（本日のみ）
+            </div>
+            <div id="add-patient-ampm" style="display:flex; gap:8px;">
+                <button type="button" class="add-ampm-btn" data-ampm="AM"  onclick="setAddPatientAmpm('AM')">🌅 午前</button>
+                <button type="button" class="add-ampm-btn" data-ampm="PM"  onclick="setAddPatientAmpm('PM')">🌇 午後</button>
+                <button type="button" class="add-ampm-btn on" data-ampm="ALL" onclick="setAddPatientAmpm('ALL')">☀️ 終日</button>
+            </div>
+            <div style="font-size:0.72rem; color:#80868b; margin-top:5px;">
+                ここでの追加は<b>本日だけ</b>です。毎週の利用曜日を変えたいときは、設定タブの曜日設定をお使いください。
+            </div>
+        </div>
+
         <!-- 新規利用者入力 -->
         <div style="margin-top:14px; padding-top:14px; border-top:1px dashed #e0e0e0;">
             <div style="font-size:0.78rem; font-weight:700; color:#1a73e8; margin-bottom:6px;">
@@ -1313,6 +1333,16 @@ const VITALS_ALL_DATA = {};
 const SETTINGS    = {{ settings | tojson }};
 const TODAY       = "{{ today }}";
 let EXCLUDES_TODAY = ({{ excludes_today | tojson }} || []).map(String);
+// vital-daily-include-v1: その日だけ追加された利用者 {patient_id: 'AM'|'PM'|'ALL'}
+let INCLUDES_TODAY = {{ includes_today | tojson }} || {};
+// 判定の強さ: 今日だけ削除 > 今日だけ追加 > 曜日の設定
+function todayStateOf(pid) {
+    const k = String(pid);
+    if (EXCLUDES_TODAY.includes(k)) return 'NONE';
+    if (INCLUDES_TODAY[k]) return INCLUDES_TODAY[k];
+    const apd = AMPM_PER_DAY[k] || AMPM_PER_DAY[pid] || {};
+    return apd[String(currentWeekday)] || 'NONE';
+}
 
 let currentWeekday = (function() {
     const el = document.getElementById('vital-date');
@@ -1503,6 +1533,13 @@ async function reloadVitalsForDate(dateStr) {
         const eData = await eRes.json();
         EXCLUDES_TODAY.length = 0;
         (eData.patient_ids || []).forEach(id => EXCLUDES_TODAY.push(String(id)));
+        // vital-daily-include-v1: その日だけ追加された利用者も取り直す
+        try {
+            const iRes = await fetch('/api/vital_includes?date=' + encodeURIComponent(dateStr));
+            const iData = await iRes.json();
+            Object.keys(INCLUDES_TODAY).forEach(k => { delete INCLUDES_TODAY[k]; });
+            Object.assign(INCLUDES_TODAY, iData.includes || {});
+        } catch (e) { /* テーブル未作成でも動作を止めない */ }
     } catch (e) {
         console.error('reloadVitalsForDate error:', e);
     }
@@ -1617,11 +1654,9 @@ function renderPatientList() {
     // 今日の曜日の利用者を絞り込み（曜日ごと AM/PM/ALL/NONE フィルタ + 本日除外フィルタも適用）
     // Session 18: AMPM_PER_DAY (曜日ごとの状態) を参照
     const targets = PATIENTS.filter(p => {
-        const ampmMap = AMPM_PER_DAY[p.id] || {};
-        const todayAmpm = ampmMap[String(currentWeekday)] || 'NONE';
+        // vital-daily-include-v1: その日だけの追加を曜日設定より優先する
+        const todayAmpm = todayStateOf(p.id);
         if (todayAmpm === 'NONE') return false;
-        // 「今日だけ削除」されている利用者は表示しない
-        if (EXCLUDES_TODAY.includes(String(p.id))) return false;
         if (currentAmpm === 'ALL') return true;
         return todayAmpm === currentAmpm || todayAmpm === 'ALL';
     });
@@ -3821,9 +3856,17 @@ window.saveSettings = async function() {
 // ========== 利用者追加モーダル(複数選択対応 2026-05-01) ==========
 let _addPatientFiltered = [];
 let _addPatientSelectedIds = new Set();
+let _addPatientAmpm = 'ALL';   // vital-daily-include-v1
+window.setAddPatientAmpm = function(v) {
+    _addPatientAmpm = (v === 'AM' || v === 'PM') ? v : 'ALL';
+    document.querySelectorAll('#add-patient-ampm .add-ampm-btn').forEach(function(b) {
+        b.classList.toggle('on', b.dataset.ampm === _addPatientAmpm);
+    });
+};
 
 window.openAddPatientModal = function() {
     _addPatientSelectedIds = new Set();
+    _resetAddPatientAmpm();   // vital-daily-include-v1
     document.getElementById('add-patient-search').value = '';
     document.getElementById('add-patient-newname').value = '';
     renderAddPatientList(PATIENTS);
@@ -3875,6 +3918,13 @@ function updateAddPatientCounter() {
     }
 }
 
+function _resetAddPatientAmpm() {   // vital-daily-include-v1
+    _addPatientAmpm = 'ALL';
+    document.querySelectorAll('#add-patient-ampm .add-ampm-btn').forEach(function(b) {
+        b.classList.toggle('on', b.dataset.ampm === 'ALL');
+    });
+}
+
 function renderAddPatientList(arr) {
     _addPatientFiltered = arr || [];
     const list = document.getElementById('add-patient-list');
@@ -3887,12 +3937,9 @@ function renderAddPatientList(arr) {
         const pid = String(p.id);
         const wd = VISIT_DAYS[p.id] || '';
         const wdLabel = wd ? wd.split('').map(d => wdNames[parseInt(d,10)]).join('') : '未設定';
-        // vital-add-today-fix-v1: 一覧(renderPatientList)と同じ基準にそろえる。
-        //   weekdays だけで判定すると、ampm_per_day が NONE/未設定の人を
-        //   「本日表示中」と誤表示し、実際は一覧に出ないという食い違いが起きる。
-        const _apd = AMPM_PER_DAY[p.id] || {};
-        const _todayAmpm = _apd[String(currentWeekday)] || 'NONE';
-        const inToday = _todayAmpm !== 'NONE' && !EXCLUDES_TODAY.includes(pid);
+        // vital-daily-include-v1: 一覧(renderPatientList)と完全に同じ基準で判定する
+        const _todayAmpm = todayStateOf(p.id);
+        const inToday = _todayAmpm !== 'NONE';
         const isSelected = _addPatientSelectedIds.has(pid);
         return `<div data-pid="${p.id}" data-name="${p.user_name}" class="add-patient-item" style="
             padding:11px 14px; border-bottom:1px solid #ececec; cursor:pointer;
@@ -4028,6 +4075,7 @@ async function doAddTodayPatientSilent(payload) {
     try {
         const dateStr = document.getElementById('vital-date').value || TODAY;
         payload.date = dateStr;
+        payload.ampm = _addPatientAmpm;   // vital-daily-include-v1
         const res = await fetch('/api/add_today_patient', {
             method: 'POST', headers: {'Content-Type': 'application/json'},
             body: JSON.stringify(payload)
@@ -4038,24 +4086,8 @@ async function doAddTodayPatientSilent(payload) {
         if (data.is_new) {
             PATIENTS.push({ id: pid, user_name: data.user_name, user_kana: '', chart_number: '臨時' });
         }
-        VISIT_DAYS[pid] = (VISIT_DAYS[pid] || '');
-        if (!VISIT_DAYS[pid].includes(String(currentWeekday))) {
-            VISIT_DAYS[pid] += String(currentWeekday);
-        }
-        // AMPM_PER_DAY も同じ曜日キーを 'ALL' で更新する。
-        // renderPatientList は AMPM_PER_DAY を見て当日表示を絞る(todayAmpm==='NONE'で非表示)ため、
-        // ここを更新しないと「追加したのにリロードするまで一覧に出ない」状態になる。
-        // サーバー側(api_add_today_patient)も weekdays 追加時に ampm_per_day を 'ALL' で入れるので値は一致する。
-        if (!AMPM_PER_DAY[pid] || typeof AMPM_PER_DAY[pid] !== 'object') {
-            AMPM_PER_DAY[pid] = {};
-        }
-        // vital-add-today-fix-v1: 'NONE' は truthy なので旧実装では上書きされず、
-        //   追加しても一覧に出ないままだった。'NONE' も 'ALL' に直す。
-        const _wdKey = String(currentWeekday);
-        const _cur = AMPM_PER_DAY[pid][_wdKey];
-        if (!_cur || _cur === 'NONE') {
-            AMPM_PER_DAY[pid][_wdKey] = 'ALL';
-        }
+        // vital-daily-include-v1: 曜日の恒久設定は触らず、その日だけの追加として記録する。
+        INCLUDES_TODAY[pid] = data.ampm || _addPatientAmpm || 'ALL';
         EXCLUDES_TODAY = EXCLUDES_TODAY.filter(x => x !== pid);
         return true;
     } catch (e) {
