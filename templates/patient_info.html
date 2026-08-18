@@ -1481,14 +1481,14 @@ const PATIENTS = {{ patients | tojson }};
             const el = document.getElementById("errorMsg");
             el.textContent = msg;
             el.classList.add("show");
-            setTimeout(() => el.classList.remove("show"), 5000);
+            setTimeout(() => el.classList.remove("show"), 6000);   // patient-info-toast-v1: 見落とし防止
         },
         
         showSuccess(msg) {
             const el = document.getElementById("successMsg");
             el.textContent = msg;
             el.classList.add("show");
-            setTimeout(() => el.classList.remove("show"), 3000);
+            setTimeout(() => el.classList.remove("show"), 4000);   // patient-info-toast-v1: 見落とし防止
         },
         
         search(q) {
