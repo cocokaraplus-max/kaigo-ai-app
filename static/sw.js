@@ -1,6 +1,6 @@
 // TASUKARU Service Worker
 // バージョンを上げると古いキャッシュが自動削除される
-const CACHE_VERSION = 'tasukaru-v31';
+const CACHE_VERSION = 'tasukaru-v32';  // sw-post-passthrough-v1
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -59,18 +59,21 @@ self.addEventListener('activate', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // POSTなど非GETはネットワーク優先・SW非介入
+  // ===== 非GET(POST等)の扱い : sw-post-passthrough-v1 (2026-08-18) =====
+  // 【重要】オンライン時は event.respondWith を絶対に使わないこと。
+  //   以前は常に fetch(event.request.clone()) で送り直していたが、
+  //   iOS(ホーム画面PWA/Safari)では multipart/form-data の POST を SW が
+  //   送り直すと【本文(body)が丸ごと失われる】ことがある。その結果、
+  //   サーバ側の request.form / request.files が空になり、
+  //   掲示板が「投稿者名だけ・本文なし・カテゴリ未分類・画像なし」の
+  //   空投稿として保存されてしまっていた（2026-08 現場報告）。
+  //   オンライン時は SW が一切触らず、ブラウザにそのまま送らせる。
   if (event.request.method !== 'GET') {
-    event.respondWith(
-      fetch(event.request.clone()).catch(() => {
-        if (url.pathname.startsWith('/api/') || url.pathname === '/input') {
-          return networkFirstWithOfflineQueue(event.request);
-        }
-        return new Response(JSON.stringify({ status: 'offline', message: 'オフラインです' }), {
-          headers: { 'Content-Type': 'application/json' }
-        });
-      })
-    );
+    // オフラインのときだけ介入してキューに積む（/api/* と /input のみ）
+    if (navigator.onLine === false &&
+        (url.pathname.startsWith('/api/') || url.pathname === '/input')) {
+      event.respondWith(networkFirstWithOfflineQueue(event.request));
+    }
     return;
   }
 

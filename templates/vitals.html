@@ -2700,7 +2700,10 @@ var RC_SOUNDS = [
     {file:'alarm_chime.wav',     label:'A やさしいチャイム'},
     {file:'alarm_soft.wav',      label:'B やわらかい二音'},
     {file:'alarm_monitor.wav',   label:'C 患者モニター風'},
-    {file:'alarm_nursecall.wav', label:'D ナースコール風'}
+    {file:'alarm_nursecall.wav', label:'D ナースコール風'},
+    // recheck-alarm-mute-v1: sound を渡さないと iOS は「表示のみ・無音」になる
+    //   （Capacitor は sound 未指定なら content.sound を設定しないため）。
+    {file:'none',                label:'音なし（表示のみ）'}
 ];
 var RC_SOUND_DEFAULT = 'alarm_nursecall.wav';
 function _rcSound(){
@@ -2727,21 +2730,21 @@ async function nativeScheduleRecheck(s){
         // recheck-timesensitive-v1: 集中モードを貫通させる。Xcodeで
         //   「Time Sensitive Notifications」capability の追加が必要（申請は不要）。
         //   ※消音(マナー)モードの貫通には Critical Alerts（Appleへの申請）が別途必要。
-        await ln.schedule({notifications:[{
+        // recheck-alarm-sound-v2 / recheck-alarm-mute-v1:
+        //   sound は「アプリバンドル内のファイル名」を指定する項目。
+        //   ・バンドルに無いファイル名を指定すると iOS は標準音も鳴らさず【無音】になる
+        //     （'default' という名前のファイルは存在しないので指定してはいけない）。
+        //   ・sound を渡さなければ「表示のみ・無音」になる ＝ 音なし設定。
+        var _n = {
             id:_rcNotifId(s.id),
             title:'再検査の時間です',
             body:who+' さんの再検査です'+note,
             schedule:{at:at, allowWhileIdle:true},
-            // recheck-alarm-sound-v2: 端末で選んだアラーム音（20秒）。既定は D ナースコール風。
-            //   指定した .wav は Xcode でアプリバンドルに追加しておくこと。
-            //   バンドルに無いと iOS は標準音も鳴らさず【無音】になる。
-            sound:_rcSound(),
-            // recheck-sound-fix-v1: sound は「ファイル名」を指定する項目。'default' という
-            //   ファイルは存在しないため、指定すると iOS は標準音も鳴らさず【無音】になる。
-            //   指定を外すと iOS の標準通知音が鳴る。長いアラーム音にしたい場合は
-            //   .wav をアプリバンドルに入れて sound:'alarm.wav' のように指定する。
             interruptionLevel:'timeSensitive'
-        }]});
+        };
+        var _snd = _rcSound();
+        if(_snd && _snd !== 'none') _n.sound = _snd;
+        await ln.schedule({notifications:[_n]});
     }catch(e){ console.warn('nativeScheduleRecheck error', e); }
 }
 async function nativeCancelRecheck(rid){
@@ -2765,14 +2768,17 @@ async function rcPermTest(){
         var st = res && res.display;
         if(st !== 'granted'){ alert('通知が許可されませんでした（状態: ' + st + '）。設定→通知→TASUKARU で許可してください。'); return; }
         var at = new Date(Date.now() + 15000);
-        await L.schedule({notifications:[{
+        // recheck-alarm-mute-v1: 「音なし」のときは sound を渡さない（渡さない＝表示のみ・無音）
+        var _tn = {
             id: 999001,
             title:'テスト通知',
             body:'15秒後テスト：これが出れば通知は正常です',
             schedule:{ at: at, allowWhileIdle:true },
-            sound:_rcSound(),   // recheck-alarm-sound-v2: 選択中の音でテスト
-            interruptionLevel:'timeSensitive'   // recheck-sound-fix-v1: sound指定を外して標準音を鳴らす
-        }]});
+            interruptionLevel:'timeSensitive'
+        };
+        var _tsnd = _rcSound();
+        if(_tsnd && _tsnd !== 'none') _tn.sound = _tsnd;
+        await L.schedule({notifications:[_tn]});
         var _lb = (RC_SOUNDS.filter(function(x){ return x.file === _rcSound(); })[0] || {}).label || _rcSound();
         alert('15秒後にテスト通知を予約しました（音: ' + _lb + '）。画面をロックして待ってください。');
     }catch(e){ alert('診断エラー: ' + (e && e.message ? e.message : e)); }
