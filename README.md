@@ -2848,3 +2848,61 @@ where vd.facility_code = 'cocokaraplus-5526' and p.id is null;
 - TASUKARU は無料アプリ＋Stripeでの法人契約のため、アプリ内課金の別契約（Schedule 2）は現時点で不要の見込み。
 - 介護記録は要配慮個人情報を含むため、Appleのプライバシー要件と国内の個人情報保護法の**両方**の遵守が必要。
   判断が必要な場面は専門家に相談すること。
+
+---
+
+## 再検査アラーム通知が【無音】だった件と、アラーム音の切替実装 2026-08-18  <!-- recheck-alarm-sound-v2 -->
+
+### 症状
+バイタルの再検査予約の通知が iPhone に**届くが音が鳴らない**。現場からは
+「通知がポロンと控えめになるだけ。TASUKARUのときだけはしっかりアラームを鳴らしたい」との要望。
+
+### 原因（7月からずっと壊れていた）
+`templates/vitals.html` の `ln.schedule()` に `sound:'default'` を指定していた。
+**Capacitor の `sound` は「アプリバンドル内のファイル名」を指定する項目**であり、
+`default` という名前のファイルは存在しない。存在しないファイル名を指定すると
+iOS は標準音にフォールバックせず**完全に無音**になる。
+当初これを「マナーモードのせい」と誤診したが、それは誤り。
+
+- `sound` の指定を外す → iOS の標準通知音が鳴る（`recheck-sound-fix-v1`）
+- 長いアラーム音にしたい → `.wav` をアプリバンドルに入れて `sound:'ファイル名.wav'`
+
+### 集中モード貫通
+`interruptionLevel:'timeSensitive'` を指定（`recheck-timesensitive-v1`）。
+Xcode 側で **「Time Sensitive Notifications」capability** の追加が必要。**Appleへの申請は不要**。
+※消音（マナー）モードまで貫通させるには `critical` が必要で、こちらは **Appleへの申請と承認が必要**。
+iOS 側の通知設定画面では「時間指定通知」ではなく**「即時通知」**というラベルで表示される。
+
+### 用意したアラーム音（4種・各20秒 / 44.1kHz 16bit mono）
+`_alarm_sounds/` に生成スクリプト（`gen_alarm2.py` / `gen_alarm3.py`）付きで保管。
+
+| 記号 | ファイル | 音の性格 |
+|---|---|---|
+| A | `alarm_chime.wav` | やさしいチャイム |
+| B | `alarm_soft.wav` | やわらかい二音 |
+| C | `alarm_monitor.wav` | 患者モニター風 |
+| D | `alarm_nursecall.wav` | ナースコール風（**既定**） |
+
+iOS の通知音は**最長30秒**。それを超えると標準音に置き換えられる。
+
+### 切替の実装（recheck-alarm-sound-v2）
+`templates/vitals.html`。
+
+- `RC_SOUNDS` に4音を定義。`_rcSound()` / `_rcSetSound()` で **`localStorage['rc_alarm_sound']` に端末ごと保存**。
+  施設共通ではなく端末ごとにしたのは、DBのスキーマ変更（`vital_alert_settings` への列追加）を伴わず、
+  夜勤・日勤で好みが違っても各自で選べるため。
+- 本番の再検査スケジュールと15秒テスト通知の**両方**が `sound:_rcSound()` を参照する。
+- UIは**アプリ内のみ**表示。画面上部の「🔔 通知を許可 / テスト」ボタンの下にプルダウンを置いた
+  （`rc-alarm-panel`）。ブラウザでは音が確認できないため出さない。
+- 選択を変えたら `checkRecheckAlarms()` を呼び、予約済み通知を**同じ通知idで上書きスケジュール**して
+  新しい音に差し替える。
+
+### 【重要】Xcode 側の作業（これをしないと無音のまま）
+4つの `.wav` は `tasukaru-app/ios/App/App/` にコピー済み。Xcode で:
+
+1. 左のファイル一覧の **`App` グループ**（青いプロジェクト直下の `App` フォルダ）に4ファイルをドラッグ
+2. **「Copy items if needed」にチェック**、**Add to targets: `App` にチェック**
+3. `App` ターゲット → **Build Phases → Copy Bundle Resources** に4ファイルが並んでいることを確認
+4. アプリを再インストール
+
+**バンドルに入っていないファイル名を指定すると iOS は無音**になる。4つとも入れること。
