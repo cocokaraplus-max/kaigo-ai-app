@@ -1084,38 +1084,94 @@ def register_patient_hub_routes(app):
     # ==========================================================
     # 趣味嗜好シートOCR（画像→Gemini→テキスト。保存はsave-basic側）
     # ==========================================================
-    @app.route('/api/patient-hub/hobby-ocr', methods=['POST'])
+    @app.route('/api/patient-hub/sheet-ocr', methods=['POST'])
+    @app.route('/api/patient-hub/hobby-ocr', methods=['POST'])   # 旧名（後方互換）
     @login_required
-    def api_hub_hobby_ocr():
+    def api_hub_sheet_ocr():
+        """sheet-ocr-v1: 居宅サービス計画書・利用者情報シートを複数枚まとめて読み取り、
+        基本情報6項目とICF付箋の候補を返す。DBには保存しない（画面で確認してから保存ボタン）。"""
         data = request.json or {}
-        image_b64 = data.get("image", "")
-        mime = data.get("mime_type", "image/jpeg")
-        if not image_b64:
+        # 複数枚: images=[{data|image, mime_type}] / 旧形式: image + mime_type
+        imgs = []
+        for it in (data.get("images") or []):
+            if not isinstance(it, dict):
+                continue
+            b = (it.get("data") or it.get("image") or "").strip()
+            if b:
+                imgs.append({"mime_type": it.get("mime_type") or "image/jpeg", "data": b})
+        if not imgs:
+            b = (data.get("image") or "").strip()
+            if b:
+                imgs.append({"mime_type": data.get("mime_type") or "image/jpeg", "data": b})
+        if not imgs:
             return jsonify({"status": "error", "message": "画像がありません"}), 400
+        imgs = imgs[:8]   # 上限8枚
+
         prompt = (
-            "これは介護施設の『趣味・嗜好シート』の画像です。手書きや印刷の記入内容を読み取り、"
-            "次のJSONのみで返してください（説明文禁止）:\n"
-            '{"hobbies":"趣味・嗜好（好きな活動・音楽・食べ物など）を文章で",'
-            '"likes":"好きなもの","dislikes":"苦手・嫌いなもの","job_history":"職歴（あれば）"}\n'
-            "読み取れない項目は空文字。"
+            "これは介護の『居宅サービス計画書（第1表・第2表など）』または"
+            "『利用者情報シート・フェイスシート・アセスメント表』の画像です（複数ページのことがあります）。\n"
+            "手書き・印刷どちらも読み取り、次のJSONのみで返してください（説明文・マークダウン禁止）。\n"
+            "\n"
+            "【厳守】\n"
+            "・シートに実際に書かれている内容だけを使う。書かれていないことは推測・創作しない。\n"
+            "・読み取れない項目は空文字\"\"、配列は[]。欄を埋めるために内容を作らない。\n"
+            "・医療診断はしない（書かれている病名をそのまま写すのは可）。\n"
+            "\n"
+            "{\n"
+            '  "medical_history":"既往歴・傷病名（発症年が書いてあれば併記）",\n'
+            '  "family_structure":"家族構成・介護力（同居/別居、主介護者、続柄など）を文章で",\n'
+            '  "job_history":"職歴",\n'
+            '  "hobbies":"趣味・嗜好（好きな活動・音楽・食べ物など）",\n'
+            '  "likes":"好きなもの",\n'
+            '  "dislikes":"苦手・嫌いなもの",\n'
+            '  "stickies":[{"zone":"activity","text":"屋内は伝い歩き","polarity":"can"}]\n'
+            "}\n"
+            "\n"
+            "stickies は ICF（国際生活機能分類）の付箋候補。シートに書かれた本人の状態・生活歴・環境から作る。\n"
+            "  zone: body=心身機能・身体構造 / activity=活動(日常動作) / participation=参加(役割・社会)\n"
+            "        environment=環境因子(家族・住環境・支援) / personal=個人因子(性格・生活歴・趣味)\n"
+            "  polarity: can(できる/良好) か cannot(できない/支障)。両方を拾う。\n"
+            "  短い体言止めで1項目1事実。最大16項目。シートに根拠が無いものは作らない。"
         )
         try:
             from utils import get_generative_model
             model = get_generative_model()
-            resp = model.generate_content([
-                {"mime_type": mime, "data": image_b64}, prompt
-            ])
+            parts = [{"mime_type": im["mime_type"], "data": im["data"]} for im in imgs]
+            parts.append(prompt)
+            # halluc-guard-v2 と同じ方針で温度を下げ、読み取り内容の創作を抑える
+            resp = model.generate_content(parts, generation_config={"temperature": 0.1})
             text = (resp.text or "").strip()
             m = re.search(r'\{.*\}', text, re.DOTALL)
             obj = _json.loads(m.group()) if m else {}
         except Exception as e:
-            return jsonify({"status": "error", "message": f"OCR失敗: {e}"}), 500
-        return jsonify({"status": "success", "ocr": {
-            "hobbies": obj.get("hobbies", ""),
-            "likes": obj.get("likes", ""),
-            "dislikes": obj.get("dislikes", ""),
-            "job_history": obj.get("job_history", ""),
-        }})
+            return jsonify({"status": "error", "message": f"読み取り失敗: {e}"}), 500
+
+        def sv(k):
+            v = obj.get(k, "")
+            return v.strip() if isinstance(v, str) else ""
+
+        _zones = {"body", "activity", "participation", "environment", "personal"}
+        stickies = []
+        for it in (obj.get("stickies") or [])[:16]:
+            if not isinstance(it, dict):
+                continue
+            txt = (str(it.get("text") or "")).strip()
+            if not txt:
+                continue
+            stickies.append({
+                "zone": it.get("zone") if it.get("zone") in _zones else "unsorted",
+                "text": txt,
+                "polarity": "cannot" if it.get("polarity") == "cannot" else "can",
+            })
+
+        return jsonify({"status": "success", "pages": len(imgs), "ocr": {
+            "medical_history": sv("medical_history"),
+            "family_structure": sv("family_structure"),
+            "job_history":     sv("job_history"),
+            "hobbies":         sv("hobbies"),
+            "likes":           sv("likes"),
+            "dislikes":        sv("dislikes"),
+        }, "stickies": stickies})
 
     print("[patient_hub] 利用者情報ハブのルートを登録しました")
     return app
