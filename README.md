@@ -2715,3 +2715,92 @@ DEV `tasukaru-dev`: `55c9e27`→`b4e2646`→`2e8f07a`→`1155963`→`dd5824c`→
 - Apple の**ワンタイム確認コードは他人に見せない／転送しない**（10分で失効するが本人確認そのもの）。
 - 新規ドメイン取得後、「あなたのサイトに重大なエラーがあります」系の**営業スパム／フィッシング**が届く。
   （例: `Major Errors in Lifeplusllc...` / `LIFE PLUSのウェブサイト...`）→ **開かず削除・リンクを踏まない**。
+
+## バイタル「本日の利用者を追加」が効かない問題の解決＋日付単位の臨時追加 2026-08-18  <!-- vital-daily-include-2026-08-18 -->
+
+### ★ 最重要：本番の施設コードは `cocokaraplus-5526`（`cocokaraplus` ではない）
+今回の調査で `facility_code = 'cocokaraplus'` を条件にした診断SQLを使い、**「0件」という結果を3回続けて誤った証拠として扱った**。
+条件が合わず0件だっただけで、実際にはデータが存在していた。原因究明が大幅に遠回りになった。
+→ **診断SQLを書く前に必ず施設コードを確認する。**
+```sql
+select facility_code, count(*) from patient_profiles group by 1 order by 2 desc;
+```
+
+### ★ 利用者IDが2系統ある（混同するとデータが迷子になる）
+| 用途 | 使うID | 型 | 例 |
+|---|---|---|---|
+| 画面の利用者一覧 / `vital_daily_excludes` / `vital_daily_includes` | `patient_profiles.id` | **UUID** | `06d9dcf6-a0c1-…` |
+| `patient_visit_days`（曜日設定） / `vitals` | `patients.id` | **整数** | `13` |
+
+- `get_patients()` は両方返す：`id`（profiles/UUID）と `patient_int_id`（patients/整数）。
+- 曜日設定UIは `{{ p.patient_int_id or p.id }}` を送る（正しい）。
+- **バイタルの追加モーダルは `p.id`（UUID）を送っていた**（誤り）→ 誰も読まない孤児行を量産していた（本番で9件確認）。
+
+### ★ `nth_per_day`（第N週指定）は表示直前に強制上書きする
+`/vitals` は画面を組む直前に次を実行する。**DBに何が入っていても関係なく非表示になる。**
+```python
+if not visit_nth_ok(p["nth_per_day"], _today_wd, today):
+    p["weekdays"] = str(p["weekdays"]).replace(str(_today_wd), "")
+    apd[str(_today_wd)] = "NONE"
+```
+→ 「追加したのに出ない」の**主因**。曜日設定を書き換えるアプローチでは絶対に解決しない。
+
+### 発端と実データ
+現場から「バイタルで本日の利用者を追加しても表示されない。追加した端末では一時的に出るがリロードで消える。他端末では最初から出ない」との報告。
+対象は長松軒茂子さん（`patients.id = 13`）。本番の実データは次のとおりだった。
+```
+weekdays     = "24"                    → 火曜・木曜
+ampm_per_day = {"2":"AM", "4":"AM"}    → どちらも午前のみ
+nth_per_day  = {"2": 2}                → 火曜は「第2火曜」だけ
+```
+報告日 2026-08-18 は**第3火曜**（8/4=第1, 8/11=第2, 8/18=第3）。よって表示直前に `NONE` へ上書きされ、何度追加しても出なかった。
+なお入力済みのバイタル値は `vitals` に正常保存されており、表示されないだけでデータ欠損は無かった。
+
+### 対応（3コミット・すべて本番反映済み）
+1. **`vital-add-today-fix-v1`**（本番 `a8b5945`）
+   `weekdays` に今日の曜日が既にあるとサーバーが `ampm_per_day` を更新せず success を返す詰み状態を修正。
+   モーダルの「本日表示中」判定を一覧と同じ基準にそろえ、JS側で `'NONE'` が上書きされないバグも修正。
+   （実在する不具合だが**主因ではなかった**）
+2. **`vital-add-id-fix-v1`**（本番 `64521a0`）
+   追加モーダルが送る UUID を氏名経由で `patients.id` に解決。
+   （これも実在する不具合だが**主因ではなかった**）
+3. **`vital-daily-include-v1`**（本番 `83f6aef`）★本命
+   **「本日の利用者を追加」を曜日の恒久設定ではなく【その日だけ】の記録に変更。あわせて 午前／午後／終日 の3択を追加。**
+
+### `vital-daily-include-v1` の設計
+- 新テーブル **`vital_daily_includes`**（DDL: `db/vital_daily_includes.sql`）。**DEV・本番とも作成済み**。
+- `patient_id` は**画面と同じUUID**で持つ（`vital_daily_excludes` と同じ）。ID不一致が構造的に起きない。
+- 判定を1か所に集約（`templates/vitals.html` の `todayStateOf()`）:
+  ```
+  今日だけ削除 ＞ 今日だけ追加(AM/PM/ALL) ＞ 曜日の設定(第N週含む)
+  ```
+  **その日だけの指定が最優先**なので、第N週指定も確実に上書きできる。
+- 追加処理は `patient_visit_days` を**一切触らない** → 臨時追加が翌週以降に持ち越されない
+  （旧実装は曜日を恒久追加していたため、体験・臨時利用の人が毎週出続けていた）。
+- 新規「臨時」利用者は `patient_profiles` に作る（旧実装は `patients` にしか作らず、リロードで消えていた）。
+- 日付切替時は `/api/vital_includes?date=` で取り直す。
+- テーブル未作成でも表示は落ちない（追加時のみ明示エラー）。
+
+### DEVでの実地検証（2026-08-18・全項目合格）
+3択UIが出る（既定=終日）／追加すると一覧に出る／**リロードしても残る**／午前指定が効く（午後タブで非表示）／翌週に持ち越さない（翌火曜0件）。
+本番でも現場が「消えずに追加できています」と確認。
+
+### 孤児データについて（未処理・急がない）
+`patient_id` が UUID の `patient_visit_days` 行が本番に9件ある。読まれないだけで害は無いため削除していない。
+整理する場合は**中身を確認してから**。
+```sql
+select vd.* from patient_visit_days vd
+left join patients p on p.facility_code = vd.facility_code and p.id::text = vd.patient_id::text
+where vd.facility_code = 'cocokaraplus-5526' and p.id is null;
+```
+
+### 教訓
+1. **診断SQLが「0件」でも、まず条件が正しいかを疑う**（特に facility_code）。
+2. **コードだけで原因を断定しない。** 今回は実データを見るまで3回外した。早い段階でデータを取りに行くべきだった。
+3. 「表示されない」系は、**書き込み先**と**読み取り元**のIDが一致しているかを最初に確認する。
+4. 表示直前の上書き処理（`nth_per_day` のような）はDBをいくら直しても勝てない。**判定の優先順位を1か所に集約する**設計にする。
+
+### 同日のその他の作業
+- **音声入力のハルシネーション対策**（本番反映済み）: `halluc-guard-v2/v3`・`asr-homophone-v1`・`asr-name-hint-v2`・`asr-name-kanji-v5`。詳細は `SESSION_65_HANDOFF.md`。
+- **上部トーストのセーフエリア対応**（`toast-safearea-v1`・DEVのみ・7箇所）: iPhoneのカメラに「保存しました！」が隠れる問題。
+- **計画書・利用者情報シートの読み取り**（`sheet-ocr-v1/v2`・DEVのみ）: 基本情報6欄＋ICF付箋を複数枚まとめて読み取る。**`v2` の再検証が未実施**。
