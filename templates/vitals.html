@@ -2713,7 +2713,10 @@ async function nativeScheduleRecheck(s){
             title:'再検査の時間です',
             body:who+' さんの再検査です'+note,
             schedule:{at:at, allowWhileIdle:true},
-            sound:'default',
+            // recheck-sound-fix-v1: sound は「ファイル名」を指定する項目。'default' という
+            //   ファイルは存在しないため、指定すると iOS は標準音も鳴らさず【無音】になる。
+            //   指定を外すと iOS の標準通知音が鳴る。長いアラーム音にしたい場合は
+            //   .wav をアプリバンドルに入れて sound:'alarm.wav' のように指定する。
             interruptionLevel:'timeSensitive'
         }]});
     }catch(e){ console.warn('nativeScheduleRecheck error', e); }
@@ -2744,8 +2747,7 @@ async function rcPermTest(){
             title:'テスト通知',
             body:'15秒後テスト：これが出れば通知は正常です',
             schedule:{ at: at, allowWhileIdle:true },
-            sound:'default',
-            interruptionLevel:'timeSensitive'   // recheck-timesensitive-v1
+            interruptionLevel:'timeSensitive'   // recheck-sound-fix-v1: sound指定を外して標準音を鳴らす
         }]});
         alert('通知を許可しました。15秒後にテスト通知を予約したので、画面をロックして待ってください。');
     }catch(e){ alert('診断エラー: ' + (e && e.message ? e.message : e)); }
