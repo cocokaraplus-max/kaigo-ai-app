@@ -6594,17 +6594,24 @@ def api_add_today_patient():
             # 既存利用者: visit_daysに該当曜日を追記
             existing = supabase.table("patient_visit_days").select("id,weekdays,user_name,ampm_per_day").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
             if existing.data:
+                # vital-add-today-fix-v1:
+                #   旧実装は「weekdays に今日の曜日が既にある」と何も更新せず success を返していた。
+                #   表示側(renderPatientList)は ampm_per_day を見るため、ampm_per_day が
+                #   未設定/NONE のままだと「追加済みなのに一覧に出ない」詰み状態になっていた。
+                #   → weekdays と ampm_per_day を別々に判定し、必要な方だけ直す。
                 old_days = existing.data[0].get("weekdays") or ""
+                new_days = old_days
+                changed = False
                 if weekday_num not in old_days:
                     new_days = old_days + weekday_num
-                    # weekdays だけでなく ampm_per_day(曜日ごとのAM/PM/ALL)も更新する。
-                    # renderPatientList(vitals.html)は ampm_per_day を見て表示を絞るため、
-                    # ここで当該曜日キーを入れないと「追加したのに一覧に出ない」状態になる。
-                    apd = existing.data[0].get("ampm_per_day")
-                    if not isinstance(apd, dict):
-                        apd = {}
-                    if weekday_num not in apd:
-                        apd[weekday_num] = "ALL"
+                    changed = True
+                apd = existing.data[0].get("ampm_per_day")
+                if not isinstance(apd, dict):
+                    apd = {}
+                if apd.get(weekday_num) in (None, "", "NONE"):
+                    apd[weekday_num] = "ALL"
+                    changed = True
+                if changed:
                     supabase.table("patient_visit_days").update({
                         "weekdays": new_days,
                         "ampm_per_day": apd,

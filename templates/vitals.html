@@ -3887,7 +3887,12 @@ function renderAddPatientList(arr) {
         const pid = String(p.id);
         const wd = VISIT_DAYS[p.id] || '';
         const wdLabel = wd ? wd.split('').map(d => wdNames[parseInt(d,10)]).join('') : '未設定';
-        const inToday = wd.includes(String(currentWeekday)) && !EXCLUDES_TODAY.includes(pid);
+        // vital-add-today-fix-v1: 一覧(renderPatientList)と同じ基準にそろえる。
+        //   weekdays だけで判定すると、ampm_per_day が NONE/未設定の人を
+        //   「本日表示中」と誤表示し、実際は一覧に出ないという食い違いが起きる。
+        const _apd = AMPM_PER_DAY[p.id] || {};
+        const _todayAmpm = _apd[String(currentWeekday)] || 'NONE';
+        const inToday = _todayAmpm !== 'NONE' && !EXCLUDES_TODAY.includes(pid);
         const isSelected = _addPatientSelectedIds.has(pid);
         return `<div data-pid="${p.id}" data-name="${p.user_name}" class="add-patient-item" style="
             padding:11px 14px; border-bottom:1px solid #ececec; cursor:pointer;
@@ -3896,7 +3901,7 @@ function renderAddPatientList(arr) {
             ${isSelected ? 'background:#e8f0fe;' : ''}">
             <span class="material-symbols-outlined" style="font-size:22px; color:${isSelected ? '#1a73e8' : '#bdc1c6'};">${isSelected ? 'check_box' : 'check_box_outline_blank'}</span>
             <div style="flex:1; min-width:0;">
-                <div style="font-size:0.9rem; color:#202124; font-weight:500;">${p.user_name}${inToday ? ' <span style="font-size:0.7rem;color:#34a853;">(本日表示中)</span>' : ''}</div>
+                <div style="font-size:0.9rem; color:#202124; font-weight:500;">${p.user_name}${inToday ? ` <span style="font-size:0.7rem;color:#34a853;">(本日表示中${_todayAmpm === 'AM' ? '・午前のみ' : _todayAmpm === 'PM' ? '・午後のみ' : ''})</span>` : ''}</div>
                 <div style="font-size:0.72rem; color:#80868b;">${p.user_kana || ''} ／ 利用曜日: ${wdLabel}</div>
             </div>
         </div>`;
@@ -4044,8 +4049,12 @@ async function doAddTodayPatientSilent(payload) {
         if (!AMPM_PER_DAY[pid] || typeof AMPM_PER_DAY[pid] !== 'object') {
             AMPM_PER_DAY[pid] = {};
         }
-        if (!AMPM_PER_DAY[pid][String(currentWeekday)]) {
-            AMPM_PER_DAY[pid][String(currentWeekday)] = 'ALL';
+        // vital-add-today-fix-v1: 'NONE' は truthy なので旧実装では上書きされず、
+        //   追加しても一覧に出ないままだった。'NONE' も 'ALL' に直す。
+        const _wdKey = String(currentWeekday);
+        const _cur = AMPM_PER_DAY[pid][_wdKey];
+        if (!_cur || _cur === 'NONE') {
+            AMPM_PER_DAY[pid][_wdKey] = 'ALL';
         }
         EXCLUDES_TODAY = EXCLUDES_TODAY.filter(x => x !== pid);
         return true;
