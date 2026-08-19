@@ -927,6 +927,9 @@ body.nav-editing {
   }
 
   async function load(){
+    // cal-today-bar-toponly-v1: 現場の要望で「今日の予定」の帯はTOPページだけに出す。
+    //   通知の予約(cal-notify-v1)は全ページのままなので、どの画面を開いても予約は入る。
+    if(!isTopPage()) return;
     bindToggle();
     var today = new Date();
     var ymd = today.getFullYear() + '-' +
