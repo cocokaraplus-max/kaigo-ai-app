@@ -506,7 +506,8 @@
   // timecard-cancel-v1: "cancel" = 対象外（施設休日出勤スタッフ等、記録不要な日のスキップ用）
   var TC_LEAVE_LABELS = { paid:"有給", substitute:"振替休", condolence:"忌休",
                           absence:"欠勤", off:"休み", half:"半休", hourly:"時間休",
-                          cancel:"対象外（記録不要）" };
+                          obon:"お盆休み", newyear:"正月休み",
+                          cancel:"対象外（記録不要）" };  // leave-obon-newyear-v1
   function _tcTodayStr(){
     var d = new Date();
     var y=d.getFullYear(), m=("0"+(d.getMonth()+1)).slice(-2), da=("0"+d.getDate()).slice(-2);

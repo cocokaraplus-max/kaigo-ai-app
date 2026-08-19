@@ -17970,6 +17970,9 @@ def _tc_leave_style(code):
         "half":       ("#fff8e1", "#ef6c00"),
         "hourly":     ("#fff8e1", "#ef6c00"),
         "cancel":     ("#f5f5f5", "#9e9e9e"),
+        # leave-obon-newyear-v1
+        "obon":       ("#e0f7fa", "#00838f"),
+        "newyear":    ("#fce4ec", "#ad1457"),
     }
     return M.get(code, ("#eeeeee", "#555555"))
 
@@ -18437,6 +18440,9 @@ _LEAVE_TYPES = {
     "hourly":     {"label": "時間休", "form": "時",   "partial": True},
     # timecard-cancel-v1: 施設休日に出勤するスタッフ等、記録不要な日をスキップするため
     "cancel":     {"label": "対象外", "form": "-",    "partial": False},
+    # leave-obon-newyear-v1: 施設全体の長期休。印字は「休」だが集計では別区分。
+    "obon":       {"label": "お盆休み", "form": "休", "partial": False},
+    "newyear":    {"label": "正月休み", "form": "休", "partial": False},
 }
 
 import re as _leave_re
@@ -18823,7 +18829,9 @@ _YS_TEMPLATE = _ys_os.path.join(_ys_os.path.dirname(__file__), "templates", "you
 _YS_SHEET_HALF = "R8.7(半日型）"
 _YS_SHEET_FULL = "R8.7 (1日型)"
 _YS_LEAVE_FORM = {"paid":"有給","substitute":"振休","condolence":"忌休",
-                  "absence":"欠勤","off":"休","half":"半","hourly":"時"}
+                  "absence":"欠勤","off":"休","half":"半","hourly":"時",
+                  # leave-obon-newyear-v1: 様式のマスは狭いので印字は「休」に揃える
+                  "obon":"休","newyear":"休"}
 
 
 def _ys_norm(s):
