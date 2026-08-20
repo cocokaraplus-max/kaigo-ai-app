@@ -45,7 +45,19 @@ _K_NAME = "kiosk_user_name"    # 表示用
 _K_LOCK = "kiosk_locked"       # 回答が終わってロック画面で止まっている
 
 # 利用者モード中に通してよいパス。これ以外は全部止める。
-_KIOSK_ALLOW_PREFIX = ("/self-eval", "/api/self-eval", "/static/")
+# ★【完全一致】で持つこと。前方一致にすると /self-eval（職員の一覧＝利用者名が並ぶ画面）や
+#   /api/self-eval/kiosk-pin/set（解除コードの再設定）まで通ってしまう。
+#   ここを緩めると、利用者に渡したタブレットから他の利用者の氏名が見える。
+_KIOSK_ALLOW_EXACT = (
+    "/self-eval/run",              # 回答画面
+    "/self-eval/locked",           # ロック画面
+    "/api/self-eval/questions",    # 自分の質問を読む
+    "/api/self-eval/answer",       # 1問ぶん保存
+    "/api/self-eval/finish",       # 回答完了
+    "/api/self-eval/unlock",       # 職員が解除する
+)
+# 見た目の部品だけは通す（CSS・画像・フォント）
+_KIOSK_ALLOW_PREFIX = ("/static/",)
 
 # 解除コードの総当たり対策（プロセス内で数える。厳密でなくてよい）
 _pin_fail = {}     # facility_code -> [失敗回数, 最後に失敗した時刻]
@@ -60,6 +72,16 @@ def _now_iso():
 def _pin_hash(f_code, pin):
     """★平文で保存しない。施設コードを混ぜてsha256。"""
     return hashlib.sha256((str(f_code) + ":" + str(pin)).encode("utf-8")).hexdigest()
+
+
+def _clean_goal(v):
+    """目標欄の値を掃除する。
+    ★実データには文字列の "None" が入っていることがある（DEVで53人中4人）。
+      そのまま渡すと『None　これはできるようになりましたか』という質問が作られてしまう。"""
+    v = (v or "").strip()
+    if v.lower() in ("none", "null", "nan", "undefined", "-", "―", "なし", "特になし", "無し"):
+        return ""
+    return v
 
 
 def _zone_label(z):
@@ -104,8 +126,8 @@ def register_self_eval_routes(app):
     def _kiosk_guard():                                   # self-eval-v1
         if not session.get(_K_EVAL):
             return None                                    # 利用者モードでなければ何もしない
-        p = request.path or ""
-        if p.startswith(_KIOSK_ALLOW_PREFIX):
+        p = (request.path or "").rstrip("/") or "/"
+        if p in _KIOSK_ALLOW_EXACT or p.startswith(_KIOSK_ALLOW_PREFIX):
             return None
         if p.startswith("/api/"):
             return jsonify({"status": "error",
@@ -181,12 +203,12 @@ def register_self_eval_routes(app):
         for k in ("short_goal", "long_goal",
                   "short_goal_function", "short_goal_activity", "short_goal_participation",
                   "long_goal_function", "long_goal_activity", "long_goal_participation"):
-            v = (row.get(k) or "").strip()
+            v = _clean_goal(row.get(k))       # "None" などは空として扱う
             if v:
                 out["goals"][k] = v
-        out["hobbies"] = (row.get("hobbies") or "").strip()
-        out["likes"] = (row.get("likes") or "").strip()
-        out["job"] = (row.get("job_history") or "").strip()
+        out["hobbies"] = _clean_goal(row.get("hobbies"))
+        out["likes"] = _clean_goal(row.get("likes"))
+        out["job"] = _clean_goal(row.get("job_history"))
         out["user_name"] = (row.get("user_name") or "").strip()
 
         try:
@@ -275,6 +297,19 @@ def register_self_eval_routes(app):
         L.append("- できることは前提にして聞く（例：歩行器が使えるなら『歩行器を使って〜できましたか』）。")
         L.append("- 6問以上8問以下。多いと途中でやめてしまいます。")
         L.append("- source_note には、どの材料から作ったかを職員向けに短く書く（利用者には見せません）。")
+        # ここから下は 2026-08-20 にDEVで実際に生成させて見つかった不具合への対策。消さないこと。
+        L.append("")
+        L.append("【必ず守ること（守らないと画面で答えられません）】")
+        L.append("★1. 回答は【0〜10の達成度】を選ぶ形式です。")
+        L.append("     『どのくらいできたか』を答えられる質問だけにしてください。")
+        L.append("     「〜してみたいですか」「〜したいと思いますか」のような")
+        L.append("     【希望・意向をたずねる質問は禁止】です。達成度で答えられません。")
+        L.append("     悪い例：『歩行器を使わずに歩いてみたいですか』")
+        L.append("     良い例：『歩行器を使って、廊下を歩けましたか』")
+        L.append("★2. ふりかえる期間は【この1か月】に統一してください。")
+        L.append("     「今日」「昨日」「今週」など短い期間を指す言葉は使わないでください。")
+        L.append("     悪い例：『今日、他の方とお話しできましたか』")
+        L.append("     良い例：『この1か月で、他の方とお話しする機会はありましたか』")
         L.append("")
         L.append("次のJSONだけを返してください（説明文は禁止）:")
         L.append('{"questions":[{"question":"歩行器を使って、トイレまで行けましたか",'
@@ -317,7 +352,7 @@ def register_self_eval_routes(app):
             # AIが落ちても作業が止まらないように、目標をそのまま質問にして返す
             for k, v in (m.get("goals") or {}).items():
                 kind = "short" if k.startswith("short") else "long"
-                qs.append({"question": f"{v}　これはできるようになりましたか",
+                qs.append({"question": f"この1か月で、{v}　これはできましたか",
                            "goal_kind": kind, "icf_zone": "", "source_note": "目標そのまま（AI生成に失敗）"})
             qs = qs[:8]
 
