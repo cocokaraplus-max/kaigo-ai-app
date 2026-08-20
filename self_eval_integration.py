@@ -74,6 +74,33 @@ def _pin_hash(f_code, pin):
     return hashlib.sha256((str(f_code) + ":" + str(pin)).encode("utf-8")).hexdigest()
 
 
+# ===== self-eval-v1（第4段）: 目標とは別に、毎回かならず聞く質問 =====
+#   既存の評価 patient_evaluations には、本来【ご本人にしか答えられない】欄がある。
+#     satisfaction（満足度） / service_appropriateness（サービスの適切さ）
+#     new_requests_exist（新たな要望の有無） / changes_by_training（訓練による変化）
+#   これらは職員が推測で埋めがちなので、本人に直接聞いて評価の材料にする。
+#   ★AIに作らせない。必ず入る必要があるのでサーバ側で固定して足す。
+#   goal_kind でどの欄に対応するかを持つ:
+#     'change'   … 訓練による変化
+#     'satisfy'  … 満足度
+#     'fit'      … サービスの適切さ
+#     'free'     … 新たな要望（★達成度では答えられないので、自由記載だけの質問）
+_COMMON_QUESTIONS = [
+    {"question": "この1か月で、体を動かすのが 前より楽になりましたか",
+     "goal_kind": "change", "icf_zone": "body",
+     "source_note": "共通質問：評価の「訓練による変化」の材料"},
+    {"question": "いまの デイサービスに 満足していますか",
+     "goal_kind": "satisfy", "icf_zone": "",
+     "source_note": "共通質問：評価の「満足度」に入ります"},
+    {"question": "いまの サービスの内容は ご自身に合っていると思いますか",
+     "goal_kind": "fit", "icf_zone": "",
+     "source_note": "共通質問：評価の「サービスの適切さ」に入ります"},
+    {"question": "これから してみたいことや、困っていることは ありますか",
+     "goal_kind": "free", "icf_zone": "participation",
+     "source_note": "共通質問：評価の「新たな要望」の材料。自由記載のみ"},
+]
+
+
 def _clean_goal(v):
     """目標欄の値を掃除する。
     ★実データには文字列の "None" が入っていることがある（DEVで53人中4人）。
@@ -366,8 +393,10 @@ def register_self_eval_routes(app):
         except Exception as e:
             return jsonify({"status": "error", "message": f"作成失敗: {e}"}), 500
 
+        # 目標由来の質問は6問までに抑え、そのあとに共通質問4問を必ず足す。
+        # 合計10問。多すぎると途中でやめてしまうので、目標側を削って調整する。
         rows = []
-        for i, q in enumerate(qs[:8]):
+        for i, q in enumerate(list(qs[:6]) + _COMMON_QUESTIONS):
             t = (q.get("question") or "").strip()
             if not t:
                 continue
@@ -582,7 +611,7 @@ def register_self_eval_routes(app):
         f_code = session.get("f_code")
         try:
             a = (supabase.table("patient_self_eval_answers")
-                 .select("id,seq,question,score,choice,reason_mode,reason_text")
+                 .select("id,seq,question,score,choice,reason_mode,reason_text,goal_kind")
                  .eq("facility_code", f_code).eq("evaluation_id", eid)
                  .order("seq").execute())
         except Exception as e:

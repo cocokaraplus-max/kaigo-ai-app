@@ -200,18 +200,31 @@ async function load(){
     document.getElementById('screen-load').innerHTML='<div class="loading">読み込めませんでした。職員にお知らせください。</div>';
   }
 }
+function isFree(){ return (QS[i]||{}).goal_kind === 'free'; }
 function render(){
   phase='q'; choice=null; level=null;
+  document.getElementById('prog').textContent = (i+1)+' / '+QS.length;
+  document.getElementById('pbar').style.width = ((i+1)/QS.length*100)+'%';
+  document.getElementById('wtext').value = '';
+  /* ★goal_kind='free' の質問（例：これからしてみたいこと）は達成度で答えられない。
+     3択を出さず、そのまま「書く／話す／とばす」を出す。 */
+  if(isFree()){
+    phase='why';
+    show('screen-why');
+    document.getElementById('whyq').textContent = QS[i].question || '';
+    document.querySelector('#screen-why .kicker').textContent = 'さいごに おたずねします';
+    document.getElementById('nextbtn').disabled = true;
+    document.getElementById('helptxt').textContent = 'お選びください';
+    return;
+  }
+  document.querySelector('#screen-why .kicker').textContent = '続けて お聞きします';
   show('screen-q');
   document.getElementById('qtext').textContent = QS[i].question || '';
   document.querySelectorAll('.c3 button').forEach(function(b){ b.classList.remove('sel'); });
   document.getElementById('step2').classList.remove('on');
   document.getElementById('nextbtn').disabled = true;
   document.getElementById('helptxt').textContent = 'お選びになると「次へ」が押せます';
-  document.getElementById('prog').textContent = (i+1)+' / '+QS.length;
-  document.getElementById('pbar').style.width = ((i+1)/QS.length*100)+'%';
   document.getElementById('readbtn').classList.remove('on');
-  document.getElementById('wtext').value = '';
 }
 function pick(kind, el){
   choice = kind; level = null;
@@ -271,16 +284,27 @@ function next(){
   if(phase==='write'){ saveAndNext('write', document.getElementById('wtext').value); return; }
   if(phase==='voice'){ saveAndNext('voice', ''); return; }
 }
+function freeLabel(){ return isFree() ? 'してみたいこと・困っていること' : '理由'; }
 function goWrite(){ phase='write'; show('screen-write');
+  document.querySelector('#screen-write .q').textContent = freeLabel()+' を お書きください';
   document.getElementById('nextbtn').disabled=false;
   document.getElementById('helptxt').textContent='書き終えたら「次へ」'; }
 function goVoice(){ phase='voice'; show('screen-voice');
+  document.querySelector('#screen-voice .q').textContent = freeLabel()+' を お話しください';
   document.getElementById('nextbtn').disabled=false;
   document.getElementById('helptxt').textContent='話し終えたら「次へ」'; }
 function back(){
-  if(phase!=='q'){ phase='q'; show('screen-q');
+  /* free の質問は3択が無いので、もどるは「前の質問へ」 */
+  if(phase!=='q' && !isFree()){
+    phase='q'; show('screen-q');
     document.getElementById('nextbtn').disabled = (level===null);
-    document.getElementById('helptxt').textContent='「次へ」を押してください'; return; }
+    document.getElementById('helptxt').textContent='「次へ」を押してください'; return;
+  }
+  if(isFree() && (phase==='write' || phase==='voice')){
+    phase='why'; show('screen-why');
+    document.getElementById('nextbtn').disabled=true;
+    document.getElementById('helptxt').textContent='お選びください'; return;
+  }
   if(i>0){ i--; render(); }
 }
 function speak(){
