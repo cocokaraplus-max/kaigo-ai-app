@@ -398,22 +398,60 @@ function speechText(s){
     .replace(/\s+/g, ' ')
     .trim();
 }
-function speak(){
+/* ブラウザ標準の読み上げ（保険）。サーバの音声が使えないときはこちらになる。 */
+function speakLocal(t){
   var b = document.getElementById('readbtn');
   try{
     speechSynthesis.cancel();
-    var el = (phase==='q') ? document.getElementById('qtext') : document.getElementById('whyq');
-    var u = new SpeechSynthesisUtterance(speechText(el ? el.textContent : ''));
+    var u = new SpeechSynthesisUtterance(t);
     u.lang = 'ja-JP';
-    if(JA_VOICE) u.voice = JA_VOICE;      /* ★日本語の声を明示する */
-    u.rate = 0.82;                         /* ゆっくりめ。高齢の方が聞き取りやすい */
-    u.pitch = 1.0;
-    u.volume = 1.0;
+    if(JA_VOICE) u.voice = JA_VOICE;
+    u.rate = 0.82; u.pitch = 1.0; u.volume = 1.0;
     u.onstart=function(){ b.classList.add('on'); };
     u.onend  =function(){ b.classList.remove('on'); };
     u.onerror=function(){ b.classList.remove('on'); };
     speechSynthesis.speak(u);
-  }catch(e){}
+  }catch(e){ b.classList.remove('on'); }
+}
+
+/* ===== self-eval-tts-v1 : サーバで作った自然な音声で読み上げる =====
+   ★サーバ側が失敗したら（APIが未有効・通信不良など）、
+     何事もなかったようにブラウザ標準の読み上げに戻す。利用者を待たせない。
+   ★一度読んだ音声は端末側でも使い回す（同じ質問を何度も押されても速い）。 */
+var TTS_CACHE = {};
+var TTS_AUDIO = null;
+async function speak(){
+  var b = document.getElementById('readbtn');
+  var el = (phase==='q') ? document.getElementById('qtext') : document.getElementById('whyq');
+  var raw = el ? el.textContent : '';
+  var t = speechText(raw);
+  if(!t) return;
+
+  try{ speechSynthesis.cancel(); }catch(e){}
+  if(TTS_AUDIO){ try{ TTS_AUDIO.pause(); }catch(e){} TTS_AUDIO = null; }
+  b.classList.add('on');
+
+  if(TTS_CACHE[t]){ playTts(TTS_CACHE[t]); return; }
+  try{
+    var r = await fetch('/api/self-eval/tts',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
+    var ct = r.headers.get('content-type') || '';
+    if(!r.ok || ct.indexOf('audio') < 0) throw new Error('tts unavailable');
+    var url = URL.createObjectURL(await r.blob());
+    TTS_CACHE[t] = url;
+    playTts(url);
+  }catch(e){
+    speakLocal(t);            /* ★ここが保険。サーバが駄目でも読み上げは動く */
+  }
+}
+function playTts(url){
+  var b = document.getElementById('readbtn');
+  try{
+    TTS_AUDIO = new Audio(url);
+    TTS_AUDIO.onended = function(){ b.classList.remove('on'); };
+    TTS_AUDIO.onerror = function(){ b.classList.remove('on'); };
+    TTS_AUDIO.play().catch(function(){ b.classList.remove('on'); });
+  }catch(e){ b.classList.remove('on'); }
 }
 /* 音声は第1段では「録音した」ことだけ記録する。文字起こしは次の段で入れる。 */
 var recOn=false;

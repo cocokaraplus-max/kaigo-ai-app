@@ -18,3 +18,7 @@ line-bot-sdk==3.23.0
 pdfkit==1.0.0
 pillow-heif==0.16.0
 playwright==1.48.0
+# self-eval-tts-v1: 利用者セルフ評価の読み上げ（Google Cloud Text-to-Speech）
+# ・ブラウザ標準の読み上げは声が機械的だったため追加。
+# ・APIが未有効でもアプリは壊れない（サーバが失敗を返し、画面側がブラウザ読み上げに戻る）。
+google-cloud-texttospeech==2.27.0

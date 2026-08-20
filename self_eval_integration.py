@@ -55,6 +55,7 @@ _KIOSK_ALLOW_EXACT = (
     "/api/self-eval/answer",       # 1問ぶん保存
     "/api/self-eval/finish",       # 回答完了
     "/api/self-eval/unlock",       # 職員が解除する
+    "/api/self-eval/tts",          # 質問の読み上げ音声
 )
 # 見た目の部品だけは通す（CSS・画像・フォント）
 _KIOSK_ALLOW_PREFIX = ("/static/",)
@@ -712,6 +713,68 @@ def register_self_eval_routes(app):
             return jsonify({"status": "error", "message": str(e)}), 500
         return jsonify({"status": "success", "user_name": session.get(_K_NAME, ""),
                         "questions": a.data or []})
+
+    # ==========================================================
+    # self-eval-tts-v1 : 質問の読み上げ（Google Cloud Text-to-Speech）
+    #   ブラウザ標準の読み上げ(speechSynthesis)は声が機械的で、
+    #   高齢の方に聞かせるには不十分だったため追加した。
+    #
+    #   ★このAPIが失敗しても画面は壊れない。
+    #     画面側(self_eval_run.html)が、失敗したらブラウザ標準の読み上げに戻す。
+    #     そのため Text-to-Speech API が未有効でも運用は続けられる。
+    #
+    #   認証は Cloud Run のサービスアカウント（ADC）。鍵ファイルは不要。
+    #   料金：Neural2 は月100万文字まで無料。質問1問50文字なら余裕で収まる。
+    # ==========================================================
+    _TTS_CACHE = {}          # sha256(text+voice) -> mp3 bytes（プロセス内。再デプロイで消えてよい）
+    _TTS_CACHE_MAX = 300
+
+    @app.route('/api/self-eval/tts', methods=['POST'])
+    def api_self_eval_tts():
+        from flask import Response
+        d = request.json or {}
+        text = (d.get("text") or "").strip()
+        if not text:
+            return jsonify({"status": "error", "message": "text が空です"}), 400
+        if len(text) > 400:
+            text = text[:400]
+        # ログイン中か、利用者モード中のみ。外部から自由に叩けないようにする
+        if not session.get("f_code") and not session.get(_K_EVAL):
+            return jsonify({"status": "error", "message": "権限がありません"}), 403
+
+        voice = (d.get("voice") or "ja-JP-Neural2-B").strip()
+        if voice not in ("ja-JP-Neural2-B", "ja-JP-Neural2-C", "ja-JP-Neural2-D",
+                         "ja-JP-Wavenet-A", "ja-JP-Wavenet-B",
+                         "ja-JP-Wavenet-C", "ja-JP-Wavenet-D"):
+            voice = "ja-JP-Neural2-B"
+        key = hashlib.sha256((voice + "|" + text).encode("utf-8")).hexdigest()
+        hit = _TTS_CACHE.get(key)
+        if hit:
+            return Response(hit, mimetype="audio/mpeg")
+
+        try:
+            from google.cloud import texttospeech
+            client = texttospeech.TextToSpeechClient()
+            resp = client.synthesize_speech(
+                input=texttospeech.SynthesisInput(text=text),
+                voice=texttospeech.VoiceSelectionParams(language_code="ja-JP", name=voice),
+                audio_config=texttospeech.AudioConfig(
+                    audio_encoding=texttospeech.AudioEncoding.MP3,
+                    speaking_rate=0.92,      # 少しゆっくり。高齢の方が聞き取りやすい
+                    pitch=0.0,
+                    volume_gain_db=2.0,
+                ),
+            )
+            audio = resp.audio_content
+        except Exception as e:
+            # ★ここで失敗しても画面は動く。ブラウザ標準の読み上げに戻るだけ。
+            print(f"[self-eval-tts] failed: {e}", flush=True)
+            return jsonify({"status": "error", "message": "音声を作れませんでした"}), 503
+
+        if len(_TTS_CACHE) > _TTS_CACHE_MAX:
+            _TTS_CACHE.clear()
+        _TTS_CACHE[key] = audio
+        return Response(audio, mimetype="audio/mpeg")
 
     @app.route('/api/self-eval/answer', methods=['POST'])
     def api_self_eval_answer():
