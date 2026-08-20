@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>ご本人へのおたずね - TASUKARU</title>
+<!--
+  self-eval-v1 : 利用者が答える画面（キオスク）
+  ★base.html を継承しない。下メニューもハンバーガーも出さないため。
+  ★ここから他の画面へは行けない。サーバ側の _kiosk_guard() が全リクエストを止めている。
+    画面側の細工（戻る封じ等）は補助にすぎない。ガードを消さないこと。
+  UIの決まりは README の self-eval-design-2026-08-20 の「7.」を参照。
+    ・10段階を直接出さない（3択 → その中で3〜4択）
+    ・絵文字を使わない。達成度は円の塗りで表す
+    ・ひらがなだらけにしない。1画面1問。選んだだけでは進まない
+-->
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow-x:hidden}
+body{background:#f4f5f7;color:#1f2933;
+ font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+ display:flex;align-items:center;justify-content:center;padding:16px;
+ -webkit-user-select:none;user-select:none}
+.tab{width:100%;max-width:900px;background:#fff;border-radius:14px;
+ box-shadow:0 4px 24px rgba(31,41,51,.10);overflow:hidden;display:flex;flex-direction:column;
+ min-height:min(640px,92vh)}
+.bar{display:flex;align-items:baseline;gap:14px;padding:16px 26px 12px}
+.who{font-size:1.15rem;font-weight:800;letter-spacing:.02em}
+.who span{font-size:.9rem;font-weight:600;color:#7b8794;margin-left:6px}
+.prog{margin-left:auto;font-size:1rem;font-weight:800;color:#52606d;font-variant-numeric:tabular-nums}
+.progbar{height:5px;background:#e4e7eb;margin:0 26px;border-radius:99px;overflow:hidden}
+.progbar i{display:block;height:100%;background:#1b4965;transition:width .35s}
+.body{flex:1;padding:26px 32px 22px;display:flex;flex-direction:column;overflow-y:auto}
+.foot{padding:16px 26px 22px;display:flex;gap:16px;align-items:center;border-top:1px solid #e4e7eb}
+.kicker{font-size:.92rem;font-weight:800;color:#1b4965;letter-spacing:.09em;margin-bottom:12px;
+ padding-left:11px;border-left:3px solid #1b4965;line-height:1.3}
+.q{font-size:1.95rem;font-weight:800;line-height:1.55;margin:0 0 8px;letter-spacing:.01em}
+.qsub{font-size:1.05rem;color:#616e7c;margin:0 0 20px;line-height:1.65}
+.readbtn{display:inline-flex;align-items:center;gap:11px;padding:13px 24px;border-radius:8px;
+ border:2px solid #b6c0cb;background:#fff;color:#3e4c59;font-size:1.08rem;font-weight:800;
+ cursor:pointer;margin-bottom:24px;align-self:flex-start;font-family:inherit}
+.readbtn.on{border-color:#1b4965;color:#1b4965;background:#eef3f7}
+.c3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.c3 button{padding:26px 12px 24px;border-radius:12px;border:2px solid #d3d9df;background:#fff;
+ font-size:1.32rem;font-weight:800;cursor:pointer;line-height:1.4;color:#1f2933;
+ display:flex;flex-direction:column;align-items:center;gap:14px;font-family:inherit}
+.c3 button.sel{border-color:#1b4965;border-width:3px;background:#eef3f7;box-shadow:inset 0 0 0 1px #1b4965}
+.c3 .cap{font-size:.86rem;font-weight:700;color:#7b8794}
+.c3 button.sel .cap{color:#1b4965}
+.step2{margin-top:26px;padding-top:22px;border-top:1px solid #e4e7eb;display:none}
+.step2.on{display:block;animation:fade .22s ease-out}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.step2 h3{font-size:1.2rem;font-weight:800;margin:0 0 14px;color:#3e4c59}
+.lv{display:grid;gap:10px}
+.lv button{padding:18px 20px;border-radius:10px;border:2px solid #d3d9df;background:#fff;
+ font-size:1.22rem;font-weight:700;text-align:left;cursor:pointer;display:flex;align-items:center;
+ gap:18px;color:#1f2933;font-family:inherit}
+.lv button.sel{border-color:#1b4965;border-width:3px;background:#eef3f7}
+.lv .num{flex:0 0 46px;height:46px;border-radius:6px;background:#eef1f4;color:#52606d;
+ display:flex;align-items:center;justify-content:center;font-size:1.25rem;font-weight:800}
+.lv button.sel .num{background:#1b4965;color:#fff}
+.why{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:6px}
+.why button{padding:30px 16px;border-radius:12px;border:2px solid #d3d9df;background:#fff;
+ font-size:1.24rem;font-weight:800;cursor:pointer;line-height:1.4;color:#1f2933;
+ display:flex;flex-direction:column;align-items:center;gap:16px;font-family:inherit}
+.skip{margin-top:18px;width:100%;padding:17px;border-radius:10px;border:2px solid #d3d9df;
+ background:#fafbfc;color:#616e7c;font-size:1.08rem;font-weight:800;cursor:pointer;font-family:inherit}
+textarea{width:100%;min-height:150px;font-size:1.3rem;padding:16px;border:2px solid #d3d9df;
+ border-radius:10px;font-family:inherit;line-height:1.7;color:#1f2933;-webkit-user-select:text;user-select:text}
+textarea:focus{outline:none;border-color:#1b4965}
+.rec{display:flex;flex-direction:column;align-items:center;gap:18px;padding:22px 0}
+.recbtn{width:130px;height:130px;border-radius:50%;border:3px solid #8f3b34;background:#a34a41;color:#fff;
+ font-size:1.02rem;font-weight:800;cursor:pointer;display:flex;flex-direction:column;
+ align-items:center;justify-content:center;gap:8px;font-family:inherit}
+.recbtn.on{animation:pulse 1.3s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(163,74,65,.35)}50%{box-shadow:0 0 0 14px rgba(163,74,65,0)}}
+.rectxt{font-size:1.08rem;color:#616e7c;font-weight:700;text-align:center;line-height:1.6}
+.nav{padding:17px 30px;border-radius:9px;font-size:1.18rem;font-weight:800;cursor:pointer;
+ border:2px solid transparent;font-family:inherit;letter-spacing:.03em}
+.back{background:#fff;border-color:#b6c0cb;color:#3e4c59}
+.next{margin-left:auto;background:#1b4965;color:#fff;min-width:200px}
+.next:disabled{background:#e4e7eb;color:#9aa5b1;cursor:default}
+.help{font-size:1rem;color:#7b8794;font-weight:700}
+.loading{flex:1;display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#7b8794}
+</style></head>
+<body>
+<div class="tab">
+  <div class="bar">
+    <span class="who">{{ user_name }}<span>さん</span></span>
+    <span class="prog" id="prog"></span>
+  </div>
+  <div class="progbar"><i id="pbar" style="width:0%"></i></div>
+
+  <div class="body" id="screen-load"><div class="loading">読み込んでいます…</div></div>
+
+  <div class="body" id="screen-q" style="display:none">
+    <div class="kicker" id="kicker">おたずね</div>
+    <p class="q" id="qtext"></p>
+    <p class="qsub">この1か月をふりかえって、近いものを お選びください。</p>
+    <button class="readbtn" id="readbtn" onclick="speak()">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+      読み上げる
+    </button>
+    <div class="c3">
+      <button onclick="pick('no',this)">
+        <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#6b7b8c" stroke-width="3"/></svg>
+        <span>できなかった</span><span class="cap">0 〜 3</span>
+      </button>
+      <button onclick="pick('mid',this)">
+        <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#b08040" stroke-width="3"/><path d="M26 5 A21 21 0 0 1 26 47 Z" fill="#b08040"/></svg>
+        <span>少し できた</span><span class="cap">4 〜 7</span>
+      </button>
+      <button onclick="pick('ok',this)">
+        <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#3f6f52"/></svg>
+        <span>できた</span><span class="cap">8 〜 10</span>
+      </button>
+    </div>
+    <div class="step2" id="step2">
+      <h3>その中では どのくらいでしたか</h3>
+      <div class="lv" id="lv"></div>
+    </div>
+  </div>
+
+  <div class="body" id="screen-why" style="display:none">
+    <div class="kicker">続けて お聞きします</div>
+    <p class="q" id="whyq"></p>
+    <p class="qsub">お答えになりたくないときは、とばせます。</p>
+    <div class="why">
+      <button onclick="goWrite()">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#3e4c59" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        自分で書く
+      </button>
+      <button onclick="goVoice()">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="#3e4c59" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        声で話す
+      </button>
+    </div>
+    <button class="skip" onclick="saveAndNext('skip')">とばして 次へ　（あとで職員がお聞きします）</button>
+  </div>
+
+  <div class="body" id="screen-write" style="display:none">
+    <div class="kicker">お書きください</div>
+    <p class="q" style="font-size:1.45rem;margin-bottom:16px">理由を お書きください</p>
+    <textarea id="wtext" placeholder="ここに お書きください"></textarea>
+  </div>
+
+  <div class="body" id="screen-voice" style="display:none">
+    <div class="kicker">お話しください</div>
+    <p class="q" style="font-size:1.45rem;margin-bottom:0">理由を お話しください</p>
+    <div class="rec">
+      <button class="recbtn" id="recbtn" onclick="toggleRec()">
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+        <span id="reclabel">押して 話す</span>
+      </button>
+      <div class="rectxt" id="rectxt">ボタンを押してから お話しください</div>
+    </div>
+  </div>
+
+  <div class="foot" id="foot" style="display:none">
+    <button class="nav back" onclick="back()">◀　もどる</button>
+    <span class="help" id="helptxt">お選びになると「次へ」が押せます</span>
+    <button class="nav next" id="nextbtn" onclick="next()" disabled>次へ　▶</button>
+  </div>
+</div>
+
+<script>
+/* self-eval-v1
+   ★ブラウザの「戻る」で評価画面から出られないようにする（第2層の一部）。
+     本命はサーバ側の _kiosk_guard()。これは補助。 */
+history.pushState(null, '', location.href);
+window.addEventListener('popstate', function(){ history.pushState(null, '', location.href); });
+
+var LEVELS = {
+  no:  [{n:0,t:'まったく できなかった'},{n:1,t:'ほとんど できなかった'},{n:2,t:'できた日が 少しあった'},{n:3,t:'ときどき できた'}],
+  mid: [{n:4,t:'半分くらいの日は できた'},{n:5,t:'半分より 少し多く できた'},{n:6,t:'たいてい できた'},{n:7,t:'ほとんどの日 できた'}],
+  ok:  [{n:8,t:'ほぼ毎日 できた'},{n:9,t:'毎日 できた'},{n:10,t:'余裕をもって できた'}]
+};
+var QS=[], i=0, choice=null, level=null, phase='q';
+
+function show(id){
+  ['screen-load','screen-q','screen-why','screen-write','screen-voice'].forEach(function(s){
+    document.getElementById(s).style.display = (s===id)?'flex':'none';
+  });
+  document.getElementById('foot').style.display = (id==='screen-load')?'none':'flex';
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+async function load(){
+  try{
+    var j = await fetch('/api/self-eval/questions',{credentials:'same-origin'}).then(function(r){return r.json();});
+    if(j.status!=='success' || !(j.questions||[]).length){
+      document.getElementById('screen-load').innerHTML='<div class="loading">質問がありません。職員にお知らせください。</div>';
+      return;
+    }
+    QS = j.questions;
+    /* 途中で中断していたら、まだ答えていない最初の質問から再開する */
+    var k = QS.findIndex(function(q){ return q.score===null || q.score===undefined; });
+    i = (k<0) ? 0 : k;
+    render();
+  }catch(e){
+    document.getElementById('screen-load').innerHTML='<div class="loading">読み込めませんでした。職員にお知らせください。</div>';
+  }
+}
+function render(){
+  phase='q'; choice=null; level=null;
+  show('screen-q');
+  document.getElementById('qtext').textContent = QS[i].question || '';
+  document.querySelectorAll('.c3 button').forEach(function(b){ b.classList.remove('sel'); });
+  document.getElementById('step2').classList.remove('on');
+  document.getElementById('nextbtn').disabled = true;
+  document.getElementById('helptxt').textContent = 'お選びになると「次へ」が押せます';
+  document.getElementById('prog').textContent = (i+1)+' / '+QS.length;
+  document.getElementById('pbar').style.width = ((i+1)/QS.length*100)+'%';
+  document.getElementById('readbtn').classList.remove('on');
+  document.getElementById('wtext').value = '';
+}
+function pick(kind, el){
+  choice = kind; level = null;
+  document.querySelectorAll('.c3 button').forEach(function(b){ b.classList.remove('sel'); });
+  el.classList.add('sel');
+  document.getElementById('lv').innerHTML = LEVELS[kind].map(function(x){
+    return '<button onclick="pickLv('+x.n+',this)"><span class="num">'+x.n+'</span>'+x.t+'</button>';
+  }).join('');
+  document.getElementById('step2').classList.add('on');
+  document.getElementById('nextbtn').disabled = true;
+  document.getElementById('helptxt').textContent = 'どのくらいか お選びください';
+  document.getElementById('step2').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+function pickLv(n, el){
+  level = n;
+  document.querySelectorAll('#lv button').forEach(function(b){ b.classList.remove('sel'); });
+  el.classList.add('sel');
+  document.getElementById('nextbtn').disabled = false;
+  document.getElementById('helptxt').textContent = '「次へ」を押してください';
+}
+/* ★1問ごとにサーバへ保存する。途中で電源が切れても回答は残る。 */
+async function saveAnswer(mode, text){
+  try{
+    await fetch('/api/self-eval/answer',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:QS[i].id, score:level, choice:choice,
+                           reason_mode:mode||null, reason_text:text||''})});
+    QS[i].score = level;
+  }catch(e){ /* 通信が切れても操作は止めない。次に開いたとき続きから */ }
+}
+async function saveAndNext(mode, text){
+  await saveAnswer(mode, text);
+  i++;
+  if(i>=QS.length){ await finish(); return; }
+  render();
+}
+async function finish(){
+  document.getElementById('screen-load').innerHTML='<div class="loading">保存しています…</div>';
+  show('screen-load');
+  try{
+    var j = await fetch('/api/self-eval/finish',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:'{}'}).then(function(r){return r.json();});
+    location.href = (j && j.redirect) ? j.redirect : '/self-eval/locked';
+  }catch(e){ location.href='/self-eval/locked'; }
+}
+function next(){
+  if(phase==='q'){
+    if(choice==='ok'){ saveAndNext(null,''); return; }   /* できた人に理由は聞かない */
+    document.getElementById('whyq').innerHTML = (choice==='no')
+      ? 'できなかったのは<br>どうしてだと 思われますか'
+      : 'あと少しだったのは<br>どうしてだと 思われますか';
+    phase='why'; show('screen-why');
+    document.getElementById('nextbtn').disabled = true;
+    document.getElementById('helptxt').textContent = 'お選びください';
+    return;
+  }
+  if(phase==='write'){ saveAndNext('write', document.getElementById('wtext').value); return; }
+  if(phase==='voice'){ saveAndNext('voice', ''); return; }
+}
+function goWrite(){ phase='write'; show('screen-write');
+  document.getElementById('nextbtn').disabled=false;
+  document.getElementById('helptxt').textContent='書き終えたら「次へ」'; }
+function goVoice(){ phase='voice'; show('screen-voice');
+  document.getElementById('nextbtn').disabled=false;
+  document.getElementById('helptxt').textContent='話し終えたら「次へ」'; }
+function back(){
+  if(phase!=='q'){ phase='q'; show('screen-q');
+    document.getElementById('nextbtn').disabled = (level===null);
+    document.getElementById('helptxt').textContent='「次へ」を押してください'; return; }
+  if(i>0){ i--; render(); }
+}
+function speak(){
+  var b = document.getElementById('readbtn');
+  try{
+    speechSynthesis.cancel();
+    var u = new SpeechSynthesisUtterance(document.getElementById('qtext').textContent);
+    u.lang='ja-JP'; u.rate=0.85;
+    u.onstart=function(){ b.classList.add('on'); };
+    u.onend  =function(){ b.classList.remove('on'); };
+    speechSynthesis.speak(u);
+  }catch(e){}
+}
+/* 音声は第1段では「録音した」ことだけ記録する。文字起こしは次の段で入れる。 */
+var recOn=false;
+function toggleRec(){
+  recOn=!recOn;
+  document.getElementById('recbtn').classList.toggle('on',recOn);
+  document.getElementById('reclabel').textContent = recOn ? '話しています' : '押して 話す';
+  document.getElementById('rectxt').textContent = recOn
+    ? 'お話しください。終わりましたら もう一度 押してください'
+    : 'ありがとうございました。「次へ」を押してください';
+}
+
+/* ★3分間さわらなければロック画面へ戻す（利用者が席を立った場合の備え） */
+var idleTimer=null;
+function resetIdle(){
+  if(idleTimer) clearTimeout(idleTimer);
+  idleTimer = setTimeout(function(){ location.href='/self-eval/locked'; }, 3*60*1000);
+}
+['click','touchstart','keydown'].forEach(function(ev){
+  document.addEventListener(ev, resetIdle, {passive:true});
+});
+resetIdle();
+load();
+</script>
+</body></html>
