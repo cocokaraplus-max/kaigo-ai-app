@@ -536,7 +536,9 @@ async function seToEval(force){
     var j = await r.json();
     if(j.status==='success'){
       m.className='se-msg ok';
-      m.textContent='評価の元データに足しました。評価画面で「AIで生成」を押してください。';
+      var t = '評価の元データに足しました。';
+      if((j.filled||[]).length) t += '（'+j.filled.join('・')+' も自動で入力）';
+      m.textContent = t + ' 評価画面で「AIで生成」を押してください。';
       return;
     }
     if(j.already){            /* すでに入っている。二重に足すか聞く */

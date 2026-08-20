@@ -1033,6 +1033,17 @@ def register_self_eval_routes(app):
     # ==========================================================
     _EVAL_MARK = "【ご本人の回答】"
 
+    def _score_mark(sc):
+        """セルフ評価の0〜10を、既存の評価の ○△× に変換する。
+        assessment.html の選択肢はこの3つしかない（○満足/△やや/×不満）。"""
+        if sc is None:
+            return None
+        if sc >= 8:
+            return "○"
+        if sc >= 4:
+            return "△"
+        return "×"
+
     def _build_source_block(ev, answers):
         """評価の source_data に貼るテキストを作る。職員が読んで分かる形にする。"""
         L = [_EVAL_MARK + "　" + (ev.get("answered_at") or "")[:10] + "　タブレットでご本人が回答"]
@@ -1088,7 +1099,9 @@ def register_self_eval_routes(app):
         if not uname or not ym:
             return jsonify({"status": "error", "message": "利用者名か対象月が空です"}), 400
         try:
-            r = (supabase.table("patient_evaluations").select("id,source_data")
+            r = (supabase.table("patient_evaluations").select(
+                "id,source_data,satisfaction,service_appropriateness,"
+                "new_requests_exist,new_requests_detail")
                  .eq("facility_code", f_code).eq("user_name", uname)
                  .eq("year_month", ym).execute())
         except Exception as e:
@@ -1104,13 +1117,48 @@ def register_self_eval_routes(app):
                             "message": "すでに取り込み済みのようです。もう一度追加しますか？"}), 409
         block = _build_source_block(ev, answers)
         new = (old.rstrip() + "\n\n" + block).strip() if old.strip() else block
+        upd = {"source_data": new[:20000]}
+
+        # ★満足度・サービスの適切さ・新規希望は、本人にしか答えられない項目。
+        #   セルフ評価の0〜10を ○△× に直して入れる。
+        #   ただし【職員がすでに入れている欄には触らない】。空のときだけ埋める。
+        #   （手入力を上書きしないのは、勤務予定と休みのときと同じ考え方）
+        filled = []
+        by_kind = {}
+        for a in answers:
+            k = a.get("goal_kind") or ""
+            if k:
+                by_kind[k] = a
+        if not (row.get("satisfaction") or "").strip():
+            mk = _score_mark((by_kind.get("satisfy") or {}).get("score"))
+            if mk:
+                upd["satisfaction"] = mk
+                filled.append("満足度")
+        if not (row.get("service_appropriateness") or "").strip():
+            mk = _score_mark((by_kind.get("fit") or {}).get("score"))
+            if mk:
+                upd["service_appropriateness"] = mk
+                filled.append("サービスの適切さ")
+        if not (row.get("new_requests_exist") or "").strip():
+            fa = by_kind.get("free") or {}
+            txt = (fa.get("reason_text") or "").strip()
+            if txt:
+                upd["new_requests_exist"] = "あり"
+                if not (row.get("new_requests_detail") or "").strip():
+                    upd["new_requests_detail"] = txt[:1000]
+                filled.append("新規希望（あり・詳細つき）")
+            elif fa.get("reason_mode") == "skip":
+                pass                       # とばした＝不明。勝手に「なし」にしない
+            elif fa.get("answered_at"):
+                upd["new_requests_exist"] = "なし"
+                filled.append("新規希望（なし）")
+
         try:
-            (supabase.table("patient_evaluations").update({"source_data": new[:20000]})
-             .eq("id", row["id"]).execute())
+            supabase.table("patient_evaluations").update(upd).eq("id", row["id"]).execute()
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
-        print(f"[self-eval] source_data appended eval={eid} ym={ym}", flush=True)
-        return jsonify({"status": "success", "chars": len(block)})
+        print(f"[self-eval] source_data appended eval={eid} ym={ym} filled={filled}", flush=True)
+        return jsonify({"status": "success", "chars": len(block), "filled": filled})
 
     @app.route('/api/self-eval/confirm', methods=['POST'])
     @login_required
