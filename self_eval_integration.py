@@ -101,6 +101,26 @@ _COMMON_QUESTIONS = [
 ]
 
 
+def _fix_tail(q):
+    """質問の終わり方をそろえる。
+    ★利用者は『できなかった／少しできた／できた』から選ぶので、
+      『〜ありましたか』で終わると答えが噛み合わない。
+      プロンプトでも指示しているが、AIは完全には従わないので機械的にも直す。
+      置換するのは【誤解の余地がない言い回しだけ】。無理に直すと日本語が壊れる。"""
+    q = (q or "").strip()
+    for a, b in (
+        ("機会はありましたか", "ことができましたか"),
+        ("機会がありましたか", "ことができましたか"),
+        ("機会はございましたか", "ことができましたか"),
+        ("ことはありましたか", "ことができましたか"),
+        ("ことがありましたか", "ことができましたか"),
+    ):
+        if q.endswith(a) or q.endswith(a + "？") or q.endswith(a + "?"):
+            q = q.replace(a, b)
+            break
+    return q
+
+
 def _clean_goal(v):
     """目標欄の値を掃除する。
     ★実データには文字列の "None" が入っていることがある（DEVで53人中4人）。
@@ -441,7 +461,7 @@ def register_self_eval_routes(app):
         # 合計10問。多すぎると途中でやめてしまうので、目標側を削って調整する。
         rows = []
         for i, q in enumerate(list(qs[:6]) + _COMMON_QUESTIONS):
-            t = (q.get("question") or "").strip()
+            t = _fix_tail(q.get("question"))     # 「〜機会はありましたか」等をそろえる
             if not t:
                 continue
             rows.append({
