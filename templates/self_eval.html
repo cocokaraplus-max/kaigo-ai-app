@@ -114,11 +114,12 @@
 .se-pin{border:1px solid #e6e8eb;border-radius:14px;background:#fff;padding:16px;margin-top:20px}
 .se-pin h3{margin:0 0 4px;font-size:.95rem;font-weight:900;color:#3e4c59}
 .se-pin .sub{font-size:.76rem;color:#7b8794;margin-bottom:12px;line-height:1.6}
-.se-pin .row{display:flex;gap:9px;align-items:center}
-.se-pin input{flex:1;padding:11px;border:1.5px solid #d3d9df;border-radius:9px;font-size:1.1rem;
- font-family:inherit;letter-spacing:.4em;text-align:center}
-.se-pin button{padding:11px 18px;border-radius:9px;border:none;background:#3e4c59;color:#fff;
- font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap}
+/* スマホでも見切れないように縦に積む（横並びだと「設定する」が画面外に出ていた） */
+.se-pin .row{display:flex;flex-direction:column;gap:9px}
+.se-pin input{width:100%;padding:13px;border:1.5px solid #d3d9df;border-radius:9px;font-size:1.15rem;
+ font-family:inherit;letter-spacing:.4em;text-align:center;box-sizing:border-box}
+.se-pin button{width:100%;padding:13px;border-radius:9px;border:none;background:#3e4c59;color:#fff;
+ font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;font-size:.95rem}
 .se-pin .st{font-size:.8rem;font-weight:800;margin-top:9px}
 .se-pin .st.ok{color:#1e7e34}
 .se-pin .st.ng{color:#a34a41}
@@ -169,6 +170,14 @@
     <div class="sub">
       AIが目標とICF付箋から作ったたたき台です。<b>そのままご本人に見せず、必ず目を通してください。</b><br>
       直したら「下書きを保存」。途中でやめても、あとで続きから直せます。
+    </div>
+    <div style="background:#fff8e1;border:1.5px solid #f0c27a;border-radius:10px;
+                padding:11px 13px;margin-bottom:13px;font-size:.82rem;line-height:1.7;color:#6b4a10">
+      <b>目標と合っているか、1問ずつご確認ください。</b><br>
+      目標欄が「活動量増」のような短い言葉だけだと、AIが想像で具体的な動作
+      （トイレ・着替えなど）を足してしまうことがあります。
+      <b>目標に書かれていないことを聞いている質問は、直すか消してください。</b><br>
+      利用者情報のICF付箋（できる／できない）が入っていると、質問の精度が上がります。
     </div>
     <div id="se-qs"></div>
     <button class="se-addq" onclick="seAddQ()">＋ 質問を足す</button>
