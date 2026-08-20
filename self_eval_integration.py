@@ -1022,6 +1022,96 @@ def register_self_eval_routes(app):
         print(f"[self-eval] next goal applied ({term}) eval={eid} by={session.get('my_name','')}", flush=True)
         return jsonify({"status": "success", "term": term})
 
+    # ==========================================================
+    # 第4段：既存の評価（patient_evaluations）へつなぐ
+    #   ★方針（2026-08-20 ユーザーと合意）：
+    #     セルフ評価は「評価の入力欄」ではなく【評価を書くための材料】。
+    #     入力の入口は既存の評価画面ひとつに保つ。二極化させない。
+    #     ここでやるのは source_data（元データ）への追記だけ。
+    #     そのあと職員が評価画面の「AIで生成」を押すと、
+    #     本人の声も踏まえた「訓練による変化」「課題とその要因」が出る。
+    # ==========================================================
+    _EVAL_MARK = "【ご本人の回答】"
+
+    def _build_source_block(ev, answers):
+        """評価の source_data に貼るテキストを作る。職員が読んで分かる形にする。"""
+        L = [_EVAL_MARK + "　" + (ev.get("answered_at") or "")[:10] + "　タブレットでご本人が回答"]
+        kind_label = {"change": "訓練による変化について", "satisfy": "満足度",
+                      "fit": "サービスの適切さ", "free": "これからしてみたいこと・困っていること"}
+        for a in answers:
+            k = a.get("goal_kind") or ""
+            sc = a.get("score")
+            head = kind_label.get(k)
+            if k == "free":
+                txt = (a.get("reason_text") or "").strip()
+                if txt:
+                    L.append(f"・{head}：「{txt}」")
+                elif a.get("reason_mode") == "voice":
+                    L.append(f"・{head}：声で回答あり（録音）")
+                continue
+            if sc is None:
+                continue
+            if head:
+                L.append(f"・{head}：{sc}/10")
+                if (a.get("reason_text") or "").strip():
+                    L.append(f"　　本人の言葉：「{a.get('reason_text').strip()}」")
+                continue
+            L.append(f"・{a.get('question')}　→ {sc}/10")
+            if (a.get("reason_text") or "").strip():
+                L.append(f"　　本人の言葉：「{a.get('reason_text').strip()}」")
+            elif a.get("reason_mode") == "skip":
+                L.append("　　本人の言葉：（答えたくないとのことでとばした）")
+            elif a.get("reason_mode") == "voice":
+                L.append("　　本人の言葉：声で回答あり（録音）")
+        if (ev.get("staff_note") or "").strip():
+            L.append("・職員のメモ：" + ev.get("staff_note").strip())
+        return "\n".join(L)
+
+    @app.route('/api/self-eval/to-evaluation', methods=['POST'])
+    @login_required
+    def api_self_eval_to_evaluation():
+        """回答を、その月の評価の source_data（元データ）へ追記する。
+        ★上書きしない。職員が書いた内容の後ろに足すだけ。
+        ★評価の行がまだ無いときは作らない（必須項目が空の中途半端な行を作らないため）。
+          その場合は職員に「先に評価画面で評価を作ってください」と伝える。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        d = request.json or {}
+        eid = (d.get("id") or "").strip()
+        force = bool(d.get("force"))
+        ev, answers = _eval_bundle(supabase, f_code, eid)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        uname = (ev.get("user_name") or "").strip()
+        ym = (ev.get("target_ym") or "").strip()
+        if not uname or not ym:
+            return jsonify({"status": "error", "message": "利用者名か対象月が空です"}), 400
+        try:
+            r = (supabase.table("patient_evaluations").select("id,source_data")
+                 .eq("facility_code", f_code).eq("user_name", uname)
+                 .eq("year_month", ym).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        if not r.data:
+            return jsonify({"status": "error", "need_eval": True,
+                            "message": f"{ym} の評価がまだ作られていません。"
+                                       "先に評価画面でこの方の評価を作ってから、もう一度お試しください。"}), 400
+        row = r.data[0]
+        old = row.get("source_data") or ""
+        if (_EVAL_MARK in old) and not force:
+            return jsonify({"status": "error", "already": True,
+                            "message": "すでに取り込み済みのようです。もう一度追加しますか？"}), 409
+        block = _build_source_block(ev, answers)
+        new = (old.rstrip() + "\n\n" + block).strip() if old.strip() else block
+        try:
+            (supabase.table("patient_evaluations").update({"source_data": new[:20000]})
+             .eq("id", row["id"]).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"[self-eval] source_data appended eval={eid} ym={ym}", flush=True)
+        return jsonify({"status": "success", "chars": len(block)})
+
     @app.route('/api/self-eval/confirm', methods=['POST'])
     @login_required
     def api_self_eval_confirm():

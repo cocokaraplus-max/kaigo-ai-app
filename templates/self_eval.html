@@ -207,6 +207,14 @@
     <button class="se-mini" id="se-goal-btn" onclick="seNextGoal('')">達成できた項目から次の目標を考える</button>
     <div id="se-goal-box"></div>
 
+    <div class="se-sec">評価に取り込む</div>
+    <div style="font-size:.78rem;color:#7b8794;line-height:1.65;margin-bottom:9px">
+      ご本人の回答を、その月の評価の「元データ」に足します。<b>上書きはしません。</b><br>
+      そのあと評価画面で「AIで生成」を押すと、ご本人の声も踏まえた
+      「訓練による変化」「課題とその要因」が作られます。
+    </div>
+    <button class="se-mini" id="se-toev-btn" onclick="seToEval(false)">この回答を評価の元データに足す</button>
+
     <button class="se-done" onclick="seConfirm()">確認を終える（確定する）</button>
     <div class="se-msg" id="se-review-msg"></div>
   </div>
@@ -517,6 +525,27 @@ async function seGoalApply(i){
     m.className = (j.status==='success') ? 'se-msg ok' : 'se-msg ng';
     m.textContent = (j.status==='success') ? (lbl+'を更新しました') : (j.message||'失敗しました');
   }catch(e){ m.className='se-msg ng'; m.textContent='失敗しました'; }
+}
+async function seToEval(force){
+  var b = document.getElementById('se-toev-btn'), m = document.getElementById('se-review-msg');
+  b.disabled = true;
+  try{
+    var r = await fetch('/api/self-eval/to-evaluation',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id, force:!!force})});
+    var j = await r.json();
+    if(j.status==='success'){
+      m.className='se-msg ok';
+      m.textContent='評価の元データに足しました。評価画面で「AIで生成」を押してください。';
+      return;
+    }
+    if(j.already){            /* すでに入っている。二重に足すか聞く */
+      if(confirm(j.message)) { b.disabled=false; return seToEval(true); }
+      m.className='se-msg'; m.textContent=''; return;
+    }
+    m.className='se-msg ng'; m.textContent = j.message || '失敗しました';
+  }catch(e){ m.className='se-msg ng'; m.textContent='失敗しました'; }
+  finally{ b.disabled=false; }
 }
 async function seConfirm(){
   if(!confirm('この評価を確定します。よろしいですか。')) return;
