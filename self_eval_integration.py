@@ -624,6 +624,323 @@ def register_self_eval_routes(app):
             return jsonify({"status": "error", "message": str(e)}), 500
         return jsonify({"status": "success"})
 
+    # ==========================================================
+    # 第2段：職員の確認 → ICF付箋へのフィードバック → 次の目標
+    #   ここで初めて status='confirmed' になる。
+    #   ★どの操作も途中でやめられること。職員は他の仕事に呼ばれる。
+    # ==========================================================
+
+    def _eval_bundle(supabase, f_code, eid):
+        """評価1件と、その回答をまとめて取る。"""
+        e = (supabase.table("patient_self_evaluations").select("*")
+             .eq("facility_code", f_code).eq("id", eid).execute())
+        if not e.data:
+            return None, None
+        a = (supabase.table("patient_self_eval_answers").select("*")
+             .eq("facility_code", f_code).eq("evaluation_id", eid).order("seq").execute())
+        return e.data[0], (a.data or [])
+
+    def _answers_text(answers):
+        """AIに渡す用に、回答を読みやすい形へ。"""
+        L = []
+        for a in answers:
+            sc = a.get("score")
+            if sc is None:
+                continue
+            L.append(f"- Q: {a.get('question')}")
+            L.append(f"  達成度: {sc}/10")
+            if a.get("reason_text"):
+                L.append(f"  本人の言葉: {a.get('reason_text')}")
+            elif a.get("reason_mode") == "skip":
+                L.append("  本人の言葉: （答えたくないとのことで、とばした）")
+            if a.get("icf_zone"):
+                L.append(f"  領域: {_zone_label(a.get('icf_zone'))}")
+        return "\n".join(L)
+
+    def _dedup_key(code, pol, text):
+        """★ patient_hub_integration の _icf_dedup_key と【同じ規則】にすること。
+        ずれると同じ付箋が二重に増える。向こうを直したらこちらも直す。"""
+        p = "cannot" if pol == "cannot" else "can"
+        c = (str(code).strip() if code else "")
+        return ("c", c, p) if c else ("t", (text or "").strip().lower(), p)
+
+    @app.route('/api/self-eval/staff-note', methods=['POST'])
+    @login_required
+    def api_self_eval_staff_note():
+        """★職員メモの途中保存。確定しなくても残る。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        d = request.json or {}
+        eid = (d.get("id") or "").strip()
+        if not eid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        try:
+            (supabase.table("patient_self_evaluations")
+             .update({"staff_note": (d.get("staff_note") or "")[:4000], "updated_at": _now_iso()})
+             .eq("id", eid).eq("facility_code", f_code).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success"})
+
+    @app.route('/api/self-eval/icf-suggest', methods=['POST'])
+    @login_required
+    def api_self_eval_icf_suggest():
+        """回答から、ICF付箋の候補をAIが出す。
+        ★ここではまだ何も保存しない。職員が選んだものだけ icf-apply で貼る。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        eid = ((request.json or {}).get("id") or "").strip()
+        ev, answers = _eval_bundle(supabase, f_code, eid)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        body = _answers_text(answers)
+        if not body:
+            return jsonify({"status": "success", "stickies": [], "message": "回答がありません"})
+
+        prompt = (
+            "以下は、介護施設の利用者【本人】がタブレットで答えた、目標の達成度と理由です。\n"
+            "ここから新しく分かったことを、ICF（国際生活機能分類）の付箋にしてください。\n\n"
+            "【領域(zone)】\n"
+            "  body=心身機能 / activity=活動 / participation=参加 /"
+            " environment=環境因子 / personal=個人因子\n"
+            "【polarity】can=できる・良好 / cannot=できない・支障\n\n"
+            "【決まり】\n"
+            "・本人が言ったことだけを書く。書かれていないことを推測して足さない。\n"
+            "・短い体言止めで1項目1事実。医療診断はしない。\n"
+            "・達成度が高い項目は can、低い項目やその理由は cannot として拾う。\n"
+            "・本人の言葉に趣味・役割・人との関わりが出てきたら participation や personal に拾う。\n"
+            "・すでに分かりきったことは書かない。最大8項目。\n\n"
+            "JSONのみを返す（説明文は禁止）:\n"
+            '{"stickies":[{"zone":"participation","text":"他の利用者と将棋で交流している",'
+            '"polarity":"can","why":"本人が「将棋の相手ができた」と答えたため"}]}\n\n'
+            "=== 本人の回答 ===\n" + body
+        )
+        items = []
+        try:
+            from utils import get_generative_model
+            model = get_generative_model()
+            resp = model.generate_content(prompt)
+            mm = re.search(r'\{.*\}', (resp.text or "").strip(), re.DOTALL)
+            items = _json.loads(mm.group()).get("stickies", []) if mm else []
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"AI生成に失敗しました: {e}"}), 500
+
+        # すでにボードにある付箋は候補から外す（同じ付箋が増えないように）
+        seen = set()
+        try:
+            ex = (supabase.table("patient_icf_stickies").select("icf_code,polarity,text")
+                  .eq("facility_code", f_code)
+                  .eq("patient_profile_id", str(ev.get("patient_profile_id"))).execute())
+            for r in (ex.data or []):
+                seen.add(_dedup_key(r.get("icf_code"), r.get("polarity"), r.get("text")))
+        except Exception:
+            pass
+        out = []
+        for s in items[:8]:
+            t = (str(s.get("text") or "")).strip()
+            if not t:
+                continue
+            pol = s.get("polarity") if s.get("polarity") in ("can", "cannot") else None
+            if _dedup_key(None, pol, t) in seen:
+                continue
+            out.append({"zone": (s.get("zone") or "unsorted"), "text": t[:200],
+                        "polarity": pol, "why": (s.get("why") or "")[:200]})
+        return jsonify({"status": "success", "stickies": out})
+
+    @app.route('/api/self-eval/icf-apply', methods=['POST'])
+    @login_required
+    def api_self_eval_icf_apply():
+        """職員が採用した付箋をICFボードへ貼る。
+        ★二段階承認にしない（現場の手間が増えるだけ）。ただし重複判定は必ず通す。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        d = request.json or {}
+        eid = (d.get("id") or "").strip()
+        stickies = d.get("stickies") or []
+        ev, _ = _eval_bundle(supabase, f_code, eid)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        pid = str(ev.get("patient_profile_id"))
+
+        seen = set()
+        base = 0
+        try:
+            ex = (supabase.table("patient_icf_stickies").select("icf_code,polarity,text,sort_order")
+                  .eq("facility_code", f_code).eq("patient_profile_id", pid).execute())
+            for r in (ex.data or []):
+                seen.add(_dedup_key(r.get("icf_code"), r.get("polarity"), r.get("text")))
+                base = max(base, int(r.get("sort_order") or 0))
+        except Exception:
+            pass
+        base += 1
+
+        rows = []
+        for s in stickies:
+            t = (str((s or {}).get("text") or "")).strip()
+            if not t:
+                continue
+            pol = s.get("polarity") if s.get("polarity") in ("can", "cannot") else None
+            k = _dedup_key(None, pol, t)
+            if k in seen:
+                continue
+            seen.add(k)
+            rows.append({
+                "facility_code": f_code, "patient_profile_id": pid,
+                "zone": (s.get("zone") or "unsorted"), "text": t[:200],
+                "polarity": pol, "sort_order": base + len(rows),
+            })
+        if rows:
+            try:
+                supabase.table("patient_icf_stickies").insert(rows).execute()
+            except Exception as e:
+                return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success", "added": len(rows)})
+
+    @app.route('/api/self-eval/next-goal', methods=['POST'])
+    @login_required
+    def api_self_eval_next_goal():
+        """達成できた項目があるとき、次の目標をAIが提案する。
+        ★介護の目標設定では『活動ができたら参加へ広げる』のが本筋。
+          「歩ける」の次が「もっと歩ける」だけでは、その方の生活は広がらない。
+          そのためプロンプトで【同じ軸で少し難しく】と【別の軸へ広げる】の2方向を必ず出させる。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        d = request.json or {}
+        eid = (d.get("id") or "").strip()
+        tone = (d.get("tone") or "").strip()      # '' / 'easier' / 'concrete' / 'longer'
+        ev, answers = _eval_bundle(supabase, f_code, eid)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+
+        m = _gather_material(supabase, f_code, str(ev.get("patient_profile_id")))
+        done = [a for a in answers if (a.get("score") or 0) >= 8]
+        if not done:
+            return jsonify({"status": "success", "goals": [],
+                            "message": "達成できた項目がありません。目標は続けてよさそうです。"})
+
+        L = ["以下は介護施設の利用者について、いまの目標・達成状況・本人の言葉です。",
+             "達成できた項目があるので、【次の目標】の案を作ってください。", ""]
+        L.append("【いまの目標】")
+        for k, v in (m.get("goals") or {}).items():
+            L.append(f"- {k}: {v}")
+        L.append("")
+        L.append("【本人の回答】")
+        L.append(_answers_text(answers))
+        if m.get("can"):
+            L.append("")
+            L.append("【できること】")
+            for x in m["can"][:10]:
+                L.append(f"- [{_zone_label(x['zone'])}] {x['text']}")
+        if m.get("cannot"):
+            L.append("")
+            L.append("【まだできないこと】")
+            for x in m["cannot"][:10]:
+                L.append(f"- [{_zone_label(x['zone'])}] {x['text']}")
+        if m.get("hobbies") or m.get("likes") or m.get("job"):
+            L.append("")
+            L.append("【趣味・好きなもの・職歴】※参加の目標を考えるときに使う")
+            for v in (m.get("hobbies"), m.get("likes"), m.get("job")):
+                if v:
+                    L.append("- " + v[:120])
+        L += ["", "【必ず守ること】",
+              "★1. 案は3つ。うち【少なくとも1つは『参加』の領域へ広げる案】にすること。",
+              "     介護では、活動ができるようになったら参加（役割・人との関わり）へ広げるのが本筋です。",
+              "     『歩ける』の次が『もっと歩ける』だけでは、その方の生活は広がりません。",
+              "★2. 各案に kind を付ける: 'step_up'(同じ軸で少し難しく) / 'widen'(別の軸へ広げる)",
+              "★3. 目標文は、達成できたかどうかを判定できる具体的な行動で書く。",
+              "     悪い例『意欲を持って生活する』 良い例『食堂まで歩いて行き、週に1回は他の方と話す』",
+              "★4. why には、なぜこの目標を勧めるのかを職員向けに1〜2文で書く。",
+              "★5. できないことを無視して背伸びさせない。いまの状態から一歩先にすること。"]
+        if tone == "easier":
+            L.append("★6. 前回より【やさしめ】にしてください。段差を小さく。")
+        elif tone == "concrete":
+            L.append("★6. 前回より【具体的】にしてください。回数・場所・時間などを入れる。")
+        elif tone == "longer":
+            L.append("★6. 【長期目標】として、3〜6か月かけて達成する大きさにしてください。")
+        L += ["", "JSONのみを返す（説明文は禁止）:",
+              '{"goals":[{"text":"食堂まで歩いて行き、週に1回は他の方と話す",'
+              '"kind":"widen","zone":"participation","term":"short",'
+              '"why":"歩行が安定してきたため、活動から参加へ広げる時期です。"}]}']
+
+        try:
+            from utils import get_generative_model
+            model = get_generative_model()
+            resp = model.generate_content("\n".join(L))
+            mm = re.search(r'\{.*\}', (resp.text or "").strip(), re.DOTALL)
+            goals = _json.loads(mm.group()).get("goals", []) if mm else []
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"AI生成に失敗しました: {e}"}), 500
+
+        goals = [{"text": (g.get("text") or "")[:300], "kind": (g.get("kind") or "")[:12],
+                  "zone": (g.get("zone") or "")[:20], "term": (g.get("term") or "short")[:10],
+                  "why": (g.get("why") or "")[:300]} for g in goals[:3] if (g.get("text") or "").strip()]
+        # ★途中保存：作った案は残す。職員が他の仕事に呼ばれても消えない。
+        try:
+            (supabase.table("patient_self_evaluations")
+             .update({"next_goal_draft": _json.dumps({"goals": goals}, ensure_ascii=False),
+                      "updated_at": _now_iso()})
+             .eq("id", eid).eq("facility_code", f_code).execute())
+        except Exception:
+            pass
+        return jsonify({"status": "success", "goals": goals,
+                        "achieved": [a.get("question") for a in done]})
+
+    @app.route('/api/self-eval/next-goal/apply', methods=['POST'])
+    @login_required
+    def api_self_eval_next_goal_apply():
+        """選んだ次の目標を patient_profiles に反映する。
+        ★短期か長期かは職員が決める。反映前に必ず確認させること（目標は計画書の根幹）。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        d = request.json or {}
+        eid = (d.get("id") or "").strip()
+        text = (d.get("text") or "").strip()
+        term = d.get("term") if d.get("term") in ("short", "long") else "short"
+        if not text:
+            return jsonify({"status": "error", "message": "目標の文が空です"}), 400
+        ev, _ = _eval_bundle(supabase, f_code, eid)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        col = "short_goal" if term == "short" else "long_goal"
+        try:
+            (supabase.table("patient_profiles").update({col: text[:500]})
+             .eq("facility_code", f_code).eq("id", ev.get("patient_profile_id")).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        print(f"[self-eval] next goal applied ({term}) eval={eid} by={session.get('my_name','')}", flush=True)
+        return jsonify({"status": "success", "term": term})
+
+    @app.route('/api/self-eval/confirm', methods=['POST'])
+    @login_required
+    def api_self_eval_confirm():
+        """職員が確認を終えて確定する。ここで初めて status='confirmed'。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        me = session.get("my_name", "")
+        d = request.json or {}
+        eid = (d.get("id") or "").strip()
+        ev, _ = _eval_bundle(supabase, f_code, eid)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        if ev.get("status") == "draft":
+            return jsonify({"status": "error", "message": "まだご本人の回答が終わっていません"}), 400
+        upd = {"status": "confirmed", "confirmed_by": me,
+               "confirmed_at": _now_iso(), "updated_at": _now_iso()}
+        if d.get("staff_note") is not None:
+            upd["staff_note"] = (d.get("staff_note") or "")[:4000]
+        try:
+            (supabase.table("patient_self_evaluations").update(upd)
+             .eq("id", eid).eq("facility_code", f_code).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success"})
+
     @app.route('/api/self-eval/finish', methods=['POST'])
     def api_self_eval_finish():
         """回答完了。status='answered'（＝職員の確認待ち）にしてロック画面へ。
