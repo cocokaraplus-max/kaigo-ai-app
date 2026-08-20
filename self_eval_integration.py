@@ -699,9 +699,29 @@ def register_self_eval_routes(app):
         if not body:
             return jsonify({"status": "success", "stickies": [], "message": "回答がありません"})
 
+        # ★いま貼ってある付箋を id つきで渡す。
+        #   できるようになった項目は「新しい付箋を足す」だけでは足りない。
+        #   元の『できない』付箋を『できる』に書き換えないと、
+        #   「入浴に見守りが必要」と「入浴が自分でできる」が並ぶ矛盾した board になる。
+        cur = []
+        try:
+            ex = (supabase.table("patient_icf_stickies").select("id,zone,text,polarity,icf_code")
+                  .eq("facility_code", f_code)
+                  .eq("patient_profile_id", str(ev.get("patient_profile_id"))).execute())
+            cur = ex.data or []
+        except Exception:
+            cur = []
+        cur_lines = []
+        for c in cur:
+            cur_lines.append(
+                f"- id={c.get('id')} [{_zone_label(c.get('zone'))}]"
+                f"({'できない' if c.get('polarity') == 'cannot' else 'できる'}) {c.get('text')}")
+
         prompt = (
             "以下は、介護施設の利用者【本人】がタブレットで答えた、目標の達成度と理由です。\n"
-            "ここから新しく分かったことを、ICF（国際生活機能分類）の付箋にしてください。\n\n"
+            "これをもとに、ICF（国際生活機能分類）の付箋を更新します。やることは2つです。\n\n"
+            "【1】新しく分かったことを付箋にする（stickies）\n"
+            "【2】★すでに貼ってある付箋のうち、【できるようになったもの】を書き換える（updates）\n\n"
             "【領域(zone)】\n"
             "  body=心身機能 / activity=活動 / participation=参加 /"
             " environment=環境因子 / personal=個人因子\n"
@@ -709,34 +729,43 @@ def register_self_eval_routes(app):
             "【決まり】\n"
             "・本人が言ったことだけを書く。書かれていないことを推測して足さない。\n"
             "・短い体言止めで1項目1事実。医療診断はしない。\n"
-            "・達成度が高い項目は can、低い項目やその理由は cannot として拾う。\n"
             "・本人の言葉に趣味・役割・人との関わりが出てきたら participation や personal に拾う。\n"
-            "・すでに分かりきったことは書かない。最大8項目。\n\n"
+            "・stickies は最大8項目。\n\n"
+            "★【updates の作り方（重要）】\n"
+            "・下の『いま貼ってある付箋』の中に、本人が【できるようになった】と答えた内容があれば、\n"
+            "  その付箋の id を指定して、can に書き換えてください。\n"
+            "・そのとき text も自然な日本語に直すこと。\n"
+            "  例：『入浴に見守りが必要』(cannot) → 『入浴を自分でできる』(can)\n"
+            "  『できない』のままの文で polarity だけ can にしてはいけません。意味が通らなくなります。\n"
+            "・達成度が8以上の項目に対応する付箋だけを対象にしてください。\n"
+            "  4〜7（少しできた）は、まだ支障が残っているので書き換えないこと。\n"
+            "・逆に、できていたことができなくなった場合も updates で can → cannot にしてよい。\n"
+            "・該当が無ければ updates は空配列にすること。\n\n"
             "JSONのみを返す（説明文は禁止）:\n"
             '{"stickies":[{"zone":"participation","text":"他の利用者と将棋で交流している",'
-            '"polarity":"can","why":"本人が「将棋の相手ができた」と答えたため"}]}\n\n'
-            "=== 本人の回答 ===\n" + body
+            '"polarity":"can","why":"本人が「将棋の相手ができた」と答えたため"}],'
+            '"updates":[{"id":"<いま貼ってある付箋のid>","text":"入浴を自分でできる",'
+            '"polarity":"can","why":"入浴の達成度が9で、見守りなしでできたため"}]}\n\n'
+            "=== いま貼ってある付箋 ===\n" + ("\n".join(cur_lines) or "（なし）") +
+            "\n\n=== 本人の回答 ===\n" + body
         )
-        items = []
+        items, ups = [], []
         try:
             from utils import get_generative_model
             model = get_generative_model()
             resp = model.generate_content(prompt)
             mm = re.search(r'\{.*\}', (resp.text or "").strip(), re.DOTALL)
-            items = _json.loads(mm.group()).get("stickies", []) if mm else []
+            if mm:
+                parsed = _json.loads(mm.group())
+                items = parsed.get("stickies", []) or []
+                ups = parsed.get("updates", []) or []
         except Exception as e:
             return jsonify({"status": "error", "message": f"AI生成に失敗しました: {e}"}), 500
 
-        # すでにボードにある付箋は候補から外す（同じ付箋が増えないように）
+        # すでにボードにある付箋は「新規」候補から外す（同じ付箋が増えないように）
         seen = set()
-        try:
-            ex = (supabase.table("patient_icf_stickies").select("icf_code,polarity,text")
-                  .eq("facility_code", f_code)
-                  .eq("patient_profile_id", str(ev.get("patient_profile_id"))).execute())
-            for r in (ex.data or []):
-                seen.add(_dedup_key(r.get("icf_code"), r.get("polarity"), r.get("text")))
-        except Exception:
-            pass
+        for c in cur:
+            seen.add(_dedup_key(c.get("icf_code"), c.get("polarity"), c.get("text")))
         out = []
         for s in items[:8]:
             t = (str(s.get("text") or "")).strip()
@@ -747,7 +776,23 @@ def register_self_eval_routes(app):
                 continue
             out.append({"zone": (s.get("zone") or "unsorted"), "text": t[:200],
                         "polarity": pol, "why": (s.get("why") or "")[:200]})
-        return jsonify({"status": "success", "stickies": out})
+
+        # updates は実在する付箋のidだけ通す（AIが勝手なidを返すことがある）
+        by_id = {str(c.get("id")): c for c in cur}
+        upd_out = []
+        for u in (ups or [])[:8]:
+            uid = str(u.get("id") or "")
+            old = by_id.get(uid)
+            if not old:
+                continue
+            pol = u.get("polarity") if u.get("polarity") in ("can", "cannot") else None
+            t = (str(u.get("text") or "")).strip() or (old.get("text") or "")
+            if not pol or (pol == old.get("polarity") and t == old.get("text")):
+                continue                      # 変化なしなら出さない
+            upd_out.append({"id": uid, "text": t[:200], "polarity": pol,
+                            "old_text": old.get("text"), "old_polarity": old.get("polarity"),
+                            "zone": old.get("zone"), "why": (u.get("why") or "")[:200]})
+        return jsonify({"status": "success", "stickies": out, "updates": upd_out})
 
     @app.route('/api/self-eval/icf-apply', methods=['POST'])
     @login_required
@@ -760,10 +805,29 @@ def register_self_eval_routes(app):
         d = request.json or {}
         eid = (d.get("id") or "").strip()
         stickies = d.get("stickies") or []
+        updates = d.get("updates") or []
         ev, _ = _eval_bundle(supabase, f_code, eid)
         if not ev:
             return jsonify({"status": "error", "message": "見つかりません"}), 404
         pid = str(ev.get("patient_profile_id"))
+
+        # ★先に「できない → できる」の書き換えを済ませる。
+        #   これを後回しにすると、書き換え後の内容と新規追加が重複判定に引っかかる。
+        changed = 0
+        for u in updates:
+            uid = str((u or {}).get("id") or "")
+            pol = u.get("polarity") if u.get("polarity") in ("can", "cannot") else None
+            t = (str(u.get("text") or "")).strip()
+            if not uid or not pol or not t:
+                continue
+            try:
+                (supabase.table("patient_icf_stickies")
+                 .update({"text": t[:200], "polarity": pol, "updated_at": _now_iso()})
+                 .eq("id", uid).eq("facility_code", f_code)
+                 .eq("patient_profile_id", pid).execute())
+                changed += 1
+            except Exception as e:
+                print(f"[self-eval] icf update failed id={uid}: {e}", flush=True)
 
         seen = set()
         base = 0
@@ -797,7 +861,7 @@ def register_self_eval_routes(app):
                 supabase.table("patient_icf_stickies").insert(rows).execute()
             except Exception as e:
                 return jsonify({"status": "error", "message": str(e)}), 500
-        return jsonify({"status": "success", "added": len(rows)})
+        return jsonify({"status": "success", "added": len(rows), "changed": changed})
 
     @app.route('/api/self-eval/next-goal', methods=['POST'])
     @login_required

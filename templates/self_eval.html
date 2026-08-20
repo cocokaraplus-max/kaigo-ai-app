@@ -401,37 +401,66 @@ async function seIcfSuggest(){
       headers:{'Content-Type':'application/json'},body:JSON.stringify({id:SE.cur.id})})
       .then(function(r){return r.json();});
     if(j.status!=='success'){ box.innerHTML='<div class="se-empty">'+seEsc(j.message||'失敗しました')+'</div>'; return; }
-    var gs = j.stickies||[];
-    if(!gs.length){ box.innerHTML='<div class="se-empty">新しく残すことは見つかりませんでした。</div>'; return; }
-    SE.icf = gs;
-    box.innerHTML = gs.map(function(s,i){
-      var zc = (s.polarity==='cannot') ? 'z-cannot' : 'z-can';
-      var zl = (s.polarity==='cannot' ? 'できない' : 'できる');
-      return '<div class="se-card"><label>'
-        + '<input type="checkbox" data-icf="'+i+'" checked>'
-        + '<span class="t"><span class="z '+zc+'">'+zl+'</span>'+seEsc(s.text)
-        +   (s.why?'<span class="why">'+seEsc(s.why)+'</span>':'')+'</span>'
-        + '</label></div>';
-    }).join('') + '<button class="se-mini" onclick="seIcfApply()" style="margin-top:4px">'
-      + 'チェックしたものをICFに貼る</button>';
+    var gs = j.stickies||[], ups = j.updates||[];
+    if(!gs.length && !ups.length){ box.innerHTML='<div class="se-empty">新しく残すことは見つかりませんでした。</div>'; return; }
+    SE.icf = gs; SE.icfUp = ups;
+    var html = '';
+    /* ★できるようになったものは、元の付箋を書き換える。
+       新しい付箋を足すだけだと「入浴に見守りが必要」と「入浴ができる」が並んでしまう。 */
+    if(ups.length){
+      html += '<div class="se-sec" style="margin-top:4px">できるようになったので書き換えるもの</div>';
+      html += ups.map(function(u,i){
+        return '<div class="se-card"><label>'
+          + '<input type="checkbox" data-icfup="'+i+'" checked>'
+          + '<span class="t">'
+          +   '<span style="color:#9aa0a6;text-decoration:line-through">'
+          +     '<span class="z z-cannot">'+(u.old_polarity==='cannot'?'できない':'できる')+'</span>'
+          +     seEsc(u.old_text)+'</span><br>'
+          +   '<span style="color:#00695c">→ <span class="z z-can">'
+          +     (u.polarity==='cannot'?'できない':'できる')+'</span>'+seEsc(u.text)+'</span>'
+          +   (u.why?'<span class="why">'+seEsc(u.why)+'</span>':'')
+          + '</span></label></div>';
+      }).join('');
+    }
+    if(gs.length){
+      html += '<div class="se-sec" style="margin-top:14px">新しく足すもの</div>';
+      html += gs.map(function(s,i){
+        var zc = (s.polarity==='cannot') ? 'z-cannot' : 'z-can';
+        var zl = (s.polarity==='cannot' ? 'できない' : 'できる');
+        return '<div class="se-card"><label>'
+          + '<input type="checkbox" data-icf="'+i+'" checked>'
+          + '<span class="t"><span class="z '+zc+'">'+zl+'</span>'+seEsc(s.text)
+          +   (s.why?'<span class="why">'+seEsc(s.why)+'</span>':'')+'</span>'
+          + '</label></div>';
+      }).join('');
+    }
+    box.innerHTML = html + '<button class="se-mini" onclick="seIcfApply()" style="margin-top:8px">'
+      + 'チェックしたものをICFに反映する</button>';
   }catch(e){ box.innerHTML='<div class="se-empty">失敗しました</div>'; }
   finally{ b.disabled=false; b.textContent='回答からICFの付箋を作る'; }
 }
 async function seIcfApply(){
-  var picked = [];
+  var picked = [], ups = [];
   document.querySelectorAll('#se-icf-box input[data-icf]').forEach(function(cb){
     if(cb.checked) picked.push(SE.icf[+cb.dataset.icf]);
   });
-  if(!picked.length){ alert('貼るものを選んでください'); return; }
+  document.querySelectorAll('#se-icf-box input[data-icfup]').forEach(function(cb){
+    if(cb.checked) ups.push(SE.icfUp[+cb.dataset.icfup]);
+  });
+  if(!picked.length && !ups.length){ alert('反映するものを選んでください'); return; }
   var m = document.getElementById('se-review-msg');
   try{
     var j = await fetch('/api/self-eval/icf-apply',{method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({id:SE.cur.id, stickies:picked})}).then(function(r){return r.json();});
+      body:JSON.stringify({id:SE.cur.id, stickies:picked, updates:ups})}).then(function(r){return r.json();});
     if(j.status==='success'){
-      m.className='se-msg ok'; m.textContent = j.added + '件をICFに貼りました';
+      var t = [];
+      if(j.changed) t.push(j.changed+'件を書き換え');
+      if(j.added)   t.push(j.added+'件を追加');
+      var msg = (t.join('、') || '変更はありませんでした');
+      m.className='se-msg ok'; m.textContent = msg;
       document.getElementById('se-icf-box').innerHTML =
-        '<div class="se-empty">'+j.added+'件を貼りました。利用者情報のICFで確認できます。</div>';
+        '<div class="se-empty">'+msg+'ました。利用者情報のICFで確認できます。</div>';
     }else{ m.className='se-msg ng'; m.textContent = j.message||'失敗しました'; }
   }catch(e){ m.className='se-msg ng'; m.textContent='失敗しました'; }
 }
