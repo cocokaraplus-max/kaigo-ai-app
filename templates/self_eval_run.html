@@ -15,9 +15,13 @@
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow-x:hidden}
+/* ★スマホの時計や電波表示（セーフエリア）と重ならないように余白をとる。
+   これが無いと画面の一番上が隠れてしまう。 */
 body{background:#f4f5f7;color:#1f2933;
  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
- display:flex;align-items:center;justify-content:center;padding:16px;
+ display:flex;align-items:center;justify-content:center;
+ padding:calc(18px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right))
+         calc(18px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
  -webkit-user-select:none;user-select:none}
 .tab{width:100%;max-width:900px;background:#fff;border-radius:14px;
  box-shadow:0 4px 24px rgba(31,41,51,.10);overflow:hidden;display:flex;flex-direction:column;
@@ -80,6 +84,25 @@ textarea:focus{outline:none;border-color:#1b4965}
 .next:disabled{background:#e4e7eb;color:#9aa5b1;cursor:default}
 .help{font-size:1rem;color:#7b8794;font-weight:700}
 .loading{flex:1;display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#7b8794}
+
+/* ★スマホ（縦持ち）でのはみ出し対策。
+   案内文が縦書きのように潰れ、「次へ」が画面の外に出ていた。 */
+@media (max-width: 700px){
+  .help{display:none}                    /* 案内文は消す。ボタンの状態で分かる */
+  .foot{gap:10px;padding:14px 16px 18px}
+  .nav{padding:15px 16px;font-size:1.05rem;letter-spacing:0}
+  .next{min-width:0;flex:1}
+  .back{flex:0 0 auto}
+  .body{padding:20px 18px 18px}
+  .bar{padding:14px 18px 10px}
+  .progbar{margin:0 18px}
+  .q{font-size:1.5rem}
+  .c3{gap:9px}
+  .c3 button{padding:18px 6px 16px;font-size:1.02rem;gap:10px}
+  .c3 button svg{width:42px;height:42px}
+  .why{gap:11px}
+  .why button{padding:22px 10px;font-size:1.08rem}
+}
 </style></head>
 <body>
 <div class="tab">
@@ -99,18 +122,20 @@ textarea:focus{outline:none;border-color:#1b4965}
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
       読み上げる
     </button>
+    <!-- ★選択肢の文言は goal_kind によって変わる（render() で書き換える）。
+         「満足していますか」に「できなかった」では答えにならないため。 -->
     <div class="c3">
       <button onclick="pick('no',this)">
         <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#6b7b8c" stroke-width="3"/></svg>
-        <span>できなかった</span><span class="cap">0 〜 3</span>
+        <span class="lbl" id="c3-no">できなかった</span><span class="cap" id="cap-no">0 〜 3</span>
       </button>
       <button onclick="pick('mid',this)">
         <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#b08040" stroke-width="3"/><path d="M26 5 A21 21 0 0 1 26 47 Z" fill="#b08040"/></svg>
-        <span>少し できた</span><span class="cap">4 〜 7</span>
+        <span class="lbl" id="c3-mid">少し できた</span><span class="cap" id="cap-mid">4 〜 7</span>
       </button>
       <button onclick="pick('ok',this)">
         <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#3f6f52"/></svg>
-        <span>できた</span><span class="cap">8 〜 10</span>
+        <span class="lbl" id="c3-ok">できた</span><span class="cap" id="cap-ok">8 〜 10</span>
       </button>
     </div>
     <div class="step2" id="step2">
@@ -173,6 +198,17 @@ var LEVELS = {
   mid: [{n:4,t:'半分くらいの日は できた'},{n:5,t:'半分より 少し多く できた'},{n:6,t:'たいてい できた'},{n:7,t:'ほとんどの日 できた'}],
   ok:  [{n:8,t:'ほぼ毎日 できた'},{n:9,t:'毎日 できた'},{n:10,t:'余裕をもって できた'}]
 };
+/* ★質問の種類ごとに、3つの選択肢の言い方を変える。
+   「満足していますか」に「できなかった」では答えにならない。
+   deep=false のものは、そのあとの「どのくらい？」を出さない（3段階で十分。
+   既存の評価も ○△× の3段階なので、これで足りる）。 */
+var CHOICE_SETS = {
+  '':       {no:'できなかった',   mid:'少し できた',        ok:'できた',        deep:true,  sub:'この1か月をふりかえって、近いものを お選びください。'},
+  change:   {no:'変わらない',     mid:'少し 楽になった',    ok:'楽になった',    deep:false, sub:'この1か月をふりかえって、近いものを お選びください。'},
+  satisfy:  {no:'満足していない', mid:'どちらとも いえない', ok:'満足している',  deep:false, sub:'いまのお気持ちに 近いものを お選びください。'},
+  fit:      {no:'合っていない',   mid:'どちらとも いえない', ok:'合っている',    deep:false, sub:'いまのお気持ちに 近いものを お選びください。'}
+};
+function choiceSet(){ return CHOICE_SETS[(QS[i]||{}).goal_kind || ''] || CHOICE_SETS['']; }
 var QS=[], i=0, choice=null, level=null, phase='q';
 
 function show(id){
@@ -206,6 +242,16 @@ function render(){
   document.getElementById('prog').textContent = (i+1)+' / '+QS.length;
   document.getElementById('pbar').style.width = ((i+1)/QS.length*100)+'%';
   document.getElementById('wtext').value = '';
+  /* ★質問の種類に合わせて、選択肢の言い方と補足文を差し替える */
+  var cs = choiceSet();
+  document.getElementById('c3-no').textContent  = cs.no;
+  document.getElementById('c3-mid').textContent = cs.mid;
+  document.getElementById('c3-ok').textContent  = cs.ok;
+  ['no','mid','ok'].forEach(function(k, n){
+    var el = document.getElementById('cap-'+k);
+    el.style.display = cs.deep ? '' : 'none';   /* 0〜3 などの数字は深掘りするときだけ出す */
+  });
+  document.querySelector('#screen-q .qsub').textContent = cs.sub;
   /* ★goal_kind='free' の質問（例：これからしてみたいこと）は達成度で答えられない。
      3択を出さず、そのまま「書く／話す／とばす」を出す。 */
   if(isFree()){
@@ -230,6 +276,15 @@ function pick(kind, el){
   choice = kind; level = null;
   document.querySelectorAll('.c3 button').forEach(function(b){ b.classList.remove('sel'); });
   el.classList.add('sel');
+  /* ★満足度などは3段階で十分なので「どのくらい？」を出さない。
+     点数は 2 / 5 / 9 を当てる（○△×に直したとき ×/△/○ になる値）。 */
+  if(!choiceSet().deep){
+    level = (kind==='ok') ? 9 : (kind==='mid' ? 5 : 2);
+    document.getElementById('step2').classList.remove('on');
+    document.getElementById('nextbtn').disabled = false;
+    document.getElementById('helptxt').textContent = '「次へ」を押してください';
+    return;
+  }
   document.getElementById('lv').innerHTML = LEVELS[kind].map(function(x){
     return '<button onclick="pickLv('+x.n+',this)"><span class="num">'+x.n+'</span>'+x.t+'</button>';
   }).join('');
@@ -307,14 +362,56 @@ function back(){
   }
   if(i>0){ i--; render(); }
 }
+/* ===== 読み上げ =====
+   ★端末に入っている日本語の声の中から、いちばん自然なものを選ぶ。
+     何も選ばないと、機械的な声や英語の声で読まれることがある。
+     iPhone/iPadなら Kyoko / Otoya、Androidなら Google 日本語 が入っていることが多い。
+   ★声の一覧は非同期で用意されるので voiceschanged を待つ必要がある。 */
+var JA_VOICE = null;
+function pickVoice(){
+  try{
+    var vs = speechSynthesis.getVoices() || [];
+    var ja = vs.filter(function(v){ return (v.lang||'').toLowerCase().indexOf('ja') === 0; });
+    if(!ja.length) return null;
+    var prefer = ['kyoko','o-ren','otoya','google 日本語','google japanese','japanese'];
+    for(var p=0;p<prefer.length;p++){
+      for(var k=0;k<ja.length;k++){
+        if((ja[k].name||'').toLowerCase().indexOf(prefer[p]) >= 0) return ja[k];
+      }
+    }
+    return ja[0];
+  }catch(e){ return null; }
+}
+JA_VOICE = pickVoice();
+if(typeof speechSynthesis !== 'undefined'){
+  speechSynthesis.onvoiceschanged = function(){ JA_VOICE = pickVoice(); };
+}
+/* 読み上げやすい文に整える。記号をそのまま読ませない・区切りで少し間をあける */
+function speechText(s){
+  return String(s || '')
+    .replace(/[「」『』（）()【】]/g, ' ')
+    .replace(/[〜~]/g, 'から')
+    .replace(/・/g, '、')
+    .replace(/\s*\/\s*/g, '、')
+    .replace(/、/g, '、 ')
+    .replace(/。/g, '。 ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 function speak(){
   var b = document.getElementById('readbtn');
   try{
     speechSynthesis.cancel();
-    var u = new SpeechSynthesisUtterance(document.getElementById('qtext').textContent);
-    u.lang='ja-JP'; u.rate=0.85;
+    var el = (phase==='q') ? document.getElementById('qtext') : document.getElementById('whyq');
+    var u = new SpeechSynthesisUtterance(speechText(el ? el.textContent : ''));
+    u.lang = 'ja-JP';
+    if(JA_VOICE) u.voice = JA_VOICE;      /* ★日本語の声を明示する */
+    u.rate = 0.82;                         /* ゆっくりめ。高齢の方が聞き取りやすい */
+    u.pitch = 1.0;
+    u.volume = 1.0;
     u.onstart=function(){ b.classList.add('on'); };
     u.onend  =function(){ b.classList.remove('on'); };
+    u.onerror=function(){ b.classList.remove('on'); };
     speechSynthesis.speak(u);
   }catch(e){}
 }
