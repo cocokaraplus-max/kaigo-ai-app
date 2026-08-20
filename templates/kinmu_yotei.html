@@ -55,6 +55,21 @@
 .ky2-wd label { display:flex; flex-direction:column; align-items:center; gap:4px; font-size:.78rem; font-weight:800; color:#3c4043; }
 .ky2-wd input { width:20px; height:20px; }
 .ky2-field { font-size:.76rem; color:#5f6368; font-weight:700; margin:2px 0 6px; }
+
+/* shift-weekday-times-v1: 曜日ごとの「チェック＋時間」1行 */
+.ky2-wdt { display:flex; flex-direction:column; gap:5px; margin-bottom:10px; }
+.ky2-wdt-row { display:flex; align-items:center; gap:7px; padding:5px 7px; border:1px solid #e6e8eb; border-radius:9px; background:#fff; }
+.ky2-wdt-row.off { background:#fafafa; opacity:.5; }
+.ky2-wdt-row label { display:flex; align-items:center; gap:6px; flex:0 0 auto; font-size:.86rem; font-weight:900; color:#3c4043; cursor:pointer; }
+.ky2-wdt-row label input { width:19px; height:19px; margin:0; }
+.ky2-wdt-row .wname { width:15px; text-align:center; }
+.ky2-wdt-row input[type=time] { flex:1; min-width:0; padding:7px 6px; border:1.5px solid #cfd8dc; border-radius:8px; font-size:.92rem; font-family:inherit; }
+.ky2-wdt-row .sep { flex:0 0 auto; color:#9aa0a6; font-size:.85rem; }
+.ky2-wdt-row.sat .wname { color:#1a56c4; }
+.ky2-wdt-row.sun .wname { color:#c62828; }
+.ky2-samebtn { display:block; width:100%; padding:9px; margin-bottom:12px; background:#f1f3f4; color:#5f6368;
+  border:1px solid #dadce0; border-radius:9px; font-weight:800; cursor:pointer; font-size:.83rem; font-family:inherit; }
+.ky2-samebtn:active { background:#e4e6e8; }
 .ky2-mbtns { display:flex; gap:8px; margin-top:6px; }
 .ky2-mbtns button { flex:1; padding:12px; border-radius:10px; border:none; font-weight:800; cursor:pointer; font-size:.95rem; }
 .ky2-mbtns .ok { background:#1a73e8; color:#fff; } .ky2-mbtns .cancel { background:#f1f3f4; color:#5f6368; }
@@ -155,10 +170,11 @@
   <div class="ky2-modal">
     <h3>既定の設定</h3>
     <div class="who2" id="ky2-def-who"></div>
-    <div class="ky2-field">通常出勤する曜日</div>
-    <div class="ky2-wd" id="ky2-def-wd"></div>
-    <div class="ky2-field">標準の勤務時間</div>
-    <div class="ky2-times"><input type="time" id="ky2-def-start"><span>〜</span><input type="time" id="ky2-def-end"></div>
+    <!-- shift-weekday-times-v1: 曜日ごとにチェックと時間を持つ。
+         チェックを外した曜日は薄くするだけで、入れた時間は消さない（また出勤に戻したとき使えるように）。 -->
+    <div class="ky2-field">通常出勤する曜日と時間</div>
+    <div class="ky2-wdt" id="ky2-def-wd"></div>
+    <button type="button" class="ky2-samebtn" onclick="ky2DefSameTimes()">すべて同じ時間にそろえる</button>
     <div class="ky2-mbtns">
       <button class="cancel" onclick="ky2Close('ky2-defmask')">キャンセル</button>
       <button class="ok" onclick="ky2DefApply()">保存して反映</button>
@@ -202,13 +218,21 @@ function wdOf(s){ const p=s.split('-'); return (new Date(Date.UTC(+p[0],+p[1]-1,
 function dayNum(s){ return +s.split('-')[2]; }
 function escapeH(s){ return String(s).replace(/[&<>]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c];}); }
 
-function defOf(){ return M.def || {weekdays:[true,true,true,true,true,false,false], start:'09:00', end:'18:00'}; }
+function defOf(){ return M.def || {weekdays:[true,true,true,true,true,false,false], start:'09:00', end:'18:00', times:null}; }
+/* shift-weekday-times-v1: その曜日の既定時間。曜日別が未設定なら共通の start/end に落ちる。
+   w は wdOf() の値＝【月曜0】。サーバの weekday_times も月曜起点で揃えてある。 */
+function defTimeOf(w){
+  const df = defOf();
+  const t = (df.times && df.times[w]) ? df.times[w] : null;
+  return { start: (t && t.start) || df.start, end: (t && t.end) || df.end };
+}
 function effDay(date){
   if (M.cells[date]) return M.cells[date];
+  const w = wdOf(date); const t = defTimeOf(w);
   const p = M.plan[date];
-  if (p && p.status) { M.cells[date] = {status:p.status, start:p.start||defOf().start, end:p.end||defOf().end, day_type:p.day_type||null, leave_type:p.leave_type||null}; return M.cells[date]; }
-  const df = defOf(); const w = wdOf(date);
-  M.cells[date] = df.weekdays[w] ? {status:'work', start:df.start, end:df.end, day_type:null, leave_type:null} : {status:'off', start:df.start, end:df.end, day_type:null, leave_type:null};
+  if (p && p.status) { M.cells[date] = {status:p.status, start:p.start||t.start, end:p.end||t.end, day_type:p.day_type||null, leave_type:p.leave_type||null}; return M.cells[date]; }
+  const df = defOf();
+  M.cells[date] = df.weekdays[w] ? {status:'work', start:t.start, end:t.end, day_type:null, leave_type:null} : {status:'off', start:t.start, end:t.end, day_type:null, leave_type:null};
   return M.cells[date];
 }
 
@@ -317,18 +341,50 @@ async function ky2BulkApply(){
 function ky2OpenDef(){
   const df = defOf();
   document.getElementById('ky2-def-who').textContent = escapeH(M.name);
-  document.getElementById('ky2-def-wd').innerHTML = WD.map(function(w,i){ return '<label>'+w+'<input type="checkbox" data-wd="'+i+'" '+(df.weekdays[i]?'checked':'')+'></label>'; }).join('');
-  document.getElementById('ky2-def-start').value = df.start;
-  document.getElementById('ky2-def-end').value = df.end;
+  // shift-weekday-times-v1: 曜日ごとに「チェック＋開始〜終了」を1行ずつ出す
+  document.getElementById('ky2-def-wd').innerHTML = WD.map(function(w,i){
+    const t = defTimeOf(i);
+    const cls = (i===5?' sat':(i===6?' sun':'')) + (df.weekdays[i]?'':' off');
+    return '<div class="ky2-wdt-row'+cls+'" data-row="'+i+'">'
+         +   '<label><input type="checkbox" data-wd="'+i+'" '+(df.weekdays[i]?'checked':'')+' onchange="ky2DefRowToggle('+i+')"><span class="wname">'+w+'</span></label>'
+         +   '<input type="time" data-t1="'+i+'" value="'+escapeH(t.start)+'">'
+         +   '<span class="sep">〜</span>'
+         +   '<input type="time" data-t2="'+i+'" value="'+escapeH(t.end)+'">'
+         + '</div>';
+  }).join('');
   document.getElementById('ky2-defmask').classList.add('on');
 }
+/* チェックを外した行は薄くするだけ。時間の値は消さない（戻したときにそのまま使えるように） */
+function ky2DefRowToggle(i){
+  const row = document.querySelector('#ky2-def-wd .ky2-wdt-row[data-row="'+i+'"]');
+  const cb  = document.querySelector('#ky2-def-wd input[data-wd="'+i+'"]');
+  if(row && cb) row.classList.toggle('off', !cb.checked);
+}
+/* いちばん上のチェックが入っている曜日の時間を、他の曜日にもそろえる */
+function ky2DefSameTimes(){
+  const rows = [...document.querySelectorAll('#ky2-def-wd .ky2-wdt-row')];
+  let src = rows.find(function(r){ return r.querySelector('input[type=checkbox]').checked; }) || rows[0];
+  if(!src) return;
+  const s = src.querySelector('input[data-t1]').value, e = src.querySelector('input[data-t2]').value;
+  rows.forEach(function(r){ r.querySelector('input[data-t1]').value = s; r.querySelector('input[data-t2]').value = e; });
+}
 async function ky2DefApply(){
-  const wd=[]; document.querySelectorAll('#ky2-def-wd input[data-wd]').forEach(function(cb){ wd[+cb.dataset.wd]=cb.checked; });
-  const body = { name:M.name, weekdays:wd, start:document.getElementById('ky2-def-start').value, end:document.getElementById('ky2-def-end').value };
+  const wd=[], times=[];
+  for(let i=0;i<7;i++){
+    const cb = document.querySelector('#ky2-def-wd input[data-wd="'+i+'"]');
+    const t1 = document.querySelector('#ky2-def-wd input[data-t1="'+i+'"]');
+    const t2 = document.querySelector('#ky2-def-wd input[data-t2="'+i+'"]');
+    wd[i] = !!(cb && cb.checked);
+    times[i] = { start:(t1&&t1.value)||'09:00', end:(t2&&t2.value)||'18:00' };
+  }
+  // 互換のための共通値。チェックが入っている最初の曜日の時間を使う（サーバ側も同じ規則）
+  let bs='09:00', be='18:00';
+  for(let i=0;i<7;i++){ if(wd[i]){ bs=times[i].start; be=times[i].end; break; } }
+  const body = { name:M.name, weekdays:wd, start:bs, end:be, weekday_times:times };
   const r = await fetch('/api/shift/default', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(body)});
   const j = await r.json();
   if(j.status!=='success'){ alert(j.message||'保存に失敗しました'); return; }
-  M.def = {weekdays:wd, start:body.start, end:body.end};
+  M.def = {weekdays:wd, start:bs, end:be, times:times};
   // 未保存・未編集の日を既定で更新
   M.days.forEach(function(d){ if(!M.plan[d]) delete M.cells[d]; });
   ky2Close('ky2-defmask'); ky2RenderList();

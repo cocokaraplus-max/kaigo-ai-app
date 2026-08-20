@@ -13789,6 +13789,35 @@ def _shift_staff_names(supabase, f_code):
     return sorted(names)
 
 
+# ===== shift-weekday-times-v1: 既定の勤務時間を曜日ごとに持てるようにする =====
+#   従来は start_time / end_time の1組だけで、全曜日が同じ時間だった。
+#   パートは「火は9-15、金は13-18」のように曜日で違うため、weekday_times(jsonb) を追加した。
+#   ・並びは【月曜起点】の7要素。kinmu_yotei.html の wdOf() と同じ（(getUTCDay()+6)%7）
+#   ・各要素は {"start":"HH:MM","end":"HH:MM"}。欠けていれば従来の start_time/end_time で埋める
+#   ・start_time / end_time は消さずに残す。古いデータや他の画面がまだ参照しているため
+def _shift_times_norm(raw, start, end):
+    """weekday_times を必ず7要素 [{'start','end'}] にそろえる（月曜起点）。"""
+    import json as _tj
+    if isinstance(raw, str):
+        try:
+            raw = _tj.loads(raw)
+        except Exception:
+            raw = None
+    if not isinstance(raw, list):
+        raw = []
+    out = []
+    for i in range(7):
+        v = raw[i] if i < len(raw) else None
+        s = e = None
+        if isinstance(v, dict):
+            s, e = v.get("start"), v.get("end")
+        if isinstance(s, str) and isinstance(e, str) and ":" in s and ":" in e:
+            out.append({"start": s[:5], "end": e[:5]})
+        else:
+            out.append({"start": start, "end": end})
+    return out
+
+
 def _shift_default_map(supabase, f_code):
     out = {}
     try:
@@ -13803,10 +13832,14 @@ def _shift_default_map(supabase, f_code):
                     wd = None
             if not (isinstance(wd, list) and len(wd) == 7):
                 wd = [True, True, True, True, True, False, False]
+            _s = row.get("start_time") or "09:00"
+            _e = row.get("end_time") or "18:00"
             out[row.get("staff_name")] = {
                 "weekdays": [bool(x) for x in wd],
-                "start": row.get("start_time") or "09:00",
-                "end": row.get("end_time") or "18:00",
+                "start": _s,
+                "end": _e,
+                # shift-weekday-times-v1: 曜日ごとの時間。未設定の曜日は上の start/end で埋まる
+                "times": _shift_times_norm(row.get("weekday_times"), _s, _e),
             }
     except Exception as e:
         print(f"[shift defaults] {e}", flush=True)
@@ -13879,7 +13912,10 @@ def api_shift_month():
     if staff and name not in staff:
         name = me if me in staff else staff[0]
     defaults = _shift_default_map(supabase, f_code)
-    dflt = defaults.get(name) or {"weekdays": [True, True, True, True, True, False, False], "start": "09:00", "end": "18:00"}
+    dflt = defaults.get(name) or {"weekdays": [True, True, True, True, True, False, False],
+                                  "start": "09:00", "end": "18:00",
+                                  # shift-weekday-times-v1: 未登録の職員でも times は必ず7要素で返す
+                                  "times": _shift_times_norm(None, "09:00", "18:00")}
     plan = {}
     try:
         r = supabase.table("staff_shift_plan").select("*").eq(
@@ -14032,12 +14068,23 @@ def api_shift_default():
     wd = data.get('weekdays')
     if not (isinstance(wd, list) and len(wd) == 7):
         wd = [True, True, True, True, True, False, False]
+    # shift-weekday-times-v1: 曜日ごとの時間。
+    #   start_time / end_time にも値を残す（古い画面や過去データとの互換のため）。
+    #   入れるのは「チェックが入っている最初の曜日」の時間。全部休みなら送られてきた共通値。
+    _base_s = data.get('start') or '09:00'
+    _base_e = data.get('end') or '18:00'
+    times = _shift_times_norm(data.get('weekday_times'), _base_s, _base_e)
+    for i in range(7):
+        if wd[i]:
+            _base_s, _base_e = times[i]["start"], times[i]["end"]
+            break
     try:
         supabase.table("staff_shift_defaults").upsert({
             "facility_code": f_code, "staff_name": nm,
             "weekdays": [bool(x) for x in wd],
-            "start_time": data.get('start') or '09:00',
-            "end_time": data.get('end') or '18:00',
+            "start_time": _base_s,
+            "end_time": _base_e,
+            "weekday_times": times,          # shift-weekday-times-v1
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }, on_conflict="facility_code,staff_name").execute()
     except Exception as e:
@@ -14139,7 +14186,11 @@ def _shift_month_map(supabase, f_code, year, month):
                     off.append(nm)
             else:
                 if df["weekdays"][widx]:
-                    work.append({"name": nm, "start": df["start"], "end": df["end"]})
+                    # shift-weekday-times-v1: 曜日ごとの時間を使う（未設定の曜日は共通値で埋まっている）
+                    _t = (df.get("times") or [{}] * 7)[widx] or {}
+                    work.append({"name": nm,
+                                 "start": _t.get("start") or df["start"],
+                                 "end": _t.get("end") or df["end"]})
                 else:
                     off.append(nm)
         out[ds] = {"work": work, "off": off}
