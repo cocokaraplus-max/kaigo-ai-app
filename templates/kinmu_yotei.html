@@ -5,6 +5,12 @@
 <style>
 /* kinmu-yotei-v2: 勤務予定（本人・1ヶ月入力） */
 .ky2-wrap { max-width: 640px; margin: 0 auto; padding: 12px 14px 60px; }
+/* kinmu-back-to-cal-v1: カレンダーへ戻る。calendar.html の「勤務予定を入力する」と同じ配色にして対だと分かるようにする */
+.ky2-back { display:flex; align-items:center; justify-content:center; gap:8px; margin:0 0 12px; padding:11px;
+  background:#e8f0fe; border:1.5px solid #aecbfa; border-radius:12px; color:#1a56c4;
+  font-weight:800; text-decoration:none; font-size:.95rem; }
+.ky2-back:active { background:#d9e6fd; }
+
 .ky2-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
 .ky2-head .material-symbols-outlined { color:#1a73e8; font-size:26px; }
 .ky2-title { font-size:1.2rem; font-weight:900; color:#1e3a5f; }
@@ -63,6 +69,11 @@
 
 {% block content %}
 <div class="ky2-wrap">
+  <!-- kinmu-back-to-cal-v1: カレンダー側の「勤務予定を入力する」と対になる戻り導線。
+       行き来する画面なので、ページの一番上に置く。 -->
+  <a href="/calendar" class="ky2-back">
+    <span class="material-symbols-outlined" style="font-size:20px;">arrow_back</span>カレンダーに戻る
+  </a>
   <div class="ky2-head"><span class="material-symbols-outlined">edit_calendar</span><span class="ky2-title">勤務予定</span></div>
   <div class="ky2-lead">自分の1ヶ月分の予定を入力します。まず「既定」で通常出勤の曜日・標準時間を設定すると自動で埋まり、休み・早退の日だけ直せばOK。</div>
 
