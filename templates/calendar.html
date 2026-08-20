@@ -97,6 +97,65 @@
 .cal-cell.today .cal-cell-num.sun,
 .cal-cell.today .cal-cell-num.sat { color:#fff; }
 
+/* ===== shift-cal-line-v1 : 勤務予定の線 =====
+   1日につき線は1本だけ。色は【自分が】出勤か休みか。右端の数字はその日の出勤人数。
+   職員ごとの色分けはしない（職員が増えても見た目が変わらないようにするため）。
+   線は5pxしかなく指で押しづらいので ::after で上下に当たり判定を広げている。 */
+.shift-line {
+    position:relative; height:5px; border-radius:3px;
+    margin:0 2px 3px; cursor:pointer;
+}
+.shift-line::after { content:''; position:absolute; left:0; right:0; top:-3px; bottom:-3px; }
+.shift-line.work { background:#00897b; }
+.shift-line.off  { background:#ef6c00; }
+.shift-line:active { opacity:0.6; }
+.shift-cnt {
+    position:absolute; right:1px; top:-3px; z-index:1;
+    font-size:0.5rem; font-weight:800; color:#fff;
+    background:rgba(0,0,0,0.32); border-radius:999px;
+    padding:0 3px; line-height:1.6;
+}
+/* 隣月セルには出さない（イベントバーと同じ扱い） */
+.cal-cell.other-month .shift-line { display:none; }
+
+/* 勤務シート（線を押すと下から出る） */
+.shift-bd {
+    position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:9998;
+    opacity:0; pointer-events:none; transition:opacity 0.18s;
+}
+.shift-bd.on { opacity:1; pointer-events:auto; }
+.shift-sheet {
+    position:fixed; left:0; right:0; bottom:0; z-index:9999;
+    background:#fff; border-radius:18px 18px 0 0;
+    transform:translateY(102%); transition:transform 0.22s cubic-bezier(.2,.8,.3,1);
+    max-height:76vh; overflow-y:auto;
+    box-shadow:0 -6px 26px rgba(0,0,0,0.16);
+    padding-bottom:calc(22px + env(safe-area-inset-bottom));
+}
+.shift-sheet.on { transform:translateY(0); }
+.shift-sheet-in { max-width:760px; margin:0 auto; padding:0 18px; }
+.shift-grab { width:38px; height:4px; background:#dadce0; border-radius:2px; margin:9px auto 12px; }
+.shift-title { font-size:1rem; font-weight:800; margin:0 0 2px; color:#202124; }
+.shift-sub { font-size:0.76rem; color:#5f6368; margin:0 0 14px; }
+.shift-sec { font-size:0.72rem; font-weight:800; letter-spacing:0.03em; margin:14px 0 7px;
+    display:flex; align-items:center; gap:7px; }
+.shift-sec .sw { width:14px; height:14px; border-radius:4px; display:inline-block; }
+.shift-sec.w { color:#00695c; }
+.shift-sec.o { color:#e65100; }
+.shift-row { display:flex; align-items:center; gap:10px; padding:9px 11px;
+    border-radius:10px; margin-bottom:6px; font-size:0.85rem; }
+.shift-row.w { background:#e0f2f1; }
+.shift-row.o { background:#fff3e0; }
+.shift-row.me { outline:2px solid #1a73e8; outline-offset:-2px; }
+.shift-nm { font-weight:700; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.shift-tm { font-size:0.8rem; font-weight:700; color:#00695c; white-space:nowrap; }
+.shift-row.o .shift-tm { color:#e65100; }
+.shift-me-badge { font-size:0.6rem; font-weight:800; background:#1a73e8; color:#fff;
+    border-radius:999px; padding:1px 7px; }
+.shift-edit-btn { display:block; width:100%; margin-top:16px; padding:12px; border:none;
+    border-radius:11px; background:#1a73e8; color:#fff; font-weight:800; font-size:0.87rem; cursor:pointer; }
+.shift-empty { font-size:0.82rem; color:#9aa0a6; padding:10px 2px; }
+
 /* ===== イベントバー ===== */
 .cal-event-bar { max-width:100%; box-sizing:border-box;
     display:block; font-size:0.62rem; font-weight:600;
@@ -461,6 +520,15 @@
         <div class="cal-chip-dot" style="background:#202124;"></div>
         すべて
     </div>
+    <!-- shift-cal-line-v1: 勤務予定の線の表示切替。
+         【重要】ここに data-id は付けないこと。toggleCalendar() が
+         `.cal-chip[data-id]` を回して activeCalIds に無いものを inactive にするため、
+         data-id を付けると他のカレンダーを操作するたびに勝手に消える。 -->
+    <div class="cal-chip active" id="shift-chip" style="color:#00897b;"
+        onclick="SHIFT_LINE.toggle()">
+        <div class="cal-chip-dot" style="background:#00897b;"></div>
+        <span>勤務予定</span>
+    </div>
     {% for cal in calendars %}
     <div class="cal-chip active" data-id="{{ cal.id }}"
         style="color:{{ cal.color }};"
@@ -663,6 +731,18 @@
         </div>
     </div>
 </div>
+
+<!-- ===== shift-cal-line-v1 : 勤務予定シート（線を押すと下から出る） ===== -->
+<div class="shift-bd" id="shift-bd" onclick="SHIFT_LINE.close()"></div>
+<div class="shift-sheet" id="shift-sheet" role="dialog" aria-modal="true">
+  <div class="shift-grab"></div>
+  <div class="shift-sheet-in">
+    <div class="shift-title" id="shift-title"></div>
+    <div class="shift-sub" id="shift-sub"></div>
+    <div id="shift-body"></div>
+    <button type="button" class="shift-edit-btn" onclick="location.href='/kinmu_yotei'">勤務予定を直す</button>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_script %}
@@ -722,7 +802,159 @@ let invitingCalendarId = null;
 let selectedInviteStaffs = new Set();
 
 // ===== カレンダー表示 =====
+/* ============================================================================
+   shift-cal-line-v1 : 勤務予定を「線」でカレンダーに出す
+   ----------------------------------------------------------------------------
+   考え方：
+     勤務を calendar_events にコピーしない。勤務予定表(staff_shift_plan)を
+     そのまま読んで線として描くだけ。データがひとつなので
+     「カレンダーと勤務予定が食い違う」ことが原理的に起きない。
+     （勤務予定を直せば線もすぐ変わる。カレンダー側に勤務の予定は増えない。）
+
+   見た目の決まり（ユーザー判断 2026-08-20）：
+     ・線は1日1本だけ。色は【自分が】出勤(緑)か休み(オレンジ)か
+     ・職員ごとの色分けはしない。他の事業所では職員が多く、色が破綻するため
+     ・右端の数字はその日の出勤人数。誰が出ているかは線を押して確認する
+
+   既存機能を壊さないための約束：
+     ・線の onclick では必ず event.stopPropagation() する。
+       しないとセルの onCellClick() も走って予定一覧モーダルまで開く
+     ・チップ(#shift-chip)に data-id を付けない（理由はチップ側のコメント参照）
+   ========================================================================== */
+window.SHIFT_LINE = (function(){
+    var ON_KEY = 'cal_shift_line_on';       // 端末ごと。施設共通ではない
+    var cache  = {};                        // 'YYYY-M' -> days / 'loading' / 'error'
+
+    function isOn(){ try{ return localStorage.getItem(ON_KEY) !== '0'; }catch(e){ return true; } }
+    function keyOf(y, m0){ return y + '-' + (m0 + 1); }   // m0 は 0始まり
+    function esc(s){
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+        });
+    }
+
+    function ensure(y, m0){
+        var k = keyOf(y, m0);
+        if (cache[k]) return;               // 取得済み / 取得中 / 失敗 のいずれか
+        cache[k] = 'loading';
+        fetch('/api/shift/calendar_month?year=' + y + '&month=' + (m0 + 1), {credentials:'same-origin'})
+            .then(function(r){
+                var ct = r.headers.get('content-type') || '';
+                if (!r.ok || ct.indexOf('application/json') < 0) return null;  // 未ログイン等でHTMLが返る
+                return r.json();
+            })
+            .then(function(j){
+                if (j && j.status === 'success' && j.days) {
+                    cache[k] = j.days;
+                    if (typeof renderCalendar === 'function') renderCalendar();
+                } else {
+                    cache[k] = 'error';
+                }
+            })
+            .catch(function(){ cache[k] = 'error'; });
+    }
+
+    function dayOf(dateStr){
+        var p = String(dateStr).split('-');
+        if (p.length !== 3) return null;
+        var m = cache[(+p[0]) + '-' + (+p[1])];
+        if (!m || m === 'loading' || m === 'error') return null;
+        return m[dateStr] || null;
+    }
+
+    function html(dateStr){
+        if (!isOn()) return '';
+        var d = dayOf(dateStr);
+        if (!d) return '';
+        var n = (d.work || []).length;
+        return '<div class="shift-line ' + (d.me === 'work' ? 'work' : 'off') + '"'
+             + ' onclick="event.stopPropagation();SHIFT_LINE.open(\'' + dateStr + '\')">'
+             + (n ? '<span class="shift-cnt">' + n + '</span>' : '')
+             + '</div>';
+    }
+
+    var WD = ['日','月','火','水','木','金','土'];
+    function open(dateStr){
+        var d = dayOf(dateStr);
+        if (!d) return;
+        var me   = (typeof MY_NAME !== 'undefined' ? MY_NAME : '');   // 同じIIFE内の const
+        var p    = dateStr.split('-');
+        var wd   = new Date(+p[0], +p[1] - 1, +p[2]).getDay();
+        var work = d.work || [], off = d.off || [];
+
+        document.getElementById('shift-title').textContent =
+            (+p[1]) + '月' + (+p[2]) + '日（' + WD[wd] + '）の勤務';
+        document.getElementById('shift-sub').textContent =
+            '出勤 ' + work.length + '人 ・ 休み ' + off.length + '人';
+
+        var h = '';
+        if (work.length) {
+            h += '<div class="shift-sec w"><span class="sw" style="background:#00897b"></span>出勤</div>';
+            work.forEach(function(x){
+                h += '<div class="shift-row w' + (x.name === me ? ' me' : '') + '">'
+                   +   '<span class="shift-nm">' + esc(x.name) + '</span>'
+                   +   (x.name === me ? '<span class="shift-me-badge">自分</span>' : '')
+                   +   '<span class="shift-tm">' + esc(x.start || '') + '〜' + esc(x.end || '') + '</span>'
+                   + '</div>';
+            });
+        } else {
+            h += '<div class="shift-empty">この日の出勤者はいません</div>';
+        }
+        if (off.length) {
+            h += '<div class="shift-sec o"><span class="sw" style="background:#ef6c00"></span>休み</div>';
+            off.forEach(function(nm){
+                h += '<div class="shift-row o' + (nm === me ? ' me' : '') + '">'
+                   +   '<span class="shift-nm">' + esc(nm) + '</span>'
+                   +   (nm === me ? '<span class="shift-me-badge">自分</span>' : '')
+                   +   '<span class="shift-tm">休み</span>'
+                   + '</div>';
+            });
+        }
+        document.getElementById('shift-body').innerHTML = h;
+        document.getElementById('shift-sheet').classList.add('on');
+        document.getElementById('shift-bd').classList.add('on');
+    }
+
+    function close(){
+        var s = document.getElementById('shift-sheet');
+        var b = document.getElementById('shift-bd');
+        if (s) s.classList.remove('on');
+        if (b) b.classList.remove('on');
+    }
+
+    function toggle(){
+        var on = !isOn();
+        try{ localStorage.setItem(ON_KEY, on ? '1' : '0'); }catch(e){}
+        paintChip();
+        if (typeof renderCalendar === 'function') renderCalendar();
+    }
+
+    function paintChip(){
+        var c = document.getElementById('shift-chip');
+        if (!c) return;
+        c.classList.toggle('active', isOn());
+        c.classList.toggle('inactive', !isOn());
+    }
+
+    document.addEventListener('DOMContentLoaded', paintChip);
+    if (document.readyState !== 'loading') paintChip();
+
+    return {ensure:ensure, html:html, open:open, close:close, toggle:toggle, isOn:isOn};
+})();
+
 function renderCalendar() {
+    // shift-cal-line-v1: 表示中の月（週表示は月をまたぐので両端）の勤務を先に確保する。
+    //   未取得なら空文字で描かれ、取得できた時点で ensure() が renderCalendar() を呼び直す。
+    if (window.SHIFT_LINE) {
+        if (currentView === 'month') {
+            SHIFT_LINE.ensure(currentYear, currentMonth);
+        } else {
+            var _ws = new Date(currentWeekStart);
+            var _we = new Date(currentWeekStart); _we.setDate(_we.getDate() + 6);
+            SHIFT_LINE.ensure(_ws.getFullYear(), _ws.getMonth());
+            SHIFT_LINE.ensure(_we.getFullYear(), _we.getMonth());
+        }
+    }
     if (currentView === 'month') renderMonth();
     else renderWeek();
 }
@@ -841,7 +1073,7 @@ function renderMonth() {
 
         html += `<div class="cal-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
             <div class="cal-cell-num ${numCls}">${d}</div>
-            ${bars}${more}
+            ${window.SHIFT_LINE ? SHIFT_LINE.html(dateStr) : ''}${bars}${more}
         </div>`;
     }
     const remain = 42 - firstDay - lastDate;
@@ -926,6 +1158,7 @@ function renderWeek() {
         }).join('');
         html += `<div class="week-cell ${isToday?'today':''}" onclick="onCellClick('${dateStr}')">
             <div class="week-cell-header" style="color:${i===0?'#c62828':i===6?'#2e7d32':'#5f6368'}">${dow}<br><b>${d.getDate()}</b></div>
+            ${window.SHIFT_LINE ? SHIFT_LINE.html(dateStr) : ''}
             ${bars}
         </div>`;
     }

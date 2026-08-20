@@ -14000,6 +14000,90 @@ def api_shift_copy():
     return jsonify({"status": "success", "copied": n})
 
 
+# ===== shift-cal-line-v1: カレンダー月表示に勤務予定の線を出す =====
+#   カレンダー画面が「その月の全職員の勤務」をまとめて取りに来るための API。
+#   ・勤務予定(staff_shift_plan)に行が無い日は、既定の曜日パターン(staff_shift_defaults)で補う。
+#     この補い方は勤務予定画面 templates/kinmu_yotei.html の effDay() と同じ規則にすること
+#     （ズレると画面ごとに違う勤務が出る）。
+#   ・weekdays は【月曜起点】。kinmu_yotei.html の wdOf() が (getUTCDay()+6)%7 = 月曜0 のため。
+#     Python の date.weekday() も月曜0なのでそのまま使える。
+#   ・閲覧は施設の全員に開放する（ユーザー判断・2026-08-20）。
+#     編集側の本人限定(shift-self-only-v1)は従来どおりで、ここでは変えていない。
+def _shift_month_map(supabase, f_code, year, month):
+    """{'YYYY-MM-DD': {'work':[{'name','start','end'}], 'off':['名前',...]}} を返す。"""
+    import calendar as _cal
+    ndays = _cal.monthrange(year, month)[1]
+    days = [f"{year:04d}-{month:02d}-{d:02d}" for d in range(1, ndays + 1)]
+    names = _shift_staff_names(supabase, f_code)
+    defaults = _shift_default_map(supabase, f_code)
+
+    plan = {}
+    try:
+        r = supabase.table("staff_shift_plan").select(
+            "staff_name,plan_date,status,start_time,end_time").eq(
+            "facility_code", f_code).gte("plan_date", days[0]).lte("plan_date", days[-1]).execute()
+        for row in (r.data or []):
+            plan[str(row.get("staff_name")) + "|" + str(row.get("plan_date"))] = row
+    except Exception as e:
+        print(f"[shift-cal-line] plan fetch: {e}", flush=True)
+
+    _DEF = {"weekdays": [True, True, True, True, True, False, False],
+            "start": "09:00", "end": "18:00"}
+    out = {}
+    for ds in days:
+        try:
+            widx = datetime.strptime(ds, "%Y-%m-%d").date().weekday()   # 月=0
+        except Exception:
+            continue
+        work, off = [], []
+        for nm in names:
+            df = defaults.get(nm) or _DEF
+            row = plan.get(nm + "|" + ds)
+            if row:
+                if (row.get("status") or "") == "work":
+                    work.append({"name": nm,
+                                 "start": row.get("start_time") or df["start"],
+                                 "end": row.get("end_time") or df["end"]})
+                else:
+                    off.append(nm)
+            else:
+                if df["weekdays"][widx]:
+                    work.append({"name": nm, "start": df["start"], "end": df["end"]})
+                else:
+                    off.append(nm)
+        out[ds] = {"work": work, "off": off}
+    return out
+
+
+@app.route('/api/shift/calendar_month', methods=['GET'])
+@login_required
+def api_shift_calendar_month():
+    """shift-cal-line-v1: カレンダー月表示用。その月の全職員の勤務を1回で返す。"""
+    try:
+        f_code = session["f_code"]
+        me = session.get("my_name", "")
+        supabase = get_supabase()
+        now = _tc_now_jst()
+        try:
+            year = int(request.args.get("year", now.year))
+            month = int(request.args.get("month", now.month))
+        except (TypeError, ValueError):
+            year, month = now.year, now.month
+        if not (1 <= month <= 12) or not (2000 <= year <= 2100):
+            year, month = now.year, now.month
+
+        days = _shift_month_map(supabase, f_code, year, month)
+
+        # 自分がその日に出勤か休みかを添える（線の色に使う。名前の突き合わせは1回だけ）
+        for ds, v in days.items():
+            v["me"] = "work" if any(w["name"] == me for w in v["work"]) else "off"
+
+        return jsonify({"status": "success", "me": me, "year": year, "month": month, "days": days})
+    except Exception as e:
+        print(f"[shift-cal-line] api_shift_calendar_month error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/generate_daily_summary', methods=['POST'])
 @login_required
 def api_generate_daily_summary():
