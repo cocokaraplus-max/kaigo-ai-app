@@ -13888,11 +13888,73 @@ def api_shift_month():
         for row in (r.data or []):
             plan[str(row.get("plan_date"))] = {"status": row.get("status"), "start": row.get("start_time"),
                                                "end": row.get("end_time"),
-                                               "day_type": row.get("day_type")}  # youshiki-daytype-v1
+                                               "day_type": row.get("day_type"),  # youshiki-daytype-v1
+                                               "leave_type": row.get("leave_type")}  # shift-leave-sync-v1
     except Exception as e:
         print(f"[shift month] {e}", flush=True)
     return jsonify({"status": "success", "me": me, "staff": staff, "name": name,
                     "year": year, "month": month, "days": days, "default": dflt, "plan": plan})
+
+
+# ===== shift-leave-sync-v1: 勤務予定の「休み」を勤怠の休み記録に反映する =====
+#   ねらい：休んだ日の区分（有給・振替休など）を勤務予定の時点で入れておけば、
+#           後日タイムカードを開いたときの「休みの種類を入れてください」が出なくなる。
+#           催促は staff_leave_days に行が無い日を探しているだけなので、先に入れれば消える。
+#           （timecard_leave_self_check を参照）
+#
+#   絶対に守ること：
+#     ・タイムカードや勤怠集計表で【手で入れた休み】には触らない。
+#       手入力の行は source が 'manual'（または過去データで NULL）。
+#       勤務予定が作った行だけ source='shift_plan' が入り、勤務予定から更新・削除してよいのはこれだけ。
+#       勤務予定は月まるごと保存されるため、この判定が無いと保存のたびに手入力が消える。
+#     ・半休(half)・時間休(hourly)・対象外(cancel)は勤務予定の「休み」からは選ばせない。
+#       半休と時間休はその日に出勤しており、勤務予定上の「休み」と意味が食い違うため。
+_SHIFT_LEAVE_TYPES = ("paid", "substitute", "condolence", "absence", "off", "obon", "newyear")
+
+
+def _shift_leave_sync(supabase, f_code, nm, dt, status, leave_type, lrow, actor, now_iso):
+    """勤務予定1日ぶんを staff_leave_days へ反映。lrow は既存行(無ければ None)。
+    戻り値は 'inserted'|'updated'|'deleted'|'kept'|'none' （ログ用）。"""
+    from_shift = bool(lrow) and (lrow.get("source") == "shift_plan")
+    try:
+        if status == "off" and leave_type in _SHIFT_LEAVE_TYPES:
+            if lrow and not from_shift:
+                return "kept"                      # 手入力が優先。触らない
+            if from_shift and lrow.get("leave_type") == leave_type:
+                return "none"                      # 変化なし。書き込まない
+            payload = {
+                "facility_code": f_code, "staff_name": nm, "leave_date": dt,
+                "leave_type": leave_type, "substitute_for": None,
+                "created_by": actor, "source": "shift_plan",
+                "updated_at": now_iso,
+            }
+            if lrow:
+                supabase.table("staff_leave_days").update(payload).eq("id", lrow["id"]).execute()
+                return "updated"
+            supabase.table("staff_leave_days").insert(payload).execute()
+            return "inserted"
+
+        # 出勤に戻した / 区分を外した → 勤務予定が作った行だけ消す
+        if from_shift:
+            supabase.table("staff_leave_days").delete().eq("id", lrow["id"]).execute()
+            return "deleted"
+        return "none"
+    except Exception as e:
+        print(f"[shift-leave-sync] {nm} {dt}: {e}", flush=True)
+        return "error"
+
+
+@app.route('/api/shift/leave_types', methods=['GET'])
+@login_required
+def api_shift_leave_types():
+    """shift-leave-sync-v1: 勤務予定の「休み」で選べる休暇区分。
+    表示名の出所は app.py の _LEAVE_TYPES ひとつだけにする（画面ごとに名前がずれないように）。"""
+    try:
+        types = [{"code": k, "label": (_LEAVE_TYPES.get(k) or {}).get("label") or k}
+                 for k in _SHIFT_LEAVE_TYPES if k in _LEAVE_TYPES]
+        return jsonify({"status": "success", "types": types})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route('/api/shift/save', methods=['POST'])
@@ -13906,6 +13968,23 @@ def api_shift_save():
     _is_admin = is_admin_user(supabase, f_code, me)  # shift-self-only-v1
     saved = 0
     now_iso = datetime.now(timezone.utc).isoformat()
+
+    # shift-leave-sync-v1: 対象範囲の既存の休み記録を【1回だけ】まとめて取る。
+    #   セルごとに問い合わせると1ヶ月保存で30往復増えて重くなるため。
+    lmap = {}
+    try:
+        _ds = sorted({(c.get('date') or '').strip() for c in cells if (c.get('date') or '').strip()})
+        _ns = sorted({(c.get('name') or '').strip() for c in cells if (c.get('name') or '').strip()})
+        if _ds and _ns:
+            _lr = supabase.table("staff_leave_days").select(
+                "id,staff_name,leave_date,leave_type,source").eq(
+                "facility_code", f_code).gte("leave_date", _ds[0]).lte(
+                "leave_date", _ds[-1]).in_("staff_name", _ns).execute()
+            for r in (_lr.data or []):
+                lmap[str(r.get("staff_name")) + "|" + str(r.get("leave_date"))] = r
+    except Exception as e:
+        print(f"[shift-leave-sync] prefetch: {e}", flush=True)
+
     for c in cells:
         nm = (c.get('name') or '').strip()
         dt = (c.get('date') or '').strip()
@@ -13917,14 +13996,22 @@ def api_shift_save():
             _dt = c.get('day_type')  # youshiki-daytype-v1: 'full'|'half'|None
             if _dt not in ('full', 'half'):
                 _dt = None
+            _st = c.get('status') or 'off'
+            # shift-leave-sync-v1: 休みの日だけ区分を持つ。出勤日には残さない
+            _lt = (c.get('leave_type') or '').strip()
+            if _st != 'off' or _lt not in _SHIFT_LEAVE_TYPES:
+                _lt = None
             supabase.table("staff_shift_plan").upsert({
                 "facility_code": f_code, "staff_name": nm, "plan_date": dt,
-                "status": c.get('status') or 'off',
+                "status": _st,
                 "start_time": c.get('start'), "end_time": c.get('end'),
                 "day_type": _dt,
+                "leave_type": _lt,          # shift-leave-sync-v1
                 "updated_at": now_iso,
             }, on_conflict="facility_code,staff_name,plan_date").execute()
             saved += 1
+            _shift_leave_sync(supabase, f_code, nm, dt, _st, _lt,
+                              lmap.get(nm + "|" + dt), me, now_iso)
         except Exception as e:
             print(f"[shift save] {e}", flush=True)
     return jsonify({"status": "success", "saved": saved})
@@ -13992,6 +14079,10 @@ def api_shift_copy():
                 "facility_code": f_code, "staff_name": row.get("staff_name"), "plan_date": newd,
                 "status": row.get("status"), "start_time": row.get("start_time"), "end_time": row.get("end_time"),
                 "day_type": row.get("day_type"),  # youshiki-daytype-v1: 型もコピー
+                # shift-leave-sync-v1: 休暇区分は【コピーしない】。
+                #   「先週が有給だったから今週も有給」は明らかに違う。休み(status)だけ複製し、
+                #   区分は各自が入れ直す（区分が空の休みは従来どおりタイムカードで聞かれる）。
+                "leave_type": None,
                 "updated_at": now_iso,
             }, on_conflict="facility_code,staff_name,plan_date").execute()
             n += 1
@@ -17419,6 +17510,8 @@ def timecard_leave_self():
             "leave_date": leave_date, "leave_type": leave_type,
             "substitute_for": sub_for, "created_by": staff_name,
             "note": note or None,  # timecard-leave-note-v1
+            # shift-leave-sync-v1: 手で入れた印。これが付いた行は勤務予定から上書き・削除されない
+            "source": "manual",
             "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat(),
         }
         if existing.data:
@@ -18619,6 +18712,8 @@ def admin_timecard_leave_set():
             "leave_date": leave_date, "leave_type": leave_type,
             "substitute_for": sub_for,
             "note": note, "created_by": my_name,
+            # shift-leave-sync-v1: 手で入れた印。これが付いた行は勤務予定から上書き・削除されない
+            "source": "manual",
             "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat(),
         }
         if existing.data:

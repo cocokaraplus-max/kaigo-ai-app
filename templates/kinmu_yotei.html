@@ -93,6 +93,18 @@
       <button id="ky2-seg-work" class="work" onclick="ky2SegSet('work')">出勤</button>
       <button id="ky2-seg-off" class="off" onclick="ky2SegSet('off')">休み</button>
     </div>
+    <!-- shift-leave-sync-v1: 休みの日だけ出る。ここで区分を入れておくと、
+         後日タイムカードで「休みの種類を入れてください」と聞かれなくなる。 -->
+    <div id="ky2-leave-wrap" style="display:none">
+      <div class="ky2-field">休みの種類（勤怠に記録されます）</div>
+      <select id="ky2-leave-type" style="width:100%;padding:10px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;font-size:.95rem;box-sizing:border-box">
+        <option value="">選ばない（あとでタイムカードで入れる）</option>
+      </select>
+      <div style="font-size:.78rem;color:#8a8477;margin-top:6px;line-height:1.5">
+        選んでおくと、タイムカードでの入力が不要になります。<br>
+        勤怠集計表で直した休みは、ここを保存し直しても上書きされません。
+      </div>
+    </div>
     <div id="ky2-time-wrap">
       <div class="ky2-field">勤務時間</div>
       <div class="ky2-times"><input type="time" id="ky2-day-start"><span>〜</span><input type="time" id="ky2-day-end"></div>
@@ -150,6 +162,29 @@
 const WD = ['月','火','水','木','金','土','日'];
 let M = { me:'', staff:[], name:'', year:0, month:0, days:[], def:null, plan:{}, cells:{} };
 let editDate = null, editSeg = 'work';
+
+/* ===== shift-leave-sync-v1 : 休みの種類 =====
+   休みの日にここで区分を入れておくと、勤怠の休み記録に書き込まれ、
+   後日タイムカードで「休みの種類を入れてください」と聞かれなくなる。
+   表示名は必ずサーバ(/api/shift/leave_types → app.py の _LEAVE_TYPES)から取る。
+   画面に直書きすると、区分を足したときにここだけ古いままになるため。 */
+let LEAVE_TYPES = [];
+function leaveLabel(code){
+  if(!code) return '';
+  const t = LEAVE_TYPES.filter(function(x){ return x.code===code; })[0];
+  return t ? t.label : code;
+}
+async function ky2LoadLeaveTypes(){
+  try{
+    const j = await fetch('/api/shift/leave_types', {credentials:'same-origin'}).then(function(r){ return r.json(); });
+    if(j && j.status==='success') LEAVE_TYPES = j.types || [];
+  }catch(e){ LEAVE_TYPES = []; }
+  const sel = document.getElementById('ky2-leave-type');
+  if(sel){
+    sel.innerHTML = '<option value="">選ばない（あとでタイムカードで入れる）</option>'
+      + LEAVE_TYPES.map(function(t){ return '<option value="'+escapeH(t.code)+'">'+escapeH(t.label)+'</option>'; }).join('');
+  }
+}
 let bulk = { content:null, sel:{} };
 
 function wdOf(s){ const p=s.split('-'); return (new Date(Date.UTC(+p[0],+p[1]-1,+p[2])).getUTCDay()+6)%7; }
@@ -160,9 +195,9 @@ function defOf(){ return M.def || {weekdays:[true,true,true,true,true,false,fals
 function effDay(date){
   if (M.cells[date]) return M.cells[date];
   const p = M.plan[date];
-  if (p && p.status) { M.cells[date] = {status:p.status, start:p.start||defOf().start, end:p.end||defOf().end, day_type:p.day_type||null}; return M.cells[date]; }
+  if (p && p.status) { M.cells[date] = {status:p.status, start:p.start||defOf().start, end:p.end||defOf().end, day_type:p.day_type||null, leave_type:p.leave_type||null}; return M.cells[date]; }
   const df = defOf(); const w = wdOf(date);
-  M.cells[date] = df.weekdays[w] ? {status:'work', start:df.start, end:df.end, day_type:null} : {status:'off', start:df.start, end:df.end, day_type:null};
+  M.cells[date] = df.weekdays[w] ? {status:'work', start:df.start, end:df.end, day_type:null, leave_type:null} : {status:'off', start:df.start, end:df.end, day_type:null, leave_type:null};
   return M.cells[date];
 }
 
@@ -184,7 +219,9 @@ function ky2RenderList(){
     const c = effDay(d); const w = wdOf(d);
     const cls = w===5?'sat':(w===6?'sun':'');
     const dtBadge = (c.status==='work' && c.day_type) ? ' <small style="color:#2f6b5e;font-weight:700">['+(c.day_type==='full'?'1日型':'半日型')+']</small>' : '';
-    const val = c.status==='work' ? '<div class="val work">出勤　'+(c.start||'')+' 〜 '+(c.end||'')+dtBadge+'</div>' : '<div class="val off">休み</div>';
+    // shift-leave-sync-v1: 休みの日は選んだ区分も出す（未選択なら「休み」だけ）
+    const lvBadge = (c.status==='off' && c.leave_type) ? ' <small style="color:#b26a00;font-weight:700">['+escapeH(leaveLabel(c.leave_type))+']</small>' : '';
+    const val = c.status==='work' ? '<div class="val work">出勤　'+(c.start||'')+' 〜 '+(c.end||'')+dtBadge+'</div>' : '<div class="val off">休み'+lvBadge+'</div>';
     return '<div class="ky2-drow '+cls+'" onclick="ky2OpenDay(\''+d+'\')">'+
       '<div class="dd">'+dayNum(d)+'日 <small>('+WD[w]+')</small></div>'+val+
       '<span class="material-symbols-outlined ed">edit</span></div>';
@@ -204,6 +241,7 @@ function ky2OpenDay(date){
   document.getElementById('ky2-day-start').value = c.start || defOf().start;
   document.getElementById('ky2-day-end').value = c.end || defOf().end;
   document.getElementById('ky2-day-type').value = c.day_type || '';  // youshiki-daytype-v1
+  document.getElementById('ky2-leave-type').value = c.leave_type || '';  // shift-leave-sync-v1
   document.getElementById('ky2-daymask').classList.add('on');
 }
 function ky2SegSet(st){
@@ -211,11 +249,14 @@ function ky2SegSet(st){
   document.getElementById('ky2-seg-work').classList.toggle('sel', st==='work');
   document.getElementById('ky2-seg-off').classList.toggle('sel', st==='off');
   document.getElementById('ky2-time-wrap').style.display = (st==='work')?'block':'none';
+  // shift-leave-sync-v1: 休みのときだけ「休みの種類」を出す
+  document.getElementById('ky2-leave-wrap').style.display = (st==='off')?'block':'none';
 }
 function ky2DayApply(){
   if(!editDate) return;
   M.cells[editDate] = { status:editSeg, start:document.getElementById('ky2-day-start').value, end:document.getElementById('ky2-day-end').value,
-    day_type:(editSeg==='work' ? (document.getElementById('ky2-day-type').value||null) : null) };  // youshiki-daytype-v1
+    day_type:(editSeg==='work' ? (document.getElementById('ky2-day-type').value||null) : null),  // youshiki-daytype-v1
+    leave_type:(editSeg==='off' ? (document.getElementById('ky2-leave-type').value||null) : null) };  // shift-leave-sync-v1
   ky2Close('ky2-daymask'); ky2RenderList();
 }
 function ky2Close(id){ document.getElementById(id).classList.remove('on'); }
@@ -223,9 +264,11 @@ function ky2Close(id){ document.getElementById(id).classList.remove('on'); }
 /* 一括適用 */
 function ky2OpenBulk(){
   bulk.content = { status:editSeg, start:document.getElementById('ky2-day-start').value, end:document.getElementById('ky2-day-end').value,
-    day_type:(editSeg==='work' ? (document.getElementById('ky2-day-type').value||null) : null) };  // youshiki-daytype-v1
+    day_type:(editSeg==='work' ? (document.getElementById('ky2-day-type').value||null) : null),  // youshiki-daytype-v1
+    leave_type:(editSeg==='off' ? (document.getElementById('ky2-leave-type').value||null) : null) };  // shift-leave-sync-v1
   bulk.sel = {};
-  const label = bulk.content.status==='work' ? ('出勤 '+bulk.content.start+'〜'+bulk.content.end) : '休み';
+  const label = bulk.content.status==='work' ? ('出勤 '+bulk.content.start+'〜'+bulk.content.end)
+              : ('休み' + (bulk.content.leave_type ? '（'+leaveLabel(bulk.content.leave_type)+'）' : ''));
   document.getElementById('ky2-bulk-who').textContent = '「'+label+'」を選んだ日に適用（'+M.year+'年'+M.month+'月）';
   ky2BulkRender();
   document.getElementById('ky2-bulkmask').classList.add('on');
@@ -251,10 +294,10 @@ function ky2BulkSelWeekdays(){
 async function ky2BulkApply(){
   const dates = Object.keys(bulk.sel);
   if(!dates.length){ alert('日を選んでください'); return; }
-  dates.forEach(function(d){ M.cells[d] = {status:bulk.content.status, start:bulk.content.start, end:bulk.content.end, day_type:bulk.content.day_type||null}; });
+  dates.forEach(function(d){ M.cells[d] = {status:bulk.content.status, start:bulk.content.start, end:bulk.content.end, day_type:bulk.content.day_type||null, leave_type:bulk.content.leave_type||null}; });
   ky2Close('ky2-bulkmask'); ky2Close('ky2-daymask'); ky2RenderList();
   // その場でDBにも保存（月をまたいでも確実に）
-  const cells = dates.map(function(d){ return {name:M.name, date:d, status:bulk.content.status, start:bulk.content.start, end:bulk.content.end, day_type:bulk.content.day_type||null}; });
+  const cells = dates.map(function(d){ return {name:M.name, date:d, status:bulk.content.status, start:bulk.content.start, end:bulk.content.end, day_type:bulk.content.day_type||null, leave_type:bulk.content.leave_type||null}; });
   await fetch('/api/shift/save', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({cells:cells})});
   alert(dates.length+'日に適用しました');
 }
@@ -282,13 +325,14 @@ async function ky2DefApply(){
 
 /* 保存 */
 async function ky2Save(){
-  const cells = M.days.map(function(d){ const c=effDay(d); return {name:M.name, date:d, status:c.status, start:c.start, end:c.end, day_type:c.day_type||null}; });
+  const cells = M.days.map(function(d){ const c=effDay(d); return {name:M.name, date:d, status:c.status, start:c.start, end:c.end, day_type:c.day_type||null, leave_type:c.leave_type||null}; });
   const r = await fetch('/api/shift/save', {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify({cells:cells})});
   const j = await r.json();
   if(j.status==='success'){ alert('保存しました（'+j.saved+'件）'); ky2LoadMonth(M.name, M.year, M.month); }
   else alert(j.message||'保存に失敗しました');
 }
 
+ky2LoadLeaveTypes();   // shift-leave-sync-v1: 休みの種類の一覧を先に用意しておく
 ky2LoadMonth(null, 0, 0);
 </script>
 {% endblock %}
