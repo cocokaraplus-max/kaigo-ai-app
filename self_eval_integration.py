@@ -499,6 +499,36 @@ def register_self_eval_routes(app):
             pass
         return jsonify({"status": "success", "saved": len(qs)})
 
+    @app.route('/api/self-eval/delete', methods=['POST'])
+    @login_required
+    def api_self_eval_delete():
+        """評価をまるごと消す。作り直したいときのため。
+        ★確定済み（confirmed）は管理者しか消せない。記録として残すべきものなので。
+        ★利用者モード中は消せない（_kiosk_guard が /api/self-eval/delete を通さない）。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        eid = ((request.json or {}).get("id") or "").strip()
+        if not eid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        try:
+            e = (supabase.table("patient_self_evaluations").select("id,status")
+                 .eq("facility_code", f_code).eq("id", eid).execute())
+            if not e.data:
+                return jsonify({"status": "error", "message": "見つかりません"}), 404
+            if e.data[0].get("status") == "confirmed" and not _admin_only():
+                return jsonify({"status": "error",
+                                "message": "確定済みの評価は管理者しか消せません"}), 403
+            # 先に回答を消してから本体を消す（残骸を残さない）
+            (supabase.table("patient_self_eval_answers").delete()
+             .eq("facility_code", f_code).eq("evaluation_id", eid).execute())
+            (supabase.table("patient_self_evaluations").delete()
+             .eq("facility_code", f_code).eq("id", eid).execute())
+        except Exception as ex:
+            return jsonify({"status": "error", "message": str(ex)}), 500
+        print(f"[self-eval] deleted eval={eid} by={session.get('my_name','')}", flush=True)
+        return jsonify({"status": "success"})
+
     # ---------- 解除コード ----------
     @app.route('/api/self-eval/kiosk-pin/status', methods=['GET'])
     @login_required

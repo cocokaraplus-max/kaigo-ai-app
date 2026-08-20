@@ -109,6 +109,9 @@
 .se-msg{font-size:.82rem;font-weight:800;margin-top:9px;min-height:1.3em}
 .se-msg.ok{color:#1e7e34}
 .se-msg.ng{color:#a34a41}
+.se-del{width:100%;margin-top:12px;padding:11px;border:1.5px solid #e6c3c0;background:#fdf3f2;
+ color:#a34a41;border-radius:9px;font-weight:800;cursor:pointer;font-size:.85rem;font-family:inherit}
+.se-del:active{background:#fbe9e7}
 
 /* 解除コード */
 .se-pin{border:1px solid #e6e8eb;border-radius:14px;background:#fff;padding:16px;margin-top:20px}
@@ -185,6 +188,7 @@
       <button class="se-save" onclick="seSaveQs(true)">下書きを保存</button>
       <button class="se-start" onclick="seStart()">タブレットを渡す</button>
     </div>
+    <button class="se-del" onclick="seDelete()">この評価を消して作り直す</button>
     <div class="se-hint">
       「タブレットを渡す」を押すと<b>利用者モード</b>になり、この端末は評価の画面から出られなくなります。
       解除には4桁の解除コードが必要です。<br>
@@ -226,6 +230,7 @@
 
     <button class="se-done" onclick="seConfirm()">確認を終える（確定する）</button>
     <div class="se-msg" id="se-review-msg"></div>
+    <button class="se-del" onclick="seDelete()">この評価を消す</button>
   </div>
 
   <!-- 解除コード（管理者のみ表示） -->
@@ -534,6 +539,20 @@ async function seGoalApply(i){
     m.className = (j.status==='success') ? 'se-msg ok' : 'se-msg ng';
     m.textContent = (j.status==='success') ? (lbl+'を更新しました') : (j.message||'失敗しました');
   }catch(e){ m.className='se-msg ng'; m.textContent='失敗しました'; }
+}
+async function seDelete(){
+  if(!SE.cur) return;
+  if(!confirm('この評価を消します。ご本人の回答も一緒に消えます。\n元に戻せません。よろしいですか。')) return;
+  try{
+    var j = await fetch('/api/self-eval/delete',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id})}).then(function(r){return r.json();});
+    if(j.status!=='success'){ alert(j.message||'消せませんでした'); return; }
+    SE.cur = null;
+    document.getElementById('se-edit').style.display='none';
+    document.getElementById('se-review').style.display='none';
+    seLoad();
+  }catch(e){ alert('消せませんでした'); }
 }
 async function seToEval(force){
   var b = document.getElementById('se-toev-btn'), m = document.getElementById('se-review-msg');
