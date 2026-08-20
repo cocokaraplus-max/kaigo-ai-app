@@ -16367,6 +16367,13 @@ register_import_routes(app)
 from patient_hub_integration import register_patient_hub_routes
 register_patient_hub_routes(app)
 
+# self-eval-v1: 利用者セルフ評価（タブレット）
+#   ★このモジュールは before_request で「利用者モード」のガードを登録している。
+#     利用者にタブレットを渡している間、評価以外のURLをすべて止める仕組み。
+#     外すと他の利用者の記録に到達される。設計は README の self-eval-design-2026-08-20。
+from self_eval_integration import register_self_eval_routes
+register_self_eval_routes(app)
+
 
 
 # ===== 掲示板カテゴリー管理API =====

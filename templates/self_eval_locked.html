@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>ありがとうございました - TASUKARU</title>
+<!--
+  self-eval-v1 : ロック画面
+  利用者の回答が終わったらここで止まる。解除コード（4桁）を入れるまで何もできない。
+  ★これは第2層。本命はサーバ側の _kiosk_guard()。
+    ガードがあるので、この画面を回避されても他の画面には行けない。
+-->
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:#f4f5f7;color:#1f2933;
+ font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif;
+ display:flex;align-items:center;justify-content:center;padding:18px;
+ -webkit-user-select:none;user-select:none}
+.card{width:100%;max-width:560px;background:#fff;border-radius:14px;padding:44px 34px 34px;
+ box-shadow:0 4px 24px rgba(31,41,51,.10);text-align:center}
+h1{font-size:1.9rem;margin:22px 0 10px;font-weight:800;letter-spacing:.03em}
+p.lead{font-size:1.18rem;color:#616e7c;margin:0 0 8px;line-height:1.8}
+.who{font-size:1rem;color:#9aa5b1;font-weight:700;margin-top:18px}
+.unlock{margin-top:34px;padding-top:26px;border-top:1px solid #e4e7eb}
+.unlock h2{font-size:.95rem;font-weight:800;color:#7b8794;margin:0 0 14px;letter-spacing:.04em}
+.pin{display:flex;gap:10px;justify-content:center;margin-bottom:14px}
+.pin input{width:58px;height:68px;text-align:center;font-size:1.7rem;font-weight:800;
+ border:2px solid #d3d9df;border-radius:10px;font-family:inherit;color:#1f2933;
+ -webkit-user-select:text;user-select:text}
+.pin input:focus{outline:none;border-color:#1b4965}
+.btn{width:100%;padding:15px;border-radius:9px;border:none;background:#1b4965;color:#fff;
+ font-size:1.08rem;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:.04em}
+.btn:disabled{background:#e4e7eb;color:#9aa5b1;cursor:default}
+.msg{font-size:.95rem;color:#a34a41;font-weight:700;min-height:1.4em;margin-top:12px}
+</style></head>
+<body>
+<div class="card">
+  <svg width="76" height="76" viewBox="0 0 76 76"><circle cx="38" cy="38" r="35" fill="none" stroke="#3f6f52" stroke-width="3"/><path d="M23 39 L34 50 L54 27" fill="none" stroke="#3f6f52" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <h1>ご回答ありがとうございました。</h1>
+  <p class="lead">タブレットを 職員に お渡しください。</p>
+  {% if user_name %}<div class="who">{{ user_name }} さん</div>{% endif %}
+
+  <div class="unlock">
+    <h2>職員の方へ　解除コードを入力してください</h2>
+    <div class="pin">
+      <input type="tel" inputmode="numeric" maxlength="1" id="p0" autocomplete="off">
+      <input type="tel" inputmode="numeric" maxlength="1" id="p1" autocomplete="off">
+      <input type="tel" inputmode="numeric" maxlength="1" id="p2" autocomplete="off">
+      <input type="tel" inputmode="numeric" maxlength="1" id="p3" autocomplete="off">
+    </div>
+    <button class="btn" id="ok" onclick="unlock()" disabled>解除する</button>
+    <div class="msg" id="msg"></div>
+  </div>
+</div>
+<script>
+var ids=['p0','p1','p2','p3'];
+function val(){ return ids.map(function(x){ return document.getElementById(x).value; }).join(''); }
+function sync(){ document.getElementById('ok').disabled = !/^\d{4}$/.test(val()); }
+ids.forEach(function(id, k){
+  var el = document.getElementById(id);
+  el.addEventListener('input', function(){
+    el.value = (el.value||'').replace(/\D/g,'').slice(0,1);
+    if(el.value && k<3) document.getElementById(ids[k+1]).focus();
+    sync();
+  });
+  el.addEventListener('keydown', function(e){
+    if(e.key==='Backspace' && !el.value && k>0) document.getElementById(ids[k-1]).focus();
+    if(e.key==='Enter' && /^\d{4}$/.test(val())) unlock();
+  });
+});
+async function unlock(){
+  var m=document.getElementById('msg'); m.textContent='';
+  document.getElementById('ok').disabled = true;
+  try{
+    var r = await fetch('/api/self-eval/unlock',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:val()})});
+    var j = await r.json();
+    if(j.status==='success'){ location.href = j.redirect || '/self-eval'; return; }
+    m.textContent = j.message || '番号が違います';
+  }catch(e){ m.textContent='通信に失敗しました'; }
+  ids.forEach(function(x){ document.getElementById(x).value=''; });
+  document.getElementById('p0').focus();
+  sync();
+}
+document.getElementById('p0').focus();
+</script>
+</body></html>

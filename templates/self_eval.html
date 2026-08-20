@@ -1,0 +1,641 @@
+{% extends "base.html" %}
+{% block title %}利用者セルフ評価 - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* self-eval-v1 : 職員側（一覧・質問の確認・タブレットを渡す） */
+.se-wrap{max-width:760px;margin:0 auto;padding:12px 14px 70px}
+.se-head{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.se-head .material-symbols-outlined{color:#1b4965;font-size:26px}
+.se-title{font-size:1.2rem;font-weight:900;color:#1e3a5f}
+.se-lead{font-size:.8rem;color:#5f6368;margin:0 2px 14px;line-height:1.6}
+
+.se-alert{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:12px;
+ background:#fff4e5;border:1.5px solid #f0c27a;margin-bottom:14px}
+.se-alert.zero{background:#f1f3f4;border-color:#dadce0}
+.se-alert .n{font-size:1.6rem;font-weight:900;color:#b26a00;font-variant-numeric:tabular-nums}
+.se-alert.zero .n{color:#9aa0a6}
+.se-alert .t{font-size:.9rem;font-weight:800;color:#3c4043;line-height:1.5}
+.se-alert .t small{display:block;font-weight:600;color:#7b8794;font-size:.76rem;margin-top:2px}
+
+.se-tabs{display:flex;gap:7px;margin-bottom:12px;flex-wrap:wrap}
+.se-tab{padding:8px 14px;border-radius:999px;border:1.5px solid #dadce0;background:#fff;
+ font-size:.85rem;font-weight:800;color:#5f6368;cursor:pointer;font-family:inherit}
+.se-tab.on{border-color:#1b4965;color:#1b4965;background:#eef3f7}
+
+.se-new{display:block;width:100%;padding:13px;margin-bottom:16px;background:#1b4965;color:#fff;
+ border:none;border-radius:12px;font-weight:800;cursor:pointer;font-size:.95rem;font-family:inherit}
+
+.se-list{display:flex;flex-direction:column;gap:8px}
+.se-row{display:flex;align-items:center;gap:12px;padding:13px 15px;border:1px solid #e6e8eb;
+ border-radius:12px;background:#fff;cursor:pointer}
+.se-row:active{background:#f5f7fa}
+.se-row .nm{flex:1;min-width:0;font-size:1rem;font-weight:800;color:#202124;
+ overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.se-row .nm small{display:block;font-weight:600;font-size:.75rem;color:#7b8794;margin-top:2px}
+.se-badge{flex:0 0 auto;font-size:.72rem;font-weight:800;padding:4px 10px;border-radius:999px}
+.b-draft{background:#eef1f4;color:#52606d}
+.b-answered{background:#fff4e5;color:#b26a00}
+.b-confirmed{background:#e6f4ea;color:#1e7e34}
+.se-empty{padding:26px 10px;text-align:center;color:#9aa0a6;font-size:.9rem}
+
+/* 質問の確認 */
+.se-panel{border:1px solid #e6e8eb;border-radius:14px;background:#fff;padding:16px;margin-bottom:16px}
+.se-panel h3{margin:0 0 4px;font-size:1.02rem;font-weight:900;color:#1e3a5f}
+.se-panel .sub{font-size:.78rem;color:#7b8794;margin-bottom:14px;line-height:1.6}
+.se-q{border:1px solid #e6e8eb;border-radius:10px;padding:11px 12px;margin-bottom:9px;background:#fafbfc}
+.se-q textarea{width:100%;border:1.5px solid #d3d9df;border-radius:8px;padding:9px;font-size:.95rem;
+ font-family:inherit;line-height:1.6;min-height:56px;resize:vertical;color:#1f2933}
+.se-q .meta{display:flex;align-items:center;gap:8px;margin-top:7px;flex-wrap:wrap}
+.se-q .src{flex:1;min-width:0;font-size:.72rem;color:#9aa0a6;line-height:1.4}
+.se-q .del{border:1px solid #e6c3c0;background:#fdf3f2;color:#a34a41;border-radius:7px;
+ padding:5px 11px;font-size:.76rem;font-weight:800;cursor:pointer;font-family:inherit}
+.se-addq{width:100%;padding:10px;border:1.5px dashed #b6c0cb;background:#fff;color:#5f6368;
+ border-radius:9px;font-weight:800;cursor:pointer;font-size:.85rem;font-family:inherit;margin-bottom:12px}
+.se-acts{display:flex;gap:9px;flex-wrap:wrap}
+.se-acts button{flex:1;min-width:130px;padding:13px;border-radius:11px;border:none;
+ font-weight:800;cursor:pointer;font-size:.92rem;font-family:inherit}
+.se-save{background:#eef1f4;color:#3e4c59;border:1.5px solid #cfd8dc !important}
+.se-start{background:#1b4965;color:#fff}
+.se-hint{font-size:.76rem;color:#7b8794;margin-top:10px;line-height:1.6}
+
+/* 第2段：職員の確認 */
+.se-ans{border:1px solid #e6e8eb;border-radius:10px;padding:12px 13px;margin-bottom:9px;background:#fafbfc}
+.se-ans .q{font-size:.95rem;font-weight:800;color:#1f2933;line-height:1.6;margin-bottom:8px}
+.se-ans .sc{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+.se-ans .num{flex:0 0 auto;min-width:52px;text-align:center;padding:5px 0;border-radius:7px;
+ font-size:1.05rem;font-weight:900;font-variant-numeric:tabular-nums}
+.n-no{background:#eef1f4;color:#52606d}
+.n-mid{background:#fff3e0;color:#b26a00}
+.n-ok{background:#e0f2f1;color:#00695c}
+.se-ans .meter{flex:1;height:8px;background:#e4e7eb;border-radius:99px;overflow:hidden}
+.se-ans .meter i{display:block;height:100%;border-radius:99px}
+.se-ans .reason{font-size:.88rem;color:#3e4c59;line-height:1.65;background:#fff;
+ border-left:3px solid #cfd8dc;padding:7px 11px;border-radius:0 7px 7px 0}
+.se-ans .reason.skip{color:#9aa0a6;border-left-color:#e4e7eb}
+.se-note{width:100%;min-height:90px;border:1.5px solid #d3d9df;border-radius:9px;padding:10px;
+ font-size:.92rem;font-family:inherit;line-height:1.7;color:#1f2933;resize:vertical}
+.se-sec{font-size:.85rem;font-weight:900;color:#1e3a5f;margin:18px 0 9px;
+ padding-left:10px;border-left:3px solid #1e3a5f}
+.se-mini{width:100%;padding:11px;border-radius:9px;border:1.5px solid #b6c0cb;background:#fff;
+ color:#3e4c59;font-weight:800;cursor:pointer;font-size:.88rem;font-family:inherit;margin-bottom:10px}
+.se-mini:disabled{color:#9aa5b1;border-color:#e4e7eb;cursor:default}
+.se-card{border:1px solid #e6e8eb;border-radius:10px;padding:11px 12px;margin-bottom:8px;background:#fff}
+.se-card label{display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.se-card input[type=checkbox]{width:20px;height:20px;margin:2px 0 0;flex:0 0 auto}
+.se-card .t{flex:1;min-width:0;font-size:.93rem;font-weight:700;color:#1f2933;line-height:1.6}
+.se-card .z{display:inline-block;font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:999px;
+ margin-right:7px;vertical-align:1px}
+.z-can{background:#e0f2f1;color:#00695c}
+.z-cannot{background:#fdecea;color:#a34a41}
+.se-card .why{font-size:.76rem;color:#7b8794;margin-top:5px;line-height:1.55}
+.se-goal{border:1px solid #e6e8eb;border-radius:11px;padding:13px;margin-bottom:9px;background:#fff}
+.se-goal .kind{display:inline-block;font-size:.68rem;font-weight:800;padding:3px 9px;border-radius:999px;
+ margin-bottom:7px}
+.k-step{background:#eef3f7;color:#1b4965}
+.k-widen{background:#e0f2f1;color:#00695c}
+.se-goal textarea{width:100%;border:1.5px solid #d3d9df;border-radius:8px;padding:9px;font-size:.94rem;
+ font-family:inherit;line-height:1.6;min-height:52px;resize:vertical;color:#1f2933}
+.se-goal .why{font-size:.78rem;color:#7b8794;margin:7px 0 9px;line-height:1.6}
+.se-goal .row{display:flex;gap:7px;flex-wrap:wrap}
+.se-goal select{padding:8px;border:1.5px solid #d3d9df;border-radius:8px;font-family:inherit;font-size:.85rem}
+.se-goal .use{flex:1;min-width:110px;padding:9px;border:none;border-radius:8px;background:#1b4965;
+ color:#fff;font-weight:800;cursor:pointer;font-size:.85rem;font-family:inherit}
+.se-tune{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}
+.se-tune button{flex:1;min-width:100px;padding:9px;border:1.5px solid #d3d9df;background:#fff;
+ border-radius:8px;font-size:.8rem;font-weight:800;color:#5f6368;cursor:pointer;font-family:inherit}
+.se-done{width:100%;padding:14px;border:none;border-radius:11px;background:#1e7e34;color:#fff;
+ font-weight:800;cursor:pointer;font-size:.95rem;font-family:inherit;margin-top:16px}
+.se-msg{font-size:.82rem;font-weight:800;margin-top:9px;min-height:1.3em}
+.se-msg.ok{color:#1e7e34}
+.se-msg.ng{color:#a34a41}
+
+/* 解除コード */
+.se-pin{border:1px solid #e6e8eb;border-radius:14px;background:#fff;padding:16px;margin-top:20px}
+.se-pin h3{margin:0 0 4px;font-size:.95rem;font-weight:900;color:#3e4c59}
+.se-pin .sub{font-size:.76rem;color:#7b8794;margin-bottom:12px;line-height:1.6}
+.se-pin .row{display:flex;gap:9px;align-items:center}
+.se-pin input{flex:1;padding:11px;border:1.5px solid #d3d9df;border-radius:9px;font-size:1.1rem;
+ font-family:inherit;letter-spacing:.4em;text-align:center}
+.se-pin button{padding:11px 18px;border-radius:9px;border:none;background:#3e4c59;color:#fff;
+ font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap}
+.se-pin .st{font-size:.8rem;font-weight:800;margin-top:9px}
+.se-pin .st.ok{color:#1e7e34}
+.se-pin .st.ng{color:#a34a41}
+
+/* 利用者を選ぶ */
+.se-mask{position:fixed;inset:0;background:rgba(0,0,0,.4);display:none;align-items:center;
+ justify-content:center;z-index:900;padding:16px}
+.se-mask.on{display:flex}
+.se-modal{background:#fff;border-radius:16px;padding:18px;width:100%;max-width:420px;
+ max-height:86vh;overflow-y:auto}
+.se-modal h3{margin:0 0 12px;font-size:1.05rem;font-weight:900}
+.se-modal input[type=search]{width:100%;padding:11px;border:1.5px solid #d3d9df;border-radius:9px;
+ font-size:.95rem;font-family:inherit;margin-bottom:10px}
+.se-plist{display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow-y:auto}
+.se-plist button{text-align:left;padding:12px 13px;border:1px solid #e6e8eb;border-radius:10px;
+ background:#fff;font-size:.95rem;font-weight:700;cursor:pointer;font-family:inherit;color:#1f2933}
+.se-plist button:active{background:#f5f7fa}
+.se-mbtns{display:flex;gap:8px;margin-top:14px}
+.se-mbtns button{flex:1;padding:12px;border-radius:10px;border:none;font-weight:800;
+ cursor:pointer;font-family:inherit}
+.se-mbtns .cancel{background:#f1f3f4;color:#5f6368}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="se-wrap">
+  <div class="se-head"><span class="material-symbols-outlined">how_to_reg</span><span class="se-title">利用者セルフ評価</span></div>
+  <div class="se-lead">ご本人にタブレットで、目標の達成度をお答えいただきます。回答は職員が確認して確定します。</div>
+
+  <!-- 確認待ちが放置されないように、件数を必ず一番上に出す -->
+  <div class="se-alert zero" id="se-alert">
+    <span class="n" id="se-waiting">0</span>
+    <span class="t">件が確認待ちです<small>ご本人の回答は終わっています。職員の確認が済むまで確定しません。</small></span>
+  </div>
+
+  <button class="se-new" onclick="seOpenPicker()">＋ 新しく始める（利用者を選ぶ）</button>
+
+  <div class="se-tabs">
+    <button class="se-tab on" data-st="answered" onclick="seTab('answered')">確認待ち</button>
+    <button class="se-tab" data-st="draft" onclick="seTab('draft')">回答中</button>
+    <button class="se-tab" data-st="confirmed" onclick="seTab('confirmed')">確認済み</button>
+  </div>
+  <div class="se-list" id="se-list"></div>
+
+  <!-- 質問の確認（選ぶと出る） -->
+  <div class="se-panel" id="se-edit" style="display:none">
+    <h3 id="se-edit-who">質問の確認</h3>
+    <div class="sub">
+      AIが目標とICF付箋から作ったたたき台です。<b>そのままご本人に見せず、必ず目を通してください。</b><br>
+      直したら「下書きを保存」。途中でやめても、あとで続きから直せます。
+    </div>
+    <div id="se-qs"></div>
+    <button class="se-addq" onclick="seAddQ()">＋ 質問を足す</button>
+    <div class="se-acts">
+      <button class="se-save" onclick="seSaveQs(true)">下書きを保存</button>
+      <button class="se-start" onclick="seStart()">タブレットを渡す</button>
+    </div>
+    <div class="se-hint">
+      「タブレットを渡す」を押すと<b>利用者モード</b>になり、この端末は評価の画面から出られなくなります。
+      解除には4桁の解除コードが必要です。<br>
+      iPadの場合は、渡す前に<b>アクセスガイド</b>（設定 → アクセシビリティ）も併せてお使いください。
+    </div>
+  </div>
+
+  <!-- 第2段：職員の確認（確認待ちを選ぶと出る） -->
+  <div class="se-panel" id="se-review" style="display:none">
+    <h3 id="se-review-who">回答の確認</h3>
+    <div class="sub">
+      ご本人の回答です。目を通して「確認を終える」を押すと確定します。<br>
+      <b>途中でやめても大丈夫です。</b>書きかけのメモも、作った目標の案も残ります。
+    </div>
+
+    <div class="se-sec">ご本人の回答</div>
+    <div id="se-answers"></div>
+
+    <div class="se-sec">職員のメモ</div>
+    <textarea class="se-note" id="se-staff-note"
+      placeholder="気づいたこと、面談で補って聞いたことなど"></textarea>
+    <button class="se-mini" onclick="seSaveNote()" style="margin-top:8px">メモを保存する</button>
+
+    <div class="se-sec">今回わかったことをICFに残す</div>
+    <button class="se-mini" id="se-icf-btn" onclick="seIcfSuggest()">回答からICFの付箋を作る</button>
+    <div id="se-icf-box"></div>
+
+    <div class="se-sec">次の目標を一緒に考える</div>
+    <button class="se-mini" id="se-goal-btn" onclick="seNextGoal('')">達成できた項目から次の目標を考える</button>
+    <div id="se-goal-box"></div>
+
+    <div class="se-sec">評価に取り込む</div>
+    <div style="font-size:.78rem;color:#7b8794;line-height:1.65;margin-bottom:9px">
+      ご本人の回答を、その月の評価の「元データ」に足します。<b>上書きはしません。</b><br>
+      そのあと評価画面で「AIで生成」を押すと、ご本人の声も踏まえた
+      「訓練による変化」「課題とその要因」が作られます。
+    </div>
+    <button class="se-mini" id="se-toev-btn" onclick="seToEval(false)">この回答を評価の元データに足す</button>
+
+    <button class="se-done" onclick="seConfirm()">確認を終える（確定する）</button>
+    <div class="se-msg" id="se-review-msg"></div>
+  </div>
+
+  <!-- 解除コード（管理者のみ表示） -->
+  <div class="se-pin" id="se-pin" style="display:none">
+    <h3>タブレットの解除コード（4桁）</h3>
+    <div class="sub">利用者モードを解除するときに使います。職員全員が覚えられる番号にしてください。<br>
+      ご自身のログインパスワードは使いません。</div>
+    <div class="row">
+      <input type="tel" inputmode="numeric" maxlength="4" id="se-pin-input" placeholder="0000">
+      <button onclick="seSetPin()">設定する</button>
+    </div>
+    <div class="st" id="se-pin-st"></div>
+  </div>
+</div>
+
+<!-- 利用者を選ぶ -->
+<div class="se-mask" id="se-picker">
+  <div class="se-modal">
+    <h3>どなたの評価を始めますか</h3>
+    <input type="search" id="se-psearch" placeholder="お名前で探す" oninput="sePRender()">
+    <div class="se-plist" id="se-plist"></div>
+    <div class="se-mbtns"><button class="cancel" onclick="seClosePicker()">キャンセル</button></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* self-eval-v1 : 職員側 */
+var SE = { list:[], patients:[], cur:null, qs:[], st:'answered' };
+
+function seEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+
+async function seLoad(){
+  try{
+    var j = await fetch('/api/self-eval/list?status='+SE.st,{credentials:'same-origin'}).then(function(r){return r.json();});
+    SE.list = (j.items||[]);
+    seRenderList();
+  }catch(e){}
+  /* 確認待ちの件数は、どのタブを見ていても常に出す */
+  try{
+    var w = await fetch('/api/self-eval/list?status=answered',{credentials:'same-origin'}).then(function(r){return r.json();});
+    var n = (w.items||[]).length;
+    document.getElementById('se-waiting').textContent = n;
+    document.getElementById('se-alert').classList.toggle('zero', n===0);
+  }catch(e){}
+}
+function seTab(st){
+  SE.st = st;
+  document.querySelectorAll('.se-tab').forEach(function(b){ b.classList.toggle('on', b.dataset.st===st); });
+  seLoad();
+}
+function seRenderList(){
+  var box = document.getElementById('se-list');
+  if(!SE.list.length){
+    box.innerHTML = '<div class="se-empty">'
+      + (SE.st==='answered' ? '確認待ちはありません。' : '該当がありません。') + '</div>';
+    return;
+  }
+  var LB = {draft:['回答中','b-draft'], answered:['確認待ち','b-answered'], confirmed:['確認済み','b-confirmed']};
+  box.innerHTML = SE.list.map(function(x){
+    var lb = LB[x.status] || ['','b-draft'];
+    var d = (x.started_at||'').slice(0,10);
+    return '<div class="se-row" onclick="seOpen(\''+x.id+'\')">'
+      +   '<span class="nm">'+seEsc(x.user_name||'（氏名なし）')
+      +     '<small>'+seEsc(x.target_ym||'')+'　開始 '+seEsc(d)+'</small></span>'
+      +   '<span class="se-badge '+lb[1]+'">'+lb[0]+'</span>'
+      + '</div>';
+  }).join('');
+}
+
+/* ---- 利用者を選ぶ ---- */
+async function seOpenPicker(){
+  document.getElementById('se-picker').classList.add('on');
+  if(!SE.patients.length){
+    try{
+      var j = await fetch('/api/patients_cache',{credentials:'same-origin'}).then(function(r){return r.json();});
+      SE.patients = (j.patients||[]).filter(function(p){ return !p.is_discontinued; });
+    }catch(e){ SE.patients=[]; }
+  }
+  sePRender();
+}
+function seClosePicker(){ document.getElementById('se-picker').classList.remove('on'); }
+function sePRender(){
+  var kw = (document.getElementById('se-psearch').value||'').replace(/\s+/g,'');
+  var rows = SE.patients.filter(function(p){
+    if(!kw) return true;
+    return ((p.user_name||'')+(p.user_kana||'')).replace(/\s+/g,'').indexOf(kw) >= 0;
+  }).slice(0,80);
+  document.getElementById('se-plist').innerHTML = rows.length
+    ? rows.map(function(p){
+        return '<button onclick="seCreate(\''+p.id+'\')">'+seEsc(p.user_name)+'</button>';
+      }).join('')
+    : '<div class="se-empty">見つかりません</div>';
+}
+async function seCreate(pid){
+  seClosePicker();
+  var b = document.querySelector('.se-new');
+  var old = b.textContent; b.textContent = '質問を作っています…'; b.disabled = true;
+  try{
+    var j = await fetch('/api/self-eval/create',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid})}).then(function(r){return r.json();});
+    if(j.status!=='success'){ alert(j.message||'作成に失敗しました'); return; }
+    await seOpen(j.id);
+    SE.st='draft'; seTab('draft');
+  }catch(e){ alert('作成に失敗しました'); }
+  finally{ b.textContent = old; b.disabled = false; }
+}
+
+/* ---- 質問の確認・修正 ---- */
+async function seOpen(id){
+  try{
+    var j = await fetch('/api/self-eval/get?id='+encodeURIComponent(id),{credentials:'same-origin'})
+              .then(function(r){return r.json();});
+    if(j.status!=='success'){ alert(j.message||'開けませんでした'); return; }
+    SE.cur = j.eval;
+    SE.answers = (j.answers||[]);
+    SE.qs = SE.answers.map(function(a){
+      return {id:a.id, question:a.question, goal_kind:a.goal_kind, icf_zone:a.icf_zone,
+              source_note:a.source_note, score:a.score};
+    });
+    var st = j.eval.status;
+    /* 回答が終わっていれば「確認」、まだなら「質問の修正」を出す */
+    var review = (st === 'answered' || st === 'confirmed');
+    document.getElementById('se-edit').style.display   = review ? 'none' : 'block';
+    document.getElementById('se-review').style.display = review ? 'block' : 'none';
+    if(review){
+      document.getElementById('se-review-who').textContent =
+        (j.eval.user_name||'') + ' さんの回答（' + (j.eval.target_ym||'') + '）'
+        + (st==='confirmed' ? '　※確認済み' : '');
+      document.getElementById('se-staff-note').value = j.eval.staff_note || '';
+      document.getElementById('se-review-msg').textContent = '';
+      document.getElementById('se-icf-box').innerHTML = '';
+      seRenderAnswers();
+      /* ★前に作った次の目標の案が残っていれば出す（途中保存） */
+      var box = document.getElementById('se-goal-box');
+      box.innerHTML = '';
+      try{
+        var dr = j.eval.next_goal_draft ? JSON.parse(j.eval.next_goal_draft) : null;
+        if(dr && (dr.goals||[]).length) seRenderGoals(dr.goals, true);
+      }catch(e){}
+      document.getElementById('se-review').scrollIntoView({behavior:'smooth', block:'start'});
+    }else{
+      document.getElementById('se-edit-who').textContent =
+        (j.eval.user_name||'') + ' さんの質問（' + (j.eval.target_ym||'') + '）';
+      seRenderQs();
+      document.getElementById('se-edit').scrollIntoView({behavior:'smooth', block:'start'});
+    }
+  }catch(e){ alert('開けませんでした'); }
+}
+
+/* ---- 第2段：回答の確認 ---- */
+function seRenderAnswers(){
+  document.getElementById('se-answers').innerHTML = SE.answers.map(function(a){
+    var sc = a.score;
+    if(sc===null || sc===undefined){
+      return '<div class="se-ans"><div class="q">'+seEsc(a.question)+'</div>'
+           + '<div class="reason skip">未回答</div></div>';
+    }
+    var cls = sc>=8 ? 'n-ok' : (sc>=4 ? 'n-mid' : 'n-no');
+    var col = sc>=8 ? '#3f6f52' : (sc>=4 ? '#b08040' : '#6b7b8c');
+    var r = '';
+    if(a.reason_text) r = '<div class="reason">「'+seEsc(a.reason_text)+'」</div>';
+    else if(a.reason_mode==='voice') r = '<div class="reason skip">声で回答（録音）</div>';
+    else if(a.reason_mode==='skip')  r = '<div class="reason skip">とばした（あとで職員が聞く）</div>';
+    return '<div class="se-ans">'
+      + '<div class="q">'+seEsc(a.question)+'</div>'
+      + '<div class="sc"><span class="num '+cls+'">'+sc+' / 10</span>'
+      +   '<span class="meter"><i style="width:'+(sc*10)+'%;background:'+col+'"></i></span></div>'
+      + r + '</div>';
+  }).join('');
+}
+async function seSaveNote(){
+  var m = document.getElementById('se-review-msg');
+  try{
+    var j = await fetch('/api/self-eval/staff-note',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id, staff_note:document.getElementById('se-staff-note').value})
+    }).then(function(r){return r.json();});
+    m.className = (j.status==='success') ? 'se-msg ok' : 'se-msg ng';
+    m.textContent = (j.status==='success') ? 'メモを保存しました' : (j.message||'保存に失敗しました');
+  }catch(e){ m.className='se-msg ng'; m.textContent='保存に失敗しました'; }
+}
+async function seIcfSuggest(){
+  var b = document.getElementById('se-icf-btn'), box = document.getElementById('se-icf-box');
+  b.disabled = true; b.textContent = '考えています…';
+  try{
+    var j = await fetch('/api/self-eval/icf-suggest',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:SE.cur.id})})
+      .then(function(r){return r.json();});
+    if(j.status!=='success'){ box.innerHTML='<div class="se-empty">'+seEsc(j.message||'失敗しました')+'</div>'; return; }
+    var gs = j.stickies||[], ups = j.updates||[];
+    if(!gs.length && !ups.length){ box.innerHTML='<div class="se-empty">新しく残すことは見つかりませんでした。</div>'; return; }
+    SE.icf = gs; SE.icfUp = ups;
+    var html = '';
+    /* ★できるようになったものは、元の付箋を書き換える。
+       新しい付箋を足すだけだと「入浴に見守りが必要」と「入浴ができる」が並んでしまう。 */
+    if(ups.length){
+      html += '<div class="se-sec" style="margin-top:4px">できるようになったので書き換えるもの</div>';
+      html += ups.map(function(u,i){
+        return '<div class="se-card"><label>'
+          + '<input type="checkbox" data-icfup="'+i+'" checked>'
+          + '<span class="t">'
+          +   '<span style="color:#9aa0a6;text-decoration:line-through">'
+          +     '<span class="z z-cannot">'+(u.old_polarity==='cannot'?'できない':'できる')+'</span>'
+          +     seEsc(u.old_text)+'</span><br>'
+          +   '<span style="color:#00695c">→ <span class="z z-can">'
+          +     (u.polarity==='cannot'?'できない':'できる')+'</span>'+seEsc(u.text)+'</span>'
+          +   (u.why?'<span class="why">'+seEsc(u.why)+'</span>':'')
+          + '</span></label></div>';
+      }).join('');
+    }
+    if(gs.length){
+      html += '<div class="se-sec" style="margin-top:14px">新しく足すもの</div>';
+      html += gs.map(function(s,i){
+        var zc = (s.polarity==='cannot') ? 'z-cannot' : 'z-can';
+        var zl = (s.polarity==='cannot' ? 'できない' : 'できる');
+        return '<div class="se-card"><label>'
+          + '<input type="checkbox" data-icf="'+i+'" checked>'
+          + '<span class="t"><span class="z '+zc+'">'+zl+'</span>'+seEsc(s.text)
+          +   (s.why?'<span class="why">'+seEsc(s.why)+'</span>':'')+'</span>'
+          + '</label></div>';
+      }).join('');
+    }
+    box.innerHTML = html + '<button class="se-mini" onclick="seIcfApply()" style="margin-top:8px">'
+      + 'チェックしたものをICFに反映する</button>';
+  }catch(e){ box.innerHTML='<div class="se-empty">失敗しました</div>'; }
+  finally{ b.disabled=false; b.textContent='回答からICFの付箋を作る'; }
+}
+async function seIcfApply(){
+  var picked = [], ups = [];
+  document.querySelectorAll('#se-icf-box input[data-icf]').forEach(function(cb){
+    if(cb.checked) picked.push(SE.icf[+cb.dataset.icf]);
+  });
+  document.querySelectorAll('#se-icf-box input[data-icfup]').forEach(function(cb){
+    if(cb.checked) ups.push(SE.icfUp[+cb.dataset.icfup]);
+  });
+  if(!picked.length && !ups.length){ alert('反映するものを選んでください'); return; }
+  var m = document.getElementById('se-review-msg');
+  try{
+    var j = await fetch('/api/self-eval/icf-apply',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id, stickies:picked, updates:ups})}).then(function(r){return r.json();});
+    if(j.status==='success'){
+      var t = [];
+      if(j.changed) t.push(j.changed+'件を書き換え');
+      if(j.added)   t.push(j.added+'件を追加');
+      var msg = (t.join('、') || '変更はありませんでした');
+      m.className='se-msg ok'; m.textContent = msg;
+      document.getElementById('se-icf-box').innerHTML =
+        '<div class="se-empty">'+msg+'ました。利用者情報のICFで確認できます。</div>';
+    }else{ m.className='se-msg ng'; m.textContent = j.message||'失敗しました'; }
+  }catch(e){ m.className='se-msg ng'; m.textContent='失敗しました'; }
+}
+async function seNextGoal(tone){
+  var b = document.getElementById('se-goal-btn'), box = document.getElementById('se-goal-box');
+  b.disabled = true; b.textContent = '考えています…';
+  try{
+    var j = await fetch('/api/self-eval/next-goal',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id, tone:tone||''})}).then(function(r){return r.json();});
+    if(j.status!=='success'){ box.innerHTML='<div class="se-empty">'+seEsc(j.message||'失敗しました')+'</div>'; return; }
+    if(!(j.goals||[]).length){ box.innerHTML='<div class="se-empty">'+seEsc(j.message||'達成できた項目がありません。')+'</div>'; return; }
+    seRenderGoals(j.goals, false);
+  }catch(e){ box.innerHTML='<div class="se-empty">失敗しました</div>'; }
+  finally{ b.disabled=false; b.textContent='達成できた項目から次の目標を考える'; }
+}
+function seRenderGoals(goals, fromDraft){
+  SE.goals = goals;
+  var head = fromDraft
+    ? '<div class="se-empty" style="padding:8px 2px;text-align:left">前回つくった案が残っています。</div>' : '';
+  document.getElementById('se-goal-box').innerHTML = head
+    + '<div class="se-tune">'
+    +   '<button onclick="seNextGoal(\'easier\')">もう少しやさしく</button>'
+    +   '<button onclick="seNextGoal(\'concrete\')">もっと具体的に</button>'
+    +   '<button onclick="seNextGoal(\'longer\')">長期目標として</button>'
+    + '</div>'
+    + goals.map(function(g,i){
+        var kc = (g.kind==='widen') ? 'k-widen' : 'k-step';
+        var kl = (g.kind==='widen') ? '別の領域へ広げる' : '同じ領域で一歩先へ';
+        return '<div class="se-goal">'
+          + '<span class="kind '+kc+'">'+kl+'</span>'
+          + '<textarea id="se-g'+i+'">'+seEsc(g.text)+'</textarea>'
+          + (g.why?'<div class="why">'+seEsc(g.why)+'</div>':'')
+          + '<div class="row">'
+          +   '<select id="se-t'+i+'">'
+          +     '<option value="short"'+(g.term==='long'?'':' selected')+'>短期目標にする</option>'
+          +     '<option value="long"'+(g.term==='long'?' selected':'')+'>長期目標にする</option>'
+          +   '</select>'
+          +   '<button class="use" onclick="seGoalApply('+i+')">この目標にする</button>'
+          + '</div></div>';
+      }).join('');
+}
+async function seGoalApply(i){
+  var text = (document.getElementById('se-g'+i).value||'').trim();
+  var term = document.getElementById('se-t'+i).value;
+  if(!text){ alert('目標の文が空です'); return; }
+  var lbl = (term==='long') ? '長期目標' : '短期目標';
+  if(!confirm('この方の'+lbl+'を、次の内容に置き換えます。\n\n'+text+'\n\nよろしいですか。')) return;
+  var m = document.getElementById('se-review-msg');
+  try{
+    var j = await fetch('/api/self-eval/next-goal/apply',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id, text:text, term:term})}).then(function(r){return r.json();});
+    m.className = (j.status==='success') ? 'se-msg ok' : 'se-msg ng';
+    m.textContent = (j.status==='success') ? (lbl+'を更新しました') : (j.message||'失敗しました');
+  }catch(e){ m.className='se-msg ng'; m.textContent='失敗しました'; }
+}
+async function seToEval(force){
+  var b = document.getElementById('se-toev-btn'), m = document.getElementById('se-review-msg');
+  b.disabled = true;
+  try{
+    var r = await fetch('/api/self-eval/to-evaluation',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id, force:!!force})});
+    var j = await r.json();
+    if(j.status==='success'){
+      m.className='se-msg ok';
+      var t = '評価の元データに足しました。';
+      if((j.filled||[]).length) t += '（'+j.filled.join('・')+' も自動で入力）';
+      m.textContent = t + ' 評価画面で「AIで生成」を押してください。';
+      return;
+    }
+    if(j.already){            /* すでに入っている。二重に足すか聞く */
+      if(confirm(j.message)) { b.disabled=false; return seToEval(true); }
+      m.className='se-msg'; m.textContent=''; return;
+    }
+    m.className='se-msg ng'; m.textContent = j.message || '失敗しました';
+  }catch(e){ m.className='se-msg ng'; m.textContent='失敗しました'; }
+  finally{ b.disabled=false; }
+}
+async function seConfirm(){
+  if(!confirm('この評価を確定します。よろしいですか。')) return;
+  var m = document.getElementById('se-review-msg');
+  try{
+    var j = await fetch('/api/self-eval/confirm',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id, staff_note:document.getElementById('se-staff-note').value})
+    }).then(function(r){return r.json();});
+    if(j.status!=='success'){ m.className='se-msg ng'; m.textContent=j.message||'失敗しました'; return; }
+    m.className='se-msg ok'; m.textContent='確定しました';
+    document.getElementById('se-review').style.display='none';
+    seLoad();
+  }catch(e){ m.className='se-msg ng'; m.textContent='失敗しました'; }
+}
+function seRenderQs(){
+  document.getElementById('se-qs').innerHTML = SE.qs.map(function(q,i){
+    var answered = (q.score!==null && q.score!==undefined);
+    return '<div class="se-q">'
+      + '<textarea onchange="seQEdit('+i+',this.value)">'+seEsc(q.question)+'</textarea>'
+      + '<div class="meta">'
+      +   '<span class="src">'+(q.source_note?seEsc(q.source_note):'&nbsp;')
+      +     (answered?'　／　回答済み（'+q.score+'）':'')+'</span>'
+      +   '<button class="del" onclick="seQDel('+i+')">消す</button>'
+      + '</div></div>';
+  }).join('');
+}
+function seQEdit(i, v){ SE.qs[i].question = v; }
+function seQDel(i){
+  if(SE.qs[i].score!==null && SE.qs[i].score!==undefined){
+    if(!confirm('この質問はすでに回答されています。消すと回答も消えます。よろしいですか。')) return;
+  }
+  SE.qs.splice(i,1); seRenderQs();
+}
+function seAddQ(){
+  SE.qs.push({id:null, question:'', goal_kind:'', icf_zone:'', source_note:'職員が追加', score:null});
+  seRenderQs();
+}
+async function seSaveQs(alertOk){
+  if(!SE.cur) return false;
+  var qs = SE.qs.filter(function(q){ return (q.question||'').trim(); });
+  try{
+    var j = await fetch('/api/self-eval/questions/save',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id, questions:qs})}).then(function(r){return r.json();});
+    if(j.status!=='success'){ alert(j.message||'保存に失敗しました'); return false; }
+    if(alertOk) alert('下書きを保存しました');
+    await seOpen(SE.cur.id);
+    return true;
+  }catch(e){ alert('保存に失敗しました'); return false; }
+}
+async function seStart(){
+  if(!SE.cur) return;
+  if(!(await seSaveQs(false))) return;      /* 渡す前に必ず保存する */
+  if(!confirm('この端末を利用者モードにします。\n解除するまで、ほかの画面は開けなくなります。\nよろしいですか。')) return;
+  try{
+    var j = await fetch('/api/self-eval/start',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:SE.cur.id})}).then(function(r){return r.json();});
+    if(j.status!=='success'){ alert(j.message||'開始できませんでした'); return; }
+    location.href = j.redirect || '/self-eval/run';
+  }catch(e){ alert('開始できませんでした'); }
+}
+
+/* ---- 解除コード（管理者のみ） ---- */
+async function sePinInit(){
+  try{
+    var j = await fetch('/api/self-eval/kiosk-pin/status',{credentials:'same-origin'})
+              .then(function(r){return r.json();});
+    if(j.status!=='success') return;
+    document.getElementById('se-pin').style.display = 'block';
+    var st = document.getElementById('se-pin-st');
+    if(j.configured){ st.className='st ok'; st.textContent='設定済みです'; }
+    else { st.className='st ng'; st.textContent='まだ設定されていません。設定しないとタブレットを渡せません。'; }
+  }catch(e){}
+}
+async function seSetPin(){
+  var v = (document.getElementById('se-pin-input').value||'').trim();
+  var st = document.getElementById('se-pin-st');
+  try{
+    var j = await fetch('/api/self-eval/kiosk-pin/set',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:v})}).then(function(r){return r.json();});
+    if(j.status==='success'){ st.className='st ok'; st.textContent='設定しました'; document.getElementById('se-pin-input').value=''; }
+    else { st.className='st ng'; st.textContent = j.message || '設定に失敗しました'; }
+  }catch(e){ st.className='st ng'; st.textContent='設定に失敗しました'; }
+}
+
+seLoad();
+sePinInit();
+</script>
+{% endblock %}
