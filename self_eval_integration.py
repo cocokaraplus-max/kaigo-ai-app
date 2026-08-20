@@ -322,8 +322,31 @@ def register_self_eval_routes(app):
         L.append("- 1問1事実。二重否定を使わない。専門用語（ADL・IADL・移乗・見守り等）を使わない。")
         L.append("- 敬語で「〜できましたか」「〜になりましたか」。責める言い方にしない。")
         L.append("- できることは前提にして聞く（例：歩行器が使えるなら『歩行器を使って〜できましたか』）。")
-        L.append("- 6問以上8問以下。多いと途中でやめてしまいます。")
         L.append("- source_note には、どの材料から作ったかを職員向けに短く書く（利用者には見せません）。")
+        # ここから下は 2026-08-20 に本番の実データで失敗して足した対策。消さないこと。
+        L.append("")
+        L.append("★★【目標に書かれていないことを聞かないこと】★★")
+        L.append("　目標欄には『活動量増、家事』『転倒注意』『散歩』のような")
+        L.append("　【短い言葉だけ】が入っていることがよくあります。")
+        L.append("　そのときは、その言葉をそのまま確かめる質問にしてください。")
+        L.append("　【勝手に具体的な動作へ広げてはいけません。】")
+        L.append("")
+        L.append("　悪い例：目標『活動量増、家事』 → 『トイレまで行けましたか』")
+        L.append("　　　　　→ トイレは目標のどこにも書かれていません。作ってはいけません。")
+        L.append("　悪い例：目標『活動量増、家事』 → 『身支度をすることができましたか』")
+        L.append("　　　　　→ 身支度も書かれていません。")
+        L.append("　良い例：目標『活動量増、家事』 →")
+        L.append("　　　　　『この1か月で、体を動かす機会は 増えましたか』")
+        L.append("　　　　　『この1か月で、家事をする機会は ありましたか』")
+        L.append("")
+        L.append("　トイレ・入浴・着替え・食事などの動作を、こちらから持ち出さないこと。")
+        L.append("　ただし【できないこと／できること】の付箋にその動作が書かれていれば、")
+        L.append("　それは実際に確認された事実なので使って構いません。")
+        L.append("")
+        L.append("★★【質問の数：無理に増やさない】★★")
+        L.append("　目標が少ないときは、質問も少なくて構いません。")
+        L.append("　目標が2つなら2〜3問で十分です。【数合わせで質問を作らないでください。】")
+        L.append("　多くても6問まで。（このあと別に4問が自動で足されます）")
         # ここから下は 2026-08-20 にDEVで実際に生成させて見つかった不具合への対策。消さないこと。
         L.append("")
         L.append("【必ず守ること（守らないと画面で答えられません）】")
@@ -475,6 +498,36 @@ def register_self_eval_routes(app):
         except Exception:
             pass
         return jsonify({"status": "success", "saved": len(qs)})
+
+    @app.route('/api/self-eval/delete', methods=['POST'])
+    @login_required
+    def api_self_eval_delete():
+        """評価をまるごと消す。作り直したいときのため。
+        ★確定済み（confirmed）は管理者しか消せない。記録として残すべきものなので。
+        ★利用者モード中は消せない（_kiosk_guard が /api/self-eval/delete を通さない）。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        eid = ((request.json or {}).get("id") or "").strip()
+        if not eid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        try:
+            e = (supabase.table("patient_self_evaluations").select("id,status")
+                 .eq("facility_code", f_code).eq("id", eid).execute())
+            if not e.data:
+                return jsonify({"status": "error", "message": "見つかりません"}), 404
+            if e.data[0].get("status") == "confirmed" and not _admin_only():
+                return jsonify({"status": "error",
+                                "message": "確定済みの評価は管理者しか消せません"}), 403
+            # 先に回答を消してから本体を消す（残骸を残さない）
+            (supabase.table("patient_self_eval_answers").delete()
+             .eq("facility_code", f_code).eq("evaluation_id", eid).execute())
+            (supabase.table("patient_self_evaluations").delete()
+             .eq("facility_code", f_code).eq("id", eid).execute())
+        except Exception as ex:
+            return jsonify({"status": "error", "message": str(ex)}), 500
+        print(f"[self-eval] deleted eval={eid} by={session.get('my_name','')}", flush=True)
+        return jsonify({"status": "success"})
 
     # ---------- 解除コード ----------
     @app.route('/api/self-eval/kiosk-pin/status', methods=['GET'])
