@@ -21,11 +21,15 @@ DDL: db/self_eval.sql（デプロイより先に DEV→本番 の順で適用）
   POST /api/self-eval/start            - 利用者モードに入る（キオスクON）
   POST /api/self-eval/kiosk-pin/set    - 解除コード（4桁）の設定（管理者のみ）
   GET  /api/self-eval/kiosk-pin/status - 解除コードが設定済みかだけ返す
+  GET  /self-eval/reason-image/<id>    - 手書き画像の表示（★ログイン必須。公開URLにしない）
+  POST /api/self-eval/answer-ocr       - 手書きをAIで文字にする（保存はしない）
+  POST /api/self-eval/answer-reason    - 職員が直した文字を保存する
 
 提供API（利用者側・キオスク中のみ）:
   GET  /self-eval/run                  - 回答画面
   GET  /self-eval/locked               - ロック画面
   POST /api/self-eval/answer           - 1問ぶんの回答を保存（★1問ごと自動保存）
+  POST /api/self-eval/answer-image     - ペンで書いた手書きを画像で保存（self-eval-pen-v1）
   POST /api/self-eval/finish           - 回答完了 → status='answered' → ロック
   POST /api/self-eval/unlock           - 4桁で利用者モードを解除
 """
@@ -56,6 +60,7 @@ _KIOSK_ALLOW_EXACT = (
     "/api/self-eval/finish",       # 回答完了
     "/api/self-eval/unlock",       # 職員が解除する
     "/api/self-eval/tts",          # 質問の読み上げ音声
+    "/api/self-eval/answer-image", # 手書き（ペン）の画像を保存
 )
 # 見た目の部品だけは通す（CSS・画像・フォント）
 _KIOSK_ALLOW_PREFIX = ("/static/",)
@@ -811,6 +816,183 @@ def register_self_eval_routes(app):
         return jsonify({"status": "success"})
 
     # ==========================================================
+    # self-eval-pen-v1 : ペンでの手書き入力
+    #
+    #   ★なぜ必要か
+    #     利用者はタブレットのキーボード（フリック入力）が使えない。
+    #     「自分で書く」が文字入力しかないと、実質つかえない機能だった。
+    #     紙に書くのと同じように【ペンや指で書いてもらい、画像として残す】。
+    #
+    #   ★保存先
+    #     既存の case-photos バケットを流用する（新しいバケットを作ると
+    #     権限設定をもう一度やることになるため。他の写真機能と同じ考え方）。
+    #     パスは  {施設コード}/self-eval/{評価ID}/{設問ID}.png
+    #
+    #   ★公開URLにしない
+    #     手書きの中身は本人が書いた要配慮個人情報。get_public_url を使うと
+    #     URLを知っている人なら誰でも見られてしまう。
+    #     DBには【パスだけ】を持ち、表示は職員ログイン必須の
+    #     /self-eval/reason-image/<id> を通して出す。
+    # ==========================================================
+    _PEN_BUCKET = "case-photos"
+    _PEN_MAX_BYTES = 2 * 1024 * 1024      # 2MB。手書き1枚なら十分すぎる大きさ
+
+    def _pen_path(f_code, eid, qid):
+        return f"{f_code}/self-eval/{eid}/{qid}.png"
+
+    @app.route('/api/self-eval/answer-image', methods=['POST'])
+    def api_self_eval_answer_image():
+        """手書きのPNGを受け取って保存する。利用者モード中のみ。
+
+        ★失敗しても回答そのものは止めない。
+          画面側は、この保存に失敗しても「次へ」を進める作りにしてある
+          （手書きは補足であって、点数のほうが本体だから）。
+        """
+        import base64
+        from app import get_supabase
+        eid = session.get(_K_EVAL)
+        if not eid:
+            return jsonify({"status": "error", "message": "利用者モードではありません"}), 403
+        f_code = session.get("f_code")
+        d = request.json or {}
+        qid = (d.get("id") or "").strip()
+        if not qid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        raw = (d.get("image") or "")
+        if raw.startswith("data:"):
+            raw = raw.split(",", 1)[-1]
+        if not raw:
+            return jsonify({"status": "error", "message": "画像がありません"}), 400
+        try:
+            body = base64.b64decode(raw)
+        except Exception:
+            return jsonify({"status": "error", "message": "画像を読めませんでした"}), 400
+        # PNG以外は受け取らない（先頭8バイトがPNGの目印）
+        if not body.startswith(b"\x89PNG\r\n\x1a\n"):
+            return jsonify({"status": "error", "message": "PNGではありません"}), 400
+        if len(body) > _PEN_MAX_BYTES:
+            return jsonify({"status": "error", "message": "画像が大きすぎます"}), 413
+
+        supabase = get_supabase()
+        # ★他人の設問に書き込めないよう、この評価の設問かどうかを必ず確かめる
+        try:
+            chk = (supabase.table("patient_self_eval_answers").select("id")
+                   .eq("id", qid).eq("facility_code", f_code)
+                   .eq("evaluation_id", eid).execute())
+            if not chk.data:
+                return jsonify({"status": "error", "message": "この設問は対象外です"}), 403
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+        path = _pen_path(f_code, eid, qid)
+        try:
+            # 書き直しがあるので上書き（upsert）。文字列の "true" で渡すのが supabase-py の作法
+            supabase.storage.from_(_PEN_BUCKET).upload(
+                path=path, file=body,
+                file_options={"content-type": "image/png", "upsert": "true"})
+        except Exception as e:
+            print(f"[self-eval-pen] upload failed: {e}", flush=True)
+            return jsonify({"status": "error", "message": "保存できませんでした"}), 503
+        try:
+            (supabase.table("patient_self_eval_answers")
+             .update({"reason_image_path": path, "reason_mode": "write",
+                      "updated_at": _now_iso()})
+             .eq("id", qid).eq("facility_code", f_code)
+             .eq("evaluation_id", eid).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success"})
+
+    @app.route('/self-eval/reason-image/<answer_id>')
+    @login_required
+    def self_eval_reason_image(answer_id):
+        """手書き画像を職員に見せる。★ログイン必須。利用者モード中は許可URLに
+        入れていないので、利用者のタブレットからは開けない。"""
+        from flask import Response
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        try:
+            r = (supabase.table("patient_self_eval_answers")
+                 .select("reason_image_path")
+                 .eq("id", (answer_id or "").strip())
+                 .eq("facility_code", f_code).execute())
+        except Exception:
+            return "", 404
+        path = ((r.data or [{}])[0] or {}).get("reason_image_path")
+        if not path:
+            return "", 404
+        try:
+            blob = supabase.storage.from_(_PEN_BUCKET).download(path)
+        except Exception as e:
+            print(f"[self-eval-pen] download failed: {e}", flush=True)
+            return "", 404
+        return Response(blob, mimetype="image/png",
+                        headers={"Cache-Control": "private, max-age=300"})
+
+    @app.route('/api/self-eval/answer-ocr', methods=['POST'])
+    @login_required
+    def api_self_eval_answer_ocr():
+        """手書き画像をAIに読ませて文字にする（職員が押したときだけ動く）。
+
+        ★保存はしない。読み取り結果を返すだけ。
+          手書きの読み取りは必ず間違える。職員が画面で直してから保存する。
+        """
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        qid = ((request.json or {}).get("id") or "").strip()
+        if not qid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        try:
+            r = (supabase.table("patient_self_eval_answers")
+                 .select("reason_image_path").eq("id", qid)
+                 .eq("facility_code", f_code).execute())
+            path = ((r.data or [{}])[0] or {}).get("reason_image_path")
+            if not path:
+                return jsonify({"status": "error", "message": "手書きがありません"}), 404
+            blob = supabase.storage.from_(_PEN_BUCKET).download(path)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        try:
+            from utils import get_generative_model
+            model = get_generative_model()
+            prompt = (
+                "これは介護施設の利用者ご本人が、タブレットにペンで手書きした文字の画像です。\n"
+                "書かれている文字をそのまま書き起こしてください。\n"
+                "・読めた文字だけを出す。読めない部分は □ とする\n"
+                "・意味を補ったり、きれいな文章に直したりしない\n"
+                "・説明や前置きは書かない。書き起こした本文だけを返す\n"
+                "・何も書かれていなければ、空で返す")
+            resp = model.generate_content([{"mime_type": "image/png", "data": blob}, prompt])
+            text = (getattr(resp, "text", "") or "").strip()
+        except Exception as e:
+            print(f"[self-eval-pen] ocr failed: {e}", flush=True)
+            return jsonify({"status": "error", "message": "読み取れませんでした"}), 503
+        return jsonify({"status": "success", "text": text[:2000]})
+
+    @app.route('/api/self-eval/answer-reason', methods=['POST'])
+    @login_required
+    def api_self_eval_answer_reason():
+        """職員が、手書きを読んで文字に起こしたものを保存する。
+        ★AIの読み取りをそのまま保存させない。必ず職員が押して確定する。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        d = request.json or {}
+        qid = (d.get("id") or "").strip()
+        if not qid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        text = (d.get("reason_text") or "").strip()[:2000]
+        try:
+            (supabase.table("patient_self_eval_answers")
+             .update({"reason_text": text or None, "updated_at": _now_iso()})
+             .eq("id", qid).eq("facility_code", f_code).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success"})
+
+    # ==========================================================
     # 第2段：職員の確認 → ICF付箋へのフィードバック → 次の目標
     #   ここで初めて status='confirmed' になる。
     #   ★どの操作も途中でやめられること。職員は他の仕事に呼ばれる。
@@ -837,6 +1019,10 @@ def register_self_eval_routes(app):
             L.append(f"  達成度: {sc}/10")
             if a.get("reason_text"):
                 L.append(f"  本人の言葉: {a.get('reason_text')}")
+            elif a.get("reason_image_path"):
+                # self-eval-pen-v1: 手書きはあるが、まだ職員が文字にしていない状態。
+                # 中身が分からないので、AIに勝手に想像させない。
+                L.append("  本人の言葉: （手書きで回答あり。まだ文字にしていないため内容は不明）")
             elif a.get("reason_mode") == "skip":
                 L.append("  本人の言葉: （答えたくないとのことで、とばした）")
             if a.get("icf_zone"):
@@ -1227,6 +1413,8 @@ def register_self_eval_routes(app):
             L.append(f"・{a.get('question')}　→ {sc}/10")
             if (a.get("reason_text") or "").strip():
                 L.append(f"　　本人の言葉：「{a.get('reason_text').strip()}」")
+            elif a.get("reason_image_path"):
+                L.append("　　本人の言葉：手書きで回答あり（まだ文字にしていないため内容は不明）")
             elif a.get("reason_mode") == "skip":
                 L.append("　　本人の言葉：（答えたくないとのことでとばした）")
             elif a.get("reason_mode") == "voice":

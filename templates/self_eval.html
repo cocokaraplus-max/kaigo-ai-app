@@ -73,6 +73,15 @@
 .se-ans .reason{font-size:.88rem;color:#3e4c59;line-height:1.65;background:#fff;
  border-left:3px solid #cfd8dc;padding:7px 11px;border-radius:0 7px 7px 0}
 .se-ans .reason.skip{color:#9aa0a6;border-left-color:#e4e7eb}
+/* self-eval-pen-v1: ご本人がペンで書いたもの */
+.se-pen{margin-top:9px;border:1px solid #e6e8eb;border-radius:9px;background:#fff;padding:9px}
+.se-pen .ttl{font-size:.76rem;font-weight:900;color:#1e3a5f;margin-bottom:7px}
+.se-pen img{display:block;width:100%;border:1px solid #eceff2;border-radius:7px;background:#fff}
+.se-pen .row{display:flex;gap:7px;margin-top:8px;flex-wrap:wrap}
+.se-pen .row button{padding:8px 12px;border-radius:8px;border:1.5px solid #cfd8dc;background:#fff;
+ color:#3e4c59;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit}
+.se-pen textarea{width:100%;min-height:64px;margin-top:7px;border:1.5px solid #d3d9df;border-radius:8px;
+ padding:9px;font-size:.86rem;line-height:1.6;font-family:inherit;color:#1f2933}
 .se-note{width:100%;min-height:90px;border:1.5px solid #d3d9df;border-radius:9px;padding:10px;
  font-size:.92rem;font-family:inherit;line-height:1.7;color:#1f2933;resize:vertical}
 .se-sec{font-size:.85rem;font-weight:900;color:#1e3a5f;margin:18px 0 9px;
@@ -386,13 +395,70 @@ async function seOpen(id){
   }catch(e){ alert('開けませんでした'); }
 }
 
+/* ---- self-eval-pen-v1: ご本人がペンで書いたものを出す ----
+   ★画像は公開URLではなく /self-eval/reason-image/<id> 経由。ログインが要る。
+   ★AIの読み取りは必ず職員が直してから保存する（手書きは必ず読み違える）。 */
+function sePenBlock(a){
+  if(!a.reason_image_path) return '';
+  return '<div class="se-pen">'
+       +   '<div class="ttl">ご本人の手書き</div>'
+       +   '<img src="/self-eval/reason-image/'+a.id+'" alt="ご本人の手書き">'
+       +   '<div class="row">'
+       +     '<button onclick="sePenOcr(\''+a.id+'\',this)">AIで文字にする</button>'
+       +     '<button onclick="sePenSave(\''+a.id+'\',this)">この文字で保存</button>'
+       +   '</div>'
+       +   '<textarea id="se-pen-'+a.id+'" placeholder="手書きを読んで、ここに文字で入力してください。ここに入れた文字がICFや次の目標の材料になります。">'
+       +   seEsc(a.reason_text||'')+'</textarea>'
+       + '</div>';
+}
+async function sePenOcr(id, btn){
+  var t = document.getElementById('se-pen-'+id);
+  var old = btn.textContent; btn.disabled = true; btn.textContent = '読み取り中…';
+  try{
+    var j = await fetch('/api/self-eval/answer-ocr',{method:'POST',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})})
+      .then(function(r){return r.json();});
+    if(j.status==='success'){
+      if(!(j.text||'').trim()) alert('文字を読み取れませんでした。手で入力してください。');
+      else t.value = j.text;
+    }else alert(j.message||'読み取れませんでした');
+  }catch(e){ alert('読み取れませんでした'); }
+  btn.disabled = false; btn.textContent = old;
+}
+async function sePenSave(id, btn){
+  var t = document.getElementById('se-pen-'+id);
+  var old = btn.textContent; btn.disabled = true; btn.textContent = '保存中…';
+  try{
+    var j = await fetch('/api/self-eval/answer-reason',{method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:id, reason_text:t.value})})
+      .then(function(r){return r.json();});
+    if(j.status==='success'){
+      /* 手元の一覧にも反映しておく（開き直さなくても次の処理に使えるように） */
+      (SE.answers||[]).forEach(function(x){ if(x.id===id) x.reason_text = t.value; });
+      btn.textContent = '保存しました';
+      setTimeout(function(){ btn.disabled=false; btn.textContent=old; }, 1400);
+      return;
+    }
+    alert(j.message||'保存できませんでした');
+  }catch(e){ alert('保存できませんでした'); }
+  btn.disabled = false; btn.textContent = old;
+}
+
 /* ---- 第2段：回答の確認 ---- */
 function seRenderAnswers(){
   document.getElementById('se-answers').innerHTML = SE.answers.map(function(a){
     var sc = a.score;
     if(sc===null || sc===undefined){
+      /* 点数が無い質問（「してみたいこと」など）と、本当の未回答をここで分ける。
+         手書きや言葉があるのに「未回答」と出ていては、職員が見落とす。 */
+      var r0 = '';
+      if(a.reason_text) r0 = '<div class="reason">「'+seEsc(a.reason_text)+'」</div>';
+      else if(a.reason_mode==='voice') r0 = '<div class="reason skip">声で回答（録音）</div>';
+      else if(a.reason_mode==='skip')  r0 = '<div class="reason skip">とばした（あとで職員が聞く）</div>';
+      else if(!a.reason_image_path)    r0 = '<div class="reason skip">未回答</div>';
       return '<div class="se-ans"><div class="q">'+seEsc(a.question)+'</div>'
-           + '<div class="reason skip">未回答</div></div>';
+           + r0 + sePenBlock(a) + '</div>';
     }
     var cls = sc>=8 ? 'n-ok' : (sc>=4 ? 'n-mid' : 'n-no');
     var col = sc>=8 ? '#3f6f52' : (sc>=4 ? '#b08040' : '#6b7b8c');
@@ -400,6 +466,7 @@ function seRenderAnswers(){
     if(a.reason_text) r = '<div class="reason">「'+seEsc(a.reason_text)+'」</div>';
     else if(a.reason_mode==='voice') r = '<div class="reason skip">声で回答（録音）</div>';
     else if(a.reason_mode==='skip')  r = '<div class="reason skip">とばした（あとで職員が聞く）</div>';
+    r += sePenBlock(a);
     return '<div class="se-ans">'
       + '<div class="q">'+seEsc(a.question)+'</div>'
       + '<div class="sc"><span class="num '+cls+'">'+sc+' / 10</span>'

@@ -70,6 +70,22 @@ body{background:#f4f5f7;color:#1f2933;
 textarea{width:100%;min-height:150px;font-size:1.3rem;padding:16px;border:2px solid #d3d9df;
  border-radius:10px;font-family:inherit;line-height:1.7;color:#1f2933;-webkit-user-select:text;user-select:text}
 textarea:focus{outline:none;border-color:#1b4965}
+/* ===== self-eval-pen-v1 : ペンで書く欄 =====
+   ★利用者はフリック入力ができない。紙に書くのと同じように書いてもらう。
+     罫線は下地(.penwrap)に描き、canvasは透明にして線だけを持つ。
+     touch-action:none がないと、指で書いたときに画面ごとスクロールしてしまう。 */
+.penwrap{position:relative;flex:1;min-height:220px;margin-top:4px;border:2px solid #d3d9df;
+ border-radius:10px;background-color:#fff;background-image:repeating-linear-gradient(
+   to bottom, transparent 0, transparent 61px, #eceff2 61px, #eceff2 62px);
+ overflow:hidden}
+#pad{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;
+ -webkit-user-select:none;user-select:none}
+.penhint{position:absolute;left:0;right:0;top:22px;text-align:center;font-size:1.12rem;
+ color:#a6b0bb;font-weight:700;pointer-events:none}
+.pentools{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.pentools button{padding:14px 18px;border-radius:9px;border:2px solid #d3d9df;background:#fff;
+ color:#3e4c59;font-size:1.05rem;font-weight:800;cursor:pointer;font-family:inherit}
+.pentools button.kb{margin-left:auto;background:#fafbfc;color:#616e7c}
 .rec{display:flex;flex-direction:column;align-items:center;gap:18px;padding:22px 0}
 .recbtn{width:130px;height:130px;border-radius:50%;border:3px solid #8f3b34;background:#a34a41;color:#fff;
  font-size:1.02rem;font-weight:800;cursor:pointer;display:flex;flex-direction:column;
@@ -102,6 +118,8 @@ textarea:focus{outline:none;border-color:#1b4965}
   .c3 button svg{width:42px;height:42px}
   .why{gap:11px}
   .why button{padding:22px 10px;font-size:1.08rem}
+  .penwrap{min-height:150px}
+  .pentools button{padding:12px 12px;font-size:.98rem}
 }
 </style></head>
 <body>
@@ -163,8 +181,17 @@ textarea:focus{outline:none;border-color:#1b4965}
 
   <div class="body" id="screen-write" style="display:none">
     <div class="kicker">お書きください</div>
-    <p class="q" style="font-size:1.45rem;margin-bottom:16px">理由を お書きください</p>
-    <textarea id="wtext" placeholder="ここに お書きください"></textarea>
+    <p class="q" style="font-size:1.35rem;margin-bottom:10px">理由を お書きください</p>
+    <div class="penwrap" id="penwrap">
+      <canvas id="pad"></canvas>
+      <div class="penhint" id="penhint">ここに ペンや 指で お書きください</div>
+    </div>
+    <div class="pentools">
+      <button type="button" onclick="padUndo()">ひとつ もどす</button>
+      <button type="button" onclick="padClear()">ぜんぶ 消す</button>
+      <button type="button" class="kb" id="kbbtn" onclick="padToggleKb()">キーボードで 入力</button>
+    </div>
+    <textarea id="wtext" placeholder="ここに お書きください" style="display:none;margin-top:12px"></textarea>
   </div>
 
   <div class="body" id="screen-voice" style="display:none">
@@ -242,6 +269,7 @@ function render(){
   document.getElementById('prog').textContent = (i+1)+' / '+QS.length;
   document.getElementById('pbar').style.width = ((i+1)/QS.length*100)+'%';
   document.getElementById('wtext').value = '';
+  padReset();                                  /* self-eval-pen-v1: 前の問の手書きを持ち越さない */
   /* ★質問の種類に合わせて、選択肢の言い方と補足文を差し替える */
   var cs = choiceSet();
   document.getElementById('c3-no').textContent  = cs.no;
@@ -325,7 +353,7 @@ async function finish(){
     location.href = (j && j.redirect) ? j.redirect : '/self-eval/locked';
   }catch(e){ location.href='/self-eval/locked'; }
 }
-function next(){
+async function next(){
   if(phase==='q'){
     if(choice==='ok'){ saveAndNext(null,''); return; }   /* できた人に理由は聞かない */
     document.getElementById('whyq').innerHTML = (choice==='no')
@@ -336,14 +364,130 @@ function next(){
     document.getElementById('helptxt').textContent = 'お選びください';
     return;
   }
-  if(phase==='write'){ saveAndNext('write', document.getElementById('wtext').value); return; }
+  if(phase==='write'){
+    /* self-eval-pen-v1: 手書きがあれば先に画像を送る。
+       ★失敗しても止めない。手書きは補足で、点数のほうが本体だから。 */
+    var img = padExport();
+    if(img){
+      var nb = document.getElementById('nextbtn');
+      nb.disabled = true;
+      document.getElementById('helptxt').textContent = '保存しています…';
+      try{
+        await fetch('/api/self-eval/answer-image',{method:'POST',credentials:'same-origin',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({id:QS[i].id, image:img})});
+      }catch(e){ /* 通信が切れても操作は止めない */ }
+      nb.disabled = false;
+    }
+    saveAndNext('write', document.getElementById('wtext').value); return;
+  }
   if(phase==='voice'){ saveAndNext('voice', ''); return; }
 }
 function freeLabel(){ return isFree() ? 'してみたいこと・困っていること' : '理由'; }
 function goWrite(){ phase='write'; show('screen-write');
   document.querySelector('#screen-write .q').textContent = freeLabel()+' を お書きください';
   document.getElementById('nextbtn').disabled=false;
-  document.getElementById('helptxt').textContent='書き終えたら「次へ」'; }
+  document.getElementById('helptxt').textContent='書き終えたら「次へ」';
+  /* ★画面を出してから寸法を測る。display:none のままだと幅も高さも0になる */
+  setTimeout(padInit, 0); }
+
+/* ===== self-eval-pen-v1 : ペンで書く =====
+   ★なぜ手書きか
+     利用者はタブレットのキーボード（フリック入力）が使えない。
+     文字入力だけにすると「自分で書く」が実質つかえない機能になっていた。
+   ★線は「点の並び」で持つ（画面の向きが変わっても描き直せるように）。
+     座標はCSSピクセルで持ち、描くときだけ画面の細かさ(dpr)を掛ける。 */
+var PAD = {c:null, ctx:null, strokes:[], cur:null, dpr:1, ready:false};
+
+function padStyle(ctx){
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.strokeStyle='#16324a'; ctx.lineWidth=3.4;
+}
+function padInit(){
+  var c = document.getElementById('pad');
+  var wrap = document.getElementById('penwrap');
+  if(!c || !wrap) return;
+  var w = wrap.clientWidth, h = wrap.clientHeight;
+  if(!w || !h) return;                       /* まだ画面に出ていない */
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);   /* 2までで十分。大きすぎると保存が重い */
+  c.width = Math.round(w*dpr); c.height = Math.round(h*dpr);
+  PAD.c = c; PAD.dpr = dpr; PAD.w = w; PAD.h = h;
+  PAD.ctx = c.getContext('2d');
+  PAD.ctx.setTransform(dpr,0,0,dpr,0,0);
+  padStyle(PAD.ctx);
+  if(!PAD.ready){ padBind(c); PAD.ready = true; }
+  padRedraw();
+}
+function padBind(c){
+  function pos(e){ var r=c.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+  c.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    try{ c.setPointerCapture(e.pointerId); }catch(_){}
+    PAD.cur = [pos(e)];
+    PAD.strokes.push(PAD.cur);
+    document.getElementById('penhint').style.display='none';
+    /* 点だけ打った場合も見えるように、小さな丸を置く */
+    var p=PAD.cur[0], ctx=PAD.ctx;
+    ctx.beginPath(); ctx.arc(p.x,p.y,1.7,0,Math.PI*2); ctx.fillStyle='#16324a'; ctx.fill();
+  });
+  c.addEventListener('pointermove', function(e){
+    if(!PAD.cur) return;
+    e.preventDefault();
+    var p = pos(e), q = PAD.cur[PAD.cur.length-1];
+    PAD.cur.push(p);
+    var ctx=PAD.ctx;
+    ctx.beginPath(); ctx.moveTo(q.x,q.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
+    c.addEventListener(ev, function(){ PAD.cur = null; });
+  });
+}
+function padRedraw(){
+  var ctx = PAD.ctx; if(!ctx) return;
+  ctx.setTransform(PAD.dpr,0,0,PAD.dpr,0,0);
+  ctx.clearRect(0,0,PAD.w,PAD.h);
+  padStyle(ctx);
+  PAD.strokes.forEach(function(s){
+    if(!s.length) return;
+    if(s.length===1){ ctx.beginPath(); ctx.arc(s[0].x,s[0].y,1.7,0,Math.PI*2);
+                      ctx.fillStyle='#16324a'; ctx.fill(); return; }
+    ctx.beginPath(); ctx.moveTo(s[0].x,s[0].y);
+    for(var k=1;k<s.length;k++) ctx.lineTo(s[k].x,s[k].y);
+    ctx.stroke();
+  });
+  var hint = document.getElementById('penhint');
+  if(hint) hint.style.display = PAD.strokes.length ? 'none' : 'block';
+}
+function padUndo(){ PAD.strokes.pop(); PAD.cur=null; padRedraw(); }
+function padClear(){ PAD.strokes=[]; PAD.cur=null; padRedraw(); }
+function padReset(){
+  PAD.strokes=[]; PAD.cur=null;
+  var t=document.getElementById('wtext'); if(t){ t.style.display='none'; }
+  var b=document.getElementById('kbbtn'); if(b){ b.textContent='キーボードで 入力'; }
+  padRedraw();
+}
+/* 文字が打てる方のための逃げ道。ふだんは使わない */
+function padToggleKb(){
+  var t=document.getElementById('wtext'), b=document.getElementById('kbbtn');
+  var on = (t.style.display==='none');
+  t.style.display = on ? 'block' : 'none';
+  b.textContent = on ? 'キーボードを 閉じる' : 'キーボードで 入力';
+  if(on) t.focus();
+}
+/* 白い紙の上に線を写して1枚のPNGにする（背景が透明のままだと真っ黒に見える端末がある） */
+function padExport(){
+  if(!PAD.c || !PAD.strokes.length) return null;
+  try{
+    var o = document.createElement('canvas');
+    o.width = PAD.c.width; o.height = PAD.c.height;
+    var x = o.getContext('2d');
+    x.fillStyle = '#ffffff'; x.fillRect(0,0,o.width,o.height);
+    x.drawImage(PAD.c, 0, 0);
+    return o.toDataURL('image/png');
+  }catch(e){ return null; }
+}
+/* 画面の向きが変わったら描き直す（線は消さない） */
+window.addEventListener('resize', function(){ if(phase==='write') padInit(); });
 function goVoice(){ phase='voice'; show('screen-voice');
   document.querySelector('#screen-voice .q').textContent = freeLabel()+' を お話しください';
   document.getElementById('nextbtn').disabled=false;
