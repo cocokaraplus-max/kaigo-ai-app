@@ -18,6 +18,17 @@
   color:#5f6368; font-weight:800; font-size:0.9rem; cursor:pointer; white-space:nowrap; }
 .sr-tab.on { background:#1a73e8; border-color:#1a73e8; color:#fff; }
 
+/* soge-view-v1: 見せ方の切り替え（車両から／便から）
+   現場の要望。運転手は「自分の車」から見たいが、送迎の全体を組む人は
+   「迎え便に何台出ているか」から見たい。どちらが正しいということはないので選べるようにした。 */
+.sr-mode-row { display:flex; align-items:center; gap:10px; margin-bottom:9px; flex-wrap:wrap; }
+.sr-mode { display:inline-flex; border:1.5px solid #dadce0; border-radius:9px; overflow:hidden; background:#fff; }
+.sr-mode button { border:none; background:#fff; color:#5f6368; font-weight:800; font-size:0.82rem;
+  padding:8px 13px; cursor:pointer; font-family:inherit; }
+.sr-mode button.on { background:#1a73e8; color:#fff; }
+.sr-mode button + button { border-left:1.5px solid #dadce0; }
+.sr-mode-hint { font-size:0.75rem; color:#9aa3b2; font-weight:600; }
+
 /* soge-trip-tab-v1: 便タブ（迎え便・送り便ごとに切り替え） */
 .sr-ttabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; margin-bottom:12px; }
 .sr-ttab { flex:0 0 auto; padding:8px 14px; border-radius:10px; border:1.5px solid #dadce0; background:#fff;
@@ -139,6 +150,15 @@
     </div>
   </div>
 
+  <!-- soge-view-v1: 上下2段のタブ。順番は「見せ方」で入れ替わる -->
+  <div class="sr-mode-row">
+    <div class="sr-mode" id="srMode">
+      <button type="button" data-mode="vehicle">車両から</button>
+      <button type="button" data-mode="trip">便から</button>
+    </div>
+    <span class="sr-mode-hint" id="srModeHint"></span>
+  </div>
+
   <div class="sr-tabs" id="srTabs"></div>
   <div class="sr-ttabs" id="srTripTabs" style="display:none;"></div>
   <div class="sr-driver" id="srDriver"></div>
@@ -150,7 +170,16 @@
 <script>
 // ===== soge-run-v1 =====
 (function () {
-  var state = { date: '', data: null, tab: 0, tripTab: 0, busy: {}, staff: [], vehicles: [], patients: [] };
+  var state = { date: '', data: null, tab: 0, tripTab: 0, busy: {}, staff: [], vehicles: [], patients: [],
+                mode: 'vehicle' };   // soge-view-v1: 'vehicle'=車両から / 'trip'=便から
+
+  /* soge-view-v1: 選んだ見せ方は端末ごとに覚える。
+     運転手はいつも「車両から」、送迎を組む人はいつも「便から」使うため、
+     開くたびに選び直すのは手間になる。 */
+  try {
+    var _m = localStorage.getItem('soge_run_mode');
+    if (_m === 'trip' || _m === 'vehicle') state.mode = _m;
+  } catch (e) {}
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
@@ -222,7 +251,46 @@
     return t.trip_name || '便';
   }
 
+  // soge-view-v1: 便の並び順。臨時便は必ず最後に置く（あとから足すものなので）
+  function tripOrder(lbl) {
+    var o = ['迎え便', '送り便/迎え便', '送り便'];
+    var i = o.indexOf(lbl);
+    if (i >= 0) return i;
+    return (lbl === '臨時便') ? 8 : 5;
+  }
+
+  // タブ1行分のHTML。中身が便でも車両でも同じ形なので共通にする
+  function tabsHtml(labels, active, cls, attr) {
+    return labels.map(function (lb, i) {
+      return '<div class="' + cls + (i === active ? ' on' : '') + '" ' + attr + '="' + i + '">' + lb + '</div>';
+    }).join('');
+  }
+  function tripTabLabel(t) {
+    var time = t.depart ? ('<span class="sr-ttab-time">' + esc(t.depart) + '</span>') : '';
+    return esc(tripLabel(t)) + time;
+  }
+
+  // soge-view-v1: 見せ方の切り替えボタン
+  function renderMode() {
+    var box = $('srMode');
+    if (!box) return;
+    box.querySelectorAll('[data-mode]').forEach(function (b) {
+      if (b.dataset.mode === state.mode) b.classList.add('on'); else b.classList.remove('on');
+      b.onclick = function () {
+        if (state.mode === b.dataset.mode) return;
+        state.mode = b.dataset.mode;
+        try { localStorage.setItem('soge_run_mode', state.mode); } catch (e) {}
+        state.tab = 0; state.tripTab = 0;   // 意味が変わるので、どちらも先頭に戻す
+        render();
+      };
+    });
+    $('srModeHint').textContent = (state.mode === 'trip')
+      ? '便 → 車両 の順に選びます'
+      : '車両 → 便 の順に選びます';
+  }
+
   function render() {
+    renderMode();
     var vs = (state.data && state.data.vehicles) || [];
     // soge-extra-v1: 送迎がまだ無い日でも、臨時便だけは作れるようにする
     var addExtra = '<div class="sr-extra-add"><button class="sr-btn" id="srAddExtra">＋ 臨時便</button></div>';
@@ -237,40 +305,84 @@
       return;
     }
 
-    $('srTabs').innerHTML = vs.map(function (v, i) {
-      return '<div class="sr-tab' + (i === state.tab ? ' on' : '') + '" data-tab="' + i + '">' + esc(v.vehicle_name) + '</div>';
-    }).join('');
-    $('srTabs').querySelectorAll('[data-tab]').forEach(function (el) {
-      // soge-trip-tab-v1: 車両タブを変えたら便タブも先頭に戻す
-      el.onclick = function () { state.tab = Number(el.dataset.tab); state.tripTab = 0; render(); };
-    });
+    var row1 = $('srTabs'), row2 = $('srTripTabs');
+    var selVehicle = null, selTrip = null, prevOdoEnd;
 
-    var v = vs[state.tab];
-    $('srDriver').textContent = v.driver_name ? ('運転手 ' + v.driver_name) : '運転手 未設定';
-
-    // soge-trip-tab-v1: 便タブを描画し、選択中の便だけ表示する
-    var trips = v.trips || [];
-    var ttabEl = $('srTripTabs');
-    if (trips.length > 0) {
-      // 範囲外なら最後のタブへ（臨時便追加後に自動で最後の便へ飛ぶために 9999 をセットすることがある）
-      if (state.tripTab >= trips.length) state.tripTab = trips.length - 1;
-      ttabEl.innerHTML = trips.map(function (t, i) {
-        var lbl = tripLabel(t);
-        var time = t.depart ? ('<span class="sr-ttab-time">' + esc(t.depart) + '</span>') : '';
-        return '<div class="sr-ttab' + (i === state.tripTab ? ' on' : '') + '" data-ttab="' + i + '">' + lbl + time + '</div>';
-      }).join('');
-      ttabEl.style.display = 'flex';
-      ttabEl.querySelectorAll('[data-ttab]').forEach(function (el) {
-        el.onclick = function () { state.tripTab = Number(el.dataset.ttab); keepScroll(render); };
+    if (state.mode === 'trip') {
+      // ===== 便から見る（soge-view-v1）=====
+      //   1段目＝迎え便／送り便/迎え便／送り便／臨時便
+      //   2段目＝その便を走る車両
+      var labels = [];
+      vs.forEach(function (v) {
+        (v.trips || []).forEach(function (t) {
+          var l = tripLabel(t);
+          if (labels.indexOf(l) < 0) labels.push(l);
+        });
       });
+      labels.sort(function (a, b) { return tripOrder(a) - tripOrder(b); });
+      if (state.tripTab >= labels.length) state.tripTab = labels.length - 1;
+      if (state.tripTab < 0) state.tripTab = 0;
+      var lbl = labels[state.tripTab];
+
+      // その便を持っている車両だけを並べる（出ていない車は出さない）
+      var cars = [];
+      vs.forEach(function (v, vi) {
+        (v.trips || []).forEach(function (t, ti) {
+          if (tripLabel(t) === lbl) cars.push({ v: v, t: t, ti: ti });
+        });
+      });
+      if (state.tab >= cars.length) state.tab = 0;
+
+      row1.innerHTML = tabsHtml(labels.map(function (x) { return esc(x); }), state.tripTab, 'sr-ttab', 'data-ttab');
+      row1.querySelectorAll('[data-ttab]').forEach(function (el) {
+        // 便を変えたら車両は先頭に戻す（前の便の3台目が、この便にあるとは限らない）
+        el.onclick = function () { state.tripTab = Number(el.dataset.ttab); state.tab = 0; render(); };
+      });
+      row2.innerHTML = tabsHtml(cars.map(function (c) { return esc(c.v.vehicle_name); }), state.tab, 'sr-tab', 'data-tab');
+      row2.style.display = cars.length ? 'flex' : 'none';
+      row2.querySelectorAll('[data-tab]').forEach(function (el) {
+        el.onclick = function () { state.tab = Number(el.dataset.tab); keepScroll(render); };
+      });
+
+      var sel = cars[state.tab];
+      if (sel) {
+        selVehicle = sel.v;
+        selTrip = sel.t;
+        // 前の便の帰着㎞は【同じ車の1つ前の便】から取る。便の並びではない
+        prevOdoEnd = sel.ti > 0 ? ((sel.v.trips[sel.ti - 1] || {}).odo_end) : undefined;
+      }
     } else {
-      ttabEl.style.display = 'none';
-      ttabEl.innerHTML = '';
+      // ===== 車両から見る（これまでどおり。運転手はこちら）=====
+      if (state.tab >= vs.length) state.tab = 0;
+      row1.innerHTML = tabsHtml(vs.map(function (v) { return esc(v.vehicle_name); }), state.tab, 'sr-tab', 'data-tab');
+      row1.querySelectorAll('[data-tab]').forEach(function (el) {
+        // soge-trip-tab-v1: 車両タブを変えたら便タブも先頭に戻す
+        el.onclick = function () { state.tab = Number(el.dataset.tab); state.tripTab = 0; render(); };
+      });
+
+      selVehicle = vs[state.tab];
+      var trips = (selVehicle && selVehicle.trips) || [];
+      if (trips.length > 0) {
+        // 範囲外なら最後のタブへ（臨時便追加後に自動で最後の便へ飛ぶために 9999 をセットすることがある）
+        if (state.tripTab >= trips.length) state.tripTab = trips.length - 1;
+        if (state.tripTab < 0) state.tripTab = 0;
+        row2.innerHTML = tabsHtml(trips.map(tripTabLabel), state.tripTab, 'sr-ttab', 'data-ttab');
+        row2.style.display = 'flex';
+        row2.querySelectorAll('[data-ttab]').forEach(function (el) {
+          el.onclick = function () { state.tripTab = Number(el.dataset.ttab); keepScroll(render); };
+        });
+        selTrip = trips[state.tripTab];
+        prevOdoEnd = state.tripTab > 0 ? (trips[state.tripTab - 1] || {}).odo_end : undefined;
+      } else {
+        row2.style.display = 'none';
+        row2.innerHTML = '';
+      }
     }
 
-    // soge-odo-v1: 出発㎞の目安として、前の便の帰着㎞を薄字で見せる（選択中の便のみ）
-    var selTrip = trips[state.tripTab];
-    var prevOdoEnd = state.tripTab > 0 ? (trips[state.tripTab - 1] || {}).odo_end : undefined;
+    $('srDriver').textContent = selVehicle
+      ? (selVehicle.driver_name ? ('運転手 ' + selVehicle.driver_name) : '運転手 未設定')
+      : '';
+
     $('srBody').innerHTML = (selTrip ? tripHtml(selTrip, prevOdoEnd) : '') + addExtra;
     bind();
   }
