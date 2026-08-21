@@ -120,8 +120,8 @@
 .se-msg.ng{color:#a34a41}
 /* ===== self-eval-ui-v3 : 「作成中」をはっきり見せる ＋ 項目の区切りを色で分ける =====
    ★AIの生成は10〜30秒かかる。ボタンの文字を変えるだけだと
-     「固まった」と思われて何度も押される。回すもの（グルグル）と
-     経過秒数を出して、動いていることを目で分かるようにする。 */
+     「固まった」と思われて何度も押される。回すもの（グルグル）で
+     動いていることを目で分かるようにする。 */
 @keyframes se-rot{to{transform:rotate(360deg)}}
 .se-busy{display:flex;align-items:center;gap:12px;padding:14px;border-radius:10px;
  background:#fff;border:1px dashed #c2ccd6;margin-top:9px}
@@ -466,22 +466,16 @@ async function seOpen(id){
 
 /* ---- self-eval-ui-v3: 「作成中」をはっきり見せる ----
    ★AIの生成は10〜30秒かかる。ボタンの文字を変えるだけだと「固まった」と思われ、
-     何度も押される。回るものと経過秒数を出して、動いていることを目で見せる。 */
-var SE_TICK = {};
+     何度も押される。回るものを出して、動いていることを目で見せる。 */
+/* ★経過秒数は出さない。「何秒かかったか」は職員にとって意味がなく、
+     数字が増えるほど遅く感じさせるだけだった（現場の指摘）。
+     動いていることは、回るしるしだけで十分に伝わる。 */
 function seBusy(boxId, title, note){
   var box = document.getElementById(boxId); if(!box) return;
   box.innerHTML = '<div class="se-busy"><span class="ring"></span><span class="tx">'
-    + title + '<small>' + (note||'') + '　<b id="'+boxId+'-sec">0秒</b></small></span></div>';
-  var n = 0;
-  clearInterval(SE_TICK[boxId]);
-  SE_TICK[boxId] = setInterval(function(){
-    n++;
-    var e = document.getElementById(boxId+'-sec');
-    if(e) e.textContent = n + '秒';
-    else clearInterval(SE_TICK[boxId]);
-  }, 1000);
+    + title + (note ? '<small>' + note + '</small>' : '') + '</span></div>';
 }
-function seBusyEnd(boxId){ clearInterval(SE_TICK[boxId]); }
+function seBusyEnd(boxId){ /* 表示は各処理が中身を差し替えるので、ここでは何もしない */ }
 function seBtnBusy(btn, label){
   btn.disabled = true;
   btn.innerHTML = '<span class="mr"></span>' + label;
@@ -496,18 +490,10 @@ function seVeil(title, note){
   var d = document.createElement('div');
   d.className = 'se-veil'; d.id = 'se-veil';
   d.innerHTML = '<div class="card"><div class="ring"></div><h4>'+title+'</h4>'
-              + '<p>'+(note||'')+'<br><b id="se-veil-sec">0秒</b></p></div>';
+              + '<p>'+(note||'')+'</p></div>';
   document.body.appendChild(d);
-  var n = 0;
-  clearInterval(SE_TICK.veil);
-  SE_TICK.veil = setInterval(function(){
-    n++;
-    var e = document.getElementById('se-veil-sec');
-    if(e) e.textContent = n + '秒'; else clearInterval(SE_TICK.veil);
-  }, 1000);
 }
 function seVeilEnd(){
-  clearInterval(SE_TICK.veil);
   var d = document.getElementById('se-veil'); if(d) d.remove();
 }
 
