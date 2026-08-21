@@ -65,6 +65,19 @@
   white-space:normal; overflow:hidden; overflow-wrap:anywhere; }
 .sr-tag { font-size:0.66rem; font-weight:700; border-radius:6px; padding:2px 5px; margin-left:4px; white-space:nowrap;
   background:#f3e8ff; color:#6b21a8; }
+.sr-tag.leave { background:#fff3e0; color:#b26a00; }   /* soge-leave-v1: 休み連絡 */
+
+/* soge-lock-v1: 確定バー。この日の表を止めるかどうかは【人が決める】 */
+.sr-lock { display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  border:1px solid #dbe3ee; background:#f7fafd; border-radius:10px; padding:9px 11px; margin-bottom:10px; }
+.sr-lock .st { font-size:0.82rem; font-weight:800; color:#1a73e8; }
+.sr-lock.on { border-color:#c7e3cd; background:#f2f9f4; }
+.sr-lock.on .st { color:#137333; }
+.sr-lock .ex { flex:1 1 100%; font-size:0.73rem; color:#7b8794; line-height:1.6; }
+.sr-lock button { border:1.5px solid #b6c0cb; background:#fff; color:#334; border-radius:8px;
+  padding:7px 12px; font-size:0.8rem; font-weight:800; cursor:pointer; font-family:inherit; }
+.sr-lock button.main { background:#137333; border-color:#137333; color:#fff; }
+.sr-lock button.warn { border-color:#e6c3c0; background:#fdf3f2; color:#a34a41; }
 .sr-plan { display:block; font-size:0.72rem; color:#9aa0a6; font-variant-numeric:tabular-nums; margin-top:2px; }
 
 /* 打刻ボタン。指で押しやすい大きさにする */
@@ -151,6 +164,8 @@
   </div>
 
   <!-- soge-view-v1: 上下2段のタブ。順番は「見せ方」で入れ替わる -->
+  <div class="sr-lock" id="srLock" style="display:none;"></div>
+
   <div class="sr-mode-row">
     <div class="sr-mode" id="srMode">
       <button type="button" data-mode="vehicle">車両から</button>
@@ -270,6 +285,78 @@
     return esc(tripLabel(t)) + time;
   }
 
+  /* ===== soge-lock-v1: 確定バー =====
+     ★確定していない日は、開くたびに配車表から作り直す（＝配車の直しがそのまま出る）。
+       確定した日は、配車表を直しても変わらない。走り出したあとの事故はこれで防ぐ。
+     ★打刻が始まった日は、確定していなくても自動では作り直さない。
+       確定の押し忘れに備えた保険。作り直しは下のボタンから明示的に行う。 */
+  function renderLock() {
+    var box = $('srLock');
+    if (!box) return;
+    var d = state.data || {};
+    var locked = !!d.locked, touched = !!d.touched;
+    box.style.display = 'flex';
+    box.className = 'sr-lock' + (locked ? ' on' : '');
+
+    var h;
+    if (locked) {
+      h = '<span class="st">確定済み</span>'
+        + '<button id="srUnlock">確定を解除する</button>'
+        + '<span class="ex">この日は配車表を直しても変わりません。'
+        + '配車の変更を取り込みたいときだけ、確定を解除してください。</span>';
+    } else {
+      h = '<span class="st">未確定</span>'
+        + '<button class="main" id="srLockBtn">この日を確定する</button>'
+        + (touched ? '<button class="warn" id="srRebuild">配車表から作り直す</button>' : '')
+        + '<span class="ex">'
+        + (touched
+            ? 'この日はもう打刻などが入っているため、配車表を直しても自動では反映しません。'
+              + '取り込むには「配車表から作り直す」を押してください（<b>打刻と臨時便は消えます</b>）。'
+            : '配車表を直すと、この画面を開くたびに反映されます。'
+              + '当日を走り出す前に「確定」を押すと、それ以降は変わらなくなります。')
+        + '</span>';
+    }
+    box.innerHTML = h;
+
+    var b1 = $('srLockBtn');
+    if (b1) b1.onclick = function () { setLock(true); };
+    var b2 = $('srUnlock');
+    if (b2) b2.onclick = function () {
+      if (!confirm('確定を解除します。\nこのあと画面を開くたびに、配車表の内容で作り直されます。\nよろしいですか。')) return;
+      setLock(false);
+    };
+    var b3 = $('srRebuild');
+    if (b3) b3.onclick = doRebuild;
+  }
+
+  async function setLock(want) {
+    try {
+      var r = await fetch('/api/soge/run/lock', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: state.date, locked: want })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message || '変えられませんでした', 'err'); return; }
+      toast(want ? 'この日を確定しました' : '確定を解除しました');
+      await load();
+    } catch (e) { toast('変えられませんでした', 'err'); }
+  }
+
+  async function doRebuild() {
+    if (!confirm('配車表からこの日を作り直します。\n\n★この日の打刻・欠席・メーター・臨時便は消えます。\nよろしいですか。')) return;
+    try {
+      var r = await fetch('/api/soge/run/rebuild', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: state.date })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message || '作り直せませんでした', 'err'); return; }
+      toast('配車表から作り直しました');
+      state.tab = 0; state.tripTab = 0;
+      await load();
+    } catch (e) { toast('作り直せませんでした', 'err'); }
+  }
+
   // soge-view-v1: 見せ方の切り替えボタン
   function renderMode() {
     var box = $('srMode');
@@ -290,6 +377,7 @@
   }
 
   function render() {
+    renderLock();
     renderMode();
     var vs = (state.data && state.data.vehicles) || [];
     // soge-extra-v1: 送迎がまだ無い日でも、臨時便だけは作れるようにする
@@ -406,11 +494,15 @@
 
   function tripHtml(t, prevEnd) {
     var stops = (t.stops || []).map(function (s, i) {
-      var cls = 'sr-stop' + (s.is_absent ? ' absent' : (s.arrived_at ? ' done' : ''));
+      // soge-leave-v1: 休み連絡が入っている方は「お休み」として出す。
+      //   ★手で付けた欠席（✕）とは別に持つ。連絡が取り消されたら自動で戻る。
+      var off = s.is_absent || s.is_leave;
+      var cls = 'sr-stop' + (off ? ' absent' : (s.arrived_at ? ' done' : ''));
       // 打刻がまだの人にも、あとから時刻を手で入れられるように ✎ を出す
       // （運転手が走り終わってからまとめて入力する場合がある）
-      var right = s.is_absent
-        ? '<span class="sr-time" style="background:#f6f7f9;border-color:#e6e8ec;color:#9aa0a6;">休み</span>'
+      var right = off
+        ? '<span class="sr-time" style="background:#f6f7f9;border-color:#e6e8ec;color:#9aa0a6;">'
+            + (s.is_leave && !s.is_absent ? 'お休み' : '休み') + '</span>'
         : (s.arrived_at
             ? '<span class="sr-time" data-edit="' + s.id + '" title="タップで時刻を直す">' + esc(s.arrived_at) + '</span>'
             : '<button class="sr-tap" data-tap="' + s.id + '">到着</button>' +
@@ -423,6 +515,7 @@
         '<div class="sr-info">' +
           '<span class="sr-name">' + esc(s.user_name) +
             (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') +
+            (s.is_leave ? '<span class="sr-tag leave">休み連絡</span>' : '') +
           '</span>' +
           (s.address ? '<span class="sr-addr">' + esc(s.address) + '</span>' : '') +
           (s.planned_at ? '<span class="sr-plan">予定 ' + esc(s.planned_at) + '</span>' : '') +
