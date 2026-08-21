@@ -85,7 +85,7 @@ textarea:focus{outline:none;border-color:#1b4965}
    ★利用者はフリック入力ができない。紙に書くのと同じように書いてもらう。
      罫線は下地(.penwrap)に描き、canvasは透明にして線だけを持つ。
      touch-action:none がないと、指で書いたときに画面ごとスクロールしてしまう。 */
-.penwrap{position:relative;flex:1;min-height:220px;margin-top:4px;border:2px solid #d3d9df;
+.penwrap{position:relative;flex:1;min-height:260px;margin-top:4px;border:2px solid #d3d9df;
  border-radius:10px;background-color:#fff;background-image:repeating-linear-gradient(
    to bottom, transparent 0, transparent 61px, #eceff2 61px, #eceff2 62px);
  overflow:hidden}
@@ -97,6 +97,24 @@ textarea:focus{outline:none;border-color:#1b4965}
 .pentools button{padding:14px 18px;border-radius:9px;border:2px solid #d3d9df;background:#fff;
  color:#3e4c59;font-size:1.05rem;font-weight:800;cursor:pointer;font-family:inherit}
 .pentools button.kb{margin-left:auto;background:#fafbfc;color:#616e7c}
+
+/* ★手書きのときは【書く面をできるだけ広く】する（self-eval-pen-v2）。
+   ペンで書くには面積がいる。字が小さくなると本人も職員も読めない。
+   この画面のあいだだけ、まわりの余白と見出しを詰めて紙を広げる。
+   （body に .writing が付く。goWrite() で付け、他の画面に移ると外す） */
+body.writing{padding:calc(4px + env(safe-area-inset-top)) calc(4px + env(safe-area-inset-right))
+                     calc(4px + env(safe-area-inset-bottom)) calc(4px + env(safe-area-inset-left))}
+body.writing .tab{border-radius:8px;max-width:100%;min-height:100%}
+body.writing .bar{padding:8px 16px 3px}
+body.writing .progbar{margin:0 16px}
+body.writing #screen-write{padding:10px 14px 8px}
+body.writing #screen-write .kicker{display:none}
+body.writing #screen-write .q{font-size:1.06rem;line-height:1.5;margin:0 0 7px}
+body.writing .penwrap{min-height:0}       /* 使えるぶんだけ全部つかう */
+body.writing .pentools{margin-top:8px}
+body.writing .pentools button{padding:12px 15px}
+body.writing .foot{padding:9px 14px calc(9px + env(safe-area-inset-bottom))}
+body.writing .nav{padding:13px 18px}
 .rec{display:flex;flex-direction:column;align-items:center;gap:18px;padding:22px 0}
 .recbtn{width:130px;height:130px;border-radius:50%;border:3px solid #8f3b34;background:#a34a41;color:#fff;
  font-size:1.02rem;font-weight:800;cursor:pointer;display:flex;flex-direction:column;
@@ -259,6 +277,8 @@ function show(id){
   ['screen-load','screen-q','screen-why','screen-write','screen-voice'].forEach(function(s){
     document.getElementById(s).style.display = (s===id)?'flex':'none';
   });
+  /* 手書き画面いがいでは、詰めた余白をもとに戻す（self-eval-pen-v2） */
+  if(id!=='screen-write') document.body.classList.remove('writing');
   document.getElementById('foot').style.display = (id==='screen-load')?'none':'flex';
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
@@ -432,8 +452,12 @@ function goWrite(){ phase='write'; show('screen-write');
   document.querySelector('#screen-write .q').textContent = freeLabel()+' を お書きください';
   document.getElementById('nextbtn').disabled=false;
   document.getElementById('helptxt').textContent='書き終えたら「次へ」';
-  /* ★画面を出してから寸法を測る。display:none のままだと幅も高さも0になる */
-  setTimeout(padInit, 0); }
+  /* ★書く面をできるだけ広くする。まわりの余白と見出しを詰める */
+  document.body.classList.add('writing');
+  /* ★画面を出してから寸法を測る。display:none のままだと幅も高さも0になる。
+     余白を詰めた分の反映を待ってから測るため、2回に分けて呼ぶ */
+  setTimeout(padInit, 0);
+  setTimeout(padInit, 120); }
 
 /* ===== self-eval-pen-v1 : ペンで書く =====
    ★なぜ手書きか
@@ -516,6 +540,7 @@ function padToggleKb(){
   var on = (t.style.display==='none');
   t.style.display = on ? 'block' : 'none';
   b.textContent = on ? 'キーボードを 閉じる' : 'キーボードで 入力';
+  setTimeout(padInit, 0);      /* 紙の高さが変わるので測り直す（線は消えない） */
   if(on) t.focus();
 }
 /* 白い紙の上に線を写して1枚のPNGにする（背景が透明のままだと真っ黒に見える端末がある） */
