@@ -25,6 +25,17 @@
   background:#fff; color:#5f6368; font-weight:800; font-size:0.9rem; cursor:pointer; }
 .sg-day.on { background:#1a73e8; border-color:#1a73e8; color:#fff; }
 
+/* soge-week-tab-v1: 便のタブ。
+   迎え便・中間便・送り便を縦に全部出すと、画面が非常に長くなって
+   下の便まで指でずっと送ることになっていた。1便ずつ出す。 */
+.sg-ttabs { display:flex; gap:6px; margin-bottom:12px; overflow-x:auto; }
+.sg-ttab { flex:1 1 0; min-width:96px; text-align:center; padding:8px 6px; border-radius:10px;
+  border:1.5px solid #dadce0; background:#fff; color:#5f6368; font-weight:800; font-size:0.88rem;
+  cursor:pointer; line-height:1.35; white-space:nowrap; }
+.sg-ttab.on { background:#0f9d58; border-color:#0f9d58; color:#fff; }
+.sg-ttab small { display:block; font-size:0.72rem; font-weight:600; opacity:0.85;
+  font-variant-numeric:tabular-nums; }
+
 /* 便 */
 .sg-trip-head { display:flex; align-items:center; gap:8px; font-weight:800; font-size:1rem;
   padding:8px 0 8px 10px; border-left:4px solid #1a73e8; margin:14px 0 10px; }
@@ -130,6 +141,7 @@
 
   <div class="sg-days" id="sgDays"></div>
 
+  <div class="sg-ttabs" id="sgTripTabs"></div>
   <div id="sgTrips"></div>
 
   <div class="sg-foot">
@@ -147,7 +159,8 @@
     { n: 1, label: '月' }, { n: 2, label: '火' }, { n: 3, label: '水' },
     { n: 4, label: '木' }, { n: 5, label: '金' }, { n: 6, label: '土' }, { n: 0, label: '日' }
   ];
-  var state = { weekday: 1, data: null, staff: [], vehicles: [], patients: [], dirty: false };
+  var state = { weekday: 1, data: null, staff: [], vehicles: [], patients: [], dirty: false,
+                tripTab: 0 };   // soge-week-tab-v1: 表示中の便（d.trips の本当の位置）
 
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
@@ -181,6 +194,7 @@
   async function load() {
     $('sgInfo').textContent = '読み込み中…';
     $('sgTrips').innerHTML = '';
+    $('sgTripTabs').innerHTML = '';
     var r = await fetch('/api/soge/week?weekday=' + state.weekday);
     var j = await r.json();
     if (j.status !== 'success') { $('sgInfo').textContent = j.message; return; }
@@ -224,7 +238,35 @@
       ? '<span class="sg-chip unsaved">未保存</span>'
       : '<span class="sg-chip saved">保存済</span>';
 
-    $('sgTrips').innerHTML = (d.trips || []).map(function (t, ti) {
+    /* soge-week-tab-v1: 便ごとにタブを出し、選んだ便だけを描く。
+       ★ti（d.trips の本当の位置）は変えない。
+         保存も並べ替えも data-xxx の "ti_vi_si" を見ているので、
+         ここで番号を振り直すと全部ずれる。 */
+    var trips = d.trips || [];
+    if (state.tripTab >= trips.length) state.tripTab = 0;
+    $('sgTripTabs').innerHTML = trips.map(function (t, ti) {
+      var n = 0;
+      (t.vehicles || []).forEach(function (v) { n += (v.stops || []).length; });
+      return '<div class="sg-ttab' + (ti === state.tripTab ? ' on' : '') + '" data-ttab="' + ti + '">' +
+        esc(t.trip_name) +
+        '<small>' + (t.depart ? esc(t.depart) + '・' : '') + n + '名</small></div>';
+    }).join('');
+    $('sgTripTabs').style.display = trips.length ? 'flex' : 'none';
+    $('sgTripTabs').querySelectorAll('[data-ttab]').forEach(function (el) {
+      el.onclick = function () {
+        state.tripTab = Number(el.dataset.ttab);
+        render();
+        // base.html では画面のスクロールを .page-wrapper が持っている。window では動かない
+        var w = document.querySelector('.page-wrapper');
+        if (w) w.scrollTop = 0; else window.scrollTo(0, 0);
+      };
+    });
+
+    var ti = state.tripTab;
+    var t = trips[ti];
+    if (!t) {
+      $('sgTrips').innerHTML = '<div class="sg-empty">この曜日の送迎はありません。</div>';
+    } else {
       var cars = (t.vehicles || []).map(function (v, vi) { return carHtml(t, ti, v, vi); }).join('');
       if (!cars) cars = '<div class="sg-empty">この便の対象者はいません</div>';
       // soge-edit-v1: 台数と人の増減は手でもできるようにする
@@ -232,9 +274,9 @@
         '<button class="sg-btn sg-btn-sm" data-addcar="' + ti + '">＋ 車を追加</button>' +
         '<button class="sg-btn sg-btn-sm" data-addppl="' + ti + '">＋ 利用者を追加</button>' +
         '</div>';
-      return '<div class="sg-trip-head">' + esc(t.trip_name) +
-          '<span class="sg-trip-time">' + esc(t.depart || '') + ' 出発</span></div>' + cars + tools;
-    }).join('');
+      $('sgTrips').innerHTML = '<div class="sg-trip-head">' + esc(t.trip_name) +
+        '<span class="sg-trip-time">' + esc(t.depart || '') + ' 出発</span></div>' + cars + tools;
+    }
 
     $('sgWarnings').innerHTML = (d.warnings || []).length
       ? '<div class="sg-warn">' + d.warnings.map(esc).join('<br>') + '</div>' : '';
