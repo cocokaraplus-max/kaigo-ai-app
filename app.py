@@ -23567,22 +23567,159 @@ def _soge_at_iso(date_str, hhmm):  # soge-run-v1
     return dt.astimezone(timezone.utc).isoformat()
 
 
-def soge_materialize_day(supabase, f_code, date_str):  # soge-run-v1
-    """その日の運行（soge_days / soge_stops）を作る。すでにあれば何もしない。
+# ============================================================
+# soge-lock-v1 : 運行表の「確定」
+#
+#   これまでは【その日を一度開いた瞬間】に配車表からコピーされ、
+#   以降は配車表を直しても運行表に反映されなかった。
+#   走り出したあとに表が変わる事故を防ぐための作りだったが、
+#   現場からは「配車を直したのに運行表が変わらない」という不具合に見えていた。
+#
+#   ★考え方を変えた。止めるかどうかは【人が決める】。
+#     確定していない日 … 開くたびに配車表から作り直す（常に最新）
+#     確定した日       … 何があっても作り直さない
+#   打刻が始まっている日は、確定していなくても自動では作り直さない。
+#   （確定を押し忘れたまま走り出した場合の保険。作り直しはボタンから明示的に行う）
+# ============================================================
+def _soge_day_locked(supabase, f_code, date_str):
+    try:
+        r = (supabase.table("soge_day_locks").select("service_date")
+             .eq("facility_code", f_code).eq("service_date", date_str)
+             .limit(1).execute())
+        return bool(r.data)
+    except Exception as e:
+        # 表がまだ無い等で読めないときは【確定扱い】にする。
+        # 読めないことを理由に、走っている表を作り直してしまうほうが危ない。
+        print("soge lock check error: %s" % e, flush=True)
+        return True
+
+
+def _soge_day_touched(days, stops):
+    """その日が「もう動き出している」かどうか。
+    打刻・欠席・メーター・出発帰着・メモ・臨時便のどれかがあれば動き出している。"""
+    for d in (days or []):
+        if d.get("is_extra"):
+            return True
+        for k in ("departed_at", "returned_at", "odo_start", "odo_end", "note"):
+            v = d.get(k)
+            if v not in (None, "", 0):
+                return True
+    for s in (stops or []):
+        if s.get("arrived_at") or s.get("is_absent"):
+            return True
+    return False
+
+
+def _soge_day_state(supabase, f_code, date_str):
+    """確定しているか／動き出しているかをまとめて返す。"""
+    days, stops = [], []
+    try:
+        dr = (supabase.table("soge_days").select("*")
+              .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        days = dr.data or []
+        if days:
+            sr = (supabase.table("soge_stops").select("id,arrived_at,is_absent")
+                  .eq("facility_code", f_code).eq("service_date", date_str).execute())
+            stops = sr.data or []
+    except Exception as e:
+        print("soge day state error: %s" % e, flush=True)
+    return {"exists": bool(days),
+            "locked": _soge_day_locked(supabase, f_code, date_str),
+            "touched": _soge_day_touched(days, stops),
+            "past": date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d")}
+
+
+def _soge_clear_day(supabase, f_code, date_str):
+    """その日の運行表を消す。★立ち寄りから先に消すこと（親子の順）。"""
+    try:
+        (supabase.table("soge_stops").delete()
+         .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        (supabase.table("soge_days").delete()
+         .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        return True
+    except Exception as e:
+        print("soge clear day error: %s" % e, flush=True)
+        return False
+
+
+def _soge_leave_names(supabase, f_code, date_str):  # soge-leave-v1
+    """その日に「休み連絡」が入っている利用者名の集合。
+
+    ★飛び飛びの休みは、記録の start〜end を機械展開すると間の日まで休みになる。
+      実際の休み日はカレンダー(calendar_events)が正。
+      これは visit_records の月表示(leave-scattered-fix-v1)とまったく同じ規則。
+      規則を2つに分けると、片方だけ直したときに食い違う。
+    """
+    names = set()
+    try:
+        lv = (supabase.table("records")
+              .select("id,user_name,leave_date_start,leave_date_end")
+              .eq("facility_code", f_code).eq("category", "休み連絡")
+              .lte("leave_date_start", date_str).execute())
+        rows = lv.data or []
+        if not rows:
+            return names
+        ids = [r.get("id") for r in rows if r.get("id") is not None]
+        ev_by_rec = {}
+        if ids:
+            try:
+                ce = (supabase.table("calendar_events")
+                      .select("record_id,event_date,end_date")
+                      .eq("facility_code", f_code).in_("record_id", ids).execute())
+                for e in (ce.data or []):
+                    ev_by_rec.setdefault(e.get("record_id"), []).append(e)
+            except Exception as ee:
+                print("soge leave cal fetch error: %s" % ee, flush=True)
+
+        def _covers(ds, de):
+            if not ds:
+                return False
+            ds = str(ds)[:10]
+            de = str(de or ds)[:10]
+            return ds <= date_str <= de
+
+        for r in rows:
+            nm = (r.get("user_name") or "").strip()
+            if not nm:
+                continue
+            evs = ev_by_rec.get(r.get("id"))
+            if evs:
+                # カレンダー連携済み＝飛び日は各日単独のイベントになっている
+                if any(_covers(e.get("event_date"), e.get("end_date")) for e in evs):
+                    names.add(nm)
+            else:
+                # 旧データ（カレンダー未連携）だけ、記録の start〜end で見る
+                if _covers(r.get("leave_date_start"), r.get("leave_date_end")):
+                    names.add(nm)
+    except Exception as e:
+        print("soge leave names error: %s" % e, flush=True)
+    return names
+
+
+def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v1 / soge-lock-v1
+    """その日の運行（soge_days / soge_stops）を配車表から作る。
 
     元になるのは確定済みの週次表。無ければ自動生成案から作る。
-    一度作ったら、あとから週次表を直しても当日には反映しない。
-    走り出したあとに表が変わると現場が事故になるため。
+
+    ★soge-lock-v1 で作り直しの条件を変えた（それまでは「一度作ったら二度と作り直さない」）。
+      ・確定済みの日          → 絶対に作り直さない
+      ・打刻などが始まった日  → 自動では作り直さない（force のときだけ）
+      ・それ以外              → 開くたびに作り直す＝配車表の直しがそのまま出る
     """
-    try:
-        ex = (supabase.table("soge_days").select("id")
-              .eq("facility_code", f_code).eq("service_date", date_str)
-              .limit(1).execute())
-        if ex.data:
-            return 0
-    except Exception as e:
-        print("soge_materialize_day check error: %s" % e, flush=True)
-        return 0
+    st = _soge_day_state(supabase, f_code, date_str)
+    if st["exists"]:
+        if st["locked"]:
+            return {"built": False, "reason": "locked"}
+        # ★過ぎた日は絶対に作り直さない（soge-lock-v1 の重要な歯止め）。
+        #   過去の運行表は「実際にどう走ったか」の記録で、月の記録表の元にもなる。
+        #   打刻が1つも無い日（誰も押し忘れた日など）でも、今の配車表で
+        #   書き換えてしまえば記録の改ざんになる。確定の有無とは関係なく止める。
+        if date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d"):
+            return {"built": False, "reason": "past"}
+        if st["touched"] and not force:
+            return {"built": False, "reason": "touched"}
+        if not _soge_clear_day(supabase, f_code, date_str):
+            return {"built": False, "reason": "clear_failed"}
 
     y, m, d = [int(x) for x in date_str.split("-")]
     weekday = (datetime(y, m, d).weekday() + 1) % 7      # Python: 月=0 → アプリ: 日=0
@@ -23592,7 +23729,23 @@ def soge_materialize_day(supabase, f_code, date_str):  # soge-run-v1
     if not week:
         week = soge_build_week(supabase, f_code, weekday, settings)
     if not week:
-        return 0
+        return {"built": False, "reason": "no_week"}
+
+    # patient-active-v1: 利用を中止した方は、中止日より後の日には出さない。
+    #   ★過去の日を見るときは、その日を基準に判定するので、中止前はちゃんと出る。
+    active = {}
+    try:
+        pr = (supabase.table("patient_profiles")
+              .select("id,is_discontinued,discontinued_date")
+              .eq("facility_code", f_code).execute())
+        for x in (pr.data or []):
+            active[str(x["id"])] = patient_active_on(x, date_str)
+    except Exception as e:
+        print("soge_materialize_day patients error: %s" % e, flush=True)
+
+    def _active_today(s):
+        v = active.get(str(s.get("patient_id")))
+        return True if v is None else v      # 分からない人は出す（消してしまうより安全）
 
     geo = soge_geo_map(supabase, f_code)
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -23608,7 +23761,8 @@ def soge_materialize_day(supabase, f_code, date_str):  # soge-run-v1
 
     for trip in (week.get("trips") or []):
         for v in (trip.get("vehicles") or []):
-            stops = [s for s in (v.get("stops") or []) if _nth_ok_today(s)]
+            stops = [s for s in (v.get("stops") or [])
+                     if _nth_ok_today(s) and _active_today(s)]
             if not stops:
                 continue
 
@@ -23657,7 +23811,7 @@ def soge_materialize_day(supabase, f_code, date_str):  # soge-run-v1
                     supabase.table("soge_stops").insert(rows).execute()
                 except Exception as e:
                     print("soge_materialize_day insert stops error: %s" % e, flush=True)
-    return 1
+    return {"built": True, "reason": "built"}
 
 
 def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
@@ -23666,7 +23820,9 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
           .eq("facility_code", f_code).eq("service_date", date_str).execute())
     days = dr.data or []
     if not days:
-        return {"date": date_str, "vehicles": []}
+        return {"date": date_str, "vehicles": [],
+                "locked": _soge_day_locked(supabase, f_code, date_str), "touched": False,
+                "past": date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d")}
 
     ids = [d["id"] for d in days]
     sr = (supabase.table("soge_stops").select("*")
@@ -23675,14 +23831,26 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
 
     wc = {}
     addr = {}    # soge-addr-v1: 運転手が現地で見るので、住所も出す
+    active = {}  # patient-active-v1: その日に在籍しているか
     try:
-        wr = (supabase.table("patient_profiles").select("id,is_wheelchair,address")
+        wr = (supabase.table("patient_profiles")
+              .select("id,is_wheelchair,address,is_discontinued,discontinued_date")
               .eq("facility_code", f_code).execute())
         for x in (wr.data or []):
             wc[str(x["id"])] = bool(x.get("is_wheelchair"))
             addr[str(x["id"])] = _soge_addr_short(x.get("address"))   # soge-run-addr2-v1
+            active[str(x["id"])] = patient_active_on(x, date_str)
     except Exception:
         pass
+
+    # patient-active-v1: 利用を中止した方は、中止日より後の日には出さない。
+    #   ★すでに作られていた表からも外す（確定済みの日でも同じ）。
+    #     過去の日を見るときはその日を基準に判定するので、中止前はちゃんと出る。
+    stops = [s for s in stops if active.get(str(s.get("patient_id")), True)]
+
+    # soge-leave-v1: その日に休み連絡が入っている方は「お休み」と出す。
+    #   ★DBには書かない。連絡が取り消されたら、そのまま元に戻ってほしいため。
+    leave_names = _soge_leave_names(supabase, f_code, date_str)
 
     by_day = {}
     for s in stops:
@@ -23733,14 +23901,19 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
                 "planned_at": (str(s.get("planned_at") or ""))[:5],
                 "arrived_at": _soge_hhmm(s.get("arrived_at")),
                 "is_absent": bool(s.get("is_absent")),
+                # soge-leave-v1: 休み連絡から来た「お休み」。手で付けた欠席とは分けて持つ
+                "is_leave": bool((s.get("user_name") or "").strip() in leave_names),
                 "is_wheelchair": wc.get(str(s.get("patient_id")), False),
                 "address": addr.get(str(s.get("patient_id")), ""),   # soge-addr-v1
             } for s in ss],
         })
 
     # soge-odo-v1: 走行距離を記録する施設かどうか。画面はこれを見て入力欄を出す。
+    # soge-lock-v1: 確定しているか／もう動き出しているかを画面に伝える
+    st = _soge_day_state(supabase, f_code, date_str)
     return {"date": date_str, "vehicles": list(vehicles.values()),
-            "odo_enabled": bool(settings.get("odo_enabled"))}
+            "odo_enabled": bool(settings.get("odo_enabled")),
+            "locked": st["locked"], "touched": st["touched"], "past": st["past"]}
 
 
 @app.route("/soge/run")  # soge-run-v1
@@ -23765,6 +23938,66 @@ def api_soge_run_get():
         return jsonify(out)
     except Exception as e:
         print("api_soge_run_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/lock", methods=["POST"])  # soge-lock-v1
+@login_required
+def api_soge_run_lock():
+    """その日の運行表を確定する／確定を解除する。
+
+    ★確定した日は、配車表を直しても運行表は変わらない。
+      走り出したあとに表が変わる事故を防ぐのは、この確定だけ。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        d = request.json or {}
+        date_str = (d.get("date") or "").strip()
+        if not date_str:
+            return jsonify({"status": "error", "message": "日付が必要です"}), 400
+        want = bool(d.get("locked"))
+        if want:
+            supabase.table("soge_day_locks").upsert({
+                "facility_code": f_code, "service_date": date_str,
+                "locked_by": session.get("my_name", ""),
+                "locked_at": datetime.now(timezone.utc).isoformat(),
+            }).execute()
+        else:
+            (supabase.table("soge_day_locks").delete()
+             .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        return jsonify({"status": "success", "locked": want})
+    except Exception as e:
+        print("api_soge_run_lock error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/rebuild", methods=["POST"])  # soge-lock-v1
+@login_required
+def api_soge_run_rebuild():
+    """配車表から今の日の運行表を作り直す。★打刻や臨時便は消える。
+
+    確定済みの日は作り直さない。解除してからにする（事故防止の最後の砦）。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        date_str = ((request.json or {}).get("date") or "").strip()
+        if not date_str:
+            return jsonify({"status": "error", "message": "日付が必要です"}), 400
+        if _soge_day_locked(supabase, f_code, date_str):
+            return jsonify({"status": "error",
+                            "message": "この日は確定されています。先に確定を解除してください。"}), 400
+        if date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d"):
+            return jsonify({"status": "error",
+                            "message": "過ぎた日の運行表は作り直せません（実際に走った記録のため）。"}), 400
+        r = soge_materialize_day(supabase, f_code, date_str, force=True)
+        if not r.get("built"):
+            return jsonify({"status": "error",
+                            "message": "作り直せませんでした（配車表がありません）"}), 400
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_soge_run_rebuild error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
