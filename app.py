@@ -23660,7 +23660,17 @@ def _soge_day_locked(supabase, f_code, date_str):
 
 def _soge_day_touched(days, stops):
     """その日が「もう動き出している」かどうか。
-    打刻・欠席・メーター・出発帰着・メモ・臨時便のどれかがあれば動き出している。"""
+
+    ★「欠席（✕）」は数えない。 ← 実機で見つけた判定ミス（2026-08-21）
+      来週の予定に前もって休みを入れておくのは、ごく普通の運用。
+      それを「動き出した」と見なすと、その日は配車表の直しが
+      いつまでも反映されなくなる（実際にそうなった）。
+      欠席は【予定】であって【実績】ではない。
+      作り直しても消えないよう、soge_materialize_day で付け直している。
+
+    動き出しの印は「実際にその日が動いた跡」だけにする：
+      到着の打刻 / 事業所の出発・帰着 / メーター / メモ / 臨時便
+    """
     for d in (days or []):
         if d.get("is_extra"):
             return True
@@ -23669,7 +23679,7 @@ def _soge_day_touched(days, stops):
             if v not in (None, "", 0):
                 return True
     for s in (stops or []):
-        if s.get("arrived_at") or s.get("is_absent"):
+        if s.get("arrived_at"):
             return True
     return False
 
@@ -23770,6 +23780,7 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
       ・打刻などが始まった日  → 自動では作り直さない（force のときだけ）
       ・それ以外              → 開くたびに作り直す＝配車表の直しがそのまま出る
     """
+    keep_absent = set()      # soge-lock-v2: 作り直しても消さない「欠席（✕）」
     st = _soge_day_state(supabase, f_code, date_str)
     if st["exists"]:
         if st["locked"]:
@@ -23782,6 +23793,16 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
             return {"built": False, "reason": "past"}
         if st["touched"] and not force:
             return {"built": False, "reason": "touched"}
+        # ★消す前に「欠席（✕）」を覚えておく。
+        #   前もって入れた休みが、作り直しのたびに消えては使い物にならない。
+        try:
+            ar = (supabase.table("soge_stops").select("patient_id,stop_type")
+                  .eq("facility_code", f_code).eq("service_date", date_str)
+                  .eq("is_absent", True).execute())
+            for x in (ar.data or []):
+                keep_absent.add((str(x.get("patient_id")), x.get("stop_type") or "pickup"))
+        except Exception as e:
+            print("soge_materialize_day keep_absent error: %s" % e, flush=True)
         if not _soge_clear_day(supabase, f_code, date_str):
             return {"built": False, "reason": "clear_failed"}
 
@@ -23892,6 +23913,23 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                     supabase.table("soge_stops").insert(rows).execute()
                 except Exception as e:
                     print("soge_materialize_day insert stops error: %s" % e, flush=True)
+
+    # soge-lock-v2: 覚えておいた「欠席（✕）」を付け直す。
+    #   ★同じ人が同じ種別（迎え／送り）で残っている場合だけ。
+    #     車が変わっていても、その人が休みであることは変わらない。
+    if keep_absent:
+        try:
+            nr = (supabase.table("soge_stops").select("id,patient_id,stop_type")
+                  .eq("facility_code", f_code).eq("service_date", date_str).execute())
+            ids = [x["id"] for x in (nr.data or [])
+                   if (str(x.get("patient_id")), x.get("stop_type") or "pickup") in keep_absent]
+            if ids:
+                (supabase.table("soge_stops").update({"is_absent": True})
+                 .in_("id", ids).execute())
+                print("[soge] 欠席を %d 件 引き継ぎました date=%s" % (len(ids), date_str), flush=True)
+        except Exception as e:
+            print("soge_materialize_day restore absent error: %s" % e, flush=True)
+
     return {"built": True, "reason": "built"}
 
 
