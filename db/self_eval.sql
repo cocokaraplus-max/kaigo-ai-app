@@ -62,3 +62,12 @@ create table if not exists facility_kiosk_pins (
   updated_by    text,
   updated_at    timestamptz default now()
 );
+
+-- ---- 4. ペンでの手書き（self-eval-pen-v1）----
+-- 利用者はタブレットのキーボード（フリック入力）が使えない。
+-- 紙に書くのと同じようにペンで書いてもらい、画像として残す。
+-- ★入れるのは Storage の【パス】であって、公開URLではない。
+--   手書きは本人が書いた要配慮個人情報。URLを知られたら誰でも見られる状態にはしない。
+--   表示は職員ログインが必要な /self-eval/reason-image/<設問ID> を通す。
+alter table patient_self_eval_answers
+  add column if not exists reason_image_path text;

@@ -14,7 +14,11 @@
 -->
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;overflow-x:hidden}
+/* ★画面そのものはスクロールさせない（self-eval-fit-v1）。
+   body を「中央ぞろえ」にしたまま中身が縦にはみ出すと、はみ出した【上側】に
+   どうやっても戻れなくなる（実機で発生：質問文が切れたまま下にも戻せない）。
+   スクロールするのは .body の中だけにして、上の名前・進捗と下のボタンは必ず見えるようにする。 */
+html,body{margin:0;height:100%;overflow:hidden}
 /* ★スマホの時計や電波表示（セーフエリア）と重ならないように余白をとる。
    これが無いと画面の一番上が隠れてしまう。 */
 body{background:#f4f5f7;color:#1f2933;
@@ -25,7 +29,7 @@ body{background:#f4f5f7;color:#1f2933;
  -webkit-user-select:none;user-select:none}
 .tab{width:100%;max-width:900px;background:#fff;border-radius:14px;
  box-shadow:0 4px 24px rgba(31,41,51,.10);overflow:hidden;display:flex;flex-direction:column;
- min-height:min(640px,92vh)}
+ min-height:min(640px,100%);max-height:100%}
 .bar{display:flex;align-items:baseline;gap:14px;padding:16px 26px 12px}
 .who{font-size:1.15rem;font-weight:800;letter-spacing:.02em}
 .who span{font-size:.9rem;font-weight:600;color:#7b8794;margin-left:6px}
@@ -49,6 +53,13 @@ body{background:#f4f5f7;color:#1f2933;
 .c3 button.sel{border-color:#1b4965;border-width:3px;background:#eef3f7;box-shadow:inset 0 0 0 1px #1b4965}
 .c3 .cap{font-size:.86rem;font-weight:700;color:#7b8794}
 .c3 button.sel .cap{color:#1b4965}
+/* ★「どのくらいでしたか」を出すときは、3択を1行にたたむ（self-eval-fit-v1）。
+   3択と10段階を同時に出すと縦に長くなりすぎて、質問文が画面の外へ出てしまう。 */
+.c3pick{display:none;align-items:center;gap:14px;padding:16px 18px;border:2px solid #1b4965;
+ border-radius:12px;background:#eef3f7}
+.c3pick .tx{font-size:1.25rem;font-weight:800;color:#1b4965}
+.c3pick button{margin-left:auto;padding:11px 16px;border-radius:8px;border:2px solid #b6c0cb;
+ background:#fff;color:#3e4c59;font-size:1rem;font-weight:800;cursor:pointer;font-family:inherit}
 .step2{margin-top:26px;padding-top:22px;border-top:1px solid #e4e7eb;display:none}
 .step2.on{display:block;animation:fade .22s ease-out}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -70,6 +81,40 @@ body{background:#f4f5f7;color:#1f2933;
 textarea{width:100%;min-height:150px;font-size:1.3rem;padding:16px;border:2px solid #d3d9df;
  border-radius:10px;font-family:inherit;line-height:1.7;color:#1f2933;-webkit-user-select:text;user-select:text}
 textarea:focus{outline:none;border-color:#1b4965}
+/* ===== self-eval-pen-v1 : ペンで書く欄 =====
+   ★利用者はフリック入力ができない。紙に書くのと同じように書いてもらう。
+     罫線は下地(.penwrap)に描き、canvasは透明にして線だけを持つ。
+     touch-action:none がないと、指で書いたときに画面ごとスクロールしてしまう。 */
+.penwrap{position:relative;flex:1;min-height:260px;margin-top:4px;border:2px solid #d3d9df;
+ border-radius:10px;background-color:#fff;background-image:repeating-linear-gradient(
+   to bottom, transparent 0, transparent 61px, #eceff2 61px, #eceff2 62px);
+ overflow:hidden}
+#pad{position:absolute;inset:0;width:100%;height:100%;touch-action:none;cursor:crosshair;
+ -webkit-user-select:none;user-select:none}
+.penhint{position:absolute;left:0;right:0;top:22px;text-align:center;font-size:1.12rem;
+ color:#a6b0bb;font-weight:700;pointer-events:none}
+.pentools{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap}
+.pentools button{padding:14px 18px;border-radius:9px;border:2px solid #d3d9df;background:#fff;
+ color:#3e4c59;font-size:1.05rem;font-weight:800;cursor:pointer;font-family:inherit}
+.pentools button.kb{margin-left:auto;background:#fafbfc;color:#616e7c}
+
+/* ★手書きのときは【書く面をできるだけ広く】する（self-eval-pen-v2）。
+   ペンで書くには面積がいる。字が小さくなると本人も職員も読めない。
+   この画面のあいだだけ、まわりの余白と見出しを詰めて紙を広げる。
+   （body に .writing が付く。goWrite() で付け、他の画面に移ると外す） */
+body.writing{padding:calc(4px + env(safe-area-inset-top)) calc(4px + env(safe-area-inset-right))
+                     calc(4px + env(safe-area-inset-bottom)) calc(4px + env(safe-area-inset-left))}
+body.writing .tab{border-radius:8px;max-width:100%;min-height:100%}
+body.writing .bar{padding:8px 16px 3px}
+body.writing .progbar{margin:0 16px}
+body.writing #screen-write{padding:10px 14px 8px}
+body.writing #screen-write .kicker{display:none}
+body.writing #screen-write .q{font-size:1.06rem;line-height:1.5;margin:0 0 7px}
+body.writing .penwrap{min-height:0}       /* 使えるぶんだけ全部つかう */
+body.writing .pentools{margin-top:8px}
+body.writing .pentools button{padding:12px 15px}
+body.writing .foot{padding:9px 14px calc(9px + env(safe-area-inset-bottom))}
+body.writing .nav{padding:13px 18px}
 .rec{display:flex;flex-direction:column;align-items:center;gap:18px;padding:22px 0}
 .recbtn{width:130px;height:130px;border-radius:50%;border:3px solid #8f3b34;background:#a34a41;color:#fff;
  font-size:1.02rem;font-weight:800;cursor:pointer;display:flex;flex-direction:column;
@@ -102,6 +147,8 @@ textarea:focus{outline:none;border-color:#1b4965}
   .c3 button svg{width:42px;height:42px}
   .why{gap:11px}
   .why button{padding:22px 10px;font-size:1.08rem}
+  .penwrap{min-height:150px}
+  .pentools button{padding:12px 12px;font-size:.98rem}
 }
 </style></head>
 <body>
@@ -124,7 +171,7 @@ textarea:focus{outline:none;border-color:#1b4965}
     </button>
     <!-- ★選択肢の文言は goal_kind によって変わる（render() で書き換える）。
          「満足していますか」に「できなかった」では答えにならないため。 -->
-    <div class="c3">
+    <div class="c3" id="c3wrap">
       <button onclick="pick('no',this)">
         <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#6b7b8c" stroke-width="3"/></svg>
         <span class="lbl" id="c3-no">できなかった</span><span class="cap" id="cap-no">0 〜 3</span>
@@ -137,6 +184,12 @@ textarea:focus{outline:none;border-color:#1b4965}
         <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#3f6f52"/></svg>
         <span class="lbl" id="c3-ok">できた</span><span class="cap" id="cap-ok">8 〜 10</span>
       </button>
+    </div>
+    <!-- 3択を選んだあとに出る「たたんだ表示」。選び直しもここから -->
+    <div class="c3pick" id="c3pick">
+      <span id="c3pick-mk"></span>
+      <span class="tx" id="c3pick-tx"></span>
+      <button type="button" onclick="unpick()">選び直す</button>
     </div>
     <div class="step2" id="step2">
       <h3>その中では どのくらいでしたか</h3>
@@ -163,8 +216,17 @@ textarea:focus{outline:none;border-color:#1b4965}
 
   <div class="body" id="screen-write" style="display:none">
     <div class="kicker">お書きください</div>
-    <p class="q" style="font-size:1.45rem;margin-bottom:16px">理由を お書きください</p>
-    <textarea id="wtext" placeholder="ここに お書きください"></textarea>
+    <p class="q" style="font-size:1.35rem;margin-bottom:10px">理由を お書きください</p>
+    <div class="penwrap" id="penwrap">
+      <canvas id="pad"></canvas>
+      <div class="penhint" id="penhint">ここに ペンや 指で お書きください</div>
+    </div>
+    <div class="pentools">
+      <button type="button" onclick="padUndo()">ひとつ もどす</button>
+      <button type="button" onclick="padClear()">ぜんぶ 消す</button>
+      <button type="button" class="kb" id="kbbtn" onclick="padToggleKb()">キーボードで 入力</button>
+    </div>
+    <textarea id="wtext" placeholder="ここに お書きください" style="display:none;margin-top:12px"></textarea>
   </div>
 
   <div class="body" id="screen-voice" style="display:none">
@@ -215,6 +277,8 @@ function show(id){
   ['screen-load','screen-q','screen-why','screen-write','screen-voice'].forEach(function(s){
     document.getElementById(s).style.display = (s===id)?'flex':'none';
   });
+  /* 手書き画面いがいでは、詰めた余白をもとに戻す（self-eval-pen-v2） */
+  if(id!=='screen-write') document.body.classList.remove('writing');
   document.getElementById('foot').style.display = (id==='screen-load')?'none':'flex';
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
@@ -242,6 +306,7 @@ function render(){
   document.getElementById('prog').textContent = (i+1)+' / '+QS.length;
   document.getElementById('pbar').style.width = ((i+1)/QS.length*100)+'%';
   document.getElementById('wtext').value = '';
+  padReset();                                  /* self-eval-pen-v1: 前の問の手書きを持ち越さない */
   /* ★質問の種類に合わせて、選択肢の言い方と補足文を差し替える */
   var cs = choiceSet();
   document.getElementById('c3-no').textContent  = cs.no;
@@ -268,9 +333,35 @@ function render(){
   document.getElementById('qtext').textContent = QS[i].question || '';
   document.querySelectorAll('.c3 button').forEach(function(b){ b.classList.remove('sel'); });
   document.getElementById('step2').classList.remove('on');
+  unfold();                                   /* たたんだ3択をもとに戻す */
   document.getElementById('nextbtn').disabled = true;
   document.getElementById('helptxt').textContent = 'お選びになると「次へ」が押せます';
   document.getElementById('readbtn').classList.remove('on');
+  document.getElementById('screen-q').scrollTop = 0;
+}
+/* 3択の「たたむ／もどす」（self-eval-fit-v1） */
+function fold(kind){
+  var cs = choiceSet();
+  var mk = {no:'<svg width="34" height="34" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#6b7b8c" stroke-width="4"/></svg>',
+            mid:'<svg width="34" height="34" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#b08040" stroke-width="4"/><path d="M26 5 A21 21 0 0 1 26 47 Z" fill="#b08040"/></svg>',
+            ok:'<svg width="34" height="34" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#3f6f52"/></svg>'};
+  document.getElementById('c3wrap').style.display = 'none';
+  document.getElementById('c3pick-mk').innerHTML = mk[kind] || '';
+  document.getElementById('c3pick-tx').textContent = cs[kind] || '';
+  document.getElementById('c3pick').style.display = 'flex';
+}
+function unfold(){
+  document.getElementById('c3wrap').style.display = '';
+  document.getElementById('c3pick').style.display = 'none';
+}
+function unpick(){
+  choice = null; level = null;
+  unfold();
+  document.querySelectorAll('.c3 button').forEach(function(b){ b.classList.remove('sel'); });
+  document.getElementById('step2').classList.remove('on');
+  document.getElementById('nextbtn').disabled = true;
+  document.getElementById('helptxt').textContent = 'お選びになると「次へ」が押せます';
+  document.getElementById('screen-q').scrollTop = 0;
 }
 function pick(kind, el){
   choice = kind; level = null;
@@ -288,10 +379,11 @@ function pick(kind, el){
   document.getElementById('lv').innerHTML = LEVELS[kind].map(function(x){
     return '<button onclick="pickLv('+x.n+',this)"><span class="num">'+x.n+'</span>'+x.t+'</button>';
   }).join('');
+  fold(kind);                    /* ★3択をたたむ。質問文を画面から追い出さないため */
   document.getElementById('step2').classList.add('on');
   document.getElementById('nextbtn').disabled = true;
   document.getElementById('helptxt').textContent = 'どのくらいか お選びください';
-  document.getElementById('step2').scrollIntoView({behavior:'smooth', block:'nearest'});
+  document.getElementById('screen-q').scrollTop = 0;
 }
 function pickLv(n, el){
   level = n;
@@ -325,7 +417,7 @@ async function finish(){
     location.href = (j && j.redirect) ? j.redirect : '/self-eval/locked';
   }catch(e){ location.href='/self-eval/locked'; }
 }
-function next(){
+async function next(){
   if(phase==='q'){
     if(choice==='ok'){ saveAndNext(null,''); return; }   /* できた人に理由は聞かない */
     document.getElementById('whyq').innerHTML = (choice==='no')
@@ -336,14 +428,135 @@ function next(){
     document.getElementById('helptxt').textContent = 'お選びください';
     return;
   }
-  if(phase==='write'){ saveAndNext('write', document.getElementById('wtext').value); return; }
+  if(phase==='write'){
+    /* self-eval-pen-v1: 手書きがあれば先に画像を送る。
+       ★失敗しても止めない。手書きは補足で、点数のほうが本体だから。 */
+    var img = padExport();
+    if(img){
+      var nb = document.getElementById('nextbtn');
+      nb.disabled = true;
+      document.getElementById('helptxt').textContent = '保存しています…';
+      try{
+        await fetch('/api/self-eval/answer-image',{method:'POST',credentials:'same-origin',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({id:QS[i].id, image:img})});
+      }catch(e){ /* 通信が切れても操作は止めない */ }
+      nb.disabled = false;
+    }
+    saveAndNext('write', document.getElementById('wtext').value); return;
+  }
   if(phase==='voice'){ saveAndNext('voice', ''); return; }
 }
 function freeLabel(){ return isFree() ? 'してみたいこと・困っていること' : '理由'; }
 function goWrite(){ phase='write'; show('screen-write');
   document.querySelector('#screen-write .q').textContent = freeLabel()+' を お書きください';
   document.getElementById('nextbtn').disabled=false;
-  document.getElementById('helptxt').textContent='書き終えたら「次へ」'; }
+  document.getElementById('helptxt').textContent='書き終えたら「次へ」';
+  /* ★書く面をできるだけ広くする。まわりの余白と見出しを詰める */
+  document.body.classList.add('writing');
+  /* ★画面を出してから寸法を測る。display:none のままだと幅も高さも0になる。
+     余白を詰めた分の反映を待ってから測るため、2回に分けて呼ぶ */
+  setTimeout(padInit, 0);
+  setTimeout(padInit, 120); }
+
+/* ===== self-eval-pen-v1 : ペンで書く =====
+   ★なぜ手書きか
+     利用者はタブレットのキーボード（フリック入力）が使えない。
+     文字入力だけにすると「自分で書く」が実質つかえない機能になっていた。
+   ★線は「点の並び」で持つ（画面の向きが変わっても描き直せるように）。
+     座標はCSSピクセルで持ち、描くときだけ画面の細かさ(dpr)を掛ける。 */
+var PAD = {c:null, ctx:null, strokes:[], cur:null, dpr:1, ready:false};
+
+function padStyle(ctx){
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.strokeStyle='#16324a'; ctx.lineWidth=3.4;
+}
+function padInit(){
+  var c = document.getElementById('pad');
+  var wrap = document.getElementById('penwrap');
+  if(!c || !wrap) return;
+  var w = wrap.clientWidth, h = wrap.clientHeight;
+  if(!w || !h) return;                       /* まだ画面に出ていない */
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);   /* 2までで十分。大きすぎると保存が重い */
+  c.width = Math.round(w*dpr); c.height = Math.round(h*dpr);
+  PAD.c = c; PAD.dpr = dpr; PAD.w = w; PAD.h = h;
+  PAD.ctx = c.getContext('2d');
+  PAD.ctx.setTransform(dpr,0,0,dpr,0,0);
+  padStyle(PAD.ctx);
+  if(!PAD.ready){ padBind(c); PAD.ready = true; }
+  padRedraw();
+}
+function padBind(c){
+  function pos(e){ var r=c.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+  c.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    try{ c.setPointerCapture(e.pointerId); }catch(_){}
+    PAD.cur = [pos(e)];
+    PAD.strokes.push(PAD.cur);
+    document.getElementById('penhint').style.display='none';
+    /* 点だけ打った場合も見えるように、小さな丸を置く */
+    var p=PAD.cur[0], ctx=PAD.ctx;
+    ctx.beginPath(); ctx.arc(p.x,p.y,1.7,0,Math.PI*2); ctx.fillStyle='#16324a'; ctx.fill();
+  });
+  c.addEventListener('pointermove', function(e){
+    if(!PAD.cur) return;
+    e.preventDefault();
+    var p = pos(e), q = PAD.cur[PAD.cur.length-1];
+    PAD.cur.push(p);
+    var ctx=PAD.ctx;
+    ctx.beginPath(); ctx.moveTo(q.x,q.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
+    c.addEventListener(ev, function(){ PAD.cur = null; });
+  });
+}
+function padRedraw(){
+  var ctx = PAD.ctx; if(!ctx) return;
+  ctx.setTransform(PAD.dpr,0,0,PAD.dpr,0,0);
+  ctx.clearRect(0,0,PAD.w,PAD.h);
+  padStyle(ctx);
+  PAD.strokes.forEach(function(s){
+    if(!s.length) return;
+    if(s.length===1){ ctx.beginPath(); ctx.arc(s[0].x,s[0].y,1.7,0,Math.PI*2);
+                      ctx.fillStyle='#16324a'; ctx.fill(); return; }
+    ctx.beginPath(); ctx.moveTo(s[0].x,s[0].y);
+    for(var k=1;k<s.length;k++) ctx.lineTo(s[k].x,s[k].y);
+    ctx.stroke();
+  });
+  var hint = document.getElementById('penhint');
+  if(hint) hint.style.display = PAD.strokes.length ? 'none' : 'block';
+}
+function padUndo(){ PAD.strokes.pop(); PAD.cur=null; padRedraw(); }
+function padClear(){ PAD.strokes=[]; PAD.cur=null; padRedraw(); }
+function padReset(){
+  PAD.strokes=[]; PAD.cur=null;
+  var t=document.getElementById('wtext'); if(t){ t.style.display='none'; }
+  var b=document.getElementById('kbbtn'); if(b){ b.textContent='キーボードで 入力'; }
+  padRedraw();
+}
+/* 文字が打てる方のための逃げ道。ふだんは使わない */
+function padToggleKb(){
+  var t=document.getElementById('wtext'), b=document.getElementById('kbbtn');
+  var on = (t.style.display==='none');
+  t.style.display = on ? 'block' : 'none';
+  b.textContent = on ? 'キーボードを 閉じる' : 'キーボードで 入力';
+  setTimeout(padInit, 0);      /* 紙の高さが変わるので測り直す（線は消えない） */
+  if(on) t.focus();
+}
+/* 白い紙の上に線を写して1枚のPNGにする（背景が透明のままだと真っ黒に見える端末がある） */
+function padExport(){
+  if(!PAD.c || !PAD.strokes.length) return null;
+  try{
+    var o = document.createElement('canvas');
+    o.width = PAD.c.width; o.height = PAD.c.height;
+    var x = o.getContext('2d');
+    x.fillStyle = '#ffffff'; x.fillRect(0,0,o.width,o.height);
+    x.drawImage(PAD.c, 0, 0);
+    return o.toDataURL('image/png');
+  }catch(e){ return null; }
+}
+/* 画面の向きが変わったら描き直す（線は消さない） */
+window.addEventListener('resize', function(){ if(phase==='write') padInit(); });
 function goVoice(){ phase='voice'; show('screen-voice');
   document.querySelector('#screen-voice .q').textContent = freeLabel()+' を お話しください';
   document.getElementById('nextbtn').disabled=false;
@@ -398,22 +611,60 @@ function speechText(s){
     .replace(/\s+/g, ' ')
     .trim();
 }
-function speak(){
+/* ブラウザ標準の読み上げ（保険）。サーバの音声が使えないときはこちらになる。 */
+function speakLocal(t){
   var b = document.getElementById('readbtn');
   try{
     speechSynthesis.cancel();
-    var el = (phase==='q') ? document.getElementById('qtext') : document.getElementById('whyq');
-    var u = new SpeechSynthesisUtterance(speechText(el ? el.textContent : ''));
+    var u = new SpeechSynthesisUtterance(t);
     u.lang = 'ja-JP';
-    if(JA_VOICE) u.voice = JA_VOICE;      /* ★日本語の声を明示する */
-    u.rate = 0.82;                         /* ゆっくりめ。高齢の方が聞き取りやすい */
-    u.pitch = 1.0;
-    u.volume = 1.0;
+    if(JA_VOICE) u.voice = JA_VOICE;
+    u.rate = 0.82; u.pitch = 1.0; u.volume = 1.0;
     u.onstart=function(){ b.classList.add('on'); };
     u.onend  =function(){ b.classList.remove('on'); };
     u.onerror=function(){ b.classList.remove('on'); };
     speechSynthesis.speak(u);
-  }catch(e){}
+  }catch(e){ b.classList.remove('on'); }
+}
+
+/* ===== self-eval-tts-v1 : サーバで作った自然な音声で読み上げる =====
+   ★サーバ側が失敗したら（APIが未有効・通信不良など）、
+     何事もなかったようにブラウザ標準の読み上げに戻す。利用者を待たせない。
+   ★一度読んだ音声は端末側でも使い回す（同じ質問を何度も押されても速い）。 */
+var TTS_CACHE = {};
+var TTS_AUDIO = null;
+async function speak(){
+  var b = document.getElementById('readbtn');
+  var el = (phase==='q') ? document.getElementById('qtext') : document.getElementById('whyq');
+  var raw = el ? el.textContent : '';
+  var t = speechText(raw);
+  if(!t) return;
+
+  try{ speechSynthesis.cancel(); }catch(e){}
+  if(TTS_AUDIO){ try{ TTS_AUDIO.pause(); }catch(e){} TTS_AUDIO = null; }
+  b.classList.add('on');
+
+  if(TTS_CACHE[t]){ playTts(TTS_CACHE[t]); return; }
+  try{
+    var r = await fetch('/api/self-eval/tts',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({text:t})});
+    var ct = r.headers.get('content-type') || '';
+    if(!r.ok || ct.indexOf('audio') < 0) throw new Error('tts unavailable');
+    var url = URL.createObjectURL(await r.blob());
+    TTS_CACHE[t] = url;
+    playTts(url);
+  }catch(e){
+    speakLocal(t);            /* ★ここが保険。サーバが駄目でも読み上げは動く */
+  }
+}
+function playTts(url){
+  var b = document.getElementById('readbtn');
+  try{
+    TTS_AUDIO = new Audio(url);
+    TTS_AUDIO.onended = function(){ b.classList.remove('on'); };
+    TTS_AUDIO.onerror = function(){ b.classList.remove('on'); };
+    TTS_AUDIO.play().catch(function(){ b.classList.remove('on'); });
+  }catch(e){ b.classList.remove('on'); }
 }
 /* 音声は第1段では「録音した」ことだけ記録する。文字起こしは次の段で入れる。 */
 var recOn=false;
