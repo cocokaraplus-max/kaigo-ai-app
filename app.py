@@ -23115,6 +23115,55 @@ def api_soge_week_auto():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/soge/week/reorder", methods=["POST"])  # soge-order-fix-v1
+@login_required
+def api_soge_week_reorder():
+    """いま画面にある並びを、【送り → 迎え】の順に並べ替えて返す。★保存はしない。
+
+    ★なぜ要るか
+      送り→迎えの順に並べる処理（_soge_order_stops）は【自動生成のときしか通らない】。
+      いったん保存した配車表は、保存された順番がそのまま使われる。
+      そのため、昔に保存した表や手で並べ替えた表は、迎えと送りが混ざったまま残る。
+      自動生成をやり直すと手で直した割り振りまで消えるので、
+      「並べ替えだけ」を押せるようにした。
+
+    ★車の割り振り（誰がどの車か）は変えない。各車の中の順番だけを直す。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        d = request.json or {}
+        trips_in = d.get("trips") or []
+
+        geo = soge_geo_map(supabase, f_code)
+        flat, flng, _err = _soge_facility_latlng(supabase, f_code)
+        fac = (flat, flng) if flat is not None else None
+        settings = get_soge_settings(supabase, f_code)
+
+        out = []
+        for t in trips_in:
+            cars = []
+            for v in (t.get("vehicles") or []):
+                stops = []
+                for s in (v.get("stops") or []):
+                    stops.append({
+                        "patient_id": str(s.get("patient_id") or ""),
+                        "user_name": s.get("user_name") or "",
+                        "type": s.get("type") or "pickup",
+                        "nth": int(s.get("nth") or 0),
+                        "guest": bool(s.get("guest")),
+                        "is_wheelchair": bool(s.get("is_wheelchair")),
+                    })
+                ordered = _soge_order_stops(
+                    stops, geo, bool(settings.get("mid_dropoff_first", True)), fac)
+                cars.append({"stops": ordered})
+            out.append({"trip_key": t.get("trip_key"), "vehicles": cars})
+        return jsonify({"status": "success", "trips": out})
+    except Exception as e:
+        print("api_soge_week_reorder error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/api/soge/week", methods=["PUT"])  # soge-week-v1
 @login_required
 def api_soge_week_save():
@@ -23611,7 +23660,17 @@ def _soge_day_locked(supabase, f_code, date_str):
 
 def _soge_day_touched(days, stops):
     """その日が「もう動き出している」かどうか。
-    打刻・欠席・メーター・出発帰着・メモ・臨時便のどれかがあれば動き出している。"""
+
+    ★「欠席（✕）」は数えない。 ← 実機で見つけた判定ミス（2026-08-21）
+      来週の予定に前もって休みを入れておくのは、ごく普通の運用。
+      それを「動き出した」と見なすと、その日は配車表の直しが
+      いつまでも反映されなくなる（実際にそうなった）。
+      欠席は【予定】であって【実績】ではない。
+      作り直しても消えないよう、soge_materialize_day で付け直している。
+
+    動き出しの印は「実際にその日が動いた跡」だけにする：
+      到着の打刻 / 事業所の出発・帰着 / メーター / メモ / 臨時便
+    """
     for d in (days or []):
         if d.get("is_extra"):
             return True
@@ -23620,7 +23679,7 @@ def _soge_day_touched(days, stops):
             if v not in (None, "", 0):
                 return True
     for s in (stops or []):
-        if s.get("arrived_at") or s.get("is_absent"):
+        if s.get("arrived_at"):
             return True
     return False
 
@@ -23721,6 +23780,7 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
       ・打刻などが始まった日  → 自動では作り直さない（force のときだけ）
       ・それ以外              → 開くたびに作り直す＝配車表の直しがそのまま出る
     """
+    keep_absent = set()      # soge-lock-v2: 作り直しても消さない「欠席（✕）」
     st = _soge_day_state(supabase, f_code, date_str)
     if st["exists"]:
         if st["locked"]:
@@ -23733,6 +23793,16 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
             return {"built": False, "reason": "past"}
         if st["touched"] and not force:
             return {"built": False, "reason": "touched"}
+        # ★消す前に「欠席（✕）」を覚えておく。
+        #   前もって入れた休みが、作り直しのたびに消えては使い物にならない。
+        try:
+            ar = (supabase.table("soge_stops").select("patient_id,stop_type")
+                  .eq("facility_code", f_code).eq("service_date", date_str)
+                  .eq("is_absent", True).execute())
+            for x in (ar.data or []):
+                keep_absent.add((str(x.get("patient_id")), x.get("stop_type") or "pickup"))
+        except Exception as e:
+            print("soge_materialize_day keep_absent error: %s" % e, flush=True)
         if not _soge_clear_day(supabase, f_code, date_str):
             return {"built": False, "reason": "clear_failed"}
 
@@ -23843,6 +23913,23 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                     supabase.table("soge_stops").insert(rows).execute()
                 except Exception as e:
                     print("soge_materialize_day insert stops error: %s" % e, flush=True)
+
+    # soge-lock-v2: 覚えておいた「欠席（✕）」を付け直す。
+    #   ★同じ人が同じ種別（迎え／送り）で残っている場合だけ。
+    #     車が変わっていても、その人が休みであることは変わらない。
+    if keep_absent:
+        try:
+            nr = (supabase.table("soge_stops").select("id,patient_id,stop_type")
+                  .eq("facility_code", f_code).eq("service_date", date_str).execute())
+            ids = [x["id"] for x in (nr.data or [])
+                   if (str(x.get("patient_id")), x.get("stop_type") or "pickup") in keep_absent]
+            if ids:
+                (supabase.table("soge_stops").update({"is_absent": True})
+                 .in_("id", ids).execute())
+                print("[soge] 欠席を %d 件 引き継ぎました date=%s" % (len(ids), date_str), flush=True)
+        except Exception as e:
+            print("soge_materialize_day restore absent error: %s" % e, flush=True)
+
     return {"built": True, "reason": "built"}
 
 
