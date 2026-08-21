@@ -284,6 +284,8 @@
       var tools = '<div class="sg-tools">' +
         '<button class="sg-btn sg-btn-sm" data-addcar="' + ti + '">＋ 車を追加</button>' +
         '<button class="sg-btn sg-btn-sm" data-addppl="' + ti + '">＋ 利用者を追加</button>' +
+        // soge-order-fix-v1: 並べ替えだけをやり直す（車の割り振りは変えない）
+        '<button class="sg-btn sg-btn-sm" id="sgReorder">送りを先にして並べ替える</button>' +
         '</div>';
       $('sgTrips').innerHTML = '<div class="sg-trip-head">' + esc(t.trip_name) +
         '<span class="sg-trip-time">' + esc(t.depart || '') + ' 出発</span></div>' + cars + tools;
@@ -384,6 +386,9 @@
     root.querySelectorAll('[data-addcar]').forEach(function (el) {
       el.onclick = function () { addCar(Number(el.dataset.addcar)); };
     });
+    // soge-order-fix-v1
+    var rb = document.getElementById('sgReorder');
+    if (rb) rb.onclick = sgReorder;
     root.querySelectorAll('[data-addppl]').forEach(function (el) {
       el.onclick = function () { openAddPerson(Number(el.dataset.addppl), el); };
     });
@@ -784,6 +789,46 @@
 
     state.dirty = true;
     render();
+  }
+
+  /* ===== soge-order-fix-v1: 送り → 迎え に並べ替える =====
+     ★自動生成をやり直すと、手で直した車の割り振りまで消えてしまう。
+       これは【各車の中の順番だけ】を直す。誰がどの車か は変えない。
+     ★保存はしない。画面が変わるだけなので、確かめてから「保存」を押せる。 */
+  async function sgReorder() {
+    var b = document.getElementById('sgReorder');
+    if (b) { b.disabled = true; b.textContent = '並べ替え中…'; }
+    try {
+      var r = await fetch('/api/soge/week/reorder', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trips: (state.data.trips || []).map(function (t) {
+            return {
+              trip_key: t.trip_key,
+              vehicles: (t.vehicles || []).map(function (v) { return { stops: v.stops || [] }; })
+            };
+          })
+        })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message || '並べ替えできませんでした', 'err'); return; }
+      (j.trips || []).forEach(function (nt, i) {
+        var t = state.data.trips[i];
+        if (!t) return;
+        (nt.vehicles || []).forEach(function (nv, k) {
+          var v = t.vehicles[k];
+          if (!v) return;
+          v.stops = nv.stops || [];
+          // 順番が変わったら、到着予定と所要時間は当てにならない。保存すると再計算される。
+          v.stops.forEach(function (s) { s.planned_at = null; });
+          v.stale = true; v.minutes = null; v.distance_km = null; v.over_target = false;
+        });
+      });
+      state.dirty = true;
+      render();
+      toast('送りを先にして並べ替えました。よければ「保存」を押してください');
+    } catch (e) { toast('並べ替えできませんでした', 'err'); }
+    finally { if (b) { b.disabled = false; b.textContent = '送りを先にして並べ替える'; } }
   }
 
   // ---------- 保存 ----------

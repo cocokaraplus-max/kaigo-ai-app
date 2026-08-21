@@ -23115,6 +23115,55 @@ def api_soge_week_auto():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/soge/week/reorder", methods=["POST"])  # soge-order-fix-v1
+@login_required
+def api_soge_week_reorder():
+    """いま画面にある並びを、【送り → 迎え】の順に並べ替えて返す。★保存はしない。
+
+    ★なぜ要るか
+      送り→迎えの順に並べる処理（_soge_order_stops）は【自動生成のときしか通らない】。
+      いったん保存した配車表は、保存された順番がそのまま使われる。
+      そのため、昔に保存した表や手で並べ替えた表は、迎えと送りが混ざったまま残る。
+      自動生成をやり直すと手で直した割り振りまで消えるので、
+      「並べ替えだけ」を押せるようにした。
+
+    ★車の割り振り（誰がどの車か）は変えない。各車の中の順番だけを直す。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        d = request.json or {}
+        trips_in = d.get("trips") or []
+
+        geo = soge_geo_map(supabase, f_code)
+        flat, flng, _err = _soge_facility_latlng(supabase, f_code)
+        fac = (flat, flng) if flat is not None else None
+        settings = get_soge_settings(supabase, f_code)
+
+        out = []
+        for t in trips_in:
+            cars = []
+            for v in (t.get("vehicles") or []):
+                stops = []
+                for s in (v.get("stops") or []):
+                    stops.append({
+                        "patient_id": str(s.get("patient_id") or ""),
+                        "user_name": s.get("user_name") or "",
+                        "type": s.get("type") or "pickup",
+                        "nth": int(s.get("nth") or 0),
+                        "guest": bool(s.get("guest")),
+                        "is_wheelchair": bool(s.get("is_wheelchair")),
+                    })
+                ordered = _soge_order_stops(
+                    stops, geo, bool(settings.get("mid_dropoff_first", True)), fac)
+                cars.append({"stops": ordered})
+            out.append({"trip_key": t.get("trip_key"), "vehicles": cars})
+        return jsonify({"status": "success", "trips": out})
+    except Exception as e:
+        print("api_soge_week_reorder error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/api/soge/week", methods=["PUT"])  # soge-week-v1
 @login_required
 def api_soge_week_save():
