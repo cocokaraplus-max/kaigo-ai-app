@@ -14,7 +14,11 @@
 -->
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;height:100%;overflow-x:hidden}
+/* ★画面そのものはスクロールさせない（self-eval-fit-v1）。
+   body を「中央ぞろえ」にしたまま中身が縦にはみ出すと、はみ出した【上側】に
+   どうやっても戻れなくなる（実機で発生：質問文が切れたまま下にも戻せない）。
+   スクロールするのは .body の中だけにして、上の名前・進捗と下のボタンは必ず見えるようにする。 */
+html,body{margin:0;height:100%;overflow:hidden}
 /* ★スマホの時計や電波表示（セーフエリア）と重ならないように余白をとる。
    これが無いと画面の一番上が隠れてしまう。 */
 body{background:#f4f5f7;color:#1f2933;
@@ -25,7 +29,7 @@ body{background:#f4f5f7;color:#1f2933;
  -webkit-user-select:none;user-select:none}
 .tab{width:100%;max-width:900px;background:#fff;border-radius:14px;
  box-shadow:0 4px 24px rgba(31,41,51,.10);overflow:hidden;display:flex;flex-direction:column;
- min-height:min(640px,92vh)}
+ min-height:min(640px,100%);max-height:100%}
 .bar{display:flex;align-items:baseline;gap:14px;padding:16px 26px 12px}
 .who{font-size:1.15rem;font-weight:800;letter-spacing:.02em}
 .who span{font-size:.9rem;font-weight:600;color:#7b8794;margin-left:6px}
@@ -49,6 +53,13 @@ body{background:#f4f5f7;color:#1f2933;
 .c3 button.sel{border-color:#1b4965;border-width:3px;background:#eef3f7;box-shadow:inset 0 0 0 1px #1b4965}
 .c3 .cap{font-size:.86rem;font-weight:700;color:#7b8794}
 .c3 button.sel .cap{color:#1b4965}
+/* ★「どのくらいでしたか」を出すときは、3択を1行にたたむ（self-eval-fit-v1）。
+   3択と10段階を同時に出すと縦に長くなりすぎて、質問文が画面の外へ出てしまう。 */
+.c3pick{display:none;align-items:center;gap:14px;padding:16px 18px;border:2px solid #1b4965;
+ border-radius:12px;background:#eef3f7}
+.c3pick .tx{font-size:1.25rem;font-weight:800;color:#1b4965}
+.c3pick button{margin-left:auto;padding:11px 16px;border-radius:8px;border:2px solid #b6c0cb;
+ background:#fff;color:#3e4c59;font-size:1rem;font-weight:800;cursor:pointer;font-family:inherit}
 .step2{margin-top:26px;padding-top:22px;border-top:1px solid #e4e7eb;display:none}
 .step2.on{display:block;animation:fade .22s ease-out}
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -142,7 +153,7 @@ textarea:focus{outline:none;border-color:#1b4965}
     </button>
     <!-- ★選択肢の文言は goal_kind によって変わる（render() で書き換える）。
          「満足していますか」に「できなかった」では答えにならないため。 -->
-    <div class="c3">
+    <div class="c3" id="c3wrap">
       <button onclick="pick('no',this)">
         <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#6b7b8c" stroke-width="3"/></svg>
         <span class="lbl" id="c3-no">できなかった</span><span class="cap" id="cap-no">0 〜 3</span>
@@ -155,6 +166,12 @@ textarea:focus{outline:none;border-color:#1b4965}
         <svg width="52" height="52" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#3f6f52"/></svg>
         <span class="lbl" id="c3-ok">できた</span><span class="cap" id="cap-ok">8 〜 10</span>
       </button>
+    </div>
+    <!-- 3択を選んだあとに出る「たたんだ表示」。選び直しもここから -->
+    <div class="c3pick" id="c3pick">
+      <span id="c3pick-mk"></span>
+      <span class="tx" id="c3pick-tx"></span>
+      <button type="button" onclick="unpick()">選び直す</button>
     </div>
     <div class="step2" id="step2">
       <h3>その中では どのくらいでしたか</h3>
@@ -296,9 +313,35 @@ function render(){
   document.getElementById('qtext').textContent = QS[i].question || '';
   document.querySelectorAll('.c3 button').forEach(function(b){ b.classList.remove('sel'); });
   document.getElementById('step2').classList.remove('on');
+  unfold();                                   /* たたんだ3択をもとに戻す */
   document.getElementById('nextbtn').disabled = true;
   document.getElementById('helptxt').textContent = 'お選びになると「次へ」が押せます';
   document.getElementById('readbtn').classList.remove('on');
+  document.getElementById('screen-q').scrollTop = 0;
+}
+/* 3択の「たたむ／もどす」（self-eval-fit-v1） */
+function fold(kind){
+  var cs = choiceSet();
+  var mk = {no:'<svg width="34" height="34" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#6b7b8c" stroke-width="4"/></svg>',
+            mid:'<svg width="34" height="34" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#b08040" stroke-width="4"/><path d="M26 5 A21 21 0 0 1 26 47 Z" fill="#b08040"/></svg>',
+            ok:'<svg width="34" height="34" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#3f6f52"/></svg>'};
+  document.getElementById('c3wrap').style.display = 'none';
+  document.getElementById('c3pick-mk').innerHTML = mk[kind] || '';
+  document.getElementById('c3pick-tx').textContent = cs[kind] || '';
+  document.getElementById('c3pick').style.display = 'flex';
+}
+function unfold(){
+  document.getElementById('c3wrap').style.display = '';
+  document.getElementById('c3pick').style.display = 'none';
+}
+function unpick(){
+  choice = null; level = null;
+  unfold();
+  document.querySelectorAll('.c3 button').forEach(function(b){ b.classList.remove('sel'); });
+  document.getElementById('step2').classList.remove('on');
+  document.getElementById('nextbtn').disabled = true;
+  document.getElementById('helptxt').textContent = 'お選びになると「次へ」が押せます';
+  document.getElementById('screen-q').scrollTop = 0;
 }
 function pick(kind, el){
   choice = kind; level = null;
@@ -316,10 +359,11 @@ function pick(kind, el){
   document.getElementById('lv').innerHTML = LEVELS[kind].map(function(x){
     return '<button onclick="pickLv('+x.n+',this)"><span class="num">'+x.n+'</span>'+x.t+'</button>';
   }).join('');
+  fold(kind);                    /* ★3択をたたむ。質問文を画面から追い出さないため */
   document.getElementById('step2').classList.add('on');
   document.getElementById('nextbtn').disabled = true;
   document.getElementById('helptxt').textContent = 'どのくらいか お選びください';
-  document.getElementById('step2').scrollIntoView({behavior:'smooth', block:'nearest'});
+  document.getElementById('screen-q').scrollTop = 0;
 }
 function pickLv(n, el){
   level = n;

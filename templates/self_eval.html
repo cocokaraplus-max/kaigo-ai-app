@@ -118,6 +118,9 @@
 .se-msg{font-size:.82rem;font-weight:800;margin-top:9px;min-height:1.3em}
 .se-msg.ok{color:#1e7e34}
 .se-msg.ng{color:#a34a41}
+/* self-eval-interview-v1: 職員が聞き取って入力する入口 */
+.se-iv{width:100%;margin-top:10px;padding:13px;border-radius:11px;border:1.5px solid #b6c0cb;
+ background:#fff;color:#1e3a5f;font-size:.92rem;font-weight:800;cursor:pointer;font-family:inherit}
 .se-del{width:100%;margin-top:12px;padding:11px;border:1.5px solid #e6c3c0;background:#fdf3f2;
  color:#a34a41;border-radius:9px;font-weight:800;cursor:pointer;font-size:.85rem;font-family:inherit}
 .se-del:active{background:#fbe9e7}
@@ -199,6 +202,13 @@
     <div class="se-acts">
       <button class="se-save" onclick="seSaveQs(true)">下書きを保存</button>
       <button class="se-start" onclick="seStart()">タブレットを渡す</button>
+    </div>
+    <!-- self-eval-interview-v1: タブレットを渡せない方のための道。
+         同じ質問を職員が読み上げて、聞いた答えを職員が入れる。 -->
+    <button class="se-iv" onclick="seInterview()">職員が聞き取って入力する</button>
+    <div class="se-hint" style="margin-top:6px">
+      ご本人がタブレットを操作できない場合はこちら。<b>同じ質問が職員の画面に順番に出ます。</b>
+      読み上げて、聞こえたとおりに入れてください。1問ごとに保存され、途中でやめても続きから再開できます。
     </div>
     <button class="se-del" onclick="seDelete()">この評価を消して作り直す</button>
     <div class="se-hint">
@@ -696,6 +706,13 @@ async function seSaveQs(alertOk){
     await seOpen(SE.cur.id);
     return true;
   }catch(e){ alert('保存に失敗しました'); return false; }
+}
+/* self-eval-interview-v1: 職員が聞き取って入力する画面へ。
+   ★渡す前に必ず質問を保存する（画面で直した質問が消えると聞く内容が変わってしまう）。 */
+async function seInterview(){
+  if(!SE.cur) return;
+  if(!(await seSaveQs(false))) return;
+  location.href = '/self-eval/interview?id=' + encodeURIComponent(SE.cur.id);
 }
 async function seStart(){
   if(!SE.cur) return;

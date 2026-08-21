@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}聞き取りモード - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* self-eval-interview-v1 : 職員が聞き取って入力する画面
+   ★利用者モード(self_eval_run.html)と【同じ質問・同じ保存先】。
+     ちがうのは「誰が押すか」だけ。あとのICF反映や次の目標づくりは共通のものが使える。
+   ★職員が読み上げる前提なので、質問は大きく出す。
+     手元だけで完結するよう、点数と聞き取った言葉を1画面に置く。 */
+.iv-wrap{max-width:760px;margin:0 auto;padding:12px 14px 90px}
+.iv-head{display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+.iv-back{padding:7px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;
+ color:#3e4c59;font-size:.8rem;font-weight:800;cursor:pointer;font-family:inherit}
+.iv-title{font-size:1.1rem;font-weight:900;color:#1e3a5f}
+.iv-prog{margin-left:auto;font-size:.85rem;font-weight:800;color:#52606d}
+.iv-pbar{height:5px;background:#e4e7eb;border-radius:99px;overflow:hidden;margin-bottom:14px}
+.iv-pbar i{display:block;height:100%;background:#1b4965;transition:width .3s}
+.iv-lead{font-size:.8rem;color:#5f6368;line-height:1.65;margin:0 2px 14px}
+.iv-card{border:1px solid #e6e8eb;border-radius:14px;background:#fff;padding:16px;margin-bottom:14px}
+.iv-say{font-size:.74rem;font-weight:900;color:#1b4965;letter-spacing:.08em;margin-bottom:8px}
+.iv-q{font-size:1.4rem;font-weight:800;line-height:1.6;color:#1f2933;margin:0 0 10px}
+.iv-src{font-size:.76rem;color:#9aa0a6;line-height:1.6;margin-bottom:4px}
+.iv-sec{font-size:.8rem;font-weight:900;color:#1e3a5f;margin:16px 0 8px}
+.iv-c3{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.iv-c3 button{padding:15px 6px;border-radius:11px;border:2px solid #d3d9df;background:#fff;
+ font-size:.98rem;font-weight:800;color:#1f2933;cursor:pointer;font-family:inherit;line-height:1.4;
+ display:flex;flex-direction:column;align-items:center;gap:9px}
+.iv-c3 button.sel{border-color:#1b4965;border-width:3px;background:#eef3f7}
+.iv-lv{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+.iv-lv button{padding:12px 11px;border-radius:9px;border:2px solid #d3d9df;background:#fff;
+ font-size:.92rem;font-weight:700;text-align:left;color:#1f2933;cursor:pointer;font-family:inherit;
+ display:flex;align-items:center;gap:10px}
+.iv-lv button.sel{border-color:#1b4965;border-width:3px;background:#eef3f7}
+.iv-lv .n{flex:0 0 34px;height:34px;border-radius:6px;background:#eef1f4;color:#52606d;
+ display:flex;align-items:center;justify-content:center;font-size:1rem;font-weight:800}
+.iv-lv button.sel .n{background:#1b4965;color:#fff}
+.iv-tx{width:100%;min-height:96px;border:1.5px solid #d3d9df;border-radius:9px;padding:11px;
+ font-size:.95rem;line-height:1.7;font-family:inherit;color:#1f2933}
+.iv-tx:focus{outline:none;border-color:#1b4965}
+.iv-tip{font-size:.76rem;color:#7b8794;line-height:1.6;margin-top:7px}
+/* ★base.html の本文は .page-wrapper（最大480px）の中。下のバーもその幅にそろえる */
+.iv-nav{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;
+ max-width:var(--page-max-width,480px);background:#fff;border-top:1px solid #e4e7eb;
+ padding:11px 14px calc(11px + env(safe-area-inset-bottom));display:flex;gap:9px;align-items:center;
+ z-index:40}
+.iv-nav button{padding:13px;border-radius:10px;border:none;font-size:.95rem;font-weight:800;
+ cursor:pointer;font-family:inherit}
+.iv-prev{flex:0 0 auto;background:#fff;border:1.5px solid #b6c0cb !important;color:#3e4c59}
+.iv-skip{flex:0 0 auto;background:#f4f5f7;color:#7b8794;border:1.5px solid #e4e7eb !important}
+.iv-next{flex:1;background:#1b4965;color:#fff}
+.iv-next:disabled{background:#e4e7eb;color:#9aa5b1;cursor:default}
+.iv-done{padding:26px 12px;text-align:center}
+.iv-done h3{font-size:1.1rem;color:#1e3a5f;margin:0 0 8px}
+.iv-done p{font-size:.86rem;color:#5f6368;line-height:1.7;margin:0 0 16px}
+.iv-done button{width:100%;padding:14px;border-radius:11px;border:none;background:#1b4965;color:#fff;
+ font-size:.98rem;font-weight:800;cursor:pointer;font-family:inherit}
+@media (max-width:520px){
+  .iv-q{font-size:1.22rem}
+  .iv-lv{grid-template-columns:1fr}
+  .iv-c3 button{font-size:.88rem;padding:13px 4px}
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="iv-wrap">
+  <div class="iv-head">
+    <button class="iv-back" onclick="location.href='/self-eval'">◀ 一覧へ</button>
+    <span class="iv-title" id="iv-who">聞き取りモード</span>
+    <span class="iv-prog" id="iv-prog"></span>
+  </div>
+  <div class="iv-pbar"><i id="iv-pb" style="width:0%"></i></div>
+  <p class="iv-lead">
+    質問を<b>そのまま読み上げて</b>、聞こえたとおりに入れてください。
+    1問ごとに保存されるので、<b>途中でやめても続きから再開できます</b>。
+  </p>
+
+  <div id="iv-main"><div class="iv-lead">読み込んでいます…</div></div>
+</div>
+
+<div class="iv-nav" id="iv-nav" style="display:none">
+  <button class="iv-prev" onclick="ivPrev()">◀ 前へ</button>
+  <button class="iv-skip" onclick="ivSkip()">聞けなかった</button>
+  <button class="iv-next" id="iv-nextbtn" onclick="ivNext()" disabled>次へ ▶</button>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* self-eval-interview-v1
+   ★選択肢の言い方は利用者モードと同じ規則。goal_kind ごとに変える。
+     「満足していますか」に「できなかった」では答えにならないため。 */
+var IV_LEVELS = {
+  no:  [{n:0,t:'まったく できなかった'},{n:1,t:'ほとんど できなかった'},{n:2,t:'できた日が少しあった'},{n:3,t:'ときどき できた'}],
+  mid: [{n:4,t:'半分くらいの日'},{n:5,t:'半分より少し多く'},{n:6,t:'たいてい できた'},{n:7,t:'ほとんどの日'}],
+  ok:  [{n:8,t:'ほぼ毎日 できた'},{n:9,t:'毎日 できた'},{n:10,t:'余裕をもって できた'}]
+};
+var IV_SETS = {
+  '':       {no:'できなかった',   mid:'少し できた',        ok:'できた',       deep:true},
+  change:   {no:'変わらない',     mid:'少し楽になった',      ok:'楽になった',   deep:false},
+  satisfy:  {no:'満足していない', mid:'どちらとも いえない', ok:'満足している', deep:false},
+  fit:      {no:'合っていない',   mid:'どちらとも いえない', ok:'合っている',   deep:false}
+};
+var IV_MARK = {
+  no:'<svg width="30" height="30" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#6b7b8c" stroke-width="4"/></svg>',
+  mid:'<svg width="30" height="30" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#b08040" stroke-width="4"/><path d="M26 5 A21 21 0 0 1 26 47 Z" fill="#b08040"/></svg>',
+  ok:'<svg width="30" height="30" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#3f6f52"/></svg>'
+};
+var IV = {id:'{{ eval_id }}', qs:[], i:0, choice:null, level:null, name:''};
+
+function ivEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
+  return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+function ivSet(){ return IV_SETS[(IV.qs[IV.i]||{}).goal_kind || ''] || IV_SETS['']; }
+function ivIsFree(){ return ((IV.qs[IV.i]||{}).goal_kind || '') === 'free'; }
+
+async function ivLoad(){
+  try{
+    var j = await fetch('/api/self-eval/get?id='+encodeURIComponent(IV.id),{credentials:'same-origin'})
+              .then(function(r){return r.json();});
+    if(j.status!=='success'){ document.getElementById('iv-main').innerHTML =
+      '<div class="iv-lead">開けませんでした。一覧へ戻ってください。</div>'; return; }
+    IV.qs = j.answers || [];
+    IV.name = (j.eval||{}).user_name || '';
+    document.getElementById('iv-who').textContent = IV.name ? (IV.name+' さん') : '聞き取りモード';
+    if(!IV.qs.length){ document.getElementById('iv-main').innerHTML =
+      '<div class="iv-lead">質問がありません。先に質問を作ってください。</div>'; return; }
+    /* ★続きから。まだ答えの入っていない最初の質問へ飛ぶ。
+       職員は途中で必ず呼ばれる。閉じても続きから始められることが大事。 */
+    IV.i = 0;
+    for(var k=0;k<IV.qs.length;k++){
+      var a = IV.qs[k];
+      var done = (a.score!==null && a.score!==undefined)
+              || a.reason_mode==='skip'
+              || (a.reason_text||'').trim()!=='';
+      if(!done){ IV.i = k; break; }
+      IV.i = Math.min(k+1, IV.qs.length-1);
+    }
+    document.getElementById('iv-nav').style.display = 'flex';
+    ivRender();
+  }catch(e){
+    document.getElementById('iv-main').innerHTML = '<div class="iv-lead">開けませんでした。</div>';
+  }
+}
+
+function ivRender(){
+  var a = IV.qs[IV.i] || {}, cs = ivSet();
+  IV.choice = a.choice || null;
+  IV.level  = (a.score===null||a.score===undefined) ? null : a.score;
+  document.getElementById('iv-prog').textContent = (IV.i+1)+' / '+IV.qs.length;
+  document.getElementById('iv-pb').style.width = ((IV.i+1)/IV.qs.length*100)+'%';
+
+  var h = '<div class="iv-card">'
+        + '<div class="iv-say">このまま読み上げてください</div>'
+        + '<p class="iv-q">'+ivEsc(a.question)+'</p>';
+  if(a.source_note) h += '<div class="iv-src">この質問のもと：'+ivEsc(a.source_note)+'</div>';
+  h += '</div>';
+
+  if(!ivIsFree()){
+    h += '<div class="iv-card">'
+       + '<div class="iv-sec">お答え</div>'
+       + '<div class="iv-c3">'
+       +   ['no','mid','ok'].map(function(k){
+             return '<button data-k="'+k+'" onclick="ivPick(\''+k+'\')">'+IV_MARK[k]
+                  + '<span>'+ivEsc(cs[k])+'</span></button>';
+           }).join('')
+       + '</div>'
+       + '<div id="iv-lvwrap"></div>'
+       + '</div>';
+  }
+  h += '<div class="iv-card">'
+     + '<div class="iv-sec">'+(ivIsFree()?'お聞きした内容':'ご本人の言葉（理由）')+'</div>'
+     + '<textarea class="iv-tx" id="iv-tx" placeholder="聞こえたとおりに書いてください。言い換えないほうが、あとで役に立ちます。">'
+     + ivEsc(a.reason_text||'')+'</textarea>'
+     + '<div class="iv-tip">言い換えず、話された言葉のまま書くのがコツです。'
+     +   'ここに入れた言葉が、ICFへの反映と次の目標づくりの材料になります。</div>'
+     + '</div>';
+  document.getElementById('iv-main').innerHTML = h;
+
+  if(!ivIsFree() && IV.choice){
+    var b = document.querySelector('.iv-c3 button[data-k="'+IV.choice+'"]');
+    if(b) b.classList.add('sel');
+    if(cs.deep) ivDrawLv(IV.choice);
+  }
+  ivSyncNext();
+  ivTop();
+}
+/* base.html では画面のスクロールを .page-wrapper が持っている。
+   window.scrollTo では動かないので、そちらを戻す。 */
+function ivTop(){
+  var w = document.querySelector('.page-wrapper');
+  if(w) w.scrollTop = 0; else window.scrollTo({top:0});
+}
+
+function ivDrawLv(kind){
+  var w = document.getElementById('iv-lvwrap');
+  if(!w) return;
+  w.innerHTML = '<div class="iv-sec">その中では どのくらい</div><div class="iv-lv">'
+    + IV_LEVELS[kind].map(function(x){
+        return '<button data-n="'+x.n+'" onclick="ivPickLv('+x.n+')">'
+             + '<span class="n">'+x.n+'</span>'+x.t+'</button>'; }).join('')
+    + '</div>';
+  if(IV.level!==null){
+    var b = w.querySelector('.iv-lv button[data-n="'+IV.level+'"]');
+    if(b) b.classList.add('sel');
+  }
+}
+function ivPick(kind){
+  var cs = ivSet();
+  IV.choice = kind;
+  document.querySelectorAll('.iv-c3 button').forEach(function(b){ b.classList.remove('sel'); });
+  var el = document.querySelector('.iv-c3 button[data-k="'+kind+'"]');
+  if(el) el.classList.add('sel');
+  if(!cs.deep){
+    /* 満足度などは3段階で十分。点数は 2 / 5 / 9 を当てる（○△×に直すと ×/△/○） */
+    IV.level = (kind==='ok') ? 9 : (kind==='mid' ? 5 : 2);
+    document.getElementById('iv-lvwrap').innerHTML = '';
+  }else{
+    IV.level = null;
+    ivDrawLv(kind);
+  }
+  ivSyncNext();
+}
+function ivPickLv(n){
+  IV.level = n;
+  document.querySelectorAll('.iv-lv button').forEach(function(b){ b.classList.remove('sel'); });
+  var b = document.querySelector('.iv-lv button[data-n="'+n+'"]');
+  if(b) b.classList.add('sel');
+  ivSyncNext();
+}
+function ivSyncNext(){
+  /* 点数のいらない質問（してみたいこと等）は、書かなくても進める */
+  document.getElementById('iv-nextbtn').disabled = ivIsFree() ? false : (IV.level===null);
+}
+
+async function ivSave(mode){
+  var tx = document.getElementById('iv-tx');
+  var body = {evaluation_id:IV.id, id:IV.qs[IV.i].id,
+              score:IV.level, choice:IV.choice,
+              reason_mode:mode, reason_text: tx ? tx.value : ''};
+  try{
+    var j = await fetch('/api/self-eval/answer-staff',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+      .then(function(r){return r.json();});
+    if(j.status!=='success'){ alert(j.message||'保存できませんでした'); return false; }
+  }catch(e){ alert('保存できませんでした'); return false; }
+  /* 手元の控えにも反映（前へ戻ったときに消えないように） */
+  var a = IV.qs[IV.i];
+  a.score = IV.level; a.choice = IV.choice;
+  a.reason_mode = mode; a.reason_text = tx ? tx.value : '';
+  return true;
+}
+async function ivNext(){
+  if(!(await ivSave('staff'))) return;
+  if(IV.i >= IV.qs.length-1){ ivFinishScreen(); return; }
+  IV.i++; ivRender();
+}
+async function ivSkip(){
+  if(!(await ivSave('skip'))) return;
+  if(IV.i >= IV.qs.length-1){ ivFinishScreen(); return; }
+  IV.i++; ivRender();
+}
+async function ivPrev(){
+  if(IV.i===0){ location.href='/self-eval'; return; }
+  await ivSave('staff');      /* 書きかけも残す */
+  IV.i--; ivRender();
+}
+function ivFinishScreen(){
+  document.getElementById('iv-nav').style.display = 'none';
+  document.getElementById('iv-main').innerHTML =
+      '<div class="iv-card iv-done">'
+    + '<h3>聞き取りが終わりました</h3>'
+    + '<p>このあと「確認待ち」に入ります。<br>'
+    +   '内容の確認・ICFへの反映・次の目標づくりは、一覧から続けてください。</p>'
+    + '<button onclick="ivFinish()">確認待ちにする</button></div>';
+  ivTop();
+}
+async function ivFinish(){
+  try{
+    var j = await fetch('/api/self-eval/finish-staff',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:IV.id})})
+      .then(function(r){return r.json();});
+    if(j.status!=='success'){ alert(j.message||'保存できませんでした'); return; }
+    location.href = '/self-eval';
+  }catch(e){ alert('保存できませんでした'); }
+}
+document.addEventListener('DOMContentLoaded', ivLoad);
+</script>
+{% endblock %}

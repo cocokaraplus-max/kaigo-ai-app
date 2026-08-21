@@ -21,6 +21,9 @@ DDL: db/self_eval.sql（デプロイより先に DEV→本番 の順で適用）
   POST /api/self-eval/start            - 利用者モードに入る（キオスクON）
   POST /api/self-eval/kiosk-pin/set    - 解除コード（4桁）の設定（管理者のみ）
   GET  /api/self-eval/kiosk-pin/status - 解除コードが設定済みかだけ返す
+  GET  /self-eval/interview            - 職員が聞き取って入力する画面（self-eval-interview-v1）
+  POST /api/self-eval/answer-staff     - 職員が聞き取った答えを1問ぶん保存
+  POST /api/self-eval/finish-staff     - 聞き取り終了 → status='answered'
   GET  /self-eval/reason-image/<id>    - 手書き画像の表示（★ログイン必須。公開URLにしない）
   POST /api/self-eval/answer-ocr       - 手書きをAIで文字にする（保存はしない）
   POST /api/self-eval/answer-reason    - 職員が直した文字を保存する
@@ -814,6 +817,91 @@ def register_self_eval_routes(app):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
         return jsonify({"status": "success"})
+
+    # ==========================================================
+    # self-eval-interview-v1 : 職員が聞き取って入力するモード
+    #
+    #   ★なぜ必要か（現場の依頼）
+    #     タブレットをご本人に渡せない方が必ずいる。
+    #       ・画面の操作そのものが難しい
+    #       ・目が見えにくい、手がふるえる
+    #       ・その日の体調でむずかしい
+    #     これまでは、そういう方の評価は職員が頭の中で考えて書いていた。
+    #     【何を聞けばよいか】が人によってばらつく、というのが本当の困りごと。
+    #
+    #   ★やること
+    #     利用者モードと同じ質問を、職員の画面に順番に出す。
+    #     職員はそれを読み上げて聞き、聞いた答えをその場で入れる。
+    #     質問の作り方も保存先も利用者モードと同じ。あとの処理（ICF・次の目標）も
+    #     まったく同じものが使える。
+    #
+    #   ★キオスクにはしない
+    #     職員が自分の端末で使う。許可URLに入れていないので、
+    #     利用者モード中のタブレットからは開けない（開こうとするとロック画面に戻る）。
+    # ==========================================================
+    @app.route('/self-eval/interview')
+    @login_required
+    def self_eval_interview():
+        eid = (request.args.get("id") or "").strip()
+        if not eid:
+            return redirect("/self-eval")
+        return render_template('self_eval_interview.html', eval_id=eid)
+
+    @app.route('/api/self-eval/answer-staff', methods=['POST'])
+    @login_required
+    def api_self_eval_answer_staff():
+        """職員が聞き取った答えを1問ぶん保存する。★1問ごとに保存。
+        職員は途中で呼ばれる。閉じても続きから再開できること。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        d = request.json or {}
+        eid = (d.get("evaluation_id") or "").strip()
+        qid = (d.get("id") or "").strip()
+        if not eid or not qid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        score = d.get("score")
+        try:
+            score = int(score)
+        except Exception:
+            score = None
+        if score is not None and not (0 <= score <= 10):
+            score = None
+        choice = d.get("choice") if d.get("choice") in ("no", "mid", "ok") else None
+        # 'staff' = 職員が聞き取って入れた、という印。あとで見たときに区別できる
+        mode = d.get("reason_mode") if d.get("reason_mode") in ("staff", "skip") else None
+        payload = {
+            "score": score, "choice": choice, "reason_mode": mode,
+            "reason_text": (d.get("reason_text") or "").strip()[:2000] or None,
+            "answered_at": _now_iso(), "updated_at": _now_iso(),
+        }
+        try:
+            (supabase.table("patient_self_eval_answers").update(payload)
+             .eq("id", qid).eq("facility_code", f_code)
+             .eq("evaluation_id", eid).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success"})
+
+    @app.route('/api/self-eval/finish-staff', methods=['POST'])
+    @login_required
+    def api_self_eval_finish_staff():
+        """聞き取りが終わった。status='answered'（＝確認待ち）にする。
+        ★ここでも確定しない。確定は今までどおり『確認を終える』で行う。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        eid = ((request.json or {}).get("id") or "").strip()
+        if not eid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        try:
+            (supabase.table("patient_self_evaluations")
+             .update({"status": "answered", "answered_at": _now_iso(),
+                      "updated_at": _now_iso()})
+             .eq("id", eid).eq("facility_code", f_code).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success", "redirect": "/self-eval"})
 
     # ==========================================================
     # self-eval-pen-v1 : ペンでの手書き入力
