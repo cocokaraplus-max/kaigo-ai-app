@@ -23625,7 +23625,8 @@ def _soge_day_state(supabase, f_code, date_str):
         print("soge day state error: %s" % e, flush=True)
     return {"exists": bool(days),
             "locked": _soge_day_locked(supabase, f_code, date_str),
-            "touched": _soge_day_touched(days, stops)}
+            "touched": _soge_day_touched(days, stops),
+            "past": date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d")}
 
 
 def _soge_clear_day(supabase, f_code, date_str):
@@ -23709,6 +23710,12 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
     if st["exists"]:
         if st["locked"]:
             return {"built": False, "reason": "locked"}
+        # ★過ぎた日は絶対に作り直さない（soge-lock-v1 の重要な歯止め）。
+        #   過去の運行表は「実際にどう走ったか」の記録で、月の記録表の元にもなる。
+        #   打刻が1つも無い日（誰も押し忘れた日など）でも、今の配車表で
+        #   書き換えてしまえば記録の改ざんになる。確定の有無とは関係なく止める。
+        if date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d"):
+            return {"built": False, "reason": "past"}
         if st["touched"] and not force:
             return {"built": False, "reason": "touched"}
         if not _soge_clear_day(supabase, f_code, date_str):
@@ -23814,7 +23821,8 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
     days = dr.data or []
     if not days:
         return {"date": date_str, "vehicles": [],
-                "locked": _soge_day_locked(supabase, f_code, date_str), "touched": False}
+                "locked": _soge_day_locked(supabase, f_code, date_str), "touched": False,
+                "past": date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d")}
 
     ids = [d["id"] for d in days]
     sr = (supabase.table("soge_stops").select("*")
@@ -23905,7 +23913,7 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
     st = _soge_day_state(supabase, f_code, date_str)
     return {"date": date_str, "vehicles": list(vehicles.values()),
             "odo_enabled": bool(settings.get("odo_enabled")),
-            "locked": st["locked"], "touched": st["touched"]}
+            "locked": st["locked"], "touched": st["touched"], "past": st["past"]}
 
 
 @app.route("/soge/run")  # soge-run-v1
@@ -23980,6 +23988,9 @@ def api_soge_run_rebuild():
         if _soge_day_locked(supabase, f_code, date_str):
             return jsonify({"status": "error",
                             "message": "この日は確定されています。先に確定を解除してください。"}), 400
+        if date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d"):
+            return jsonify({"status": "error",
+                            "message": "過ぎた日の運行表は作り直せません（実際に走った記録のため）。"}), 400
         r = soge_materialize_day(supabase, f_code, date_str, force=True)
         if not r.get("built"):
             return jsonify({"status": "error",

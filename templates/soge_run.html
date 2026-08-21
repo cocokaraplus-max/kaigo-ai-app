@@ -294,11 +294,19 @@
     var box = $('srLock');
     if (!box) return;
     var d = state.data || {};
-    var locked = !!d.locked, touched = !!d.touched;
+    var locked = !!d.locked, touched = !!d.touched, past = !!d.past;
     box.style.display = 'flex';
-    box.className = 'sr-lock' + (locked ? ' on' : '');
+    box.className = 'sr-lock' + (locked || past ? ' on' : '');
 
     var h;
+    if (past) {
+      // ★過ぎた日は作り直さない。実際に走った記録で、月の記録表の元にもなるため。
+      h = '<span class="st">過ぎた日</span>'
+        + '<span class="ex">この日は<b>実際に走った記録</b>です。'
+        + '配車表を直しても書き換わりません。打刻の修正は各行の時刻から行えます。</span>';
+      box.innerHTML = h;
+      return;
+    }
     if (locked) {
       h = '<span class="st">確定済み</span>'
         + '<button id="srUnlock">確定を解除する</button>'
