@@ -118,6 +118,49 @@
 .se-msg{font-size:.82rem;font-weight:800;margin-top:9px;min-height:1.3em}
 .se-msg.ok{color:#1e7e34}
 .se-msg.ng{color:#a34a41}
+/* ===== self-eval-ui-v3 : 「作成中」をはっきり見せる ＋ 項目の区切りを色で分ける =====
+   ★AIの生成は10〜30秒かかる。ボタンの文字を変えるだけだと
+     「固まった」と思われて何度も押される。回すもの（グルグル）と
+     経過秒数を出して、動いていることを目で分かるようにする。 */
+@keyframes se-rot{to{transform:rotate(360deg)}}
+.se-busy{display:flex;align-items:center;gap:12px;padding:14px;border-radius:10px;
+ background:#fff;border:1px dashed #c2ccd6;margin-top:9px}
+.se-busy .ring{flex:0 0 auto;width:26px;height:26px;border-radius:50%;
+ border:3px solid #e0e6ec;border-top-color:#1b4965;animation:se-rot .8s linear infinite}
+.se-busy .tx{font-size:.88rem;font-weight:800;color:#1e3a5f;line-height:1.55}
+.se-busy .tx small{display:block;font-weight:600;color:#7b8794;font-size:.76rem;margin-top:3px}
+.se-mini .mr,.se-new .mr{display:inline-block;width:14px;height:14px;border-radius:50%;
+ border:2px solid rgba(255,255,255,.45);border-top-color:#fff;animation:se-rot .8s linear infinite;
+ vertical-align:-2px;margin-right:8px}
+.se-mini .mr{border-color:#cfd8dc;border-top-color:#1b4965}
+/* 置き場所がないとき（質問づくり）は画面の前面に出す */
+.se-veil{position:fixed;inset:0;background:rgba(31,41,51,.45);z-index:120;
+ display:flex;align-items:center;justify-content:center;padding:24px}
+.se-veil .card{background:#fff;border-radius:14px;padding:26px 24px;max-width:340px;width:100%;
+ text-align:center;box-shadow:0 10px 40px rgba(0,0,0,.22)}
+.se-veil .ring{width:44px;height:44px;margin:0 auto 14px;border-radius:50%;
+ border:4px solid #e0e6ec;border-top-color:#1b4965;animation:se-rot .8s linear infinite}
+.se-veil h4{margin:0 0 7px;font-size:1rem;color:#1e3a5f}
+.se-veil p{margin:0;font-size:.82rem;color:#5f6368;line-height:1.7}
+
+/* ★項目ごとに下地の色を変える。長い画面なので、どこを見ているか迷わないように。
+   色は薄くする（介護記録の画面なので、派手だと本文が読みにくい）。 */
+.se-block{border-radius:12px;padding:13px 13px 15px;margin:15px 0;border:1px solid}
+.se-block > .se-sec:first-child{margin-top:0}
+.se-block > .se-sec{border-left-width:4px}
+.se-b1{background:#f4f7fa;border-color:#e0e8ef}   /* ご本人の回答 */
+.se-b1 > .se-sec{border-left-color:#5c7f9e}
+.se-b2{background:#fbf8f1;border-color:#eee3ce}   /* 職員のメモ */
+.se-b2 > .se-sec{border-left-color:#b08040}
+.se-b3{background:#f1f7f3;border-color:#d8e8df}   /* ICF */
+.se-b3 > .se-sec{border-left-color:#3f6f52}
+.se-b4{background:#f2f5fc;border-color:#dde4f3}   /* 次の目標 */
+.se-b4 > .se-sec{border-left-color:#41569b}
+.se-b5{background:#f8f4f6;border-color:#ecdfe4}   /* 評価に取り込む */
+.se-b5 > .se-sec{border-left-color:#8f5568}
+/* 下地に色を付けたぶん、中のカードは白にして浮かせる（読みやすさ優先） */
+.se-block .se-ans,.se-block .se-card,.se-block .se-goal,.se-block .se-note{background:#fff}
+
 /* self-eval-interview-v1: 職員が聞き取って入力する入口 */
 .se-iv{width:100%;margin-top:10px;padding:13px;border-radius:11px;border:1.5px solid #b6c0cb;
  background:#fff;color:#1e3a5f;font-size:.92rem;font-weight:800;cursor:pointer;font-family:inherit}
@@ -226,22 +269,32 @@
       <b>途中でやめても大丈夫です。</b>書きかけのメモも、作った目標の案も残ります。
     </div>
 
-    <div class="se-sec">ご本人の回答</div>
-    <div id="se-answers"></div>
+    <!-- self-eval-ui-v3: 項目ごとに下地の色を変える。長い画面なので迷わないように -->
+    <div class="se-block se-b1">
+      <div class="se-sec">ご本人の回答</div>
+      <div id="se-answers"></div>
+    </div>
 
-    <div class="se-sec">職員のメモ</div>
-    <textarea class="se-note" id="se-staff-note"
-      placeholder="気づいたこと、面談で補って聞いたことなど"></textarea>
-    <button class="se-mini" onclick="seSaveNote()" style="margin-top:8px">メモを保存する</button>
+    <div class="se-block se-b2">
+      <div class="se-sec">職員のメモ</div>
+      <textarea class="se-note" id="se-staff-note"
+        placeholder="気づいたこと、面談で補って聞いたことなど"></textarea>
+      <button class="se-mini" onclick="seSaveNote()" style="margin-top:8px">メモを保存する</button>
+    </div>
 
-    <div class="se-sec">今回わかったことをICFに残す</div>
-    <button class="se-mini" id="se-icf-btn" onclick="seIcfSuggest()">回答からICFの付箋を作る</button>
-    <div id="se-icf-box"></div>
+    <div class="se-block se-b3">
+      <div class="se-sec">今回わかったことをICFに残す</div>
+      <button class="se-mini" id="se-icf-btn" onclick="seIcfSuggest()">回答からICFの付箋を作る</button>
+      <div id="se-icf-box"></div>
+    </div>
 
-    <div class="se-sec">次の目標を一緒に考える</div>
-    <button class="se-mini" id="se-goal-btn" onclick="seNextGoal('')">達成できた項目から次の目標を考える</button>
-    <div id="se-goal-box"></div>
+    <div class="se-block se-b4">
+      <div class="se-sec">次の目標を一緒に考える</div>
+      <button class="se-mini" id="se-goal-btn" onclick="seNextGoal('')">達成できた項目から次の目標を考える</button>
+      <div id="se-goal-box"></div>
+    </div>
 
+    <div class="se-block se-b5">
     <div class="se-sec">評価に取り込む</div>
     <div style="font-size:.78rem;color:#7b8794;line-height:1.65;margin-bottom:9px">
       ご本人の回答を、その月の評価の「元データ」に足します。<b>上書きはしません。</b><br>
@@ -251,6 +304,8 @@
       <b>まだ空のところだけ</b>点数から自動で入ります。<b>下書きなので、評価画面で直せます。</b>
     </div>
     <button class="se-mini" id="se-toev-btn" onclick="seToEval(false)">この回答を評価の元データに足す</button>
+    <div id="se-toev-box"></div>
+    </div>
 
     <button class="se-done" onclick="seConfirm()">確認を終える（確定する）</button>
     <div class="se-msg" id="se-review-msg"></div>
@@ -354,7 +409,9 @@ function sePRender(){
 async function seCreate(pid){
   seClosePicker();
   var b = document.querySelector('.se-new');
-  var old = b.textContent; b.textContent = '質問を作っています…'; b.disabled = true;
+  var old = b.textContent; b.disabled = true;
+  seBtnBusy(b, '質問を作っています…');
+  seVeil('質問を作っています', '目標とICFの付箋を読んで、AIが質問を組み立てています。<br>30秒ほどかかることがあります。');
   try{
     var j = await fetch('/api/self-eval/create',{method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({pid:pid})}).then(function(r){return r.json();});
@@ -362,7 +419,7 @@ async function seCreate(pid){
     await seOpen(j.id);
     SE.st='draft'; seTab('draft');
   }catch(e){ alert('作成に失敗しました'); }
-  finally{ b.textContent = old; b.disabled = false; }
+  finally{ seVeilEnd(); seBtnDone(b, old); }
 }
 
 /* ---- 質問の確認・修正 ---- */
@@ -405,6 +462,53 @@ async function seOpen(id){
       document.getElementById('se-edit').scrollIntoView({behavior:'smooth', block:'start'});
     }
   }catch(e){ alert('開けませんでした'); }
+}
+
+/* ---- self-eval-ui-v3: 「作成中」をはっきり見せる ----
+   ★AIの生成は10〜30秒かかる。ボタンの文字を変えるだけだと「固まった」と思われ、
+     何度も押される。回るものと経過秒数を出して、動いていることを目で見せる。 */
+var SE_TICK = {};
+function seBusy(boxId, title, note){
+  var box = document.getElementById(boxId); if(!box) return;
+  box.innerHTML = '<div class="se-busy"><span class="ring"></span><span class="tx">'
+    + title + '<small>' + (note||'') + '　<b id="'+boxId+'-sec">0秒</b></small></span></div>';
+  var n = 0;
+  clearInterval(SE_TICK[boxId]);
+  SE_TICK[boxId] = setInterval(function(){
+    n++;
+    var e = document.getElementById(boxId+'-sec');
+    if(e) e.textContent = n + '秒';
+    else clearInterval(SE_TICK[boxId]);
+  }, 1000);
+}
+function seBusyEnd(boxId){ clearInterval(SE_TICK[boxId]); }
+function seBtnBusy(btn, label){
+  btn.disabled = true;
+  btn.innerHTML = '<span class="mr"></span>' + label;
+}
+function seBtnDone(btn, label){
+  btn.disabled = false;
+  btn.textContent = label;
+}
+/* 置き場所がないとき（質問づくり）は画面の前面に出す */
+function seVeil(title, note){
+  seVeilEnd();
+  var d = document.createElement('div');
+  d.className = 'se-veil'; d.id = 'se-veil';
+  d.innerHTML = '<div class="card"><div class="ring"></div><h4>'+title+'</h4>'
+              + '<p>'+(note||'')+'<br><b id="se-veil-sec">0秒</b></p></div>';
+  document.body.appendChild(d);
+  var n = 0;
+  clearInterval(SE_TICK.veil);
+  SE_TICK.veil = setInterval(function(){
+    n++;
+    var e = document.getElementById('se-veil-sec');
+    if(e) e.textContent = n + '秒'; else clearInterval(SE_TICK.veil);
+  }, 1000);
+}
+function seVeilEnd(){
+  clearInterval(SE_TICK.veil);
+  var d = document.getElementById('se-veil'); if(d) d.remove();
 }
 
 /* ---- self-eval-pen-v1: ご本人がペンで書いたものを出す ----
@@ -499,7 +603,9 @@ async function seSaveNote(){
 }
 async function seIcfSuggest(){
   var b = document.getElementById('se-icf-btn'), box = document.getElementById('se-icf-box');
-  b.disabled = true; b.textContent = '考えています…';
+  seBtnBusy(b, '考えています…');
+  seBusy('se-icf-box', 'ICFの付箋を作っています',
+         '回答と今の付箋を見比べて、書き換えるものと新しく足すものを選んでいます。');
   try{
     var j = await fetch('/api/self-eval/icf-suggest',{method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},body:JSON.stringify({id:SE.cur.id})})
@@ -541,7 +647,7 @@ async function seIcfSuggest(){
     box.innerHTML = html + '<button class="se-mini" onclick="seIcfApply()" style="margin-top:8px">'
       + 'チェックしたものをICFに反映する</button>';
   }catch(e){ box.innerHTML='<div class="se-empty">失敗しました</div>'; }
-  finally{ b.disabled=false; b.textContent='回答からICFの付箋を作る'; }
+  finally{ seBusyEnd('se-icf-box'); seBtnDone(b, '回答からICFの付箋を作る'); }
 }
 async function seIcfApply(){
   var picked = [], ups = [];
@@ -570,7 +676,9 @@ async function seIcfApply(){
 }
 async function seNextGoal(tone){
   var b = document.getElementById('se-goal-btn'), box = document.getElementById('se-goal-box');
-  b.disabled = true; b.textContent = '考えています…';
+  seBtnBusy(b, '考えています…');
+  seBusy('se-goal-box', '次の目標を考えています',
+         '達成できた項目をもとに、少し先の目標をAIが組み立てています。');
   try{
     var j = await fetch('/api/self-eval/next-goal',{method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
@@ -579,7 +687,7 @@ async function seNextGoal(tone){
     if(!(j.goals||[]).length){ box.innerHTML='<div class="se-empty">'+seEsc(j.message||'達成できた項目がありません。')+'</div>'; return; }
     seRenderGoals(j.goals, false);
   }catch(e){ box.innerHTML='<div class="se-empty">失敗しました</div>'; }
-  finally{ b.disabled=false; b.textContent='達成できた項目から次の目標を考える'; }
+  finally{ seBusyEnd('se-goal-box'); seBtnDone(b, '達成できた項目から次の目標を考える'); }
 }
 function seRenderGoals(goals, fromDraft){
   SE.goals = goals;
@@ -638,7 +746,9 @@ async function seDelete(){
 }
 async function seToEval(force){
   var b = document.getElementById('se-toev-btn'), m = document.getElementById('se-review-msg');
-  b.disabled = true;
+  seBtnBusy(b, '取り込んでいます…');
+  seBusy('se-toev-box', '評価に取り込んでいます',
+         '元データに足して、空いている欄（満足度・ICFの状態など）を埋めています。');
   try{
     var r = await fetch('/api/self-eval/to-evaluation',{method:'POST',credentials:'same-origin',
       headers:{'Content-Type':'application/json'},
@@ -657,7 +767,11 @@ async function seToEval(force){
     }
     m.className='se-msg ng'; m.textContent = j.message || '失敗しました';
   }catch(e){ m.className='se-msg ng'; m.textContent='失敗しました'; }
-  finally{ b.disabled=false; }
+  finally{
+    seBusyEnd('se-toev-box');
+    document.getElementById('se-toev-box').innerHTML = '';
+    seBtnDone(b, 'この回答を評価の元データに足す');
+  }
 }
 async function seConfirm(){
   if(!confirm('この評価を確定します。よろしいですか。')) return;
