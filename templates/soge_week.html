@@ -43,6 +43,15 @@
 
 /* 車 */
 .sg-car { border:1px solid #dbe3ee; border-radius:10px; margin-bottom:12px; background:#fafcff; overflow:hidden; }
+/* soge-week-wide-v1: パソコンでは車を横に並べる。
+   縦に積むと、1台目から3台目へ人を動かすのに画面を大きく送ることになる。
+   横に並べば「隣へ寄せる」だけで済む。スマホは今までどおり縦に積む（横は狭すぎる）。 */
+@media (min-width: 900px) {
+  .sg-cars { display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));
+    gap:12px; align-items:start; }
+  .sg-cars .sg-car { margin-bottom:0; }
+  .sg-car .sg-stops { min-height:60px; }   /* 空の車にも落とせる幅と高さを残す */
+}
 .sg-car-head { display:flex; align-items:center; gap:8px; padding:10px 12px; background:#eef2f7;
   border-bottom:1px solid #e3e8ef; flex-wrap:wrap; }
 .sg-car-badge { background:#1a73e8; color:#fff; font-size:0.7rem; font-weight:800; border-radius:999px;
@@ -268,7 +277,9 @@
       $('sgTrips').innerHTML = '<div class="sg-empty">この曜日の送迎はありません。</div>';
     } else {
       var cars = (t.vehicles || []).map(function (v, vi) { return carHtml(t, ti, v, vi); }).join('');
-      if (!cars) cars = '<div class="sg-empty">この便の対象者はいません</div>';
+      // soge-week-wide-v1: パソコンで横に並べるための入れ物
+      cars = cars ? ('<div class="sg-cars">' + cars + '</div>')
+                  : '<div class="sg-empty">この便の対象者はいません</div>';
       // soge-edit-v1: 台数と人の増減は手でもできるようにする
       var tools = '<div class="sg-tools">' +
         '<button class="sg-btn sg-btn-sm" data-addcar="' + ti + '">＋ 車を追加</button>' +
@@ -628,6 +639,7 @@
     drag = {
       ti: a[0], vi: a[1], si: a[2], row: row, ghost: ghost,
       dx: e.clientX - rect.left, dy: e.clientY - rect.top,
+      lx: e.clientX, ly: e.clientY, sy: 0,     // soge-week-autoscroll-v1
       pid: e.pointerId
     };
     e.preventDefault();
@@ -642,13 +654,49 @@
     window.addEventListener('blur', gripUp);
   }
 
-  function gripMove(e) {
-    if (!drag) return;
-    drag.ghost.style.left = (e.clientX - drag.dx) + 'px';
-    drag.ghost.style.top = (e.clientY - drag.dy) + 'px';
+  /* ===== soge-week-autoscroll-v1 =====
+     ★スマホで、画面の外にある車へ人を動かせなかった。
+       付箋をつまむと指はふさがるので、もう片方の手で画面を送ることもできない。
+     → つまんだまま画面の【上端・下端】に寄せると、そちらへ勝手に送る。
+       指を止めていても送り続ける必要があるので、タイマーで回す。 */
+  var scTimer = null;
+  function scrollBox() {
+    // base.html では本文のスクロールを .page-wrapper が持っている
+    return document.querySelector('.page-wrapper') || document.scrollingElement || document.body;
+  }
+  function edgeSpeed(y) {
+    var sc = scrollBox(), top, bottom;
+    if (sc === document.scrollingElement || sc === document.body) {
+      top = 0; bottom = window.innerHeight;
+    } else {
+      var r = sc.getBoundingClientRect(); top = r.top; bottom = r.bottom;
+    }
+    var EDGE = 90, MAX = 16;            // 端から90px、1回あたり最大16px
+    if (y < top + EDGE)    return -Math.ceil((top + EDGE - y) / EDGE * MAX);
+    if (y > bottom - EDGE) return  Math.ceil((y - (bottom - EDGE)) / EDGE * MAX);
+    return 0;
+  }
+  function startAutoScroll() {
+    if (scTimer) return;
+    scTimer = setInterval(function () {
+      if (!drag || !drag.sy) return;
+      var sc = scrollBox();
+      var before = sc.scrollTop;
+      sc.scrollTop = before + drag.sy;
+      if (sc.scrollTop === before) return;        // これ以上動かない
+      // 画面が動いたので、落とし先を測り直す（指は止まったままでも動く）
+      placeGhost(drag.lx, drag.ly);
+    }, 16);
+  }
+  function stopAutoScroll() {
+    if (scTimer) { clearInterval(scTimer); scTimer = null; }
+  }
 
+  // 落とし先の枠を決めて、目印(ph)を置く。画面座標で判定する
+  function placeGhost(x, y) {
+    if (!drag) return;
     drag.ghost.style.display = 'none';
-    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var el = document.elementFromPoint(x, y);
     drag.ghost.style.display = '';
     if (!el || !el.closest) return;
 
@@ -657,7 +705,7 @@
     var key = box.dataset.drop.split('_').map(Number);
     if (key[0] !== drag.ti) return;      // 別の便には移せない
 
-    document.querySelectorAll('.sg-stops.drop-on').forEach(function (x) { x.classList.remove('drop-on'); });
+    document.querySelectorAll('.sg-stops.drop-on').forEach(function (b) { b.classList.remove('drop-on'); });
     box.classList.add('drop-on');
 
     var rows = Array.prototype.slice.call(box.querySelectorAll('.sg-stop'))
@@ -665,14 +713,25 @@
     var before = null;
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i].getBoundingClientRect();
-      if (e.clientY < r.top + r.height / 2) { before = rows[i]; break; }
+      if (y < r.top + r.height / 2) { before = rows[i]; break; }
     }
     if (before) box.insertBefore(ph, before);
     else box.appendChild(ph);
   }
 
+  function gripMove(e) {
+    if (!drag) return;
+    drag.ghost.style.left = (e.clientX - drag.dx) + 'px';
+    drag.ghost.style.top = (e.clientY - drag.dy) + 'px';
+    drag.lx = e.clientX; drag.ly = e.clientY;
+    drag.sy = edgeSpeed(e.clientY);
+    if (drag.sy) startAutoScroll();
+    placeGhost(e.clientX, e.clientY);
+  }
+
   function gripUp(e) {
     if (!drag) return;
+    stopAutoScroll();
     window.removeEventListener('pointermove', gripMove);
     window.removeEventListener('pointerup', gripUp);
     window.removeEventListener('pointercancel', gripUp);

@@ -467,6 +467,17 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 .discontinue-btn.is-on .material-symbols-outlined { color:#fff; }
 .discontinued-badge { background:#c62828; color:#fff; font-size:0.65rem; font-weight:700; border-radius:4px; padding:1px 6px; margin-left:6px; }
 .patient-card-discontinued { opacity:0.6; background:#fbeaea; }
+/* patient-list-split-v1: 利用を中止した方のしまい場所 */
+.patient-off { margin-top:14px; border:1px solid #e0e0e0; border-radius:10px; background:#fafafa; }
+.patient-off > summary { display:flex; align-items:center; gap:7px; cursor:pointer; list-style:none;
+  padding:11px 13px; font-size:0.88rem; font-weight:700; color:#5f6368; }
+.patient-off > summary::-webkit-details-marker { display:none; }
+.patient-off > summary::after { content:'開く'; margin-left:auto; font-size:0.75rem; font-weight:700; color:#1a73e8; }
+.patient-off[open] > summary::after { content:'閉じる'; }
+.patient-off[open] > summary { border-bottom:1px solid #eee; }
+.patient-off .badge.off { background:#eceff1; color:#607d8b; }
+.patient-off-note { font-size:0.75rem; color:#9e9e9e; line-height:1.6; padding:9px 13px 4px; }
+.patient-off .patient-card { margin:0 10px 8px; }
 </style>
 {# ==================== 利用者管理タブ ==================== #}
 <div class="tab-panel active" id="tab-patients">
@@ -638,18 +649,64 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
           </div>
         </div>
         {% endfor %}
+
+        {# ---- patient-list-split-v1: 利用を中止した方は、ここにたたんで置く ----
+             一覧は【いま来ている方】だけをずらりと出したい、という現場の要望。
+             消しはしない。過去の記録も検索も残す必要があるため。 #}
+        {% if patient_profiles_off %}
+        <details class="patient-off" id="patient-off">
+          <summary>
+            <span class="material-symbols-outlined" style="font-size:17px;">inventory_2</span>
+            利用を中止した方
+            <span class="badge off">{{ patient_profiles_off|length }}名</span>
+          </summary>
+          <div class="patient-off-note">
+            送迎表・バイタル・印刷などの対象からは、終了日の翌日以降 外れています。
+            過去の記録と検索には残っています。
+          </div>
+          {% for p in patient_profiles_off %}
+          <div class="patient-card patient-card-discontinued" id="pc-{{ p.id }}">
+            <div class="patient-card-info">
+              <div class="patient-card-name">
+                <span class="material-symbols-outlined" style="font-size:15px;color:#5f6368;">person</span>
+                {{ p.user_name }}
+                <span class="discontinued-badge">利用中止{% if p.discontinued_date %} {{ p.discontinued_date }}{% endif %}</span>
+              </div>
+              <div class="patient-card-sub">
+                {{ p.user_name_kana or '' }}
+                {% if p.patient_number %} ・ No.{{ p.patient_number }}{% endif %}
+              </div>
+            </div>
+            <div class="patient-card-actions">
+              <a href="/patient_profile?id={{ p.id }}" class="btn btn-sm" style="background:#e8f0fe;color:#1a73e8;text-decoration:none;">
+                <span class="material-symbols-outlined" style="font-size:15px;">edit</span>編集
+              </a>
+              <button class="btn btn-sm delete-btn" onclick="confirmDeletePatient('{{ p.id }}','{{ p.user_name }}')">
+                <span class="material-symbols-outlined" style="font-size:15px;color:white;">delete</span>
+              </button>
+            </div>
+          </div>
+          {% endfor %}
+        </details>
+        {% endif %}
+
         <script>
       function filterPatientList(q) {
         var cards = document.querySelectorAll('#acc-body-patient-list .patient-card');
-        var forms = document.querySelectorAll('#acc-body-patient-list .edit-form-area');
         q = q.trim().toLowerCase();
+        var hitOff = 0;
         cards.forEach(function(card) {
           var text = card.textContent.toLowerCase();
           var id = card.id.replace('pc-','');
-          card.style.display = (!q || text.includes(q)) ? '' : 'none';
+          var hit = (!q || text.includes(q));
+          card.style.display = hit ? '' : 'none';
+          // patient-list-split-v1: たたんだ中に該当があるのに閉じたままだと「居ない」と誤解する
+          if (hit && q && card.closest('#patient-off')) hitOff++;
           var form = document.getElementById('pef-' + id);
           if (form) form.style.display = 'none';
         });
+        var off = document.getElementById('patient-off');
+        if (off && q) off.open = hitOff > 0;
       }
       </script>
       {% else %}

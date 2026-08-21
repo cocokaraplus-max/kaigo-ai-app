@@ -12563,9 +12563,17 @@ def admin():
         claude_url = request.host_url.rstrip('/') + claude_url
 
     patient_profiles = []
+    patient_profiles_off = []      # patient-list-split-v1: 利用を中止した方
     try:
-        pp_res = supabase.table('patient_profiles').select('id, user_name, user_name_kana, patient_number, care_level, is_discontinued').eq('facility_code', f_code).order('user_name_kana').execute()
-        patient_profiles = pp_res.data or []
+        pp_res = supabase.table('patient_profiles').select(
+            'id, user_name, user_name_kana, patient_number, care_level, '
+            'is_discontinued, discontinued_date'   # patient-list-split-v1: 日付が抜けていて中止の印が出ていなかった
+        ).eq('facility_code', f_code).order('user_name_kana').execute()
+        pp_all = pp_res.data or []
+        # patient-list-split-v1: 一覧は【来ている方だけ】をずらりと出す。
+        #   中止した方は下の「利用を中止した方」にたたんで置く（消しはしない）。
+        patient_profiles = [p for p in pp_all if patient_active_on(p)]
+        patient_profiles_off = [p for p in pp_all if not patient_active_on(p)]
     except: pass
 
     return render_template("admin.html",
@@ -12573,6 +12581,7 @@ def admin():
         dev_mode=False,
         patients=patients,
         patient_profiles=patient_profiles,
+        patient_profiles_off=patient_profiles_off,   # patient-list-split-v1
         blocked=blocked,
         staff_list=staff_list,
         hist_limit=hist_limit,
