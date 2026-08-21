@@ -1534,7 +1534,13 @@ def register_self_eval_routes(app):
         try:
             r = (supabase.table("patient_evaluations").select(
                 "id,source_data,satisfaction,service_appropriateness,"
-                "new_requests_exist,new_requests_detail")
+                "new_requests_exist,new_requests_detail,care_classification,"
+                # self-eval-status-v1: ICFの状態欄。要介護は3軸、要支援・事業対象者は1つずつ
+                "short_goal_function_status,short_goal_activity_status,"
+                "short_goal_participation_status,"
+                "long_goal_function_status,long_goal_activity_status,"
+                "long_goal_participation_status,"
+                "short_goal_status,long_goal_status")
                  .eq("facility_code", f_code).eq("user_name", uname)
                  .eq("year_month", ym).execute())
         except Exception as e:
@@ -1585,6 +1591,87 @@ def register_self_eval_routes(app):
             elif fa.get("answered_at"):
                 upd["new_requests_exist"] = "なし"
                 filled.append("新規希望（なし）")
+
+        # ==================================================
+        # self-eval-status-v1 : ICFの状態欄（達成／一部達成／未達成）を埋める
+        #
+        #   これまで職員が、回答を見ながら手で6か所選んでいた。
+        #   点数はもう本人からもらっているので、そこから決められる。
+        #
+        #   ★ここでも【空のときだけ】埋める。職員が選んだものには触らない。
+        #   ★あくまで下書き。職員は評価画面でいつでも変えられる。
+        # ==================================================
+        _ZONE_AXIS = {"body": "function", "activity": "activity",
+                      "participation": "participation"}
+        _ST_LABEL = {
+            "short_goal_function_status": "短期・心身機能",
+            "short_goal_activity_status": "短期・活動",
+            "short_goal_participation_status": "短期・参加",
+            "long_goal_function_status": "長期・心身機能",
+            "long_goal_activity_status": "長期・活動",
+            "long_goal_participation_status": "長期・参加",
+            "short_goal_status": "短期目標", "long_goal_status": "長期目標",
+        }
+
+        def _status_of(scores):
+            """同じ軸に質問が複数あるときは【平均】で決める。
+            ★いちばん低い点で決めない。1問できなかっただけで「未達成」になるのは、
+              実態より厳しく出てしまう。しきい値は ○△× と同じ 8 / 4。"""
+            vals = [s for s in scores if s is not None]
+            if not vals:
+                return None
+            avg = round(sum(vals) / len(vals))
+            if avg >= 8:
+                return "達成"
+            if avg >= 4:
+                return "一部達成"
+            return "未達成"
+
+        # 目標の種類（短期／長期）× 軸ごとに点数を集める
+        bucket = {}          # (kind, axis or None) -> [score, ...]
+        for a in answers:
+            k = a.get("goal_kind") or ""
+            if k not in ("short", "long"):
+                continue
+            sc = a.get("score")
+            if sc is None:
+                continue
+            axis = _ZONE_AXIS.get((a.get("icf_zone") or "").strip())
+            bucket.setdefault((k, axis), []).append(sc)
+            bucket.setdefault((k, "all"), []).append(sc)   # 要支援用（軸を分けない）
+
+        short_st, long_st = {}, {}
+        for axis in ("function", "activity", "participation"):
+            short_st[axis] = _status_of(bucket.get(("short", axis), []))
+            long_st[axis] = _status_of(bucket.get(("long", axis), []))
+        short_all = _status_of(bucket.get(("short", "all"), []))
+        long_all = _status_of(bucket.get(("long", "all"), []))
+
+        # ★矛盾を作らない。
+        #   短期目標は長期目標の通過点。短期が「達成」でないのに長期を「達成」にすると、
+        #   評価画面そのものが警告を出す組み合わせになる。そこまで言い切らない。
+        def _cap(long_v, short_v):
+            if long_v == "達成" and short_v and short_v != "達成":
+                return "一部達成"
+            return long_v
+        for axis in ("function", "activity", "participation"):
+            long_st[axis] = _cap(long_st[axis], short_st[axis])
+        long_all = _cap(long_all, short_all)
+
+        def _put(col, val):
+            if val and not (row.get(col) or "").strip():
+                upd[col] = val
+                filled.append(_ST_LABEL[col] + "＝" + val)
+
+        cls = (row.get("care_classification") or "").strip()
+        if cls == "要介護":
+            for axis in ("function", "activity", "participation"):
+                _put(f"short_goal_{axis}_status", short_st[axis])
+                _put(f"long_goal_{axis}_status", long_st[axis])
+        elif cls in ("要支援", "事業対象者"):
+            _put("short_goal_status", short_all)
+            _put("long_goal_status", long_all)
+        # 介護区分が空のときは何もしない。どちらの欄を使うか決められないため。
 
         try:
             supabase.table("patient_evaluations").update(upd).eq("id", row["id"]).execute()

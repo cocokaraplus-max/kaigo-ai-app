@@ -246,7 +246,9 @@
     <div style="font-size:.78rem;color:#7b8794;line-height:1.65;margin-bottom:9px">
       ご本人の回答を、その月の評価の「元データ」に足します。<b>上書きはしません。</b><br>
       そのあと評価画面で「AIで生成」を押すと、ご本人の声も踏まえた
-      「訓練による変化」「課題とその要因」が作られます。
+      「訓練による変化」「課題とその要因」が作られます。<br>
+      あわせて<b>満足度・サービスの適切さ・新規希望・ICFの状態欄（達成／一部達成／未達成）</b>も、
+      <b>まだ空のところだけ</b>点数から自動で入ります。<b>下書きなので、評価画面で直せます。</b>
     </div>
     <button class="se-mini" id="se-toev-btn" onclick="seToEval(false)">この回答を評価の元データに足す</button>
 
@@ -645,8 +647,8 @@ async function seToEval(force){
     if(j.status==='success'){
       m.className='se-msg ok';
       var t = '評価の元データに足しました。';
-      if((j.filled||[]).length) t += '（'+j.filled.join('・')+' も自動で入力）';
-      m.textContent = t + ' 評価画面で「AIで生成」を押してください。';
+      if((j.filled||[]).length) t += '空いていた欄も入れました：'+j.filled.join(' / ')+'。';
+      m.textContent = t + ' 評価画面で内容を確かめて、「AIで生成」を押してください。';
       return;
     }
     if(j.already){            /* すでに入っている。二重に足すか聞く */
