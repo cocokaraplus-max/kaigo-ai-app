@@ -307,15 +307,19 @@
       box.innerHTML = h;
       return;
     }
+    // soge-leave-plan-v1: 予定時刻の引き直し。休み連絡は当日の朝に入ることが多い。
+    //   触るのは予定時刻だけなので、確定済みの日でも押せる。
+    var replan = '<button id="srReplan">予定時刻を計算し直す</button>';
     if (locked) {
       h = '<span class="st">確定済み</span>'
-        + '<button id="srUnlock">確定を解除する</button>'
+        + '<button id="srUnlock">確定を解除する</button>' + replan
         + '<span class="ex">この日は配車表を直しても変わりません。'
         + '配車の変更を取り込みたいときだけ、確定を解除してください。</span>';
     } else {
       h = '<span class="st">未確定</span>'
         + '<button class="main" id="srLockBtn">この日を確定する</button>'
         + (touched ? '<button class="warn" id="srRebuild">配車表から作り直す</button>' : '')
+        + replan
         + '<span class="ex">'
         + (touched
             ? 'この日はもう打刻などが入っているため、配車表を直しても自動では反映しません。'
@@ -335,6 +339,26 @@
     };
     var b3 = $('srRebuild');
     if (b3) b3.onclick = doRebuild;
+    var b4 = $('srReplan');
+    if (b4) b4.onclick = doReplan;
+  }
+
+  /* soge-leave-plan-v1: 休みの人を抜いた並びで、到着予定時刻を引き直す。
+     ★打刻・欠席・メーター・臨時便には触らない。予定の時刻だけが変わる。 */
+  async function doReplan() {
+    var b = $('srReplan');
+    if (b) { b.disabled = true; b.textContent = '計算中…'; }
+    try {
+      var r = await fetch('/api/soge/run/replan', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: state.date })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message || '計算できませんでした', 'err'); return; }
+      toast('休みの方を抜いて、予定時刻を引き直しました');
+      await load();
+    } catch (e) { toast('計算できませんでした', 'err'); }
+    finally { if (b) { b.disabled = false; b.textContent = '予定時刻を計算し直す'; } }
   }
 
   async function setLock(want) {

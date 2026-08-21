@@ -23005,6 +23005,12 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
                 pid = str(s.get("patient_id") or "")
                 prof = pmap.get(pid) or {}
                 is_guest = bool(s.get("guest"))
+                # patient-active-v1: 利用を中止した方は配車表からも外す。
+                #   ★保存済みの週次表は「その時の顔ぶれ」がそのまま残るので、
+                #     ここで外さないと、中止した方が配車画面に出続ける。
+                #   ★登録の無い方(guest)はマスタに居なくて当たり前なので触らない。
+                if prof and not is_guest and not patient_active_on(prof):
+                    continue
                 stops.append({
                     "patient_id": pid,
                     # soge-guest-v1: マスタに居なければ、保存しておいた名前を使う
@@ -23747,6 +23753,10 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
         v = active.get(str(s.get("patient_id")))
         return True if v is None else v      # 分からない人は出す（消してしまうより安全）
 
+    # soge-leave-plan-v1: 休みの人の家は回らないので、予定時刻の計算からも外す。
+    #   ★名前は残す（画面には「お休み」と出す）。外すのは【時間の計算だけ】。
+    leave_names = _soge_leave_names(supabase, f_code, date_str)
+
     geo = soge_geo_map(supabase, f_code)
     now_iso = datetime.now(timezone.utc).isoformat()
 
@@ -23767,11 +23777,24 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                 continue
 
             # 到着予定。保存済みの週次表には予定時刻が入っていないので、ここで出す。
-            planned = [s.get("planned_at") for s in stops]
-            if not any(planned):
-                drive, _km, _err = _soge_drive_minutes(supabase, f_code, geo, stops)
-                planned = _soge_planned_times(trip.get("depart") or "",
-                                              stops, drive or 0, settings)
+            # soge-leave-plan-v1: 休みの人が居る便は、その人を抜いた並びで計算し直す。
+            #   抜かないと、回らない家の分の走行時間が全員の予定に乗ってしまう。
+            riding = [s for s in stops
+                      if (s.get("user_name") or "").strip() not in leave_names]
+            if len(riding) != len(stops):
+                drive, _km, _err = _soge_drive_minutes(supabase, f_code, geo, riding)
+                times = _soge_planned_times(trip.get("depart") or "",
+                                            riding, drive or 0, settings)
+                tmap = {}
+                for _s, _t in zip(riding, times):
+                    tmap[id(_s)] = _t
+                planned = [tmap.get(id(s)) for s in stops]   # 休みの人は空にする
+            else:
+                planned = [s.get("planned_at") for s in stops]
+                if not any(planned):
+                    drive, _km, _err = _soge_drive_minutes(supabase, f_code, geo, stops)
+                    planned = _soge_planned_times(trip.get("depart") or "",
+                                                  stops, drive or 0, settings)
 
             try:
                 dr = supabase.table("soge_days").insert({
@@ -23998,6 +24021,83 @@ def api_soge_run_rebuild():
         return jsonify({"status": "success"})
     except Exception as e:
         print("api_soge_run_rebuild error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/replan", methods=["POST"])  # soge-leave-plan-v1
+@login_required
+def api_soge_run_replan():
+    """その日の到着予定時刻を計算し直す。★休みの人を抜いた並びで出す。
+
+    休み連絡は当日の朝に入ることが多い。そのときにはもう運行表が作られているので、
+    予定時刻だけをあとから引き直せるようにする。
+
+    ★触るのは planned_at だけ。打刻・欠席・メーター・臨時便には一切さわらない。
+      だから【確定済みの日でも押せる】。予定が変わるだけで記録は変わらない。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        date_str = ((request.json or {}).get("date") or "").strip()
+        if not date_str:
+            return jsonify({"status": "error", "message": "日付が必要です"}), 400
+        if date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d"):
+            return jsonify({"status": "error",
+                            "message": "過ぎた日の予定時刻は引き直しません。"}), 400
+
+        dr = (supabase.table("soge_days").select("id,depart_at")
+              .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        days = dr.data or []
+        if not days:
+            return jsonify({"status": "error", "message": "この日の運行表がありません"}), 400
+        sr = (supabase.table("soge_stops")
+              .select("id,day_id,patient_id,user_name,seq,is_absent")
+              .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        stops = sr.data or []
+
+        wc = {}
+        try:
+            wr = (supabase.table("patient_profiles").select("id,is_wheelchair")
+                  .eq("facility_code", f_code).execute())
+            for x in (wr.data or []):
+                wc[str(x["id"])] = bool(x.get("is_wheelchair"))
+        except Exception:
+            pass
+
+        leave_names = _soge_leave_names(supabase, f_code, date_str)
+        settings = get_soge_settings(supabase, f_code)
+        geo = soge_geo_map(supabase, f_code)
+
+        by_day = {}
+        for s in stops:
+            by_day.setdefault(s.get("day_id"), []).append(s)
+
+        changed = 0
+        for d in days:
+            ss = sorted(by_day.get(d["id"], []), key=lambda x: x.get("seq") or 0)
+            if not ss:
+                continue
+            for x in ss:
+                x["is_wheelchair"] = wc.get(str(x.get("patient_id")), False)
+            # 休みの人・欠席の人の家は回らない
+            riding = [x for x in ss
+                      if not x.get("is_absent")
+                      and (x.get("user_name") or "").strip() not in leave_names]
+            times = []
+            if riding:
+                drive, _km, _err = _soge_drive_minutes(supabase, f_code, geo, riding)
+                times = _soge_planned_times((str(d.get("depart_at") or ""))[:5],
+                                            riding, drive or 0, settings)
+            tmap = {}
+            for x, t in zip(riding, times):
+                tmap[x["id"]] = t
+            for x in ss:
+                nt = tmap.get(x["id"])          # 回らない人は空にする
+                supabase.table("soge_stops").update({"planned_at": nt}).eq("id", x["id"]).execute()
+                changed += 1
+        return jsonify({"status": "success", "changed": changed})
+    except Exception as e:
+        print("api_soge_run_replan error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
