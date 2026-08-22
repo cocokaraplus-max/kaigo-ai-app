@@ -1123,33 +1123,42 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
     <div id="vehicles-list"></div>
 
     <div style="border-top:1px solid #e0e0e0;margin-top:12px;padding-top:12px;">
+      <!-- vehicles-label-v1: 新規登録側にも同じ見出しを出す -->
+      <div style="font-size:0.78rem;font-weight:700;color:#5f6368;margin-bottom:6px;">車を追加する</div>
       <div class="form-group">
-        <input type="text" id="veh-name" class="form-control" placeholder="車両名（例: ハイエース1号）">
+        <label style="display:block;font-size:0.68rem;font-weight:700;color:#5f6368;margin-bottom:2px;">車両名</label>
+        <input type="text" id="veh-name" class="form-control" placeholder="例: ハイエース1号">
       </div>
       <div class="form-group">
-        <input type="text" id="veh-plate" class="form-control" placeholder="ナンバー（例: 豊田 300 あ 12-34）">
+        <label style="display:block;font-size:0.68rem;font-weight:700;color:#5f6368;margin-bottom:2px;">ナンバー</label>
+        <input type="text" id="veh-plate" class="form-control" placeholder="例: 豊田 300 あ 12-34">
       </div>
       <div style="display:flex;gap:8px;">
         <div class="form-group" style="flex:1;">
-          <input type="number" step="0.1" id="veh-fuel" class="form-control" placeholder="燃費 km/L">
+          <label style="display:block;font-size:0.68rem;font-weight:700;color:#5f6368;margin-bottom:2px;">燃費（km/L）</label>
+          <input type="number" step="0.1" id="veh-fuel" class="form-control" placeholder="例 8.5">
         </div>
         <div class="form-group" style="flex:1;">
-          <input type="number" id="veh-cap" class="form-control" placeholder="定員（人）">
+          <label style="display:block;font-size:0.68rem;font-weight:700;color:#5f6368;margin-bottom:2px;">定員（運転手を含む）</label>
+          <input type="number" id="veh-cap" class="form-control" placeholder="例 10">
         </div>
       </div>
       <!-- soge-seats-ui-v1 -->
       <div style="font-size:0.72rem;color:#5f6368;margin:2px 0 6px;">
-        送迎の座席数は「運転手を除いて何人乗せられるか」。定員とは別に登録します。
+        ここから下は<b>送迎の配車</b>で使います。「送迎の座席数」は<b>運転手を除いて</b>何人乗せられるか。定員とは別に登録します。
       </div>
       <div style="display:flex;gap:8px;">
         <div class="form-group" style="flex:1;">
-          <input type="number" id="veh-seats" class="form-control" placeholder="送迎の座席数">
+          <label style="display:block;font-size:0.68rem;font-weight:700;color:#5f6368;margin-bottom:2px;">送迎の座席数（運転手を除く）</label>
+          <input type="number" id="veh-seats" class="form-control" placeholder="例 8">
         </div>
         <div class="form-group" style="flex:1;">
-          <input type="number" id="veh-wcseats" class="form-control" placeholder="車いす1台=何席">
+          <label style="display:block;font-size:0.68rem;font-weight:700;color:#5f6368;margin-bottom:2px;">車いす1人が使う席数</label>
+          <input type="number" id="veh-wcseats" class="form-control" placeholder="例 2">
         </div>
         <div class="form-group" style="flex:1;">
-          <input type="number" id="veh-wcmax" class="form-control" placeholder="車いす最大台数">
+          <label style="display:block;font-size:0.68rem;font-weight:700;color:#5f6368;margin-bottom:2px;">車いすは何台まで（0＝乗せない）</label>
+          <input type="number" id="veh-wcmax" class="form-control" placeholder="例 1">
         </div>
       </div>
       <button class="btn btn-primary" onclick="createVehicle()">
@@ -2067,23 +2076,46 @@ async function loadVehicles() {
     box.innerHTML = '<div style="color:#9aa0a6;font-size:0.85rem;">まだ登録がありません</div>';
     return;
   }
+  /* vehicles-label-v1: 入力欄の見出しを【常に】出す。
+     ★placeholder だけだと、値を入れた瞬間に消えて何の数字か分からなくなる。
+       実際に「ここの数字が何を指しているのか分からない」と現場から言われた。
+       とくに送迎の3つは、間違えると人が乗れなくなる（車いす最大台数=0 など）。 */
+  var vlbl = function (t) {
+    return '<label style="display:block;font-size:0.68rem;font-weight:700;color:#5f6368;margin-bottom:2px;">' +
+      escHtml(t) + '</label>';
+  };
   box.innerHTML = vehiclesCache.map(function (v, i) {
+    var wcMax = (v.wheelchair_max == null ? '' : v.wheelchair_max);
+    var wcWarn = (String(wcMax) === '0')
+      ? '<div style="font-size:0.7rem;color:#c5221f;font-weight:700;margin:-2px 0 6px;">' +
+        'この車は車いすの方を1人も乗せない設定です（0台まで）。乗せるなら台数を入れてください。</div>'
+      : '';
     return '<div style="background:#fff;border:1px solid #e0e0e0;border-radius:8px;padding:10px;margin-bottom:8px;">' +
-      '<div class="form-group" style="margin-bottom:6px;">' +
+      '<div class="form-group" style="margin-bottom:6px;">' + vlbl('車両名') +
         '<input type="text" class="form-control" value="' + escHtml(v.name) + '" data-vn="' + i + '" placeholder="車両名">' +
       '</div>' +
-      '<div class="form-group" style="margin-bottom:6px;">' +
+      '<div class="form-group" style="margin-bottom:6px;">' + vlbl('ナンバー') +
         '<input type="text" class="form-control" value="' + escHtml(v.plate_no) + '" data-vp="' + i + '" placeholder="ナンバー">' +
       '</div>' +
       '<div style="display:flex;gap:8px;margin-bottom:6px;">' +
-        '<input type="number" step="0.1" class="form-control" style="flex:1;" value="' + (v.fuel_km_per_l || '') + '" data-vf="' + i + '" placeholder="燃費 km/L">' +
-        '<input type="number" class="form-control" style="flex:1;" value="' + (v.capacity || '') + '" data-vc="' + i + '" placeholder="定員">' +
+        '<div style="flex:1;">' + vlbl('燃費（km/L）') +
+          '<input type="number" step="0.1" class="form-control" style="width:100%;" value="' + (v.fuel_km_per_l || '') + '" data-vf="' + i + '" placeholder="例 8.5">' +
+        '</div>' +
+        '<div style="flex:1;">' + vlbl('定員（運転手を含む）') +
+          '<input type="number" class="form-control" style="width:100%;" value="' + (v.capacity || '') + '" data-vc="' + i + '" placeholder="例 10">' +
+        '</div>' +
       '</div>' +
-      '<div style="display:flex;gap:8px;margin-bottom:8px;">' +
-        '<input type="number" class="form-control" style="flex:1;" value="' + (v.soge_seats || '') + '" data-vs="' + i + '" placeholder="送迎の座席数" title="運転手を除いて何人乗せられるか">' +
-        '<input type="number" class="form-control" style="flex:1;" value="' + (v.wheelchair_seats == null ? '' : v.wheelchair_seats) + '" data-vws="' + i + '" placeholder="車いす1台=何席">' +
-        '<input type="number" class="form-control" style="flex:1;" value="' + (v.wheelchair_max == null ? '' : v.wheelchair_max) + '" data-vwm="' + i + '" placeholder="車いす最大台数">' +
-      '</div>' +
+      '<div style="display:flex;gap:8px;margin-bottom:4px;">' +
+        '<div style="flex:1;">' + vlbl('送迎の座席数（運転手を除く）') +
+          '<input type="number" class="form-control" style="width:100%;" value="' + (v.soge_seats || '') + '" data-vs="' + i + '" placeholder="例 8" title="運転手を除いて何人乗せられるか">' +
+        '</div>' +
+        '<div style="flex:1;">' + vlbl('車いす1人が使う席数') +
+          '<input type="number" class="form-control" style="width:100%;" value="' + (v.wheelchair_seats == null ? '' : v.wheelchair_seats) + '" data-vws="' + i + '" placeholder="例 2" title="車いすの方1人で、座席をいくつ分ふさぐか">' +
+        '</div>' +
+        '<div style="flex:1;">' + vlbl('車いすは何台まで（0＝乗せない）') +
+          '<input type="number" class="form-control" style="width:100%;" value="' + wcMax + '" data-vwm="' + i + '" placeholder="例 1" title="席が余っていても、この台数は超えられません">' +
+        '</div>' +
+      '</div>' + wcWarn +
       '<div style="display:flex;gap:8px;">' +
         '<button class="btn btn-primary" style="flex:1;" data-vsave="' + i + '">保存</button>' +
         '<button class="btn" style="flex:1;background:#fdecea;color:#c5221f;" data-vdel="' + i + '">削除</button>' +
