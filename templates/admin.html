@@ -1058,6 +1058,12 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
     </div>
 
     <div style="font-size:0.78rem;font-weight:700;color:#5f6368;margin:12px 0 6px;">便と出発時刻</div>
+    <!-- soge-trip-cars-v1 -->
+    <div style="font-size:0.72rem;color:#5f6368;margin-bottom:8px;">
+      「使う台数」は、その便で走らせる車の数です。空欄なら自動（所要時間に収まるまで車を増やす）。
+      運転できる職員の数は便によって違うので、便ごとに決められるようにしています。
+      指定した台数に乗り切らない方は、配車画面の「まだ車が決まっていない人」に出ます。
+    </div>
     <div id="soge-trips"></div>
 
     <label id="soge-mid-wrap" style="display:none;font-size:0.8rem;align-items:center;gap:6px;margin:10px 0;">
@@ -2162,13 +2168,13 @@ let sogeTrips = [];
 
 const SOGE_DEFAULTS = {
   1: [
-    { key: 't1', name: '迎え便', depart: '08:30', pickup_units: [1], dropoff_units: [] },
-    { key: 't2', name: '送り便', depart: '16:00', pickup_units: [], dropoff_units: [1] }
+    { key: 't1', name: '迎え便', depart: '08:30', pickup_units: [1], dropoff_units: [], max_cars: 0 },
+    { key: 't2', name: '送り便', depart: '16:00', pickup_units: [], dropoff_units: [1], max_cars: 0 }
   ],
   2: [
-    { key: 't1', name: '迎え便', depart: '08:30', pickup_units: [1], dropoff_units: [] },
-    { key: 't2', name: '中間便', depart: '12:00', pickup_units: [2], dropoff_units: [1] },
-    { key: 't3', name: '送り便', depart: '16:00', pickup_units: [], dropoff_units: [2] }
+    { key: 't1', name: '迎え便', depart: '08:30', pickup_units: [1], dropoff_units: [], max_cars: 0 },
+    { key: 't2', name: '中間便', depart: '12:00', pickup_units: [2], dropoff_units: [1], max_cars: 0 },
+    { key: 't3', name: '送り便', depart: '16:00', pickup_units: [], dropoff_units: [2], max_cars: 0 }
   ]
 };
 
@@ -2190,6 +2196,14 @@ function renderSogeTrips() {
         '<input type="time" class="form-control" style="width:130px;" value="' + escHtml(t.depart) + '" data-td="' + i + '">' +
       '</div>' +
       '<div style="font-size:0.72rem;color:#5f6368;margin-top:6px;">' + escHtml(sogeTripRole(t)) + '</div>' +
+      // soge-trip-cars-v1: その便で使う台数（空欄＝自動）
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;">' +
+        '<label style="font-size:0.72rem;color:#5f6368;white-space:nowrap;font-weight:700;">使う台数</label>' +
+        '<input type="number" min="0" max="20" class="form-control" style="width:88px;" ' +
+          'value="' + (Number(t.max_cars) > 0 ? Number(t.max_cars) : '') + '" ' +
+          'data-tc="' + i + '" placeholder="自動">' +
+        '<span style="font-size:0.7rem;color:#5f6368;">空欄＝自動</span>' +
+      '</div>' +
     '</div>';
   }).join('');
   box.querySelectorAll('[data-tn]').forEach(function (el) {
@@ -2197,6 +2211,15 @@ function renderSogeTrips() {
   });
   box.querySelectorAll('[data-td]').forEach(function (el) {
     el.oninput = function () { sogeTrips[Number(el.dataset.td)].depart = el.value; };
+  });
+  // soge-trip-cars-v1: 空欄・0 は「自動」として 0 で持つ
+  box.querySelectorAll('[data-tc]').forEach(function (el) {
+    el.oninput = function () {
+      var v = parseInt(el.value, 10);
+      if (isNaN(v) || v < 0) v = 0;
+      if (v > 20) v = 20;      // サーバ側と同じ丸め方にそろえる
+      sogeTrips[Number(el.dataset.tc)].max_cars = v;
+    };
   });
   document.getElementById('soge-mid-wrap').style.display =
     (Number(document.getElementById('soge-units').value) === 2) ? 'flex' : 'none';
