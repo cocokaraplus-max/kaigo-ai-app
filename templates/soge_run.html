@@ -36,6 +36,14 @@
 .sr-ttab.on { background:#0f9d58; border-color:#0f9d58; color:#fff; }
 .sr-ttab-time { display:block; font-size:0.72rem; font-weight:600; opacity:0.85; font-variant-numeric:tabular-nums; }
 
+/* soge-unassigned-v1: まだ乗る車が決まっていない人。
+   運転手にも見せて、誰も乗せ忘れないようにする。打刻はできない（走らないので）。 */
+.sr-trip.unassigned { border-color:#f5c6c2; }
+.sr-trip.unassigned .sr-trip-head { background:#fce8e6; color:#a5261f; }
+.sr-unassigned-note { background:#fce8e6; border:1px solid #f5c6c2; color:#a5261f;
+  border-radius:8px; padding:10px 12px; font-size:0.86rem; font-weight:700; line-height:1.6;
+  margin-bottom:10px; }
+
 .sr-driver { font-size:0.8rem; color:#5f6368; font-weight:700; margin-bottom:10px; }
 
 .sr-trip { border:1px solid #dbe3ee; border-radius:12px; margin-bottom:14px; background:#fafcff; overflow:hidden; }
@@ -185,7 +193,7 @@
 <script>
 // ===== soge-run-v1 =====
 (function () {
-  var state = { date: '', data: null, tab: 0, tripTab: 0, busy: {}, staff: [], vehicles: [], patients: [],
+  var state = { date: '', data: null, tab: 0, tripTab: 0, autoTab: true, tabKey: '', busy: {}, staff: [], vehicles: [], patients: [],
                 mode: 'vehicle' };   // soge-view-v1: 'vehicle'=車両から / 'trip'=便から
 
   /* soge-view-v1: 選んだ見せ方は端末ごとに覚える。
@@ -219,6 +227,11 @@
     var j = await r.json();
     if (j.status !== 'success') { $('srBody').innerHTML = '<div class="sr-empty">' + esc(j.message) + '</div>'; return; }
     state.data = j;
+    /* ★ここで state.tab / autoTab を初期化しないこと。
+       「予定時刻を計算し直す」「確定する」からも load() は呼ばれる。
+       走っている最中に、運転手が開いているタブを動かしてはいけない。
+       どのタブを開いていたかは state.tabKey（車のkey）で覚えて、
+       render() の中で位置を引き直す。 */
     if (state.tab >= (j.vehicles || []).length) state.tab = 0;
     render();
   }
@@ -384,7 +397,7 @@
       var j = await r.json();
       if (j.status !== 'success') { toast(j.message || '作り直せませんでした', 'err'); return; }
       toast('配車表から作り直しました');
-      state.tab = 0; state.tripTab = 0;
+      state.tab = 0; state.tripTab = 0; state.tabKey = ''; state.autoTab = true;
       await load();
     } catch (e) { toast('作り直せませんでした', 'err'); }
   }
@@ -399,13 +412,28 @@
         if (state.mode === b.dataset.mode) return;
         state.mode = b.dataset.mode;
         try { localStorage.setItem('soge_run_mode', state.mode); } catch (e) {}
-        state.tab = 0; state.tripTab = 0;   // 意味が変わるので、どちらも先頭に戻す
+        // 意味が変わるので、どちらも先頭に戻す（tabKey も持ち越さない）
+        state.tab = 0; state.tripTab = 0; state.tabKey = ''; state.autoTab = true;
         render();
       };
     });
     $('srModeHint').textContent = (state.mode === 'trip')
       ? '便 → 車両 の順に選びます'
       : '車両 → 便 の順に選びます';
+  }
+
+  /* soge-unassigned-v1: 「⚠ 車が未定」を最初に開かせない。
+     運転中に片手で使う画面なので、まず本物の車が出てほしい。
+     ★職員が自分でそのタブを選んだときは動かさない（state.autoTab）。
+     ★「車両から見る」と「便から見る」で state.tab の意味が違うので、
+       それぞれの並び（vs / cars）に対して寄せること。load() で vs に対して
+       やると、便から見るモードでは【別の車が選ばれる】。 */
+  function skipUnassigned(list, isUn) {
+    if (!state.autoTab) return;
+    if (!list.length || !list[state.tab] || !isUn(list[state.tab])) return;
+    for (var i = 0; i < list.length; i++) {
+      if (!isUn(list[i])) { state.tab = i; return; }
+    }
   }
 
   function render() {
@@ -451,17 +479,43 @@
           if (tripLabel(t) === lbl) cars.push({ v: v, t: t, ti: ti });
         });
       });
+      /* soge-unassigned-v1: タブは【位置】ではなく【車のkey】で覚える。
+         未割当の枠は先頭に出たり消えたりするので、位置で覚えると
+         load() のたびに運転手の画面が黙って別の車へずれる。
+         打刻はその画面のボタンから入るので、【別の車の人に打刻が付く】。
+         同じ車が同じ便を2本持つこと（臨時便）があるので便の位置も混ぜる。 */
+      var ckey = function (c) { return String(c.v.key) + '#' + c.ti; };
+      if (state.tabKey) {
+        // ★見つからなければ、古い位置は当てにせず先頭に戻す。
+        //   前に開いていた車が消えているのに位置だけ残すと、
+        //   その位置にいる【別の車】が黙って選ばれる。
+        var hit = -1;
+        for (var q = 0; q < cars.length; q++) {
+          if (ckey(cars[q]) === state.tabKey) { hit = q; break; }
+        }
+        state.tab = (hit >= 0) ? hit : 0;
+      }
       if (state.tab >= cars.length) state.tab = 0;
+      skipUnassigned(cars, function (c) { return !!c.v.unassigned; });
+      state.tabKey = cars[state.tab] ? ckey(cars[state.tab]) : '';
 
       row1.innerHTML = tabsHtml(labels.map(function (x) { return esc(x); }), state.tripTab, 'sr-ttab', 'data-ttab');
       row1.querySelectorAll('[data-ttab]').forEach(function (el) {
         // 便を変えたら車両は先頭に戻す（前の便の3台目が、この便にあるとは限らない）
-        el.onclick = function () { state.tripTab = Number(el.dataset.ttab); state.tab = 0; render(); };
+        el.onclick = function () {
+          state.tripTab = Number(el.dataset.ttab); state.tab = 0;
+          state.tabKey = ''; state.autoTab = true; render();
+        };
       });
       row2.innerHTML = tabsHtml(cars.map(function (c) { return esc(c.v.vehicle_name); }), state.tab, 'sr-tab', 'data-tab');
       row2.style.display = cars.length ? 'flex' : 'none';
       row2.querySelectorAll('[data-tab]').forEach(function (el) {
-        el.onclick = function () { state.tab = Number(el.dataset.tab); keepScroll(render); };
+        // 自分で選んだのだから、以後は勝手に動かさない
+        el.onclick = function () {
+          // 自分で選んだのだから、以後は勝手に動かさない（key は render で入れ直す）
+          state.tab = Number(el.dataset.tab); state.tabKey = ''; state.autoTab = false;
+          keepScroll(render);
+        };
       });
 
       var sel = cars[state.tab];
@@ -473,11 +527,24 @@
       }
     } else {
       // ===== 車両から見る（これまでどおり。運転手はこちら）=====
+      // soge-unassigned-v1: こちらも位置ではなく key で覚える（理由は上と同じ）
+      if (state.tabKey) {
+        var hit2 = -1;
+        for (var q2 = 0; q2 < vs.length; q2++) {
+          if (String(vs[q2].key) === state.tabKey) { hit2 = q2; break; }
+        }
+        state.tab = (hit2 >= 0) ? hit2 : 0;   // 見つからなければ先頭へ（理由は上と同じ）
+      }
       if (state.tab >= vs.length) state.tab = 0;
+      skipUnassigned(vs, function (v) { return !!v.unassigned; });
+      state.tabKey = vs[state.tab] ? String(vs[state.tab].key) : '';
       row1.innerHTML = tabsHtml(vs.map(function (v) { return esc(v.vehicle_name); }), state.tab, 'sr-tab', 'data-tab');
       row1.querySelectorAll('[data-tab]').forEach(function (el) {
         // soge-trip-tab-v1: 車両タブを変えたら便タブも先頭に戻す
-        el.onclick = function () { state.tab = Number(el.dataset.tab); state.tripTab = 0; render(); };
+        el.onclick = function () {
+          state.tab = Number(el.dataset.tab); state.tripTab = 0;
+          state.tabKey = ''; state.autoTab = false; render();   // 自分で選んだタブは動かさない
+        };
       });
 
       selVehicle = vs[state.tab];
@@ -525,6 +592,34 @@
   }
 
   function tripHtml(t, prevEnd) {
+    /* soge-unassigned-v1: 乗る車が決まっていない人。
+       出発・帰着・メーター・到着打刻は【出さない】。走らないので押しようがなく、
+       押せてしまうと「走ったことになった記録」が残る。
+       ここに出す目的は、運転手・職員が乗せ忘れに気づくこと。 */
+    if (t.unassigned) {
+      var un = (t.stops || []).map(function (s) {
+        return '<div class="sr-stop">' +
+          '<span class="sr-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>' +
+          '<div class="sr-info">' +
+            '<span class="sr-name">' + esc(s.user_name) +
+              (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') +
+              (s.is_leave ? '<span class="sr-tag leave">休み連絡</span>' : '') +
+            '</span>' +
+            (s.address ? '<span class="sr-addr">' + esc(s.address) + '</span>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('');
+      return '<div class="sr-trip unassigned">' +
+        '<div class="sr-trip-head">' + esc(tripLabel(t)) +
+          '<span class="sr-trip-time">車が決まっていません</span></div>' +
+        '<div class="sr-trip-body">' +
+          '<div class="sr-unassigned-note">この人まだ乗る車が決まっていません。' +
+            '配車画面（送迎表）で乗る車を決めてください。</div>' +
+          (un || '<div class="sr-empty">立ち寄りなし</div>') +
+        '</div>' +
+      '</div>';
+    }
+
     var stops = (t.stops || []).map(function (s, i) {
       // soge-leave-v1: 休み連絡が入っている方は「お休み」として出す。
       //   ★手で付けた欠席（✕）とは別に持つ。連絡が取り消されたら自動で戻る。
@@ -953,6 +1048,9 @@
       if (j.status !== 'success') { toast(j.message || '作れませんでした', 'err'); return; }
       box.remove();
       toast('臨時便を作りました（他の便からは自動で外しました）');
+      // soge-unassigned-v1: 便の並びが変わるので、覚えていたタブは捨てる。
+      //   残すと、同じ車の別の臨時便が選ばれることがある
+      state.tabKey = '';
       state.tripTab = 9999; // 臨時便タブに自動移動（render()でlength-1にクランプ）
       await load();
     };
@@ -1001,7 +1099,7 @@
     $('srDate').value = state.date;
     $('srDate').onchange = function () {
       state.date = $('srDate').value || todayStr();
-      state.tab = 0;
+      state.tab = 0; state.tabKey = ''; state.autoTab = true;
       $('srPrint').href = '/soge/print?month=' + state.date.slice(0, 7);   // soge-print-v2
       load();
     };
