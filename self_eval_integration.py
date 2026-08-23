@@ -1074,6 +1074,73 @@ def register_self_eval_routes(app):
             return jsonify({"status": "error", "message": str(e)}), 500
         return jsonify({"status": "success"})
 
+    # ==========================================================
+    # self-eval-input3-v1 : 聞き取りモードの「ご本人の言葉」を3通りで入れる
+    #   キーボード（そのまま）／ 話して入れる（画面側）／ 手書き（ここ）
+    #
+    #   ★利用者モード用の /api/self-eval/answer-image は使えない。
+    #     あちらは session[_K_EVAL]（＝タブレットを渡している最中）が要る作りで、
+    #     職員の聞き取りでは立っていないため必ず403になる。
+    #     キオスク側の入口はゆるめず、【職員用の入口を別に立てる】。
+    #   ★保存したあとの文字起こしは /api/self-eval/answer-ocr をそのまま使う
+    #     （あちらは @login_required なので職員から呼べる）。
+    # ==========================================================
+    @app.route('/api/self-eval/answer-image-staff', methods=['POST'])
+    @login_required
+    def api_self_eval_answer_image_staff():
+        """職員の聞き取り中に、ご本人がペンで書いた手書きを保存する。"""
+        import base64
+        from app import get_supabase
+        f_code = session["f_code"]
+        d = request.json or {}
+        eid = (d.get("evaluation_id") or "").strip()
+        qid = (d.get("id") or "").strip()
+        if not eid or not qid:
+            return jsonify({"status": "error", "message": "idが必要です"}), 400
+        raw = (d.get("image") or "")
+        if raw.startswith("data:"):
+            raw = raw.split(",", 1)[-1]
+        if not raw:
+            return jsonify({"status": "error", "message": "画像がありません"}), 400
+        try:
+            body = base64.b64decode(raw)
+        except Exception:
+            return jsonify({"status": "error", "message": "画像を読めませんでした"}), 400
+        if not body.startswith(b"\x89PNG\r\n\x1a\n"):
+            return jsonify({"status": "error", "message": "PNGではありません"}), 400
+        if len(body) > _PEN_MAX_BYTES:
+            return jsonify({"status": "error", "message": "画像が大きすぎます"}), 413
+
+        supabase = get_supabase()
+        # ★他人の設問に書き込めないよう、この評価の設問かどうかを必ず確かめる
+        try:
+            chk = (supabase.table("patient_self_eval_answers").select("id")
+                   .eq("id", qid).eq("facility_code", f_code)
+                   .eq("evaluation_id", eid).execute())
+            if not chk.data:
+                return jsonify({"status": "error", "message": "この設問は対象外です"}), 403
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+
+        path = _pen_path(f_code, eid, qid)
+        try:
+            supabase.storage.from_(_PEN_BUCKET).upload(
+                path=path, file=body,
+                file_options={"content-type": "image/png", "upsert": "true"})
+        except Exception as e:
+            print(f"[self-eval-input3] upload failed: {e}", flush=True)
+            return jsonify({"status": "error", "message": "保存できませんでした"}), 503
+        try:
+            # ★reason_mode は 'write' のまま。あとの処理（ICF・次の目標）が
+            #   利用者モードと同じものを使えるようにするため、種類を増やさない。
+            (supabase.table("patient_self_eval_answers")
+             .update({"reason_image_path": path, "updated_at": _now_iso()})
+             .eq("id", qid).eq("facility_code", f_code)
+             .eq("evaluation_id", eid).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success"})
+
     @app.route('/self-eval/reason-image/<answer_id>')
     @login_required
     def self_eval_reason_image(answer_id):
