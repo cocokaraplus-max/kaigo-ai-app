@@ -55,6 +55,33 @@
 .iv-done p{font-size:.86rem;color:#5f6368;line-height:1.7;margin:0 0 16px}
 .iv-done button{width:100%;padding:14px;border-radius:11px;border:none;background:#1b4965;color:#fff;
  font-size:.98rem;font-weight:800;cursor:pointer;font-family:inherit}
+/* self-eval-goal-v1: 聞き取り中に、いつでもその方の目標を見られるようにする。
+   ★画面の上に置くと質問が下へ押し出される。聞き取りは質問がいちばん大事なので、
+     ふだんは隠しておいて、押したときだけ下から出す。
+   ★ボタンは【下のバーのすぐ上】。片手で持って話しながら押せる位置にする。 */
+.iv-goalbtn{position:fixed;right:14px;bottom:calc(74px + env(safe-area-inset-bottom));z-index:41;
+ padding:11px 17px;border-radius:99px;border:2px solid #1b4965;background:#fff;color:#1b4965;
+ font-size:.88rem;font-weight:900;cursor:pointer;font-family:inherit;
+ box-shadow:0 3px 12px rgba(16,24,40,.22)}
+.iv-goalbtn:active{background:#eef3f7}
+.iv-shbg{position:fixed;inset:0;background:rgba(15,23,32,.45);z-index:60;display:none}
+.iv-shbg.on{display:block}
+.iv-sheet{position:fixed;left:50%;transform:translateX(-50%);bottom:0;width:100%;
+ max-width:var(--page-max-width,480px);background:#fff;border-radius:16px 16px 0 0;z-index:61;
+ max-height:78vh;overflow-y:auto;display:none;
+ padding:14px 16px calc(20px + env(safe-area-inset-bottom))}
+.iv-sheet.on{display:block}
+.iv-shhead{display:flex;align-items:center;gap:10px;margin-bottom:4px;
+ position:sticky;top:0;background:#fff;padding-bottom:8px}
+.iv-shhead h4{font-size:1rem;font-weight:900;color:#1e3a5f;margin:0}
+.iv-shclose{margin-left:auto;padding:7px 13px;border-radius:8px;border:1.5px solid #dadce0;
+ background:#fff;color:#3e4c59;font-size:.82rem;font-weight:800;cursor:pointer;font-family:inherit}
+.iv-shnote{font-size:.74rem;color:#7b8794;line-height:1.6;margin:0 0 12px}
+.iv-g{border-left:4px solid #1b4965;padding:3px 0 3px 11px;margin:0 0 13px}
+.iv-g .lbl{font-size:.72rem;font-weight:900;color:#1b4965;letter-spacing:.04em;margin-bottom:4px}
+.iv-g .txt{font-size:.96rem;line-height:1.75;color:#1f2933;white-space:pre-wrap;word-break:break-word}
+.iv-gnone{font-size:.88rem;color:#7b8794;line-height:1.7}
+
 @media (max-width:520px){
   .iv-q{font-size:1.22rem}
   .iv-lv{grid-template-columns:1fr}
@@ -77,6 +104,18 @@
   </p>
 
   <div id="iv-main"><div class="iv-lead">読み込んでいます…</div></div>
+</div>
+
+<!-- self-eval-goal-v1 -->
+<button class="iv-goalbtn" id="iv-goalbtn" style="display:none" onclick="ivGoalOpen()">目標を見る</button>
+<div class="iv-shbg" id="iv-shbg" onclick="ivGoalClose()"></div>
+<div class="iv-sheet" id="iv-sheet" role="dialog" aria-label="この方の目標">
+  <div class="iv-shhead">
+    <h4 id="iv-shtitle">目標</h4>
+    <button class="iv-shclose" onclick="ivGoalClose()">閉じる</button>
+  </div>
+  <p class="iv-shnote">計画書に書かれている目標です。ここでは直せません。直すときは利用者の画面から。</p>
+  <div id="iv-shbody"></div>
 </div>
 
 <div class="iv-nav" id="iv-nav" style="display:none">
@@ -107,7 +146,7 @@ var IV_MARK = {
   mid:'<svg width="30" height="30" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="none" stroke="#b08040" stroke-width="4"/><path d="M26 5 A21 21 0 0 1 26 47 Z" fill="#b08040"/></svg>',
   ok:'<svg width="30" height="30" viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#3f6f52"/></svg>'
 };
-var IV = {id:'{{ eval_id }}', qs:[], i:0, choice:null, level:null, name:''};
+var IV = {id:'{{ eval_id }}', qs:[], i:0, choice:null, level:null, name:'', goals:[]};
 
 function ivEsc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -122,7 +161,9 @@ async function ivLoad(){
       '<div class="iv-lead">開けませんでした。一覧へ戻ってください。</div>'; return; }
     IV.qs = j.answers || [];
     IV.name = (j.eval||{}).user_name || '';
+    IV.goals = j.goals || [];                          // self-eval-goal-v1
     document.getElementById('iv-who').textContent = IV.name ? (IV.name+' さん') : '聞き取りモード';
+    ivGoalInit();
     if(!IV.qs.length){ document.getElementById('iv-main').innerHTML =
       '<div class="iv-lead">質問がありません。先に質問を作ってください。</div>'; return; }
     /* ★続きから。まだ答えの入っていない最初の質問へ飛ぶ。
@@ -284,6 +325,38 @@ async function ivFinish(){
     location.href = '/self-eval';
   }catch(e){ alert('保存できませんでした'); }
 }
+/* ===== self-eval-goal-v1 : 目標をいつでも見られるようにする =====
+   ★目標が1つも登録されていなくてもボタンは出す。
+     「見たのに何も無い」と「そもそも見られない」は別物で、
+     前者なら『計画書に入れ忘れている』と気づける。 */
+function ivGoalInit(){
+  var b = document.getElementById('iv-goalbtn');
+  if(b) b.style.display = '';
+  var t = document.getElementById('iv-shtitle');
+  if(t) t.textContent = IV.name ? (IV.name + ' さんの目標') : '目標';
+  var body = document.getElementById('iv-shbody');
+  if(!body) return;
+  if(!IV.goals.length){
+    body.innerHTML = '<div class="iv-gnone">目標がまだ登録されていません。'
+                   + '<br>利用者の画面で計画書の目標を入れると、ここに出ます。</div>';
+    return;
+  }
+  body.innerHTML = IV.goals.map(function(g){
+    return '<div class="iv-g"><div class="lbl">'+ivEsc(g.label)+'</div>'
+         + '<div class="txt">'+ivEsc(g.text)+'</div></div>';
+  }).join('');
+}
+function ivGoalOpen(){
+  document.getElementById('iv-shbg').classList.add('on');
+  document.getElementById('iv-sheet').classList.add('on');
+}
+function ivGoalClose(){
+  document.getElementById('iv-shbg').classList.remove('on');
+  document.getElementById('iv-sheet').classList.remove('on');
+}
+/* 聞き取り中に誤ってページを離れないよう、Esc だけで閉じられるようにしておく */
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') ivGoalClose(); });
+
 document.addEventListener('DOMContentLoaded', ivLoad);
 </script>
 {% endblock %}
