@@ -50,7 +50,6 @@ _K_EVAL = "kiosk_eval_id"      # 回答中の評価id
 _K_PID  = "kiosk_pid"          # 対象の利用者
 _K_NAME = "kiosk_user_name"    # 表示用
 _K_LOCK = "kiosk_locked"       # 回答が終わってロック画面で止まっている
-_K_PAUSE = "kiosk_paused"      # self-eval-pause-v1: 途中で【いったん保留】している
 
 # 利用者モード中に通してよいパス。これ以外は全部止める。
 # ★【完全一致】で持つこと。前方一致にすると /self-eval（職員の一覧＝利用者名が並ぶ画面）や
@@ -65,8 +64,6 @@ _KIOSK_ALLOW_EXACT = (
     "/api/self-eval/unlock",       # 職員が解除する
     "/api/self-eval/tts",          # 質問の読み上げ音声
     "/api/self-eval/answer-image", # 手書き（ペン）の画像を保存
-    "/api/self-eval/pause",        # self-eval-pause-v1: いったん保留してロック画面へ
-    "/api/self-eval/resume",       # self-eval-pause-v1: 保留から回答へ戻る
 )
 # 見た目の部品だけは通す（CSS・画像・フォント）
 _KIOSK_ALLOW_PREFIX = ("/static/",)
@@ -689,7 +686,6 @@ def register_self_eval_routes(app):
         session[_K_PID] = row.get("patient_profile_id")
         session[_K_NAME] = row.get("user_name") or ""
         session[_K_LOCK] = False
-        session[_K_PAUSE] = False      # self-eval-pause-v1
         return jsonify({"status": "success", "redirect": "/self-eval/run"})
 
     @app.route('/api/self-eval/unlock', methods=['POST'])
@@ -718,7 +714,7 @@ def register_self_eval_routes(app):
         _pin_fail[f_code] = [0, 0.0]
         eid = session.get(_K_EVAL)
         print(f"[self-eval] kiosk unlocked eval={eid} by={session.get('my_name','')}", flush=True)
-        for k in (_K_EVAL, _K_PID, _K_NAME, _K_LOCK, _K_PAUSE):
+        for k in (_K_EVAL, _K_PID, _K_NAME, _K_LOCK):
             session.pop(k, None)
         return jsonify({"status": "success", "redirect": "/self-eval"})
 
@@ -740,51 +736,7 @@ def register_self_eval_routes(app):
         if not session.get(_K_EVAL):
             return redirect("/self-eval")
         return render_template('self_eval_locked.html',
-                               user_name=session.get(_K_NAME, ""),
-                               paused=bool(session.get(_K_PAUSE)))   # self-eval-pause-v1
-
-    # ==========================================================
-    # self-eval-pause-v1 : いったん保留して、職員の画面へ戻る
-    #
-    #   ★なぜ必要か（現場の依頼）
-    #     利用者モードに入ると、回答が終わるか3分さわらないかまで
-    #     ロック画面に行けず、職員は他のメニューへ移れなかった。
-    #     途中で職員が呼ばれる／その場でやめる、はふつうに起きる。
-    #
-    #   ★漏れないようにする作り
-    #     「職員の方へ」を押しても、行き先は【ロック画面】。
-    #     そこから職員の画面へ出るには、これまでどおり4桁が要る。
-    #     利用者名の並ぶ画面へは、4桁なしでは一歩も進めない。
-    #
-    #   ★回答に戻るほうは4桁を要らなくする
-    #     戻る先はその方自身の回答画面だけで、他人の情報は出ない。
-    #     利用者が誤って押したときに、職員を呼ばずに自分で戻れるほうがよい。
-    #
-    #   ★答えは1問ごとに保存済み。保留して他の仕事をしてから、
-    #     一覧の「タブレットを渡す」を押せば、答えていない質問から再開する。
-    # ==========================================================
-    @app.route('/api/self-eval/pause', methods=['POST'])
-    def api_self_eval_pause():
-        """いったん保留する。ロック画面へ。解除には4桁が要る。"""
-        if not session.get(_K_EVAL):
-            return jsonify({"status": "error", "message": "利用者モードではありません"}), 403
-        session[_K_LOCK] = True
-        session[_K_PAUSE] = True
-        print("[self-eval] paused eval=%s" % session.get(_K_EVAL), flush=True)
-        return jsonify({"status": "success", "redirect": "/self-eval/locked"})
-
-    @app.route('/api/self-eval/resume', methods=['POST'])
-    def api_self_eval_resume():
-        """保留から回答へ戻る。★保留中のときだけ。回答が終わっている場合は戻さない。"""
-        if not session.get(_K_EVAL):
-            return jsonify({"status": "error", "message": "利用者モードではありません"}), 403
-        if not session.get(_K_PAUSE):
-            # 回答が終わってロックされている場合はここを通さない。
-            # 通すと、確定待ちの評価に利用者が上書きできてしまう。
-            return jsonify({"status": "error", "message": "戻れません"}), 403
-        session[_K_LOCK] = False
-        session[_K_PAUSE] = False
-        return jsonify({"status": "success", "redirect": "/self-eval/run"})
+                               user_name=session.get(_K_NAME, ""))
 
     @app.route('/api/self-eval/questions', methods=['GET'])
     def api_self_eval_questions():
@@ -1873,5 +1825,4 @@ def register_self_eval_routes(app):
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
         session[_K_LOCK] = True
-        session[_K_PAUSE] = False      # self-eval-pause-v1: これは【完了】であって保留ではない
         return jsonify({"status": "success", "redirect": "/self-eval/locked"})
