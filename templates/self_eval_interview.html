@@ -82,6 +82,29 @@
 .iv-g .txt{font-size:.96rem;line-height:1.75;color:#1f2933;white-space:pre-wrap;word-break:break-word}
 .iv-gnone{font-size:.88rem;color:#7b8794;line-height:1.7}
 
+/* ===== self-eval-input3-v1 : 本人の言葉を3通りで入れる ===== */
+.iv-ways{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:9px}
+.iv-way{padding:11px 4px;border-radius:9px;border:1.5px solid #d3d9df;background:#fff;
+ color:#3e4c59;font-size:.84rem;font-weight:800;cursor:pointer;font-family:inherit;
+ display:flex;flex-direction:column;align-items:center;gap:5px;line-height:1.3}
+.iv-way:active{background:#eef3f7}
+.iv-way.on{border-color:#a34a41;border-width:2.5px;background:#fdf2f1;color:#a34a41}
+.iv-way.off{opacity:.45}
+.iv-way svg{display:block}
+.iv-penwrap{position:relative;height:46vh;min-height:230px;border:1.5px solid #d3d9df;
+ border-radius:10px;background:#fff;overflow:hidden;
+ background-image:repeating-linear-gradient(to bottom,transparent 0 43px,#eef1f4 43px 44px)}
+.iv-penwrap canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:none}
+.iv-penhint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+ color:#b6c0cb;font-size:1rem;font-weight:700;pointer-events:none}
+.iv-pentools{display:flex;gap:7px;margin-top:10px;flex-wrap:wrap}
+.iv-pentools button{flex:1;min-width:96px;padding:11px 6px;border-radius:9px;border:1.5px solid #d3d9df;
+ background:#fff;color:#3e4c59;font-size:.85rem;font-weight:800;cursor:pointer;font-family:inherit}
+.iv-pentools button.pri{background:#1b4965;border-color:#1b4965;color:#fff;flex:1.4}
+.iv-pentools button:disabled{opacity:.5;cursor:default}
+.iv-penmsg{font-size:.82rem;color:#a34a41;font-weight:700;min-height:1.3em;margin-top:9px}
+.iv-penmsg.ok{color:#3f6f52}
+
 @media (max-width:520px){
   .iv-q{font-size:1.22rem}
   .iv-lv{grid-template-columns:1fr}
@@ -116,6 +139,29 @@
   </div>
   <p class="iv-shnote">計画書に書かれている目標です。ここでは直せません。直すときは利用者の画面から。</p>
   <div id="iv-shbody"></div>
+</div>
+
+<!-- self-eval-input3-v1: 手書き -->
+<div class="iv-shbg" id="iv-penbg" onclick="ivPenClose()"></div>
+<div class="iv-sheet" id="iv-pensheet" role="dialog" aria-label="手書き">
+  <div class="iv-shhead">
+    <h4>手書き</h4>
+    <button class="iv-shclose" onclick="ivPenClose()">閉じる</button>
+  </div>
+  <p class="iv-shnote">
+    ご本人にタブレットを渡して、ここに書いていただきます。
+    「文字にする」を押すとAIが読み取って上の欄に入ります。<b>読み取りは必ず間違えるので、職員が直してください。</b>
+  </p>
+  <div class="iv-penwrap" id="iv-penwrap">
+    <canvas id="iv-pad"></canvas>
+    <div class="iv-penhint" id="iv-penhint">ここに ペンや 指で お書きください</div>
+  </div>
+  <div class="iv-pentools">
+    <button type="button" onclick="ivPadUndo()">ひとつ もどす</button>
+    <button type="button" onclick="ivPadClear()">ぜんぶ 消す</button>
+    <button type="button" class="pri" id="iv-ocrbtn" onclick="ivPenOcr()">文字にする</button>
+  </div>
+  <div class="iv-penmsg" id="iv-penmsg"></div>
 </div>
 
 <div class="iv-nav" id="iv-nav" style="display:none">
@@ -211,12 +257,27 @@ function ivRender(){
   }
   h += '<div class="iv-card">'
      + '<div class="iv-sec">'+(ivIsFree()?'お聞きした内容':'ご本人の言葉（理由）')+'</div>'
+     /* self-eval-input3-v1: 入れ方は3通り。どれも【同じ欄】に入る。
+        ★最後は必ず職員が目で見て直してから保存する、という作りは変えない。
+          音声もAIの読み取りも、必ず間違えるため。 */
+     + '<div class="iv-ways">'
+     +   '<button type="button" class="iv-way" onclick="ivWayKb()">'
+     +     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>'
+     +     'キーボード</button>'
+     +   '<button type="button" class="iv-way" id="iv-micbtn" onclick="ivVoiceToggle()">'
+     +     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><line x1="12" y1="19" x2="12" y2="22"/></svg>'
+     +     '<span id="iv-miclbl">話して入れる</span></button>'
+     +   '<button type="button" class="iv-way" onclick="ivPenOpen()">'
+     +     '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>'
+     +     '手書き</button>'
+     + '</div>'
      + '<textarea class="iv-tx" id="iv-tx" placeholder="聞こえたとおりに書いてください。言い換えないほうが、あとで役に立ちます。">'
      + ivEsc(a.reason_text||'')+'</textarea>'
      + '<div class="iv-tip">言い換えず、話された言葉のまま書くのがコツです。'
      +   'ここに入れた言葉が、ICFへの反映と次の目標づくりの材料になります。</div>'
      + '</div>';
   document.getElementById('iv-main').innerHTML = h;
+  ivVoiceSync();          // self-eval-input3-v1: 欄を作り直すたびにボタンを当て直す
 
   if(!ivIsFree() && IV.choice){
     var b = document.querySelector('.iv-c3 button[data-k="'+IV.choice+'"]');
@@ -292,16 +353,19 @@ async function ivSave(mode){
   return true;
 }
 async function ivNext(){
+  ivVoiceStop();          // self-eval-input3-v1: 次の質問に持ち越さない
   if(!(await ivSave('staff'))) return;
   if(IV.i >= IV.qs.length-1){ ivFinishScreen(); return; }
   IV.i++; ivRender();
 }
 async function ivSkip(){
+  ivVoiceStop();
   if(!(await ivSave('skip'))) return;
   if(IV.i >= IV.qs.length-1){ ivFinishScreen(); return; }
   IV.i++; ivRender();
 }
 async function ivPrev(){
+  ivVoiceStop();
   if(IV.i===0){ location.href='/self-eval'; return; }
   await ivSave('staff');      /* 書きかけも残す */
   IV.i--; ivRender();
@@ -325,6 +389,220 @@ async function ivFinish(){
     location.href = '/self-eval';
   }catch(e){ alert('保存できませんでした'); }
 }
+/* ===== self-eval-input3-v1 : 本人の言葉を3通りで入れる =====
+   キーボード（そのまま打つ） / 話して入れる / 手書き。
+   ★どれも同じ欄（#iv-tx）に入り、保存は既存の ivSave がそのまま行う。
+     入れ方ごとに保存先を分けない。あとの処理（ICF・次の目標）を共通にしておくため。 */
+
+/* ---------- キーボード ---------- */
+function ivWayKb(){
+  var t = document.getElementById('iv-tx');
+  if(t){ t.focus(); }
+}
+
+/* ---------- 話して入れる ----------
+   ★ブラウザの音声認識を使う。追加の課金がなく、話しながら文字が出る。
+   ★使えない端末（Firefox など）では、その場で理由を出して止める。
+     黙って何も起きないのがいちばん困るため。 */
+var IVV = {rec:null, on:false, base:''};
+function ivVoiceOK(){ return !!(window.SpeechRecognition || window.webkitSpeechRecognition); }
+
+function ivVoiceToggle(){
+  if(!ivVoiceOK()){
+    alert('この端末では音声入力が使えません。\n「手書き」か「キーボード」をお使いください。');
+    return;
+  }
+  if(IVV.on){ ivVoiceStop(); return; }
+  ivVoiceStart();
+}
+function ivVoiceStart(){
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var r;
+  try{ r = new SR(); }catch(e){ alert('音声入力を始められませんでした。'); return; }
+  r.lang = 'ja-JP';
+  r.interimResults = true;      /* 話している途中も見せる。合っているか確かめながら聞ける */
+  r.continuous = true;
+  var t0 = document.getElementById('iv-tx');
+  IVV.base = t0 ? (t0.value || '') : '';
+  if(IVV.base && !/\s$/.test(IVV.base)) IVV.base += '\n';   /* 続けて入れるときは改行してから */
+
+  r.onresult = function(e){
+    var fin = '', itm = '';
+    for(var k = e.resultIndex; k < e.results.length; k++){
+      var t = e.results[k][0].transcript;
+      if(e.results[k].isFinal) fin += t; else itm += t;
+    }
+    if(fin) IVV.base += fin;
+    var tx = document.getElementById('iv-tx');
+    if(tx) tx.value = IVV.base + itm;
+  };
+  r.onerror = function(e){
+    if(e && (e.error === 'not-allowed' || e.error === 'service-not-allowed')){
+      IVV.on = false; ivVoiceSync();
+      alert('マイクが使えませんでした。端末の設定でマイクを許可してください。');
+    }
+    /* no-speech などは止めない。onend で掛け直す */
+  };
+  r.onend = function(){
+    /* ★黙るとすぐ止まる端末がある（とくにiOS）。
+       「押して止める」まで続けたいので、自分で掛け直す。 */
+    if(IVV.on){ try{ r.start(); }catch(_){} }
+  };
+  IVV.rec = r; IVV.on = true;
+  try{ r.start(); }catch(e){ IVV.on = false; alert('音声入力を始められませんでした。'); }
+  ivVoiceSync();
+}
+function ivVoiceStop(){
+  IVV.on = false;
+  try{ if(IVV.rec) IVV.rec.stop(); }catch(_){}
+  IVV.rec = null;
+  ivVoiceSync();
+}
+function ivVoiceSync(){
+  var b = document.getElementById('iv-micbtn');
+  var l = document.getElementById('iv-miclbl');
+  if(!b || !l) return;
+  b.classList.toggle('on', IVV.on);
+  b.classList.toggle('off', !ivVoiceOK());
+  l.textContent = IVV.on ? '聞いています（押すと止める）' : '話して入れる';
+}
+
+/* ---------- 手書き ----------
+   利用者モード（self-eval-pen-v1）と同じ書き心地にそろえる。
+   ★キャンバスは【画面に出してから】測ること。display:none のままだと幅も高さも0になる。 */
+var IVP = {c:null, ctx:null, dpr:1, w:0, h:0, strokes:[], cur:null, ready:false};
+
+function ivPenOpen(){
+  ivVoiceStop();                       /* 手書き中に音声が動き続けないように */
+  document.getElementById('iv-penbg').classList.add('on');
+  document.getElementById('iv-pensheet').classList.add('on');
+  ivPenMsg('', false);
+  setTimeout(ivPadInit, 0);
+  setTimeout(ivPadInit, 120);          /* 出したあとの寸法の反映を待って測り直す */
+}
+function ivPenClose(){
+  document.getElementById('iv-penbg').classList.remove('on');
+  document.getElementById('iv-pensheet').classList.remove('on');
+}
+function ivPenMsg(s, ok){
+  var m = document.getElementById('iv-penmsg');
+  if(!m) return;
+  m.textContent = s || '';
+  m.className = 'iv-penmsg' + (ok ? ' ok' : '');
+}
+function ivPadStyle(ctx){
+  ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.strokeStyle='#16324a'; ctx.lineWidth=3.4;
+}
+function ivPadInit(){
+  var c = document.getElementById('iv-pad');
+  var wrap = document.getElementById('iv-penwrap');
+  if(!c || !wrap) return;
+  var w = wrap.clientWidth, h = wrap.clientHeight;
+  if(!w || !h) return;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);   /* 2までで十分。大きいと保存が重い */
+  c.width = Math.round(w*dpr); c.height = Math.round(h*dpr);
+  IVP.c=c; IVP.dpr=dpr; IVP.w=w; IVP.h=h;
+  IVP.ctx = c.getContext('2d');
+  IVP.ctx.setTransform(dpr,0,0,dpr,0,0);
+  ivPadStyle(IVP.ctx);
+  if(!IVP.ready){ ivPadBind(c); IVP.ready = true; }
+  ivPadRedraw();
+}
+function ivPadBind(c){
+  function pos(e){ var r=c.getBoundingClientRect(); return {x:e.clientX-r.left, y:e.clientY-r.top}; }
+  c.addEventListener('pointerdown', function(e){
+    e.preventDefault();
+    try{ c.setPointerCapture(e.pointerId); }catch(_){}
+    IVP.cur=[pos(e)]; IVP.strokes.push(IVP.cur);
+    document.getElementById('iv-penhint').style.display='none';
+    var p=IVP.cur[0], ctx=IVP.ctx;
+    ctx.beginPath(); ctx.arc(p.x,p.y,1.7,0,Math.PI*2); ctx.fillStyle='#16324a'; ctx.fill();
+  });
+  c.addEventListener('pointermove', function(e){
+    if(!IVP.cur) return;
+    e.preventDefault();
+    var p=pos(e), q=IVP.cur[IVP.cur.length-1];
+    IVP.cur.push(p);
+    var ctx=IVP.ctx;
+    ctx.beginPath(); ctx.moveTo(q.x,q.y); ctx.lineTo(p.x,p.y); ctx.stroke();
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){
+    c.addEventListener(ev, function(){ IVP.cur=null; });
+  });
+}
+function ivPadRedraw(){
+  var ctx=IVP.ctx; if(!ctx) return;
+  ctx.setTransform(IVP.dpr,0,0,IVP.dpr,0,0);
+  ctx.clearRect(0,0,IVP.w,IVP.h);
+  ivPadStyle(ctx);
+  IVP.strokes.forEach(function(s){
+    if(!s.length) return;
+    if(s.length===1){ ctx.beginPath(); ctx.arc(s[0].x,s[0].y,1.7,0,Math.PI*2);
+                      ctx.fillStyle='#16324a'; ctx.fill(); return; }
+    ctx.beginPath(); ctx.moveTo(s[0].x,s[0].y);
+    for(var k=1;k<s.length;k++) ctx.lineTo(s[k].x,s[k].y);
+    ctx.stroke();
+  });
+  var hint=document.getElementById('iv-penhint');
+  if(hint) hint.style.display = IVP.strokes.length ? 'none' : 'flex';
+}
+function ivPadUndo(){ IVP.strokes.pop(); IVP.cur=null; ivPadRedraw(); }
+function ivPadClear(){ IVP.strokes=[]; IVP.cur=null; ivPadRedraw(); ivPenMsg('', false); }
+/* 白い紙に写して1枚のPNGにする（透明のままだと真っ黒に見える端末がある） */
+function ivPadExport(){
+  if(!IVP.c || !IVP.strokes.length) return null;
+  try{
+    var o=document.createElement('canvas');
+    o.width=IVP.c.width; o.height=IVP.c.height;
+    var x=o.getContext('2d');
+    x.fillStyle='#ffffff'; x.fillRect(0,0,o.width,o.height);
+    x.drawImage(IVP.c,0,0);
+    return o.toDataURL('image/png');
+  }catch(e){ return null; }
+}
+window.addEventListener('resize', function(){
+  if(document.getElementById('iv-pensheet').classList.contains('on')) ivPadInit();
+});
+
+/* 手書き → 画像として保存 → AIで文字にする → 上の欄へ入れる。
+   ★AIの読み取りをそのまま確定しない。欄に入れて、職員が直してから保存する。 */
+async function ivPenOcr(){
+  var img = ivPadExport();
+  if(!img){ ivPenMsg('まだ何も書かれていません。', false); return; }
+  var b = document.getElementById('iv-ocrbtn');
+  b.disabled = true; b.textContent = '読み取っています…';
+  ivPenMsg('', false);
+  try{
+    var q = IV.qs[IV.i] || {};
+    var s = await fetch('/api/self-eval/answer-image-staff',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({evaluation_id:IV.id, id:q.id, image:img})})
+      .then(function(r){return r.json();});
+    if(s.status!=='success'){ ivPenMsg(s.message || '保存できませんでした。', false); return; }
+
+    var j = await fetch('/api/self-eval/answer-ocr',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({id:q.id})})
+      .then(function(r){return r.json();});
+    if(j.status!=='success'){
+      ivPenMsg((j.message || '読み取れませんでした') + '　手書きは保存されています。', false);
+      return;
+    }
+    var tx = document.getElementById('iv-tx');
+    if(tx){
+      var add = (j.text || '').trim();
+      if(!add){ ivPenMsg('文字を読み取れませんでした。手書きは保存されています。', false); return; }
+      tx.value = (tx.value && !/\s$/.test(tx.value)) ? (tx.value + '\n' + add) : (tx.value + add);
+    }
+    ivPenMsg('上の欄に入れました。読み間違いを直してから「次へ」を押してください。', true);
+    setTimeout(ivPenClose, 1200);
+  }catch(e){
+    ivPenMsg('通信に失敗しました。', false);
+  }finally{
+    b.disabled = false; b.textContent = '文字にする';
+  }
+}
+
 /* ===== self-eval-goal-v1 : 目標をいつでも見られるようにする =====
    ★目標が1つも登録されていなくてもボタンは出す。
      「見たのに何も無い」と「そもそも見られない」は別物で、
@@ -355,7 +633,9 @@ function ivGoalClose(){
   document.getElementById('iv-sheet').classList.remove('on');
 }
 /* 聞き取り中に誤ってページを離れないよう、Esc だけで閉じられるようにしておく */
-document.addEventListener('keydown', function(e){ if(e.key==='Escape') ivGoalClose(); });
+document.addEventListener('keydown', function(e){
+  if(e.key==='Escape'){ ivGoalClose(); ivPenClose(); }
+});
 
 document.addEventListener('DOMContentLoaded', ivLoad);
 </script>
