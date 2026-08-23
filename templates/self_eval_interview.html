@@ -17,6 +17,9 @@
 .iv-pbar{height:5px;background:#e4e7eb;border-radius:99px;overflow:hidden;margin-bottom:14px}
 .iv-pbar i{display:block;height:100%;background:#1b4965;transition:width .3s}
 .iv-lead{font-size:.8rem;color:#5f6368;line-height:1.65;margin:0 2px 14px}
+/* self-eval-resume-v1: 続きから始めたことを、はっきり伝える */
+.iv-resume{background:#eef3f7;border:1px solid #cfdde7;border-radius:10px;
+ padding:10px 12px;font-size:.84rem;font-weight:700;color:#1b4965;line-height:1.6;margin-bottom:12px}
 .iv-card{border:1px solid #e6e8eb;border-radius:14px;background:#fff;padding:16px;margin-bottom:14px}
 .iv-say{font-size:.74rem;font-weight:900;color:#1b4965;letter-spacing:.08em;margin-bottom:8px}
 .iv-q{font-size:1.4rem;font-weight:800;line-height:1.6;color:#1f2933;margin:0 0 10px}
@@ -116,16 +119,19 @@
 {% block content %}
 <div class="iv-wrap">
   <div class="iv-head">
-    <button class="iv-back" onclick="location.href='/self-eval'">◀ 一覧へ</button>
+    <!-- self-eval-resume-v1: 押す前に書きかけを保存してから戻る -->
+    <button class="iv-back" onclick="ivLeave()">◀ 中断して一覧へ</button>
     <span class="iv-title" id="iv-who">聞き取りモード</span>
     <span class="iv-prog" id="iv-prog"></span>
   </div>
   <div class="iv-pbar"><i id="iv-pb" style="width:0%"></i></div>
   <p class="iv-lead">
     質問を<b>そのまま読み上げて</b>、聞こえたとおりに入れてください。
-    1問ごとに保存されるので、<b>途中でやめても続きから再開できます</b>。
+    <b>途中で他の画面へ移っても、書きかけごと残ります。</b>
+    一覧から「職員が聞き取って入力する」を押せば、続きから再開します。
   </p>
 
+  <div id="iv-resume" class="iv-resume" style="display:none"></div>
   <div id="iv-main"><div class="iv-lead">読み込んでいます…</div></div>
 </div>
 
@@ -214,14 +220,27 @@ async function ivLoad(){
       '<div class="iv-lead">質問がありません。先に質問を作ってください。</div>'; return; }
     /* ★続きから。まだ答えの入っていない最初の質問へ飛ぶ。
        職員は途中で必ず呼ばれる。閉じても続きから始められることが大事。 */
+    /* ★self-eval-resume-v1: 「書きかけがある」だけで【済んだ】と見なさないこと。
+         中断のたびに書きかけを残すようにしたので、
+         文字が入っているかどうかで判定すると、点数を入れていない質問を飛ばしてしまう。
+         点数のいる質問は【点数】、いらない質問（してみたいこと等）は【文字】で見る。 */
     IV.i = 0;
+    var first = -1;
     for(var k=0;k<IV.qs.length;k++){
       var a = IV.qs[k];
-      var done = (a.score!==null && a.score!==undefined)
-              || a.reason_mode==='skip'
-              || (a.reason_text||'').trim()!=='';
-      if(!done){ IV.i = k; break; }
-      IV.i = Math.min(k+1, IV.qs.length-1);
+      var done = (a.reason_mode === 'skip')
+              || (((a.goal_kind||'') === 'free')
+                    ? (a.reason_text||'').trim() !== ''
+                    : (a.score!==null && a.score!==undefined));
+      if(!done){ first = k; break; }
+    }
+    IV.i = (first < 0) ? (IV.qs.length - 1) : first;
+    /* 続きから始めたことを、はっきり伝える（黙って途中から出ると不安になる） */
+    var rb = document.getElementById('iv-resume');
+    if(rb && IV.i > 0){
+      rb.style.display = '';
+      rb.textContent = '前回の続きから始めます（' + (IV.i+1) + ' 問目）。'
+                     + '前の質問を見たいときは「◀ 前へ」で戻れます。';
     }
     document.getElementById('iv-nav').style.display = 'flex';
     ivRender();
@@ -366,7 +385,8 @@ async function ivSkip(){
 }
 async function ivPrev(){
   ivVoiceStop();
-  if(IV.i===0){ location.href='/self-eval'; return; }
+  // self-eval-resume-v1: 1問目で「前へ」＝一覧へ戻る。ここでも書きかけを残す
+  if(IV.i===0){ await ivLeave(); return; }
   await ivSave('staff');      /* 書きかけも残す */
   IV.i--; ivRender();
 }
@@ -636,6 +656,43 @@ function ivGoalClose(){
 document.addEventListener('keydown', function(e){
   if(e.key==='Escape'){ ivGoalClose(); ivPenClose(); }
 });
+
+/* ===== self-eval-resume-v1 : 中断して他のメニューへ移れるようにする =====
+   ★職員は必ず途中で呼ばれる。しかも「次へ」を押す前に離れることのほうが多い。
+     これまでは「次へ／聞けなかった／前へ」を押したときしか保存していなかったので、
+     メニューから他の画面へ移ると【書きかけが消えていた】。
+   ★答えそのものは1問ごとにDBへ入っている。足りなかったのは
+     「押していない書きかけ」を残すことと、戻る導線だけ。 */
+function ivHasSomething(){
+  var tx = document.getElementById('iv-tx');
+  return (IV.level !== null && IV.level !== undefined)
+      || !!(tx && (tx.value||'').trim());
+}
+/* 離れる直前に呼ばれる。★keepalive を付けないと、画面が閉じる途中で送信が捨てられる。 */
+function ivStash(){
+  if(!IV.qs.length) return;
+  var a = IV.qs[IV.i];
+  if(!a || !ivHasSomething()) return;      /* 何も入っていない質問は触らない */
+  var tx = document.getElementById('iv-tx');
+  try{
+    fetch('/api/self-eval/answer-staff',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},keepalive:true,
+      body:JSON.stringify({evaluation_id:IV.id, id:a.id,
+                           score:IV.level, choice:IV.choice,
+                           reason_mode:'staff', reason_text: tx ? tx.value : ''})});
+  }catch(e){}
+}
+/* 「◀ 中断して一覧へ」。保存を待ってから戻る（こちらは待てる） */
+async function ivLeave(){
+  ivVoiceStop();
+  if(IV.qs.length && ivHasSomething()){ try{ await ivSave('staff'); }catch(e){} }
+  location.href = '/self-eval';
+}
+/* メニューから他の画面へ移った、タブを閉じた、アプリを切り替えた——どれでも残す */
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState === 'hidden') ivStash();
+});
+window.addEventListener('pagehide', ivStash);
 
 document.addEventListener('DOMContentLoaded', ivLoad);
 </script>
