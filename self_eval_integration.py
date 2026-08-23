@@ -239,7 +239,42 @@ def register_self_eval_routes(app):
                  .order("seq").execute())
         except Exception as ex:
             return jsonify({"status": "error", "message": str(ex)}), 500
-        return jsonify({"status": "success", "eval": e.data[0], "answers": a.data or []})
+
+        ev = e.data[0]
+
+        # self-eval-goal-v1: 聞き取り中に、いつでもその方の目標を見られるようにする。
+        #   ★質問はその方の目標から作っている。答えを聞く職員の手元に目標が無いと、
+        #     「何のための質問か」が分からないまま進むことになる（現場からの指摘）。
+        #   ★新しいAPIは作らない。この画面がもともと呼んでいる get に足す。
+        #     利用者モードのガード（_kiosk_guard）の許可URLを増やさずに済むため。
+        #   ★並びは利用者の編集画面（patient_profile.html）と同じにする。
+        #     画面ごとに順番が違うと、同じ目標なのに別物に見える。
+        goals = []
+        try:
+            _pid = str(ev.get("patient_profile_id") or "")
+            if _pid:
+                gp = (supabase.table("patient_profiles").select(
+                        "short_goal, long_goal, "
+                        "short_goal_function, short_goal_activity, short_goal_participation, "
+                        "long_goal_function, long_goal_activity, long_goal_participation")
+                      .eq("facility_code", f_code).eq("id", _pid).execute())
+                row = (gp.data or [{}])[0]
+                order = [("long_goal", "長期目標"), ("short_goal", "短期目標")]
+                for ax, lb in (("function", "機能"), ("activity", "活動"),
+                               ("participation", "参加")):
+                    order.append(("long_goal_%s" % ax, "長期目標（%s）" % lb))
+                    order.append(("short_goal_%s" % ax, "短期目標（%s）" % lb))
+                for key, label in order:
+                    # _clean_goal: 文字列の "None" などを空として扱う（実データに入っている）
+                    v = _clean_goal(row.get(key))
+                    if v:
+                        goals.append({"label": label, "text": v})
+        except Exception as ex:
+            # 目標が取れなくても、聞き取りそのものは続けられるようにする
+            print("self-eval goals error: %s" % ex, flush=True)
+
+        return jsonify({"status": "success", "eval": ev, "answers": a.data or [],
+                        "goals": goals})
 
     # ---------- 材料あつめ ----------
     def _gather_material(supabase, f_code, pid):
