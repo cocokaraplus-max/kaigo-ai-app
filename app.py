@@ -21760,6 +21760,29 @@ def _soge_norm_trips(raw, unit_count):  # soge-settings-v1
         })
     if not out:
         out = [dict(t) for t in SOGE_DEFAULT_TRIPS.get(unit_count, SOGE_DEFAULT_TRIPS[1])]
+
+    # soge-allday-v1: 「終日（1日型）」＝区分3 が、どの便に乗るかを決める。
+    #   ★設定画面で選ばせない。便の【形】から決まるため。
+    #     迎えだけの便（送りが無い）で迎え、送りだけの便（迎えが無い）で送る。
+    #     送りと迎えが混ざる便＝中間便には入れない。1日型は昼に帰らないので。
+    #   ★迎えだけの便が2本ある施設に備えて、最初の1本と最後の1本にだけ付ける。
+    #     全部に付けると、同じ人を2回迎えに行くことになる。
+    #   ★毎回いったん外してから付け直す。古い設定が保存されていても必ず正しくなる。
+    for t in out:
+        t["pickup_units"] = [u for u in t["pickup_units"] if u != 3]
+        t["dropoff_units"] = [u for u in t["dropoff_units"] if u != 3]
+    if unit_count == 2:
+        first_pick, last_drop = None, None
+        for i, t in enumerate(out):
+            has_p, has_d = bool(t["pickup_units"]), bool(t["dropoff_units"])
+            if has_p and not has_d and first_pick is None:
+                first_pick = i
+            if has_d and not has_p:
+                last_drop = i
+        if first_pick is not None:
+            out[first_pick]["pickup_units"].append(3)
+        if last_drop is not None:
+            out[last_drop]["dropoff_units"].append(3)
     return out
 
 
@@ -22595,9 +22618,18 @@ def _soge_fits(people, spec, trip=None):  # soge-peak-seats-v1
     return need <= spec["seats"] and n_wc <= spec["wc_max"]
 
 
-def _soge_targets(supabase, f_code, weekday):  # soge-week-v1
+def _soge_targets(supabase, f_code, weekday, unit_count=1):  # soge-week-v1
     """その曜日に来る利用者。
-    [{patient_id, user_name, unit(1|2), nth(0=毎週/1..5), is_wheelchair}]"""
+    [{patient_id, user_name, unit(1|2|3), nth(0=毎週/1..5), is_wheelchair}]
+
+    unit … 1=午前のみ / 2=午後のみ / 3=終日（1日型）   # soge-allday-v1
+      ★以前は ALL（終日）を 1（午前のみ）に潰していた。
+        そのため2単位運営では、1日型の方が
+          迎え便で迎える → 中間便で【昼に送られる】 → 夕方の送り便に入らない
+        という扱いになっていた。1日型は昼に帰らないので、これは誤り。
+      ★1単位運営では全員が同じ枠なので、これまでどおり 1 のままにする。
+        3 にすると便の定義（1単位目）に当たらなくなり、誰も出なくなる。
+    """
     plist = get_patients(supabase, f_code)
     by_int = {}
     for p in plist:
@@ -22632,6 +22664,10 @@ def _soge_targets(supabase, f_code, weekday):  # soge-week-v1
         apd = row.get("ampm_per_day")
         apd = apd if isinstance(apd, dict) else {}
         state = apd.get(wd)
+        # soge-allday-v1: "pm" のような小文字も正しく読む。
+        #   記録側（_t = ....upper()）は前から大文字にそろえていたが、送迎だけ素通しだった。
+        if isinstance(state, str):
+            state = state.strip().upper()
         if not state:
             if wd not in (row.get("weekdays") or ""):
                 continue
@@ -22639,12 +22675,20 @@ def _soge_targets(supabase, f_code, weekday):  # soge-week-v1
         if state == "NONE":
             continue
 
+        # soge-allday-v1: 区分は 午前のみ / 午後のみ / 終日 の3つ
+        if state == "ALL" and unit_count == 2:
+            _unit = 3
+        elif state == "PM":
+            _unit = 2
+        else:
+            _unit = 1
+
         pid = str(p["id"])
         out.append({
             "patient_id": pid,
             "user_name": p.get("user_name") or "",
             "user_kana": p.get("user_kana") or "",
-            "unit": 2 if state == "PM" else 1,
+            "unit": _unit,
             "nth": int(_visit_norm_nth(row.get("nth_per_day")).get(wd) or 0),
             "is_wheelchair": wc.get(pid, False),
         })
@@ -22941,7 +22985,7 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
     """その曜日の送迎表を自動生成する（保存はしない）。"""
     settings = settings or get_soge_settings(supabase, f_code)
     geo = soge_geo_map(supabase, f_code)
-    targets = _soge_targets(supabase, f_code, weekday)
+    targets = _soge_targets(supabase, f_code, weekday, settings["unit_count"])
 
     # soge-routeopt-v1: 立ち寄り順の最適化に施設の座標が要る（取れなければ従来の距離順）
     _flat, _flng, _ferr = _soge_facility_latlng(supabase, f_code)
@@ -23066,7 +23110,7 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
     plist = get_patients(supabase, f_code)
     pmap = dict((str(p["id"]), p) for p in plist)
     # soge-unassigned-v1: 保存済みの表に入っていない対象者を拾うために要る
-    targets = _soge_targets(supabase, f_code, weekday)
+    targets = _soge_targets(supabase, f_code, weekday, settings["unit_count"])
 
     wc = {}
     try:
