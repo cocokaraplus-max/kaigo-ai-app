@@ -19,6 +19,11 @@
    どうやっても戻れなくなる（実機で発生：質問文が切れたまま下にも戻せない）。
    スクロールするのは .body の中だけにして、上の名前・進捗と下のボタンは必ず見えるようにする。 */
 html,body{margin:0;height:100%;overflow:hidden}
+/* self-eval-pause-v1 */
+.se-pause{position:fixed;top:calc(env(safe-area-inset-top, 0px) + 8px);right:10px;z-index:90;
+ padding:7px 12px;border-radius:999px;border:1.5px solid #d3d9df;background:rgba(255,255,255,.92);
+ color:#9aa5b1;font-size:.76rem;font-weight:700;font-family:inherit;cursor:pointer}
+.se-pause:active{background:#eef1f4;color:#52606d}
 /* ★スマホの時計や電波表示（セーフエリア）と重ならないように余白をとる。
    これが無いと画面の一番上が隠れてしまう。 */
 body{background:#f4f5f7;color:#1f2933;
@@ -152,6 +157,11 @@ body.writing .nav{padding:13px 18px}
 }
 </style></head>
 <body>
+<!-- self-eval-pause-v1: いったん保留して、職員の画面へ戻るための入口。
+     ★押しても行き先は【ロック画面】。そこから先へ出るには4桁が要る。
+       利用者が誤って押しても、ロック画面から「回答に もどる」で自分で戻れる。
+     ★答えの邪魔にならないよう、隅に小さく置く。 -->
+<button type="button" class="se-pause" onclick="sePause()">職員の方へ</button>
 <div class="tab">
   <div class="bar">
     <span class="who">{{ user_name }}<span>さん</span></span>
@@ -686,6 +696,16 @@ function resetIdle(){
 ['click','touchstart','keydown'].forEach(function(ev){
   document.addEventListener(ev, resetIdle, {passive:true});
 });
+/* self-eval-pause-v1: いったん保留する。答えは1問ごとに保存済みなので、
+   一覧の「タブレットを渡す」を押せば、答えていない質問から再開する。 */
+async function sePause(){
+  try{
+    var r = await fetch('/api/self-eval/pause',{method:'POST',credentials:'same-origin'});
+    var j = await r.json();
+    location.href = (j && j.redirect) ? j.redirect : '/self-eval/locked';
+  }catch(e){ location.href='/self-eval/locked'; }
+}
+
 resetIdle();
 load();
 </script>
