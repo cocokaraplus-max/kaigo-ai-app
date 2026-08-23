@@ -31,16 +31,32 @@ p.lead{font-size:1.18rem;color:#616e7c;margin:0 0 8px;line-height:1.8}
  font-size:1.08rem;font-weight:800;cursor:pointer;font-family:inherit;letter-spacing:.04em}
 .btn:disabled{background:#e4e7eb;color:#9aa5b1;cursor:default}
 .msg{font-size:.95rem;color:#a34a41;font-weight:700;min-height:1.4em;margin-top:12px}
+/* self-eval-pause-v1: 保留中に、回答へ戻るためのボタン。
+   ★戻る先はその方自身の回答画面だけなので、4桁は要らない。
+     利用者が誤って「職員の方へ」を押したとき、職員を呼ばずに自分で戻れるほうがよい。 */
+.back{width:100%;padding:15px;border-radius:9px;border:2px solid #1b4965;background:#fff;
+ color:#1b4965;font-size:1.08rem;font-weight:800;cursor:pointer;font-family:inherit;
+ letter-spacing:.04em;margin-top:18px}
 </style></head>
 <body>
 <div class="card">
   <svg width="76" height="76" viewBox="0 0 76 76"><circle cx="38" cy="38" r="35" fill="none" stroke="#3f6f52" stroke-width="3"/><path d="M23 39 L34 50 L54 27" fill="none" stroke="#3f6f52" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  {% if paused %}
+  <h1>いったん おやすみしています。</h1>
+  <p class="lead">タブレットを 職員に お渡しください。<br>つづきから 再開できます。</p>
+  {% if user_name %}<div class="who">{{ user_name }} さん</div>{% endif %}
+  <button class="back" onclick="resumeAnswer()">回答に もどる</button>
+  {% else %}
   <h1>ご回答ありがとうございました。</h1>
   <p class="lead">タブレットを 職員に お渡しください。</p>
   {% if user_name %}<div class="who">{{ user_name }} さん</div>{% endif %}
+  {% endif %}
 
   <div class="unlock">
     <h2>職員の方へ　解除コードを入力してください</h2>
+    {% if paused %}<p style="font-size:.82rem;color:#9aa5b1;line-height:1.7;margin:-6px 0 14px">
+      解除すると職員の画面に戻ります。答えは1問ごとに保存されているので、
+      あとで「タブレットを渡す」を押せば、答えていない質問から再開します。</p>{% endif %}
     <div class="pin">
       <input type="tel" inputmode="numeric" maxlength="1" id="p0" autocomplete="off">
       <input type="tel" inputmode="numeric" maxlength="1" id="p1" autocomplete="off">
@@ -80,6 +96,15 @@ async function unlock(){
   ids.forEach(function(x){ document.getElementById(x).value=''; });
   document.getElementById('p0').focus();
   sync();
+}
+/* self-eval-pause-v1 */
+async function resumeAnswer(){
+  try{
+    var r = await fetch('/api/self-eval/resume',{method:'POST',credentials:'same-origin'});
+    var j = await r.json();
+    if(j.status==='success'){ location.href = j.redirect || '/self-eval/run'; return; }
+    document.getElementById('msg').textContent = j.message || '戻れませんでした';
+  }catch(e){ document.getElementById('msg').textContent='通信に失敗しました'; }
 }
 document.getElementById('p0').focus();
 </script>
