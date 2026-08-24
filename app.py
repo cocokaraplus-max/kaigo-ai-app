@@ -23500,6 +23500,225 @@ def _soge_weekday_arg(v, default=1):  # soge-weekday-zero-v1
     return w if 0 <= w <= 6 else default
 
 
+# ==========================================================
+# soge-keep-build-v1 : 「いつもの並びで組み直す」
+#
+#   ★なぜ必要か（現場の依頼）
+#     `soge_routes` は DDL のコメントどおり「学習の実体」で、
+#     職員が手で直した割り振りと周り順が、そのまま次週の初期値になる。
+#     ところが「自動で組み直す」（soge_build_week）は soge_routes を一切見ず、
+#     利用者・座標・席数から【ゼロから】組み直す。
+#     つまり押した瞬間に、覚えさせた癖が全部消える。
+#     そのため現場は「組み直したいのに押せない」という板挟みになっていた。
+#
+#   ★やること
+#     保存済みの並びを土台にして、【変わったところだけ】直す。
+#       ① その曜日に来なくなった人を抜く
+#       ② 新しく来るようになった人を、いちばん近い人が乗っている車へ入れる
+#       ③ 席・車いす枠に入らない人は「まだ車が決まっていない人」に残す
+#
+#   ★入れられるか迷ったら、入れずに赤い箱へ残すこと。
+#     間違った車に入れるより、人が判断できる状態で見せるほうがよい。
+# ==========================================================
+def _soge_stops_used(stops, spec):  # soge-keep-build-v1
+    """その車の立ち寄りから、同時乗車のピーク席数と車いす人数を出す。
+    ★_soge_saved_week の数え方にそろえること。送りと迎えを別々に数えて多いほうを取る。"""
+    d, p = {}, {}
+    for s in (stops or []):
+        pid = str(s.get("patient_id"))
+        (d if (s.get("type") == "dropoff") else p)[pid] = bool(s.get("is_wheelchair"))
+    def calc(m):
+        n_wc = sum(1 for v in m.values() if v)
+        n_walk = len(m) - n_wc
+        return n_walk + n_wc * spec["wc_seats"], n_wc
+    du, dw = calc(d)
+    pu, pw = calc(p)
+    return max(du, pu), max(dw, pw)
+
+
+def _soge_insert_near(v, stop, geo):  # soge-keep-build-v1
+    """その車の中で、いちばん近い人の隣に差し込む。
+
+    ★送り → 迎え の順は崩さない。
+      同じ種別の中でいちばん近い人の【次】に入れる。
+      同じ種別が1人も居なければ、送りは先頭、迎えは末尾へ。
+    """
+    stops = v.setdefault("stops", [])
+    g = geo.get(str(stop.get("patient_id")))
+    same = [i for i, s in enumerate(stops) if s.get("type") == stop.get("type")]
+    if not same:
+        if stop.get("type") == "dropoff":
+            stops.insert(0, stop)
+        else:
+            stops.append(stop)
+        return
+    best_i, best_km = same[-1], None
+    if g and g.get("lat") is not None:
+        for i in same:
+            g2 = geo.get(str(stops[i].get("patient_id")))
+            if not g2 or g2.get("lat") is None:
+                continue
+            km = _soge_km((float(g["lat"]), float(g["lng"])),
+                          (float(g2["lat"]), float(g2["lng"])))
+            if best_km is None or km < best_km:
+                best_km, best_i = km, i
+    stops.insert(best_i + 1, stop)
+
+
+def _soge_nearest_car(cars, stop, geo, specs):  # soge-keep-build-v1
+    """その人をいちばん近い人が乗っている車へ。席・車いす枠に入る車だけを見る。
+
+    ★入る車が無ければ None。呼び出し側は「まだ車が決まっていない人」に残す。
+      間違った車に押し込むより、人が決められる形で見せるほうがよい。
+    """
+    g = geo.get(str(stop.get("patient_id")))
+    best, best_km = None, None
+    for v in cars:
+        spec = specs.get(id(v))
+        if not spec:
+            continue
+        used, n_wc = _soge_stops_used((v.get("stops") or []) + [stop], spec)
+        if v.get("seats") is not None and used > v["seats"]:
+            continue
+        if spec["wc_max"] is not None and n_wc > spec["wc_max"]:
+            continue
+        # 距離が測れないときは「入る車のうち、いま人数がいちばん少ない車」に寄せる
+        km = None
+        if g and g.get("lat") is not None:
+            for s in (v.get("stops") or []):
+                g2 = geo.get(str(s.get("patient_id")))
+                if not g2 or g2.get("lat") is None:
+                    continue
+                d = _soge_km((float(g["lat"]), float(g["lng"])),
+                             (float(g2["lat"]), float(g2["lng"])))
+                if km is None or d < km:
+                    km = d
+        if km is None:
+            km = 9999.0 + len(v.get("stops") or [])
+        if best_km is None or km < best_km:
+            best_km, best = km, v
+    return best
+
+
+def soge_build_week_keep(supabase, f_code, weekday, settings=None):  # soge-keep-build-v1
+    """いつもの並びを土台に、変わったところだけ直す。
+
+    ★保存済みが1件も無い曜日は、ゼロから組むのと同じ結果を返す（kept=False）。
+    """
+    settings = settings or get_soge_settings(supabase, f_code)
+    week = _soge_saved_week(supabase, f_code, weekday, settings)
+    if not week:
+        out = soge_build_week(supabase, f_code, weekday, settings)
+        out["kept"] = False
+        return out
+
+    geo = soge_geo_map(supabase, f_code)
+    targets = _soge_targets(supabase, f_code, weekday, settings["unit_count"])
+
+    # 車両の席仕様（_soge_saved_week は wc_seats を返さないので引き直す）
+    try:
+        vr = (supabase.table("rec_cars")
+              .select("id,soge_seats,capacity,wheelchair_seats,wheelchair_max")
+              .eq("facility_code", f_code).execute())
+        vmap = dict((str(x["id"]), x) for x in (vr.data or []))
+    except Exception as e:
+        print("soge keep specs error: %s" % e, flush=True)
+        vmap = {}
+
+    tdefs = dict((t["key"], t) for t in settings["trips"])
+    n_out, n_in, n_left = 0, 0, 0
+
+    for trip in (week.get("trips") or []):
+        tdef = tdefs.get(trip.get("trip_key"))
+        if not tdef:
+            continue
+        want = set()
+        for m, st in _soge_want_pairs(targets, tdef):
+            want.add((str(m["patient_id"]), st))
+
+        vs = trip.get("vehicles") or []
+        real = [v for v in vs
+                if not (v.get("unassigned") or v.get("noride"))]
+        box = None
+        for v in vs:
+            if v.get("unassigned"):
+                box = v
+                break
+
+        # ---------- ① その曜日に来なくなった人を抜く ----------
+        #   ★「送迎なし」の箱は触らない。意図して外している人なので。
+        #   ★登録の無い方(guest)も触らない。マスタに居なくて当たり前。
+        for v in vs:
+            if v.get("noride"):
+                continue
+            keep = []
+            for s in (v.get("stops") or []):
+                if s.get("guest") or (str(s.get("patient_id")), s.get("type")) in want:
+                    keep.append(s)
+                else:
+                    n_out += 1
+            v["stops"] = keep
+
+        # ---------- ② 赤い箱の人を、入る車へ入れる ----------
+        if box and box.get("stops"):
+            specs = {}
+            for v in real:
+                vv = vmap.get(str(v.get("vehicle_id"))) or {}
+                specs[id(v)] = _soge_vehicle_spec(vv) if vv else {
+                    "seats": v.get("seats") or SOGE_DEFAULT_SEATS,
+                    "wc_seats": SOGE_DEFAULT_WC_SEATS,
+                    "wc_max": v.get("wheelchair_max") if v.get("wheelchair_max") is not None else 1,
+                }
+            rest = []
+            # 遠い人から先に置く。近い人はあとからでも入る先が見つかりやすい
+            for s in sorted(box["stops"],
+                            key=lambda x: -((geo.get(str(x.get("patient_id"))) or {}).get("dist_km") or 0)):
+                v = _soge_nearest_car(real, s, geo, specs)
+                if v is None:
+                    rest.append(s)
+                    n_left += 1
+                    continue
+                _soge_insert_near(v, s, geo)
+                n_in += 1
+            box["stops"] = rest
+
+        # ---------- ③ 後片づけ ----------
+        #   空になった赤い箱は消す。人数と所要時間は数え直す。
+        trip["vehicles"] = [v for v in vs
+                            if not ((v.get("unassigned") or v.get("noride"))
+                                    and not (v.get("stops") or []))]
+        for v in trip["vehicles"]:
+            if v.get("unassigned") or v.get("noride"):
+                continue
+            vv = vmap.get(str(v.get("vehicle_id"))) or {}
+            spec = _soge_vehicle_spec(vv) if vv else {
+                "seats": v.get("seats") or SOGE_DEFAULT_SEATS,
+                "wc_seats": SOGE_DEFAULT_WC_SEATS, "wc_max": 1}
+            used, n_wc = _soge_stops_used(v.get("stops"), spec)
+            v["seats_used"] = used
+            v["wheelchair_count"] = n_wc
+            # 顔ぶれか順番が変わっているので、時刻は保存時に引き直す
+            for s in (v.get("stops") or []):
+                s["planned_at"] = None
+            v["stale"] = True
+            v["minutes"] = None
+            v["distance_km"] = None
+            v["over_target"] = False
+
+    warns = []
+    if n_out:
+        warns.append("その曜日に来なくなった方を %d件 外しました。" % n_out)
+    if n_in:
+        warns.append("新しく来る方を %d件 車に入れました。並びを確かめてください。" % n_in)
+    if n_left:
+        warns.append("%d件は入る車がありませんでした。"
+                     "「まだ車が決まっていない人」から移すか、車を足してください。" % n_left)
+    week["warnings"] = warns
+    week["kept"] = True
+    week["saved"] = False        # 画面で確かめてから保存する
+    return week
+
+
 @app.route("/api/soge/week", methods=["GET"])  # soge-week-v1
 @login_required
 def api_soge_week_get():
@@ -23543,6 +23762,25 @@ def api_soge_week_auto():
         return jsonify(out)
     except Exception as e:
         print("api_soge_week_auto error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/week/keep", methods=["POST"])  # soge-keep-build-v1
+@login_required
+def api_soge_week_keep():
+    """いつもの並びを土台に、変わったところだけ直す。★保存はしない。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        weekday = _soge_weekday_arg((request.json or {}).get("weekday"))
+        if not (0 <= weekday <= 6):
+            return jsonify({"status": "error", "message": "曜日が不正です"}), 400
+        out = soge_build_week_keep(supabase, f_code, weekday)
+        out["status"] = "success"
+        out["saved"] = False
+        return jsonify(out)
+    except Exception as e:
+        print("api_soge_week_keep error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

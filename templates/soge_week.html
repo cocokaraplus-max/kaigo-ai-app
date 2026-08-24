@@ -11,6 +11,9 @@
 .sg-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem;
   background:#eef2f7; color:#334; }
 .sg-btn-primary { background:#1a73e8; color:#fff; }
+/* soge-keep-build-v1: ふだん使うほうを目立たせ、消えるほうを控えめにする */
+.sg-btn-keep { background:#0f9d58; color:#fff; }
+.sg-btn-zero { background:#fff; color:#9aa0a6; border:1.5px solid #dadce0; }
 .sg-btn-sm { padding:5px 10px; font-size:0.78rem; }
 .sg-btn:disabled { opacity:0.5; cursor:default; }
 
@@ -164,7 +167,10 @@
     <div class="sg-title">送迎表 <span id="sgState"></span></div>
     <div style="display:flex;gap:8px;">
       <a class="sg-btn" href="/soge/run" onclick="spaNav(event,'/soge/run')">運行画面</a>
-      <button class="sg-btn" id="sgAuto" onclick="sgAutoBuild()">自動で組み直す</button>
+      <!-- soge-keep-build-v1: 組み直しは2種類。ふだん使うのは「いつもの並びで」。
+           「ゼロから」は手で直した割り振りが全部消えるので、色も分けて警告も強くする。 -->
+      <button class="sg-btn sg-btn-keep" id="sgKeep" onclick="sgKeepBuild()">いつもの並びで組み直す</button>
+      <button class="sg-btn sg-btn-zero" id="sgAuto" onclick="sgAutoBuild()">ゼロから組み直す</button>
       <button class="sg-btn sg-btn-primary" id="sgSave" onclick="sgSave()">保存</button>
     </div>
   </div>
@@ -232,7 +238,36 @@
     render();
   }
 
+  /* soge-keep-build-v1: いつもの並びを土台に、変わったところだけ直す。
+     ★これが【ふだん使うほう】。手で覚えさせた割り振りと周り順が残る。 */
+  window.sgKeepBuild = async function () {
+    if (state.dirty && !confirm('保存していない変更があります。組み直しますか？')) return;
+    var btn = $('sgKeep');
+    btn.disabled = true; btn.textContent = '計算中…';
+    try {
+      var r = await fetch('/api/soge/week/keep', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weekday: state.weekday })
+      });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message, 'err'); return; }
+      state.data = j;
+      state.dirty = true;
+      keepScroll(render);
+      toast(j.kept
+        ? 'いつもの並びを活かして直しました。内容を確認して保存してください。'
+        : 'この曜日はまだ保存がないので、ゼロから組みました。');
+    } finally {
+      btn.disabled = false; btn.textContent = 'いつもの並びで組み直す';
+    }
+  };
+
   window.sgAutoBuild = async function () {
+    /* ★soge-keep-build-v1: こちらは【全部消える】。押す前にはっきり伝える。
+       以前は「自動で組み直す」という同じ1つのボタンだったので、
+       うっかり押して、手で直した割り振りが消えていた。 */
+    if (!confirm('ゼロから組み直します。\n\n手で直した車の割り振りと周り順が【全部消えます】。\n'
+               + 'ふだんは「いつもの並びで組み直す」を使ってください。\n\n続けますか？')) return;
     if (state.dirty && !confirm('保存していない変更があります。自動で組み直しますか？')) return;
     var btn = $('sgAuto');
     btn.disabled = true; btn.textContent = '計算中…';
@@ -245,10 +280,10 @@
       if (j.status !== 'success') { toast(j.message, 'err'); return; }
       state.data = j;
       state.dirty = true;      // 自動生成しただけでは保存されていない
-      render();
-      toast('組み直しました。内容を確認して保存してください。');
+      keepScroll(render);
+      toast('ゼロから組み直しました。内容を確認して保存してください。');
     } finally {
-      btn.disabled = false; btn.textContent = '自動で組み直す';
+      btn.disabled = false; btn.textContent = 'ゼロから組み直す';
     }
   };
 
