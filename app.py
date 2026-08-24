@@ -23260,8 +23260,10 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
                                                     "wc_seats": SOGE_DEFAULT_WC_SEATS, "wc_max": 1}
             gstops = _soge_stops_of(grp, trip, geo, settings)
             used, n_wc = _soge_peak_seats(grp, spec, trip)
-            tm = times[i] if i < len(times) else {"drive": 0, "stop": 0, "total": 0, "km": 0.0}
-            planned = _soge_planned_times(trip.get("depart") or "", gstops, tm["drive"], settings)
+            tm = times[i] if i < len(times) else {"drive": 0, "stop": 0, "total": 0,
+                                                  "km": 0.0, "legs": None}
+            planned = _soge_planned_times(trip.get("depart") or "", gstops, tm["drive"],
+                                          settings, tm.get("legs"))   # soge-legtime-v1
 
             _tgt, _max = _soge_trip_target(trip, settings)   # soge-trip-target-v1
             if tm["total"] > _max:
@@ -23984,6 +23986,27 @@ def _soge_route_hash(origin, stops):  # soge-time-v1
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
 
 
+def _soge_legs_ok(legs, n):  # soge-legtime-v1
+    """キャッシュから読んだ区間時間が、いまの立ち寄り人数と合っているか確かめる。
+
+    ★合っていないものは【使わない】で None を返す。ずれた配列をそのまま使うと、
+      別の人の区間時間で到着予定時刻を作ってしまう。等分に戻す方が安全。
+    ★legs 列を足す前に保存された古い行は null なので、ここで None になる。
+    """
+    if not isinstance(legs, list) or len(legs) != n or n == 0:
+        return None
+    out = []
+    for v in legs:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        if f < 0 or f > 600:        # 1区間10時間超は明らかにおかしい
+            return None
+        out.append(f)
+    return out if any(out) else None
+
+
 def _soge_stop_minutes(stops, settings):  # soge-time-v1
     """乗降にかかる時間。車いすは時間がかかる。"""
     m = 0
@@ -23992,15 +24015,24 @@ def _soge_stop_minutes(stops, settings):  # soge-time-v1
     return m
 
 
-def _soge_drive_minutes(supabase, f_code, geo, stops):  # soge-time-v1
+def _soge_drive_detail(supabase, f_code, geo, stops):  # soge-time-v1 / soge-legtime-v1
     """施設 → 各立ち寄り → 施設 の走行時間（分）。Routes API。結果はキャッシュ。
-    戻り値: (分, 距離km, error)"""
+    戻り値: (分, 距離km, error, legs)
+
+    ★legs は stops と【同じ長さ】の配列。legs[i] は「1つ前の地点から stops[i] の家に
+      着くまでの走行時間（分）」。到着予定時刻を区間ごとに積み上げるために使う。
+      これが無いと n+1 等分になり、家が遠い人のうしろが全部ずれる。
+    ★地図の座標が無い人は 0.0（Googleへの経路にそもそも含めていないため）。
+    ★取れなかったとき・古いキャッシュには None。呼び出し側は None なら等分に戻すこと。
+    ★区間ごとの時間は Google の一番安い区分（Essentials）に含まれる。
+      合計だけ貰うのと【料金は同じ】。呼ぶ回数も変わらない。
+    """
     import json as _json
     import urllib.error
     import urllib.request
 
     if not stops:
-        return 0, 0.0, None
+        return 0, 0.0, None, []
 
     # 施設の住所
     try:
@@ -24010,30 +24042,50 @@ def _soge_drive_minutes(supabase, f_code, geo, stops):  # soge-time-v1
     except Exception:
         origin = ""
     if not origin:
-        return None, None, "施設の住所が未登録です"
+        return None, None, "施設の住所が未登録です", None
 
     h = _soge_route_hash(origin, stops)
+    cached = None               # soge-legtime-v1: 保存済みの (分, km)。下の失敗時に使う
     try:
-        cr = (supabase.table("soge_route_time").select("drive_minutes,distance_km")
+        cr = (supabase.table("soge_route_time").select("drive_minutes,distance_km,legs")
               .eq("facility_code", f_code).eq("route_hash", h).execute())
         if cr.data:
-            return int(cr.data[0]["drive_minutes"]), cr.data[0].get("distance_km"), None
+            cached = (int(cr.data[0]["drive_minutes"]), cr.data[0].get("distance_km"))
+            if cr.data[0].get("legs") is not None:
+                return (cached[0], cached[1], None,
+                        _soge_legs_ok(cr.data[0].get("legs"), len(stops)))
+        # soge-legtime-v1: legs が null = legs列を足す前に保存した古い行。
+        #   周り順が同じだとハッシュも同じで永久にここに来てしまうので、
+        #   【1回だけ】取り直して埋める。取れなかったときは空配列を書き、
+        #   null と区別する（そうしないと毎回Googleを呼びに行ってしまう）。
     except Exception:
         pass
 
+    def _fail(msg):             # soge-legtime-v1
+        """★Googleに聞けなかったときは、【保存済みの分数を捨てないこと】。
+          捨てて None を返すと呼び出し側が drive=0 とみなし、
+          ・所要時間の上限チェックが効かなくなって全員1台に詰め込まれる
+          ・到着予定時刻が走行0分で作られ、実際よりずっと早い時刻が出る
+          という壊れ方をする。区間ごとの時間だけ諦めて、等分に戻すのが正しい。"""
+        if cached is not None:
+            return cached[0], cached[1], None, None
+        return None, None, msg, None
+
     key = get_secret("GOOGLE_MAPS_API_KEY")
     if not key:
-        return None, None, "GOOGLE_MAPS_API_KEY が設定されていません"
+        return _fail("GOOGLE_MAPS_API_KEY が設定されていません")
 
     # 座標で投げる（住所文字列より速く、確実）
     inter = []
-    for s in stops:
+    geo_idx = []            # soge-legtime-v1: 何番目の stop を経路に入れたか
+    for i, s in enumerate(stops):
         g = geo.get(str(s.get("patient_id")))
         if not g:
             continue
         inter.append({"location": {"latLng": {"latitude": g["lat"], "longitude": g["lng"]}}})
+        geo_idx.append(i)
     if not inter:
-        return 0, 0.0, None
+        return 0, 0.0, None, [0.0] * len(stops)
 
     body = {
         "origin": {"address": origin},
@@ -24050,7 +24102,8 @@ def _soge_drive_minutes(supabase, f_code, geo, stops):  # soge-time-v1
         headers={
             "Content-Type": "application/json",
             "X-Goog-Api-Key": key,
-            "X-Goog-FieldMask": "routes.duration,routes.distanceMeters",
+            # soge-legtime-v1: routes.legs.duration も一番安い区分に含まれる（料金は同じ）
+            "X-Goog-FieldMask": "routes.duration,routes.distanceMeters,routes.legs.duration",
         },
         method="POST",
     )
@@ -24059,11 +24112,11 @@ def _soge_drive_minutes(supabase, f_code, geo, stops):  # soge-time-v1
             data = _json.loads(res.read().decode("utf-8"))
     except Exception as e:
         print("soge route time error: %s" % type(e).__name__, flush=True)
-        return None, None, "経路の所要時間を取得できませんでした"
+        return _fail("経路の所要時間を取得できませんでした")
 
     routes = data.get("routes") or []
     if not routes:
-        return None, None, "経路が見つかりませんでした"
+        return _fail("経路が見つかりませんでした")
 
     dur = routes[0].get("duration") or "0s"
     try:
@@ -24073,16 +24126,37 @@ def _soge_drive_minutes(supabase, f_code, geo, stops):  # soge-time-v1
     minutes = int(round(secs / 60.0))
     dist_km = round((routes[0].get("distanceMeters") or 0) / 1000.0, 1)
 
+    # soge-legtime-v1: 区間ごとの時間を stops と同じ並びに直す
+    #   Google の legs は 施設→1人目→2人目→…→施設 の順。legs[k] は k人目に着くまで。
+    #   座標が無い人は経路に入れていないので 0.0 のまま。
+    #   ★区間の数が足りないものは【一部だけ使わない】こと。足りない人が 0.0 のままだと
+    #     「その人には一瞬で着く」ことになり、予定時刻が実際より早く出る。
+    #     早い方に外れるのは送迎では危ない（利用者を待たせる）ので、全部捨てて等分に戻す。
+    legs = [0.0] * len(stops)
+    raw = routes[0].get("legs") or []
+    if len(raw) != len(geo_idx) + 1:        # 施設→…→施設 なので 経由地+1 本が正しい
+        legs = []
+    else:
+        for k, i in enumerate(geo_idx):
+            try:
+                legs[i] = round(int(str(raw[k].get("duration") or "0s").rstrip("s")) / 60.0, 2)
+            except (TypeError, ValueError, AttributeError):
+                legs = []
+                break
+    if not any(legs):
+        legs = []               # 1つも取れなかった → 等分に戻す（null とは区別する）
+
     try:
         supabase.table("soge_route_time").upsert({
             "facility_code": f_code, "route_hash": h,
             "drive_minutes": minutes, "distance_km": dist_km,
+            "legs": legs,                       # soge-legtime-v1
             "computed_at": datetime.now(timezone.utc).isoformat(),
         }, on_conflict="facility_code,route_hash").execute()
     except Exception as e:
         print("soge route time save error: %s" % e, flush=True)
 
-    return minutes, dist_km, None
+    return minutes, dist_km, None, (legs or None)
 
 
 def _soge_trip_legs(trip):  # soge-trip-target-v1
@@ -24250,15 +24324,15 @@ def _soge_measure(supabase, f_code, geo, groups, trip, settings):  # soge-refine
     times = []
     for grp in groups:
         if not grp:
-            times.append({"drive": 0, "stop": 0, "total": 0, "km": 0.0})
+            times.append({"drive": 0, "stop": 0, "total": 0, "km": 0.0, "legs": None})
             continue
         stops = _soge_stops_of(grp, trip, geo, settings)
-        drive, km, _err = _soge_drive_minutes(supabase, f_code, geo, stops)
+        drive, km, _err, legs = _soge_drive_detail(supabase, f_code, geo, stops)  # soge-legtime-v1
         if drive is None:
-            drive, km = 0, 0.0              # 取れなかったら時間制約は効かせない
+            drive, km, legs = 0, 0.0, None  # 取れなかったら時間制約は効かせない
         stop_m = _soge_stop_minutes(stops, settings)
         times.append({"drive": drive, "stop": stop_m,
-                      "total": drive + stop_m, "km": km})
+                      "total": drive + stop_m, "km": km, "legs": legs})
     return times
 
 
@@ -24280,8 +24354,15 @@ def _soge_stops_of(grp, trip, geo, settings):  # soge-time-v1
                              settings.get("_fac"))  # soge-routeopt-v1
 
 
-def _soge_planned_times(depart, stops, drive_minutes, settings):  # soge-time-v1
-    """各立ち寄りの到着予定時刻。走行時間を距離比で按分し、乗降時間を足していく。"""
+def _soge_planned_times(depart, stops, drive_minutes, settings, legs=None):  # soge-time-v1
+    """各立ち寄りの到着予定時刻。走行時間を区間ごとに積み上げ、乗降時間を足していく。
+
+    ★soge-legtime-v1: legs（区間ごとの分）があればそれを使う。
+      無いときだけ n+1 等分に戻す。等分だと、家が近い人が続いても遠い人を挟んでも
+      同じ間隔になり、【うしろの人ほど予定時刻がずれる】。
+    ★legs は _soge_drive_detail が stops と同じ並びで返す。長さが違うものは
+      _soge_legs_ok が None にしているので、ここでは長さだけ最後にもう一度見る。
+    """
     if not depart or len(depart) != 5 or not stops:
         return [None] * len(stops or [])
     try:
@@ -24290,10 +24371,17 @@ def _soge_planned_times(depart, stops, drive_minutes, settings):  # soge-time-v1
         return [None] * len(stops)
 
     n = len(stops)
+    use_legs = legs if (isinstance(legs, list) and len(legs) == n and any(legs)) else None
     per_leg = (drive_minutes / float(n + 1)) if n else 0   # 施設→…→施設 で n+1 区間
     out, acc = [], 0.0
-    for s in stops:
-        acc += per_leg
+    for i, s in enumerate(stops):
+        if use_legs is not None:
+            try:
+                acc += float(use_legs[i])
+            except (TypeError, ValueError):
+                acc += per_leg
+        else:
+            acc += per_leg
         t = h * 60 + mm + int(round(acc))
         out.append("%02d:%02d" % ((t // 60) % 24, t % 60))
         acc += settings["stop_minutes_wc"] if s.get("is_wheelchair") else settings["stop_minutes"]
@@ -24596,9 +24684,9 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                 # 乗る車が決まっていないので、到着予定時刻は出しようがない
                 planned = [None] * len(stops)
             elif len(riding) != len(stops):
-                drive, _km, _err = _soge_drive_minutes(supabase, f_code, geo, riding)
+                drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, riding)
                 times = _soge_planned_times(trip.get("depart") or "",
-                                            riding, drive or 0, settings)
+                                            riding, drive or 0, settings, _lg)
                 tmap = {}
                 for _s, _t in zip(riding, times):
                     tmap[id(_s)] = _t
@@ -24606,9 +24694,9 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
             else:
                 planned = [s.get("planned_at") for s in stops]
                 if not any(planned):
-                    drive, _km, _err = _soge_drive_minutes(supabase, f_code, geo, stops)
+                    drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, stops)
                     planned = _soge_planned_times(trip.get("depart") or "",
-                                                  stops, drive or 0, settings)
+                                                  stops, drive or 0, settings, _lg)
 
             try:
                 dr = supabase.table("soge_days").insert({
@@ -24941,9 +25029,9 @@ def api_soge_run_replan():
                       and (x.get("user_name") or "").strip() not in leave_names]
             times = []
             if riding:
-                drive, _km, _err = _soge_drive_minutes(supabase, f_code, geo, riding)
+                drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, riding)
                 times = _soge_planned_times((str(d.get("depart_at") or ""))[:5],
-                                            riding, drive or 0, settings)
+                                            riding, drive or 0, settings, _lg)
             tmap = {}
             for x, t in zip(riding, times):
                 tmap[x["id"]] = t

@@ -1681,6 +1681,7 @@ DEV・本番とも反映済み。
 - `db/soge_seats.sql` — rec_cars.soge_seats / wheelchair_seats / wheelchair_max、patient_profiles.is_wheelchair
 - `db/soge_routes.sql` — soge_routes（曜日×便の確定順＝学習の実体）／ soge_days（その日の1便1台）／ soge_stops（打刻の単位）
 - `db/soge_time.sql` — soge_settings に target/max/stop/stop_wc minutes、soge_route_time（所要時間キャッシュ）
+- `db/soge_legtime.sql` — soge_route_time に `legs jsonb`（区間ごとの走行時間。soge-legtime-v1）
 
 #### 自動生成の考え方（marker順）
 
@@ -5200,3 +5201,76 @@ create table if not exists soge_day_locks (
 4. SESSION_67 から引き継いだ運用側の宿題（Stripe本番Webhook・CRON_TOKEN・Apple/APNs ほか）
 
 **作らないと決めたもの：セルフ評価の「印刷」**（2026-08-21 現場判断）。
+
+---
+
+## 到着予定時刻を区間ごとに積み上げる 2026-08-24  <!-- soge-legtime-v1 -->
+
+### 何が困っていたか
+
+`_soge_planned_times` は走行時間を **`n+1` 等分**していた。docstring には「距離比で按分」と
+書いてあったのに中身がそうなっていなかった。
+
+家が近い人が続いても、遠い人を1人挟んでも同じ間隔になるので、**うしろの人ほど予定時刻がずれる**。
+運行画面で職員が見る「◯時◯分に着く」が当てにならない、という形で効く。
+
+### やったこと
+
+Routes API のフィールドマスクに **`routes.legs.duration`** を足した。
+区間ごと（施設→1人目、1人目→2人目…）の時間が同じ返事の中に入っている。
+
+- `_soge_drive_minutes` → **`_soge_drive_detail`** に改名。返り値が4つになった
+  `(分, 距離km, error, legs)`。**呼び出し側は4か所すべて4つで受けること**
+  （`_soge_measure` / `soge_materialize_day` の2か所 / `api_soge_run_replan`）
+- `legs` は **stops と同じ長さ**。`legs[i]` = 1つ前の地点から `stops[i]` の家に着くまでの分
+- 座標が無い人は Google への経路にそもそも入れていないので `0.0`
+- `_soge_planned_times(depart, stops, drive, settings, legs=None)` — `legs` があれば積み上げ、
+  無ければ**従来どおり等分**
+- キャッシュは `soge_route_time.legs`（jsonb, nullable。`db/soge_legtime.sql`）
+
+### ★お金の話（調べた結果）
+
+- `routes.legs.duration` は Google の**一番安い区分（Compute Routes Essentials）に含まれる**。
+  合計だけ貰うのと**単価も呼ぶ回数も同じ**。
+- 単価が上がるのは **11人以上を1台で回る便**（Pro。単価2倍・無料枠は半分）と、
+  `routingPreference: TRAFFIC_AWARE` と `optimizeWaypointOrder`。
+  → **`optimizeWaypointOrder` は絶対に足さないこと。** 値段が上がるうえ、
+  Google が順番を組み替えるので `legs` と `stops` の対応が崩れる。
+- 無料枠は月10,000回（Pro は5,000回）。1施設あたり月400〜500回程度なので、
+  **施設が2桁に乗るまでは0円**。
+
+### ★渋滞込み（TRAFFIC_AWARE）は入れないと決めた 2026-08-24
+
+一度作ったが**全部取り消した**。単価が2倍になるのに対し、
+乗降時間を 3分/6分 → **4分/7分に延ばして余裕を持たせる**運用で足りると判断したため。
+`soge_settings.traffic_aware` 列も作っていない。復活させたくなったらここを読むこと。
+
+### ★ハマったところ（レビューで見つけて直した）
+
+1. **キャッシュを捨てて `None` を返してはいけない。**
+   `legs` が null の古い行を埋めに行く途中で Google に繋がらなかったとき、
+   最初の実装は保存済みの分数まで捨てて `(None, None, err, None)` を返していた。
+   呼び出し側は `drive or 0` で受けるので **走行0分**になり、
+   - 所要時間の上限チェックが効かず**全員1台に詰め込まれる**
+   - 到着予定時刻が**実際よりずっと早く**出る（8:36着が8:06着になる）
+   という壊れ方をする。`_fail()` を作って、**保存済みの分数は必ず返す**ようにした。
+   区間ごとの時間だけ諦めて等分に戻すのが正しい。
+2. **`legs` が null の古い行は永久に埋まらない。**
+   周り順が同じならハッシュも同じなので、放っておくと既存の配車はずっと等分のまま。
+   → null のときだけ**1回取り直して埋める**。取れなかったら `[]` を書いて null と区別する
+   （区別しないと毎回 Google を呼びに行く）。
+3. **区間の数が足りないときに一部だけ使ってはいけない。**
+   足りない人が `0.0` のままだと「一瞬で着く」ことになり、予定時刻が**早い方に外れる**。
+   送迎で早い方に外れるのは危ない（利用者を待たせる）。
+   `len(legs) == 経由地+1` でないときは**全部捨てて等分に戻す**。
+
+### 積み残し（既存の問題。今回は触っていない）
+
+`_soge_route_hash` に座標が入っていないので、**住所を直しても `soge_route_time` は消えない**。
+周り順が変わるまで古い時間を使い続ける。今までは車の合計時間だけの話だったが、
+これからは**個人の到着予定時刻にも効く**。住所修正時にキャッシュを消す処理を足すこと。
+
+### 確認すること
+
+- 運行画面で、**家が遠い人のうしろの予定時刻**が今までより後ろにずれているか
+- 遠い人が1人目にいる便で、その人の予定時刻が**出発時刻の直後**になっていないか
