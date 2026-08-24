@@ -8,3 +8,46 @@ __pycache__
 IMG_3965.PNG
 README.md
 update_readme.py
+
+# ── 2026-08-24 追加 ────────────────────────────────────────────────
+# ★Dockerfile は「COPY . .」でフォルダの中身をまるごとイメージへ入れている。
+#   除外できるのは、この .dockerignore に書いたものだけ。
+#   .gitignore に書いても Docker には効かない。両方に書くこと。
+#
+# きっかけ：リポジトリ直下に .bak 系が 388個・247MB あり、
+#   「消す予定」の置き場（利用者情報の入った表計算が入りうる）も
+#   ここに書かれていなかった。手元からビルドすると全部入ってしまう。
+
+# バックアップ（388個・247MB。入れる意味がなく、ビルドが遅くなるだけ）
+*.bak
+*.bak.*
+*.bak_*
+*.backup
+*.backup-*
+*.broken_backup
+*.orig
+*~
+
+# 「消す予定」の置き場。★利用者情報が入りうる。絶対にイメージへ入れない。
+_to_delete/
+
+# 作業用スクリプト・一時ファイル
+# （app.py が読み込む自前モジュールは utils / evaluation_helper / *_integration.py。
+#   先頭が _ のものは1つも読み込んでいないことを確認済み）
+_*.py
+_*_tmp
+*_tmp
+fix_*.py
+patch_*.py
+remove_*.py
+resolve_*.py
+
+# 引き継ぎメモ・ドキュメント（アプリの動作には要らない）
+HANDOFF*.md
+SESSION_*.md
+README_*.md
+*.md.bak*
+
+# 開発用のダミーデータ・バックアップ用スクリプト
+db/*dummy*.sql
+backup_*.sh
