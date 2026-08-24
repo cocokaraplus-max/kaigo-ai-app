@@ -781,10 +781,21 @@
   }
 
   // 画面を作り直しても、見ていた位置にとどまる
+  /* ===== soge-keepscroll-v1 : 見ていた位置を保つ =====
+     ★これまで効いていなかった。base.html では本文のスクロールを
+       .page-wrapper が持っているので、window.scrollY は常に 0 で、
+       window.scrollTo も何も起こさない。0を読んで0に戻していただけだった。
+     ★innerHTML を入れ替えると、中身の高さが一瞬 0 になる。
+       そこでブラウザがスクロール位置を 0 に詰めるので、
+       【中身が戻ったあと】＝次の描画でもう一度当て直す必要がある。 */
   function keepScroll(fn) {
-    var y = window.scrollY || document.documentElement.scrollTop || 0;
+    var sc = scrollBox();
+    var y = sc.scrollTop;
     fn();
-    window.scrollTo(0, y);
+    sc.scrollTop = y;
+    if (window.requestAnimationFrame) {
+      requestAnimationFrame(function () { sc.scrollTop = y; });
+    }
   }
 
   // ---------- 付箋のドラッグ ----------
@@ -962,7 +973,8 @@
     pruneBoxes(trip);
 
     state.dirty = true;
-    render();
+    // soge-keepscroll-v1: 人を動かすたびに一番上へ飛ばない
+    keepScroll(render);
   }
 
   /* ===== soge-order-fix-v1: 送り → 迎え に並べ替える =====
@@ -1002,7 +1014,7 @@
         });
       });
       state.dirty = true;
-      render();
+      keepScroll(render);      // soge-keepscroll-v1
       toast('送りを先にして並べ替えました。よければ「保存」を押してください');
     } catch (e) { toast('並べ替えできませんでした', 'err'); }
     finally { if (b) { b.disabled = false; b.textContent = '送りを先にして並べ替える'; } }
