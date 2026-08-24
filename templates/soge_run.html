@@ -237,10 +237,25 @@
   }
 
   // 打刻するたびに画面が先頭まで飛ばないように、見ていた位置を保つ
+  /* base.html では本文のスクロールを .page-wrapper が持っている */
+  function scrollBox() {
+    return document.querySelector('.page-wrapper') || document.scrollingElement || document.body;
+  }
+  /* ===== soge-keepscroll-v1 : 見ていた位置を保つ =====
+     ★これまで効いていなかった。base.html では本文のスクロールを
+       .page-wrapper が持っているので、window.scrollY は常に 0 で、
+       window.scrollTo も何も起こさない。0を読んで0に戻していただけだった。
+     ★innerHTML を入れ替えると、中身の高さが一瞬 0 になる。
+       そこでブラウザがスクロール位置を 0 に詰めるので、
+       【中身が戻ったあと】＝次の描画でもう一度当て直す必要がある。 */
   function keepScroll(fn) {
-    var y = window.scrollY || document.documentElement.scrollTop || 0;
+    var sc = scrollBox();
+    var y = sc.scrollTop;
     fn();
-    window.scrollTo(0, y);
+    sc.scrollTop = y;
+    if (window.requestAnimationFrame) {
+      requestAnimationFrame(function () { sc.scrollTop = y; });
+    }
   }
 
   // state の中から立ち寄り1件を探す（打刻のあと、その行だけ直すため）
