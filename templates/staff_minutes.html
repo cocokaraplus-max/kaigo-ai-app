@@ -211,6 +211,7 @@
 {% endblock %}
 {% block extra_script %}
 <script src="{{ static_v('rec_keepalive.js') }}"></script><!-- rec-keepalive-v1 -->
+<script src="{{ static_v('rec_overlay.js') }}"></script><!-- rec-overlay-v1: 録音したまま他の画面を重ねて開く -->
 <!-- markmap (mindmap) CDN: d3 + markmap-lib + markmap-view -->
 <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
 <script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.18"></script>
@@ -336,6 +337,7 @@ async function smToggleRec(){
     var stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     smState.recording = true;
     if (window.recKeepAlive) recKeepAlive.start({ onResume: smResumeRec, label: '勉強会議事録' });  // rec-keepalive-v2
+    if (window.recOverlay) recOverlay.start({ label: '勉強会議事録' });  // rec-overlay-v1
     if (!smState.sessionId) smState.sessionId = smUuid();
     document.getElementById('smRecLabel').textContent = '録音停止';
     document.getElementById('smRecBtn').classList.add('recording');
@@ -377,6 +379,7 @@ async function smResumeRec(){
 function smStopRec(){
   smState.recording = false;
   if (window.recKeepAlive) recKeepAlive.stop();  // rec-keepalive-v2
+  if (window.recOverlay) recOverlay.stop();  // rec-overlay-v1
   document.getElementById('smRecLabel').textContent = '録音開始';
   document.getElementById('smRecBtn').classList.remove('recording');
   document.getElementById('smRecStatus').textContent = '';

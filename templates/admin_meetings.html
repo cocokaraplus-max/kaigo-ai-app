@@ -412,6 +412,7 @@
 </div>
 
 <script src="{{ static_v('rec_keepalive.js') }}"></script><!-- rec-keepalive-v1 -->
+<script src="{{ static_v('rec_overlay.js') }}"></script><!-- rec-overlay-v1: 録音したまま他の画面を重ねて開く -->
 <script>
 // ===== 状態 =====
 let mtgState = {
@@ -709,6 +710,7 @@ async function mtgStartRec() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mtgState.recording = true;
     if (window.recKeepAlive) recKeepAlive.start({ onResume: mtgResumeRec, label: '担当者会議' });  // rec-keepalive-v2
+    if (window.recOverlay) recOverlay.start({ label: '担当者会議' });  // rec-overlay-v1
     document.getElementById('mtgRecBtn').classList.add('on');
     document.getElementById('mtgRecLabel').textContent = '録音停止';
     document.getElementById('mtgRecStatus').innerHTML = '<span class="mtg-rec-dot"></span>録音中...';
@@ -769,6 +771,7 @@ async function mtgResumeRec() {
 function mtgStopRec() {
   mtgState.recording = false;
   if (window.recKeepAlive) recKeepAlive.stop();  // rec-keepalive-v2
+  if (window.recOverlay) recOverlay.stop();  // rec-overlay-v1
   document.getElementById('mtgRecBtn').classList.remove('on');
   document.getElementById('mtgRecLabel').textContent = '録音開始';
   document.getElementById('mtgRecStatus').textContent = '文字起こし処理中...';
