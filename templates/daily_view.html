@@ -1422,18 +1422,33 @@
             <div class="edit-area" id="edit-area-{{ r.id }}" style="display:none;">
                 {# Session 33: 休み連絡カテゴリのとき編集 UI 内に「誰から/関係性」を出す #}
                 <div class="leave-edit-block" id="leave-edit-block-{{ r.id }}" style="display:none; margin-bottom:10px;">
-                    <!-- 休み日付編集 -->
+                    <!-- 休み日付編集  leave-dates-edit-v1
+                         ★ここは【休みの日の一覧】。飛び飛びでも、あとから足したり外したりできる。
+                           保存すると、この一覧のとおりにカレンダーが作り直される。 -->
                     <div style="margin-bottom:12px;">
                         <label class="form-label" style="font-size:0.85rem;">
                             <span class="material-symbols-outlined">event</span>
-                            休み日付
+                            休みの日（この一覧のとおりに保存されます）
                         </label>
-                        <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin-top:4px;">
-                            <input type="date" class="form-control" id="leave-edit-start-{{ r.id }}" style="font-size:0.85rem;">
-                            <span style="color:#80868b;font-size:0.8rem;">〜</span>
-                            <input type="date" class="form-control" id="leave-edit-end-{{ r.id }}" style="font-size:0.85rem;">
+                        <div id="leave-edit-tags-{{ r.id }}" style="display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 8px;"></div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <input type="date" class="form-control" id="leave-edit-add-{{ r.id }}" style="font-size:0.85rem;flex:1;">
+                            <button type="button" class="btn" onclick="leaveEditAddOne('{{ r.id }}')"
+                                    style="background:#1a73e8;color:#fff;border:none;border-radius:8px;padding:10px 14px;cursor:pointer;font-weight:700;white-space:nowrap;font-size:0.85rem;">この日を足す</button>
                         </div>
-                        <div style="font-size:0.72rem;color:#9aa0a6;margin-top:3px;">左側のみ入力した場合は1日がケース記録・カレンダーに自動適用されます</div>
+                        <details style="margin-top:8px;">
+                            <summary style="font-size:0.78rem;color:#5f6368;cursor:pointer;font-weight:700;">連続した期間をまとめて足す</summary>
+                            <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;margin-top:6px;">
+                                <input type="date" class="form-control" id="leave-edit-start-{{ r.id }}" style="font-size:0.85rem;">
+                                <span style="color:#80868b;font-size:0.8rem;">〜</span>
+                                <input type="date" class="form-control" id="leave-edit-end-{{ r.id }}" style="font-size:0.85rem;">
+                            </div>
+                            <button type="button" class="btn" onclick="leaveEditAddRange('{{ r.id }}')"
+                                    style="margin-top:6px;width:100%;background:#5f6368;color:#fff;border:none;border-radius:8px;padding:10px 14px;cursor:pointer;font-weight:700;font-size:0.85rem;">この期間を足す</button>
+                        </details>
+                        <div style="font-size:0.72rem;color:#9aa0a6;margin-top:6px;">
+                            × を押すとその日を休みから外します。保存するまでは変わりません。
+                        </div>
                     </div>
                     <label class="form-label" style="font-size:0.85rem;">
                         <span class="material-symbols-outlined">person</span>
@@ -2450,8 +2465,12 @@ window.startEdit = function(id, content) {
     var curEnd = recordEl.getAttribute('data-leave-date-end') || '';
     var startInput = document.getElementById('leave-edit-start-' + id);
     var endInput = document.getElementById('leave-edit-end-' + id);
-    if (startInput) startInput.value = curStart;
-    if (endInput) endInput.value = curEnd || curStart;
+    /* ★leave-dates-edit-v1: この2つは「まとめて足す道具」に変わった。
+       記録の最初〜最後を入れておくと、開いただけの人が
+       「もう入っているから」と『この期間を足す』を押して、
+       飛び飛びの休みが【全部の日】に膨らむ。必ず空で始める。 */
+    if (startInput) startInput.value = '';
+    if (endInput) endInput.value = '';
     // 左日付変更時に右に同日を自動セット（重複登録防止のため新関数属性で管理）
     if (startInput) {
         if (startInput._leaveHandler) startInput.removeEventListener('change', startInput._leaveHandler);
@@ -2460,6 +2479,32 @@ window.startEdit = function(id, content) {
         };
         startInput.addEventListener('change', startInput._leaveHandler);
     }
+
+    /* leave-dates-edit-v1: 実際の休みの日をサーバから読み込む。
+       ★記録の start/end は範囲しか持てないので、飛び飛びは表せない。
+         本当の日付はカレンダー側にあるので、そちらを正として読む。 */
+    window._leaveEditDates = window._leaveEditDates || {};
+    window._leaveEditLoaded = window._leaveEditLoaded || {};
+    window._leaveEditDates[id] = [];
+    window._leaveEditLoaded[id] = false;     /* 読めるまでは保存させない */
+    leaveEditRenderTags(id, 'loading');
+    fetch('/api/record/leave-dates?id=' + encodeURIComponent(id), {credentials:'same-origin'})
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+            if (!j || j.status !== 'success') throw new Error('ng');
+            window._leaveEditDates[id] = (j.dates || []).slice();
+            window._leaveEditLoaded[id] = true;
+            /* ★本文（textarea）はここで書き換えないこと。
+               開いただけで職員が手で足した申し送りが消える。
+               本文を作り直すのは、日付か理由を実際に触ったときだけ。 */
+            leaveEditRenderTags(id, (j.source === 'range') ? 'range' : '');
+        })
+        .catch(function(){
+            /* ★読めなかったことを「休みが0日」と見せないこと。
+               そのまま保存されると、本当の休みが全部消える。 */
+            window._leaveEditLoaded[id] = false;
+            leaveEditRenderTags(id, 'error');
+        });
     var typeInput = document.getElementById('leave-edit-type-' + id);
     var relInput = document.getElementById('leave-edit-rel-' + id);
     var relBlock = document.getElementById('leave-edit-relation-block-' + id);
@@ -2481,22 +2526,42 @@ window.startEdit = function(id, content) {
     if (reasonInput) reasonInput.value = curReason;
 
     // leave-content-trust-v1: 日付・理由を変えたときtextareaを自動更新
+    /* leave-dates-edit-v1: 文章は【日付の一覧】から作る。
+       ★サーバ側の _format_leave_period と同じ規則にそろえること。
+         連続する日はまとめて「6月2日〜6月5日」、離れた日は「・」でつなぐ。
+         規則が2つに分かれると、作ったときと直したときで文章が変わってしまう。 */
+    window.leaveEditPeriodText = function(ds){
+        /* ★サーバ側は sorted(set(...)) で重複を落とす。ここも同じにそろえること。
+           片方だけ重複を残すと、保存したあとに文章が変わって見える。 */
+        var seen = {}, xs = [];
+        (ds||[]).forEach(function(d){ if(d && !seen[d]){ seen[d]=1; xs.push(d); } });
+        xs.sort();
+        if (!xs.length) return '';
+        var ps = xs.map(function(d){ return new Date(d + 'T00:00:00'); });
+        var groups = [], st = ps[0], pv = ps[0];
+        for (var k=1;k<ps.length;k++){
+            var nx = new Date(pv.getTime()); nx.setDate(nx.getDate()+1);
+            if (ps[k].getTime() === nx.getTime()) { pv = ps[k]; continue; }
+            groups.push([st,pv]); st = pv = ps[k];
+        }
+        groups.push([st,pv]);
+        return groups.map(function(g){
+            var a=g[0], b=g[1];
+            var A=(a.getMonth()+1)+'月'+a.getDate()+'日';
+            return (a.getTime()===b.getTime()) ? A
+                 : A+'〜'+(b.getMonth()+1)+'月'+b.getDate()+'日';
+        }).join('・');
+    };
     function autoUpdateLeaveContent() {
-        // _leaveHandlerがstartをendにコピーした後に呼ばれるよう少し遅らせる
         setTimeout(function() {
-            var s = startInput ? startInput.value : '';
-            var e = endInput ? endInput.value : '';
             var r = reasonInput ? reasonInput.value : '';
-            if (!s) return;
-            var sd = new Date(s + 'T00:00:00');
-            var ed = (e && e !== s) ? new Date(e + 'T00:00:00') : null;
-            var period = ed
-                ? (sd.getMonth()+1)+'月'+sd.getDate()+'日〜'+(ed.getMonth()+1)+'月'+ed.getDate()+'日'
-                : (sd.getMonth()+1)+'月'+sd.getDate()+'日';
+            var period = window.leaveEditPeriodText((window._leaveEditDates||{})[id] || []);
+            if (!period) return;
             var ta = document.getElementById('edit-text-' + id);
             if (ta) ta.value = period + 'はお休みです。' + (r ? '理由：' + r : '');
         }, 0);
     }
+    window['_leaveEditRefresh_' + id] = autoUpdateLeaveContent;
     [startInput, endInput, reasonInput].forEach(function(inp) {
         if (!inp) return;
         var cKey = '_lcChangeH', iKey = '_lcInputH';
@@ -2507,6 +2572,105 @@ window.startEdit = function(id, content) {
         inp.addEventListener('input',  inp[iKey]);
     });
 };
+/* ===== leave-dates-edit-v1 : 休みの日の一覧を足す・外す =====
+   ★保存を押すまでDBは変えない。画面の上で組み立ててから、まとめて送る。 */
+window._leaveEditDates = window._leaveEditDates || {};
+
+window.leaveEditRenderTags = function(id, state) {
+    var box = document.getElementById('leave-edit-tags-' + id);
+    if (!box) return;
+    if (state === 'loading') {
+        box.innerHTML = '<span style="font-size:0.8rem;color:#5f6368;">休みの日を読み込んでいます…</span>';
+        return;
+    }
+    if (state === 'error') {
+        /* ★「読めなかった」を「休みが0日」と見せないこと。
+           そのまま保存されると、本当の休みが全部消える。 */
+        box.innerHTML = '<span style="font-size:0.82rem;color:#d93025;font-weight:700;">'
+                      + '休みの日を読み込めませんでした。<br>'
+                      + 'この状態では保存できません。閉じて開き直してください。</span>';
+        return;
+    }
+    var ds = (window._leaveEditDates[id] || []).slice().sort();
+    var note = '';
+    if (state === 'range') {
+        /* カレンダーに実物が無く、記録の最初〜最後から推測で広げた場合。
+           飛び飛びだった休みが「全部の日」に見えている可能性がある。 */
+        note = '<div style="flex:1 1 100%;font-size:0.78rem;color:#b06000;font-weight:700;'
+             + 'background:#fff6e5;border:1px solid #ffd591;border-radius:8px;padding:7px 10px;">'
+             + 'カレンダーに元の記録が見つからないため、最初の日から最後の日までを並べています。'
+             + '本当は飛び飛びだった場合は、来ない日だけ残して × で外してください。</div>';
+    }
+    if (!ds.length) {
+        box.innerHTML = note + '<span style="font-size:0.8rem;color:#d93025;font-weight:700;">'
+                      + '休みの日がありません。下から足してください。</span>';
+        return;
+    }
+    /* ★年を落とさない。年を間違えて入れても「6月2日」に見えてしまい、
+       その日に休みが入っていないことに誰も気づけない。
+       今年でない日、または年がまたがっているときは年も出す。 */
+    var thisYear = String(new Date().getFullYear());
+    var years = {};
+    ds.forEach(function(d){ years[d.slice(0,4)] = 1; });
+    var multiYear = Object.keys(years).length > 1;
+    box.innerHTML = note + ds.map(function(d){
+        var t = d.split('-');
+        var lbl = (multiYear || t[0] !== thisYear ? (t[0] + '年') : '')
+                + Number(t[1]) + '月' + Number(t[2]) + '日';
+        return '<span style="display:inline-flex;align-items:center;gap:5px;background:#fde8e8;'
+             + 'color:#e53935;border-radius:14px;padding:5px 12px;font-size:0.85rem;font-weight:700;">'
+             + lbl
+             + '<span style="cursor:pointer;font-weight:700;font-size:1.05rem;line-height:1;"'
+             + ' onclick="leaveEditRemoveOne(\'' + id + '\',\'' + d + '\')">×</span></span>';
+    }).join('');
+};
+
+window.leaveEditTouch = function(id) {
+    window.leaveEditRenderTags(id);          /* 触ったあとは推測の断りを消す */
+    var f = window['_leaveEditRefresh_' + id];
+    if (typeof f === 'function') f();          /* 文章も作り直す */
+};
+
+window.leaveEditAddOne = function(id) {
+    var inp = document.getElementById('leave-edit-add-' + id);
+    if (!inp || !inp.value) return;
+    var list = window._leaveEditDates[id] || (window._leaveEditDates[id] = []);
+    if (list.indexOf(inp.value) === -1) { list.push(inp.value); list.sort(); }
+    inp.value = '';
+    window.leaveEditTouch(id);
+};
+
+window.leaveEditRemoveOne = function(id, d) {
+    var list = window._leaveEditDates[id] || [];
+    window._leaveEditDates[id] = list.filter(function(x){ return x !== d; });
+    window.leaveEditTouch(id);
+};
+
+/* 連続した期間をまとめて足す。★入れ違いでも受ける（開始と終了が逆でも通す） */
+window.leaveEditAddRange = function(id) {
+    var s = document.getElementById('leave-edit-start-' + id);
+    var e = document.getElementById('leave-edit-end-' + id);
+    if (!s || !s.value) { alert('開始の日を入れてください。'); return; }
+    var a = new Date(s.value + 'T00:00:00');
+    var b = new Date(((e && e.value) ? e.value : s.value) + 'T00:00:00');
+    if (b < a) { var t = a; a = b; b = t; }
+    if ((b - a) / 86400000 > 366) { alert('期間が長すぎます。1年以内にしてください。'); return; }
+    var list = window._leaveEditDates[id] || (window._leaveEditDates[id] = []);
+    /* ★日数を先に数えてから、年月日を組み立てて1日ずつ進める。
+       Date に時間を足していく書き方は、時計が1時間ずれる地域で1日抜ける。 */
+    var days = Math.round((b - a) / 86400000);
+    for (var i = 0; i <= days; i++) {
+        var c = new Date(a.getFullYear(), a.getMonth(), a.getDate() + i);
+        var v = c.getFullYear() + '-'
+              + String(c.getMonth() + 1).padStart(2, '0') + '-'
+              + String(c.getDate()).padStart(2, '0');
+        if (list.indexOf(v) === -1) list.push(v);
+    }
+    list.sort();
+    if (s) s.value = ''; if (e) e.value = '';
+    window.leaveEditTouch(id);
+};
+
 window.cancelEdit = function(id) {
     document.getElementById('edit-area-'+id).style.display = 'none';
     // records-hidden を元に戻す
@@ -2534,15 +2698,19 @@ window.saveEdit = async function(id) {
         payload.leave_reporter_type = _type;
         payload.leave_reporter_relation = relInput ? relInput.value : '';
         payload.leave_reason = reasonInput ? reasonInput.value.trim() : '';
-        // 休み日付をペイロードに追加
-        const startInput = document.getElementById('leave-edit-start-' + id);
-        const endInput = document.getElementById('leave-edit-end-' + id);
-        const startVal = startInput ? startInput.value : '';
-        const endVal = endInput ? endInput.value : '';
-        if (startVal) {
-            payload.leave_date_start = startVal;
-            payload.leave_date_end = endVal || startVal;
+        // leave-dates-edit-v1: 休みの日は【一覧】で送る。start/end はサーバが min/max を入れる。
+        if (!((window._leaveEditLoaded || {})[id])) {
+            alert('休みの日を読み込めていません。\n画面を閉じて開き直してから保存してください。');
+            return;
         }
+        const ds = ((window._leaveEditDates || {})[id] || []).slice().sort();
+        if (!ds.length) {
+            alert('休みの日が1日もありません。\n日を足すか、この記録ごと消してください。');
+            return;
+        }
+        payload.leave_dates = ds;
+        payload.leave_date_start = ds[0];
+        payload.leave_date_end = ds[ds.length - 1];
     }
     // Session 36: VAS 編集データを送信(常に送る。空配列なら既存 VAS 全削除)
     try {
