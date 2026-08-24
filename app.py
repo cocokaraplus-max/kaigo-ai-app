@@ -23480,6 +23480,26 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
             "trips": trips_out, "saved": True, "warnings": warns}
 
 
+def _soge_weekday_arg(v, default=1):  # soge-weekday-zero-v1
+    """画面から来た曜日を数字にする。0=日曜。
+
+    ★★`int(v or 1)` と書かないこと。
+      JSONで数字の 0（日曜）が来ると 0 は【偽】なので 1（月曜）に化ける。
+      実際にそうなっていた：配車画面で日曜を選んで「自動で組み直す」を押すと、
+      月曜の顔ぶれで組まれ、日曜には無いはずの中間便にも人が入っていた。
+      そのまま保存すれば、日曜の配車表が月曜の内容で上書きされる。
+      （URLの引数は文字列の "0" なので偽にならず、そちらは無事だった。
+        JSONで来る経路だけが踏む。同じ形の穴が他にも無いか、必ず grep すること）
+    """
+    if v is None or v == "":
+        return default
+    try:
+        w = int(v)
+    except (TypeError, ValueError):
+        return default
+    return w if 0 <= w <= 6 else default
+
+
 @app.route("/api/soge/week", methods=["GET"])  # soge-week-v1
 @login_required
 def api_soge_week_get():
@@ -23487,7 +23507,7 @@ def api_soge_week_get():
     try:
         f_code = session["f_code"]
         supabase = get_supabase()
-        weekday = int(request.args.get("weekday") or 1)
+        weekday = _soge_weekday_arg(request.args.get("weekday"))   # soge-weekday-zero-v1
         if not (0 <= weekday <= 6):
             return jsonify({"status": "error", "message": "曜日が不正です"}), 400
 
@@ -23513,7 +23533,8 @@ def api_soge_week_auto():
     try:
         f_code = session["f_code"]
         supabase = get_supabase()
-        weekday = int((request.json or {}).get("weekday") or 1)
+        # ★soge-weekday-zero-v1: ここが `or 1` だったため、日曜(0)が月曜(1)に化けていた
+        weekday = _soge_weekday_arg((request.json or {}).get("weekday"))
         if not (0 <= weekday <= 6):
             return jsonify({"status": "error", "message": "曜日が不正です"}), 400
         out = soge_build_week(supabase, f_code, weekday)
