@@ -21928,15 +21928,18 @@ def api_vehicles_delete(vehicle_id):
 # 「1単位目を送る + 2単位目を迎える」が同一車両で混在する。
 # 単位は既存の patient_visit_days.ampm_per_day（AM=1単位目 / PM=2単位目）に対応。
 
+# soge-trip-cars-v1: max_cars = その便で使う台数の上限（0 = 自動）。
+#   ★本当の制約は「車の台数」ではなく「その時間に運転できる職員の数」で、
+#     それは便ごとに違う（昼は職員が少ない、など）。施設全体の車両マスタだけでは表せない。
 SOGE_DEFAULT_TRIPS = {
     1: [
-        {"key": "t1", "name": "迎え便", "depart": "08:30", "pickup_units": [1], "dropoff_units": []},
-        {"key": "t2", "name": "送り便", "depart": "16:00", "pickup_units": [], "dropoff_units": [1]},
+        {"key": "t1", "name": "迎え便", "depart": "08:30", "pickup_units": [1], "dropoff_units": [], "max_cars": 0},
+        {"key": "t2", "name": "送り便", "depart": "16:00", "pickup_units": [], "dropoff_units": [1], "max_cars": 0},
     ],
     2: [
-        {"key": "t1", "name": "迎え便", "depart": "08:30", "pickup_units": [1], "dropoff_units": []},
-        {"key": "t2", "name": "中間便", "depart": "12:00", "pickup_units": [2], "dropoff_units": [1]},
-        {"key": "t3", "name": "送り便", "depart": "16:00", "pickup_units": [], "dropoff_units": [2]},
+        {"key": "t1", "name": "迎え便", "depart": "08:30", "pickup_units": [1], "dropoff_units": [], "max_cars": 0},
+        {"key": "t2", "name": "中間便", "depart": "12:00", "pickup_units": [2], "dropoff_units": [1], "max_cars": 0},
+        {"key": "t3", "name": "送り便", "depart": "16:00", "pickup_units": [], "dropoff_units": [2], "max_cars": 0},
     ],
 }
 
@@ -21963,15 +21966,48 @@ def _soge_norm_trips(raw, unit_count):  # soge-settings-v1
                 if u in (1, 2) and u <= unit_count and u not in out2:
                     out2.append(u)
             return out2
+        # soge-trip-cars-v1: その便で使う台数の上限。空欄・0 は「自動」（従来どおり）。
+        try:
+            max_cars = int(t.get("max_cars") or 0)
+        except (TypeError, ValueError):
+            max_cars = 0
+        if max_cars < 0:
+            max_cars = 0
+        if max_cars > 20:
+            max_cars = 20      # ★0 に倒すと「自動」になり、絞ったつもりが効かない
         out.append({
             "key": (t.get("key") or "t%d" % (i + 1)),
             "name": name,
             "depart": depart,
             "pickup_units": _units(t.get("pickup_units")),
             "dropoff_units": _units(t.get("dropoff_units")),
+            "max_cars": max_cars,
         })
     if not out:
         out = [dict(t) for t in SOGE_DEFAULT_TRIPS.get(unit_count, SOGE_DEFAULT_TRIPS[1])]
+
+    # soge-allday-v1: 「終日（1日型）」＝区分3 が、どの便に乗るかを決める。
+    #   ★設定画面で選ばせない。便の【形】から決まるため。
+    #     迎えだけの便（送りが無い）で迎え、送りだけの便（迎えが無い）で送る。
+    #     送りと迎えが混ざる便＝中間便には入れない。1日型は昼に帰らないので。
+    #   ★迎えだけの便が2本ある施設に備えて、最初の1本と最後の1本にだけ付ける。
+    #     全部に付けると、同じ人を2回迎えに行くことになる。
+    #   ★毎回いったん外してから付け直す。古い設定が保存されていても必ず正しくなる。
+    for t in out:
+        t["pickup_units"] = [u for u in t["pickup_units"] if u != 3]
+        t["dropoff_units"] = [u for u in t["dropoff_units"] if u != 3]
+    if unit_count == 2:
+        first_pick, last_drop = None, None
+        for i, t in enumerate(out):
+            has_p, has_d = bool(t["pickup_units"]), bool(t["dropoff_units"])
+            if has_p and not has_d and first_pick is None:
+                first_pick = i
+            if has_d and not has_p:
+                last_drop = i
+        if first_pick is not None:
+            out[first_pick]["pickup_units"].append(3)
+        if last_drop is not None:
+            out[last_drop]["dropoff_units"].append(3)
     return out
 
 
@@ -22736,6 +22772,15 @@ def api_patient_wheelchair():
 
 # ===== soge-week-v1 : 週次の送迎表（曜日別テンプレート） =====
 
+# ===== soge-unassigned-v1 : 「車が決まっていない人」と「送迎なし」の枠 =====
+#  ★以前は、席に乗り切らなかった人（overflow）を warnings に1行出すだけで、
+#    配車表のどこにも表示していなかった。保存すると警告ごと消えるため、
+#    その人は二度と画面に出てこなかった。実在の利用者が黙って消える状態だった。
+#  → 車と同じ形の「枠」に入れて必ず見せる。vehicle_no を負の値・0 で区別するので、
+#    新しいテーブルも列も要らない（soge_routes にそのまま入る）。
+SOGE_VNO_UNASSIGNED = 0     # まだ車が決まっていない人（赤い箱・運行画面にも出す）
+SOGE_VNO_NORIDE = -1        # 送迎なし（家族送迎など。たたんでおく・運行画面には出さない）
+
 SOGE_DEFAULT_SEATS = 7          # soge_seats 未登録の車で使う既定値
 SOGE_DEFAULT_WC_SEATS = 2       # 車いす1台が使う席数の既定値
 
@@ -22798,9 +22843,18 @@ def _soge_fits(people, spec, trip=None):  # soge-peak-seats-v1
     return need <= spec["seats"] and n_wc <= spec["wc_max"]
 
 
-def _soge_targets(supabase, f_code, weekday):  # soge-week-v1
+def _soge_targets(supabase, f_code, weekday, unit_count=1):  # soge-week-v1
     """その曜日に来る利用者。
-    [{patient_id, user_name, unit(1|2), nth(0=毎週/1..5), is_wheelchair}]"""
+    [{patient_id, user_name, unit(1|2|3), nth(0=毎週/1..5), is_wheelchair}]
+
+    unit … 1=午前のみ / 2=午後のみ / 3=終日（1日型）   # soge-allday-v1
+      ★以前は ALL（終日）を 1（午前のみ）に潰していた。
+        そのため2単位運営では、1日型の方が
+          迎え便で迎える → 中間便で【昼に送られる】 → 夕方の送り便に入らない
+        という扱いになっていた。1日型は昼に帰らないので、これは誤り。
+      ★1単位運営では全員が同じ枠なので、これまでどおり 1 のままにする。
+        3 にすると便の定義（1単位目）に当たらなくなり、誰も出なくなる。
+    """
     plist = get_patients(supabase, f_code)
     by_int = {}
     for p in plist:
@@ -22835,6 +22889,10 @@ def _soge_targets(supabase, f_code, weekday):  # soge-week-v1
         apd = row.get("ampm_per_day")
         apd = apd if isinstance(apd, dict) else {}
         state = apd.get(wd)
+        # soge-allday-v1: "pm" のような小文字も正しく読む。
+        #   記録側（_t = ....upper()）は前から大文字にそろえていたが、送迎だけ素通しだった。
+        if isinstance(state, str):
+            state = state.strip().upper()
         if not state:
             if wd not in (row.get("weekdays") or ""):
                 continue
@@ -22842,12 +22900,20 @@ def _soge_targets(supabase, f_code, weekday):  # soge-week-v1
         if state == "NONE":
             continue
 
+        # soge-allday-v1: 区分は 午前のみ / 午後のみ / 終日 の3つ
+        if state == "ALL" and unit_count == 2:
+            _unit = 3
+        elif state == "PM":
+            _unit = 2
+        else:
+            _unit = 1
+
         pid = str(p["id"])
         out.append({
             "patient_id": pid,
             "user_name": p.get("user_name") or "",
             "user_kana": p.get("user_kana") or "",
-            "unit": 2 if state == "PM" else 1,
+            "unit": _unit,
             "nth": int(_visit_norm_nth(row.get("nth_per_day")).get(wd) or 0),
             "is_wheelchair": wc.get(pid, False),
         })
@@ -23084,11 +23150,67 @@ def _soge_order_stops(stops, geo, dropoff_first, fac=None):  # soge-routeopt-v1
     return _soge_tsp_path(pick_xy, fac, fac)
 
 
+def _soge_special_car(vno, pairs, geo):  # soge-unassigned-v1
+    """「まだ車が決まっていない人」「送迎なし」の枠を、車と同じ形で作る。
+
+    ★車と同じ形にしておくと、配車画面のドラッグ・保存・並べ替えの仕組みを
+      そのまま使える。この枠のためだけに別の操作を作らずに済む。
+
+    pairs = [(利用者, "pickup"|"dropoff"), ...]
+
+    ★席数は持たせない（seats=None）。まだ乗る車が決まっていないので、
+      「席が足りない」と出しても意味が無いため。
+    """
+    stops = []
+    for m, stype in (pairs or []):
+        pid = str(m.get("patient_id"))
+        is_guest = bool(m.get("guest"))
+        stops.append({
+            "patient_id": pid,
+            "user_name": m.get("user_name") or "",
+            "guest": is_guest,
+            "type": stype,
+            "nth": int(m.get("nth") or 0),
+            "is_wheelchair": bool(m.get("is_wheelchair")),
+            "dist_km": round((geo.get(pid) or {}).get("dist_km", 0.0), 2),
+            # 登録の無い方は住所が無いので、座標が無いのは当たり前。警告に混ぜない
+            "no_geo": (pid not in geo) and not is_guest,
+            "planned_at": None,
+        })
+    return {
+        "vehicle_no": vno,
+        "unassigned": (vno == SOGE_VNO_UNASSIGNED),
+        "noride": (vno == SOGE_VNO_NORIDE),
+        "vehicle_id": None, "vehicle_name": "", "plate_no": "",
+        "seats": None, "seats_used": 0,
+        "wheelchair_count": 0, "wheelchair_max": None,
+        "driver_name": "",
+        "minutes": None, "drive_minutes": None, "stop_minutes": None,
+        "distance_km": None, "over_target": False,
+        "stops": stops,
+    }
+
+
+def _soge_want_pairs(members, trip):  # soge-unassigned-v1
+    """その便で、その人に必要な立ち寄り（送り／迎え）を並べる。
+    ★_soge_stops_of と同じ規則（送りが先）にそろえること。
+      規則を2か所に分けて書くと、片方だけ直したときに必ず食い違う。"""
+    pu = set(trip.get("pickup_units") or [])
+    du = set(trip.get("dropoff_units") or [])
+    out = []
+    for m in (members or []):
+        if m.get("unit") in du:
+            out.append((m, "dropoff"))
+        if m.get("unit") in pu:
+            out.append((m, "pickup"))
+    return out
+
+
 def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
     """その曜日の送迎表を自動生成する（保存はしない）。"""
     settings = settings or get_soge_settings(supabase, f_code)
     geo = soge_geo_map(supabase, f_code)
-    targets = _soge_targets(supabase, f_code, weekday)
+    targets = _soge_targets(supabase, f_code, weekday, settings["unit_count"])
 
     # soge-routeopt-v1: 立ち寄り順の最適化に施設の座標が要る（取れなければ従来の距離順）
     _flat, _flng, _ferr = _soge_facility_latlng(supabase, f_code)
@@ -23121,10 +23243,13 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
         groups, overflow, times = _soge_split_by_time(
             supabase, f_code, geo, people, vehicles, trip, settings)
 
+        # soge-unassigned-v1: あふれた人を【黙って消さない】。
+        #   以前はこの警告文に名前を最大5名まで出すだけで、配車表には出さなかった。
+        #   保存すると警告ごと消えるので、その人は二度と画面に出てこなかった。
         if overflow:
-            warnings.append("%s: %d名が乗れません（%s）。車両を増やすか席数を確認してください。"
-                            % (trip["name"], len(overflow),
-                               "・".join(m["user_name"] for m in overflow[:5])))
+            warnings.append("%s: %d名がどの車にも乗れませんでした。"
+                            "「まだ車が決まっていない人」から車へ移してください。"
+                            % (trip["name"], len(overflow)))
 
         cars_out = []
         for i, grp in enumerate(groups):
@@ -23169,6 +23294,11 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
                 } for j, s in enumerate(gstops)],
             })
 
+        # soge-unassigned-v1: あふれた人の枠を先頭に置く。いちばん最初に目に入る場所。
+        if overflow:
+            cars_out.insert(0, _soge_special_car(
+                SOGE_VNO_UNASSIGNED, _soge_want_pairs(overflow, trip), geo))
+
         trips_out.append({
             "trip_key": trip["key"], "trip_name": trip["name"],
             "depart": trip.get("depart") or "",
@@ -23204,6 +23334,8 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
     geo = soge_geo_map(supabase, f_code)
     plist = get_patients(supabase, f_code)
     pmap = dict((str(p["id"]), p) for p in plist)
+    # soge-unassigned-v1: 保存済みの表に入っていない対象者を拾うために要る
+    targets = _soge_targets(supabase, f_code, weekday, settings["unit_count"])
 
     wc = {}
     try:
@@ -23228,9 +23360,24 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
 
     trips_out = []
     for trip in settings["trips"]:
-        cars = sorted(by_trip.get(trip["key"], []), key=lambda x: x.get("vehicle_no") or 1)
+        # soge-unassigned-v1: 未割当(0)を先頭、ふつうの車、送迎なし(-1)を最後にする。
+        #   ★"or 1" で並べると 0 が 1 になって車に紛れるので、None だけを 1 に倒す。
+        def _vsort(x):
+            k = x.get("vehicle_no")
+            try:
+                k = int(k) if k is not None else 1
+            except (TypeError, ValueError):
+                k = 1      # 読めない値で配車画面ごと落とさない
+            return (2 if k == SOGE_VNO_NORIDE else (0 if k == SOGE_VNO_UNASSIGNED else 1), k)
+
+        cars = sorted(by_trip.get(trip["key"], []), key=_vsort)
         cars_out = []
         for c in cars:
+            _vno = c.get("vehicle_no")
+            try:
+                _vno = int(_vno) if _vno is not None else 1
+            except (TypeError, ValueError):
+                _vno = 1
             v = vmap.get(str(c.get("vehicle_id"))) or {}
             spec = _soge_vehicle_spec(v) if v else {"seats": SOGE_DEFAULT_SEATS,
                                                     "wc_seats": SOGE_DEFAULT_WC_SEATS, "wc_max": 1}
@@ -23274,25 +23421,63 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
             used, n_wc = max(d_used, p_used), max(d_wc, p_wc)
 
             cars_out.append({
-                "vehicle_no": c.get("vehicle_no") or 1,
+                "vehicle_no": _vno,
+                # soge-unassigned-v1: 席数は持たせない。乗る車が決まっていないので
+                #   「席が足りない」と出しても意味が無い
+                # ★-1 以外の非正は「未割当」に倒す（画面側の振り分けと同じ規則）
+                "unassigned": (_vno <= SOGE_VNO_UNASSIGNED and _vno != SOGE_VNO_NORIDE),
+                "noride": (_vno == SOGE_VNO_NORIDE),
                 "vehicle_id": (str(c["vehicle_id"]) if c.get("vehicle_id") else None),
                 "vehicle_name": v.get("name") or "",
                 "plate_no": v.get("plate_no") or "",
-                "seats": spec["seats"],
-                "seats_used": used,
-                "wheelchair_count": n_wc,
-                "wheelchair_max": spec["wc_max"],
+                "seats": (None if _vno <= 0 else spec["seats"]),
+                "seats_used": (0 if _vno <= 0 else used),
+                "wheelchair_count": (0 if _vno <= 0 else n_wc),
+                "wheelchair_max": (None if _vno <= 0 else spec["wc_max"]),
                 "driver_name": c.get("driver_name") or "",
                 "stops": stops,
             })
+        # soge-unassigned-v1: 保存済みの表は「保存した時の顔ぶれ」がそのまま残る。
+        #   そのあとに利用が始まった方はどの車にも入っておらず、
+        #   これまでは【配車表に一度も出てこなかった】。必ず未割当に出す。
+        #   ★「送迎なし」に入れた方は、意図して外しているので補わない。
+        seen = set()
+        for c2 in cars_out:
+            for s2 in (c2.get("stops") or []):
+                seen.add((s2["patient_id"], s2["type"]))
+        missing = [(m, st) for (m, st) in _soge_want_pairs(targets, trip)
+                   if (str(m["patient_id"]), st) not in seen]
+        if missing:
+            box = None
+            for c2 in cars_out:
+                if c2.get("unassigned"):
+                    box = c2
+                    break
+            add = _soge_special_car(SOGE_VNO_UNASSIGNED, missing, geo)
+            if box:
+                box["stops"].extend(add["stops"])
+            else:
+                cars_out.insert(0, add)
+
         trips_out.append({
             "trip_key": trip["key"], "trip_name": trip["name"],
             "depart": trip.get("depart") or "",
             "vehicles": cars_out,
         })
 
+    # soge-unassigned-v1: 未割当が残っていることは、画面の上にも文字で出す。
+    #   箱を見落としたまま当日を迎えるのを防ぐ。
+    warns = []
+    for t in trips_out:
+        cnt = 0
+        for c in t["vehicles"]:
+            if c.get("unassigned"):
+                cnt += len(c.get("stops") or [])
+        if cnt:
+            warns.append("%s: %d件、まだ乗る車が決まっていません。" % (t["trip_name"], cnt))
+
     return {"weekday": weekday, "unit_count": settings["unit_count"],
-            "trips": trips_out, "saved": True, "warnings": []}
+            "trips": trips_out, "saved": True, "warnings": warns}
 
 
 @app.route("/api/soge/week", methods=["GET"])  # soge-week-v1
@@ -23379,6 +23564,17 @@ def api_soge_week_reorder():
                         "guest": bool(s.get("guest")),
                         "is_wheelchair": bool(s.get("is_wheelchair")),
                     })
+                # soge-unassigned-v1: 未割当(0)・送迎なし(-1)の枠は並べ替えない。
+                #   走らない枠なので立ち寄り順に意味が無く、
+                #   並べ替えると職員が入れた並びだけが崩れる。
+                _vno = v.get("vehicle_no")
+                try:
+                    _vno = int(_vno) if _vno is not None else 1
+                except (TypeError, ValueError):
+                    _vno = 1
+                if _vno <= 0:
+                    cars.append({"stops": stops})
+                    continue
                 ordered = _soge_order_stops(
                     stops, geo, bool(settings.get("mid_dropoff_first", True)), fac)
                 cars.append({"stops": ordered})
@@ -23425,17 +23621,44 @@ def api_soge_week_save():
                         row["guest"] = True
                         row["name"] = (s.get("user_name") or "").strip()[:40]
                     stops.append(row)
+                # soge-unassigned-v1: 0（まだ車が決まっていない人）と -1（送迎なし）を
+                #   1号車に潰さないこと。"or 1" は 0 も偽と見なすので必ず化ける。
+                _vno = v.get("vehicle_no")
+                try:
+                    _vno = int(_vno) if _vno is not None else 1
+                except (TypeError, ValueError):
+                    _vno = 1
+                # 空の特別枠は残さない（次に開いたとき空箱だけ出るのを防ぐ）
+                if _vno <= 0 and not stops:
+                    continue
                 rows.append({
                     "facility_code": f_code,
                     "weekday": weekday,
                     "trip_key": tkey,
-                    "vehicle_no": int(v.get("vehicle_no") or 1),
+                    "vehicle_no": _vno,
                     "vehicle_id": (str(v["vehicle_id"]) if v.get("vehicle_id") else None),
                     "driver_name": (v.get("driver_name") or "").strip() or None,
                     "stop_order": stops,
                     "updated_at": now_iso,
                     "updated_by": my_name,
                 })
+
+        # soge-unassigned-v1: soge_routes は (施設,曜日,便,vehicle_no) が一意。
+        #   ★先に delete しているので、insert が一意制約で落ちると
+        #     【その曜日の配車表がまるごと消えたまま何も入らない】。
+        #     画面側の番号付けを直したうえで、ここでも念のため付け直す。
+        #     特別枠(0/-1)は番号そのものが意味なので触らない。
+        seen_no = {}
+        for r in rows:
+            k = (r["trip_key"], r["vehicle_no"])
+            if r["vehicle_no"] <= 0:
+                continue
+            if k in seen_no:
+                nxt = max(x["vehicle_no"] for x in rows if x["trip_key"] == r["trip_key"]) + 1
+                print("[soge] 車番の重複を付け直しました %s: %s -> %s"
+                      % (r["trip_key"], r["vehicle_no"], nxt), flush=True)
+                r["vehicle_no"] = nxt
+            seen_no[(r["trip_key"], r["vehicle_no"])] = True
 
         if rows:
             supabase.table("soge_routes").insert(rows).execute()
@@ -23725,6 +23948,16 @@ def _soge_split_by_time(supabase, f_code, geo, people, vehicles, trip, settings)
     """
     target, _max_m = _soge_trip_target(trip, settings)   # soge-trip-target-v1
     max_v = len(vehicles) if vehicles else 1
+
+    # soge-trip-cars-v1: その便で使う台数が指定されていたら、そこで打ち切る。
+    #   ★指定した台数に乗り切らなかった人は overflow に入り、
+    #     配車画面の「まだ車が決まっていない人」に必ず出る（黙って消さない）。
+    try:
+        cap = int(trip.get("max_cars") or 0)
+    except (TypeError, ValueError):
+        cap = 0
+    if cap > 0:
+        max_v = min(max_v, cap)
 
     best = None
     for n_cars in range(1, max_v + 1):
@@ -24075,6 +24308,21 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
 
     for trip in (week.get("trips") or []):
         for v in (trip.get("vehicles") or []):
+            # soge-unassigned-v1
+            #   -1（送迎なし）… 当日の運行表には作らない。乗らないと決めた方なので
+            #   0（まだ車が決まっていない人）… 作る。運転手にも見せて、
+            #      誰も乗せ忘れないようにする（乗る車が無いこと自体が申し送り）
+            _vno = v.get("vehicle_no")
+            try:
+                _vno = int(_vno) if _vno is not None else 1
+            except (TypeError, ValueError):
+                _vno = 1
+            # ★-1 ちょうどでなくても、非正の値はすべて「送迎なし」以外＝未割当として扱う。
+            #   想定外の値を「ふつうの車」として当日データにすると、
+            #   運転手のタブに「車 -2」が出て打刻までできてしまう。
+            if _vno == SOGE_VNO_NORIDE:
+                continue
+
             stops = [s for s in (v.get("stops") or [])
                      if _nth_ok_today(s) and _active_today(s)]
             if not stops:
@@ -24085,7 +24333,10 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
             #   抜かないと、回らない家の分の走行時間が全員の予定に乗ってしまう。
             riding = [s for s in stops
                       if (s.get("user_name") or "").strip() not in leave_names]
-            if len(riding) != len(stops):
+            if _vno <= SOGE_VNO_UNASSIGNED:
+                # 乗る車が決まっていないので、到着予定時刻は出しようがない
+                planned = [None] * len(stops)
+            elif len(riding) != len(stops):
                 drive, _km, _err = _soge_drive_minutes(supabase, f_code, geo, riding)
                 times = _soge_planned_times(trip.get("depart") or "",
                                             riding, drive or 0, settings)
@@ -24106,7 +24357,7 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                     "service_date": date_str,
                     "trip_key": trip.get("trip_key"),
                     "trip_name": trip.get("trip_name"),
-                    "vehicle_no": int(v.get("vehicle_no") or 1),
+                    "vehicle_no": _vno,
                     "vehicle_id": v.get("vehicle_id") or None,
                     "vehicle_name": v.get("vehicle_name") or "",
                     "plate_no": v.get("plate_no") or "",
@@ -24205,27 +24456,42 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
     settings = get_soge_settings(supabase, f_code)
     order = dict((t["key"], i) for i, t in enumerate(settings["trips"]))
 
+    def _vno_of(d):
+        k = d.get("vehicle_no")
+        try:
+            return int(k) if k is not None else 1
+        except (TypeError, ValueError):
+            return 1
+
     def _order_key(d):
+        # soge-unassigned-v1: 未割当(0)は、その便の先頭に出す
         if d.get("is_extra"):
-            return (90, str(d.get("depart_at") or ""), d.get("vehicle_no") or 1)
-        return (order.get(d.get("trip_key"), 89), "", d.get("vehicle_no") or 1)
+            return (90, str(d.get("depart_at") or ""), _vno_of(d))
+        return (order.get(d.get("trip_key"), 89), "", _vno_of(d))
 
     days.sort(key=_order_key)
 
     vehicles = {}
     for d in days:
-        key = str(d.get("vehicle_id") or ("no%s" % d.get("vehicle_no")))
+        # soge-unassigned-v1: 未割当は車ではないので、車両IDで束ねずに専用のタブにする
+        _vno = _vno_of(d)
+        _un = (_vno <= SOGE_VNO_UNASSIGNED)      # 非正はすべて「車が未定」に倒す
+        key = "unassigned" if _un else str(d.get("vehicle_id") or ("no%s" % _vno))
         v = vehicles.setdefault(key, {
             "key": key,
-            "vehicle_id": d.get("vehicle_id"),
-            "vehicle_name": d.get("vehicle_name") or ("車 %s" % (d.get("vehicle_no") or 1)),
-            "plate_no": d.get("plate_no") or "",
-            "driver_name": d.get("driver_name") or "",
+            "unassigned": _un,
+            "vehicle_id": (None if _un else d.get("vehicle_id")),
+            # タブは短く。本文で「この人まだ乗る車が決まっていません」と出す
+            "vehicle_name": ("⚠ 車が未定" if _un
+                             else (d.get("vehicle_name") or ("車 %s" % _vno))),
+            "plate_no": ("" if _un else (d.get("plate_no") or "")),
+            "driver_name": ("" if _un else (d.get("driver_name") or "")),
             "trips": [],
         })
         ss = sorted(by_day.get(d["id"], []), key=lambda x: x.get("seq") or 0)
         v["trips"].append({
             "day_id": d["id"],
+            "unassigned": _un,                                   # soge-unassigned-v1
             "trip_key": d.get("trip_key"),
             "trip_name": d.get("trip_name") or "",
             "is_extra": bool(d.get("is_extra")),                 # soge-extra-v1
@@ -24366,9 +24632,19 @@ def api_soge_run_replan():
             return jsonify({"status": "error",
                             "message": "過ぎた日の予定時刻は引き直しません。"}), 400
 
-        dr = (supabase.table("soge_days").select("id,depart_at")
+        dr = (supabase.table("soge_days").select("id,depart_at,vehicle_no")
               .eq("facility_code", f_code).eq("service_date", date_str).execute())
         days = dr.data or []
+        # soge-unassigned-v1: 「まだ車が決まっていない人」(vehicle_no=0)は
+        #   乗る車が無いので、到着予定時刻を引き直しても意味が無い。飛ばす。
+        def _real(d):
+            k = d.get("vehicle_no")
+            try:
+                k = int(k) if k is not None else 1
+            except (TypeError, ValueError):
+                k = 1
+            return k > 0
+        days = [d for d in days if _real(d)]
         if not days:
             return jsonify({"status": "error", "message": "この日の運行表がありません"}), 400
         sr = (supabase.table("soge_stops")
@@ -24860,6 +25136,19 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
           .eq("facility_code", f_code)
           .gte("service_date", start).lt("service_date", end).execute())
     days = dr.data or []
+
+    # soge-unassigned-v1: 「まだ車が決まっていない人」の枠(vehicle_no=0)は、
+    #   実際に走った記録ではないので運行記録表には絶対に出さない。
+    #   ★"or 1" で判定すると 0 が 1 になって車1号車に混ざる。int で見ること。
+    def _is_real_car(d):
+        k = d.get("vehicle_no")
+        try:
+            k = int(k) if k is not None else 1
+        except (TypeError, ValueError):
+            k = 1
+        return k > 0
+
+    days = [d for d in days if _is_real_car(d)]
     if not days:
         return []
 
