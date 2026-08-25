@@ -243,6 +243,10 @@
         </div>
         <input type="hidden" id="mtgPatient" value="">
       </div>
+      <!-- meetings-focus-person-v1: 同じ録音から2人目以降を作っているときだけ出る案内 -->
+      <div id="mtgFocusHint" style="display:none; margin-top:10px; padding:10px 12px;
+           border:1px solid #90caf9; background:#e8f2fd; border-radius:10px;
+           font-size:0.82rem; color:#15497a; line-height:1.6;"></div>
     </div>
 
     <!-- ステップ1: 録音 -->
@@ -397,6 +401,10 @@
         <button class="mtg-btn" id="mtgSaveBtn" onclick="mtgSave()">
           <span class="material-symbols-outlined" style="font-size:20px;">save</span>保存
         </button>
+        <!-- meetings-focus-person-v1: 保存が済むと出る。ご夫婦など複数の利用者が出た会議むけ -->
+        <button class="mtg-btn sec" id="mtgNextPersonBtn" style="display:none;" onclick="mtgNextPerson()">
+          <span class="material-symbols-outlined" style="font-size:20px;">group_add</span>この録音から、別の利用者ぶんも作る
+        </button>
         <button class="mtg-btn sec mtg-pdf-btn" id="mtgPdfIcf" style="display:none;" onclick="mtgPdf('icf')">
           <span class="material-symbols-outlined" style="font-size:20px;">picture_as_pdf</span>ICF図PDF
         </button>
@@ -520,7 +528,10 @@ function mtgStartNew() {
                assessment: [], asmtSeq: 1, srcType: 'assessment',
                minutesStruct: null,
                audioBlobs: [], failedChunks: 0, okChunks: 0, storeError: '',   // meetings-audio-safety-v1
-               editingMeetingId: null };
+               editingMeetingId: null,
+               multiFocus: false };   // meetings-focus-person-v1
+  var _fh = document.getElementById('mtgFocusHint'); if (_fh) _fh.style.display = 'none';
+  var _np = document.getElementById('mtgNextPersonBtn'); if (_np) _np.style.display = 'none';
   document.getElementById('mtgTitle').value = '';
   const today = new Date().toISOString().slice(0,10);
   document.getElementById('mtgDate').value = today;
@@ -991,9 +1002,23 @@ async function mtgSummarize() {
   btn.disabled = true; btn.innerHTML = '<span class="mtg-spin"></span>作成中...';
   if (overlay) overlay.classList.add('is-active');
   try {
+    // meetings-focus-person-v1: 「別の利用者ぶんも作る」で始めたときだけ、
+    // 誰についての議事録かをAIに伝える。ふだんの1人の会議は今までと同じ。
+    const body = { transcript };
+    if (mtgState.multiFocus) {
+      const fn = mtgFocusName();
+      if (fn) { body.focus_name = fn; }
+      else {
+        alert('先に利用者を選んでください。');
+        btn.disabled = false;
+        btn.innerHTML = '<span class="material-symbols-outlined" style="font-size:20px;">auto_awesome</span>議事録を作成';
+        if (overlay) overlay.classList.remove('is-active');
+        return;
+      }
+    }
     const r = await fetch('/api/meeting/summarize', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ transcript })
+      body: JSON.stringify(body)
     });
     const d = await r.json();
     if (d.status === 'success') {
@@ -1190,6 +1215,8 @@ async function mtgSave(opts) {
       savedId = mtgState.editingMeetingId;
       mtgUpdatePdfButtons();
       if (typeof mtgClearDraft === 'function') mtgClearDraft();  // 保存成功→下書き破棄
+      // meetings-focus-person-v1: 保存できたら「別の利用者ぶんも作る」を出す
+      if (!silent) { var _np2 = document.getElementById('mtgNextPersonBtn'); if (_np2) _np2.style.display = ''; }
       if (!silent) alert('保存しました（付箋 '+d.saved_stickies+'件）。PDF出力ができます。');
     } else {
       if (!silent) { alert(d.message || '保存に失敗しました'); } else { throw new Error(d.message || '保存に失敗しました'); }
@@ -1292,7 +1319,83 @@ function mtgSelectPatient(id){
   document.getElementById('mtgPatientBadge').classList.add('show');
   document.getElementById('mtgPatientCands').classList.remove('show');
   document.getElementById('mtgPatientSearch').value = '';
+  mtgUpdateFocusHint();  // meetings-focus-person-v1
 }
+
+/* ===== meetings-focus-person-v1 ここから =====
+   ご夫婦など、1回の会議に複数の利用者が出たときのための仕組み。
+   録音も文字起こしも1回のまま、議事録だけを人ごとに作り分ける。
+
+   ★保存は「1会議＝1利用者」のまま（patient_id は1つ）。DBの作りは触っていない。
+     2人目は「別の会議」として2件目に保存される。
+   ★音声は1人目の記録にだけ付く。2人目は sessionId を新しくするので、
+     同じ音声を二重に保存しない。
+   ★editingMeetingId を必ず null に戻すこと。
+     戻し忘れると、2人目の保存が1人目の記録を上書きしてしまう。 */
+
+// 選んでいる利用者の名前（「(No.12) 山田太郎」→「山田太郎」）
+function mtgFocusName(){
+  var el = document.getElementById('mtgPatientName');
+  if (!el || !document.getElementById('mtgPatient').value) return '';
+  return String(el.textContent || '').replace(/^\s*\(No\.[^)]*\)\s*/, '').trim();
+}
+
+function mtgUpdateFocusHint(){
+  var el = document.getElementById('mtgFocusHint');
+  if (!el) return;
+  if (!mtgState.multiFocus) { el.style.display = 'none'; return; }
+  var fn = mtgFocusName();
+  el.style.display = 'block';
+  el.innerHTML = fn
+    ? '同じ録音から <b>' + mtgEsc(fn) + '</b> さんの議事録を作っています。'
+      + '議事録とアセスメントは、この方に絞って作られます。'
+      + '<br>※ 音声は1人目の記録にだけ付きます。'
+    : '<b>次の利用者を選んでください。</b>文字起こしはそのまま使われます。';
+}
+
+// 同じ録音から、別の利用者ぶんの議事録を作る
+function mtgNextPerson(){
+  var t = document.getElementById('mtgTranscript').value;
+  if (!t.trim()) { alert('文字起こしがありません。'); return; }
+  if (!confirm('この録音から、別の利用者ぶんの議事録を作ります。\n\n'
+             + '・文字起こしはそのまま残ります\n'
+             + '・利用者／議事録／アセスメント／ICFは白紙に戻ります\n'
+             + '・いま保存した記録は、そのまま残ります\n\n'
+             + '※ 先に「保存」を済ませてから進んでください。')) return;
+
+  var title = document.getElementById('mtgTitle').value;
+  var date  = document.getElementById('mtgDate').value;
+
+  mtgState = { sessionId: uuid(), chunkIndex: 0, recorder: null, recording: false,
+               transcriptParts: {}, classifyResults: [], boardCards: [], cardSeq: 1,
+               assessment: [], asmtSeq: 1, srcType: 'assessment',
+               minutesStruct: null,
+               audioBlobs: [], failedChunks: 0, okChunks: 0, storeError: '',
+               editingMeetingId: null,   // ★1人目を上書きしないよう必ず空に
+               multiFocus: true };
+
+  document.getElementById('mtgTitle').value = title;
+  document.getElementById('mtgDate').value  = date;
+  mtgClearPatient();
+  document.getElementById('mtgTranscript').value = t;   // ★文字起こしだけ残す
+  document.getElementById('mtgMinutes').value = '';
+  document.getElementById('mtgAssessCard').style.display = 'none';
+  document.getElementById('mtgAssessList').innerHTML = '';
+  document.getElementById('mtgBoard').innerHTML = '';
+  document.getElementById('mtgChunks').textContent = '';
+  document.getElementById('mtgRecStatus').textContent = '';
+  if (typeof mtgHideSafety === 'function') mtgHideSafety();
+  ['mtgPdfMinutes','mtgPdfAssess','mtgPdfIcf','mtgPdfAll'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.style.display = 'none';
+  });
+  var np = document.getElementById('mtgNextPersonBtn'); if (np) np.style.display = 'none';
+  mtgShowSaveArea();
+  mtgUpdateFocusHint();
+  var card = document.getElementById('mtgInfoCard');
+  if (card && card.scrollIntoView) card.scrollIntoView({ behavior:'smooth', block:'start' });
+  var s = document.getElementById('mtgPatientSearch'); if (s) s.focus();
+}
+/* ===== meetings-focus-person-v1 ここまで ===== */
 
 function mtgClearPatient(){
   document.getElementById('mtgPatient').value = '';
