@@ -191,6 +191,10 @@
       <button class="mtg-btn" onclick="mtgStartNew()">
         <span class="material-symbols-outlined" style="font-size:20px;">add</span>新規会議
       </button>
+      <!-- meetings-recover-ui-v1 -->
+      <button class="mtg-btn sec" id="mtgRecoverBtn" onclick="mtgRecoverOpen()" title="保存されている録音から、文字起こしをやり直す">
+        <span class="material-symbols-outlined" style="font-size:20px;">restore</span>録音から復元
+      </button>
       <button class="mtg-btn sec" id="mtgCleanupBtn" onclick="mtgCleanupAudio()" title="担当者会議・勉強会の古い音声を、各最新5件を残して削除">
         <span class="material-symbols-outlined" style="font-size:20px;">cleaning_services</span>音声を整理
       </button>
@@ -434,6 +438,35 @@
         </div>
       </div>
     </div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     meetings-recover-ui-v1 : 録音から復元
+     サーバーには /api/meeting/recover_list と /api/meeting/recover_transcribe が
+     前からあったが、それを呼ぶ画面が無く、誰も使えなかった。2026-08-25 に本番で発覚。
+
+     ★このモーダルも、一覧ビュー・編集ビューの「外」に置くこと。
+       中に入れると、一覧を見ているときに開かなくなる（同じ事故が前にあった）。
+     ★復元しても、いまある記録は一切書き換えない。
+       かならず「新しい会議」として開き、文字起こしだけを入れる。
+     ══════════════════════════════════════════════════════════════ -->
+<div id="mtgRecoverBack" onclick="if(event.target===this)mtgRecoverClose()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100001;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;width:100%;max-width:480px;max-height:84vh;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.28);">
+    <div style="padding:14px 16px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px;">
+      <span class="material-symbols-outlined" style="color:#2f6b5e;">restore</span>
+      <b style="flex:1;font-size:1rem;">録音から復元</b>
+      <button type="button" onclick="mtgRecoverClose()" style="background:none;border:0;font-size:1.4rem;color:#888;cursor:pointer;line-height:1;padding:0 4px;">×</button>
+    </div>
+    <div style="padding:9px 14px;font-size:.79rem;color:#8a8f8c;border-bottom:1px solid #f2f2f2;line-height:1.55;">
+      保存されている録音から、文字起こしをやり直します。<br>
+      できあがった文字起こしは<b>新しい会議として開きます</b>。いまある記録は書き換わりません。
+    </div>
+    <div id="mtgRecoverList" style="flex:1;overflow-y:auto;min-height:90px;"></div>
+    <div id="mtgRecoverProg" style="display:none;padding:12px 14px;border-top:1px solid #eee;background:#fffbea;font-size:.86rem;color:#5c4a00;line-height:1.6;"></div>
+    <div style="padding:12px 14px;border-top:1px solid #eee;">
+      <button type="button" id="mtgRecoverCloseBtn" onclick="mtgRecoverClose()" style="width:100%;background:#eee;color:#555;border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer;">閉じる</button>
+    </div>
+  </div>
+</div>
 
 <script src="{{ static_v('rec_keepalive.js') }}"></script><!-- rec-keepalive-v1 -->
 <script src="{{ static_v('rec_overlay.js') }}"></script><!-- rec-overlay-v1: 録音したまま他の画面を重ねて開く -->
@@ -718,6 +751,138 @@ async function mtgAudioDeleteSelected() {
     else { alert(d.message || '削除に失敗しました'); if (b) b.disabled = false; }
   } catch (e) { alert('通信エラー'); if (b) b.disabled = false; }
 }
+
+/* ===== meetings-recover-ui-v1: 録音から復元 ここから =====
+   ★一度に全部の区間を文字起こしすると時間がかかりすぎて通信が切れる。
+     そこで2区間ずつに分けて何度も呼び、つなげている（RECOVER_STEP）。
+   ★復元した文字起こしは、かならず「新しい会議」に入れる。
+     既存の記録に書き戻すと、上書き事故のもとになるため。 */
+var RECOVER_STEP = 2;          // 一度にお願いする区間の数
+var mtgRecoverBusy = false;
+
+function mtgRecoverOpen(){
+  var b = document.getElementById('mtgRecoverBack');
+  if (b) b.style.display = 'flex';
+  mtgRecoverReload();
+}
+function mtgRecoverClose(){
+  if (mtgRecoverBusy) { alert('復元中です。終わるまでお待ちください。'); return; }
+  var b = document.getElementById('mtgRecoverBack');
+  if (b) b.style.display = 'none';
+  var p = document.getElementById('mtgRecoverProg');
+  if (p) { p.style.display = 'none'; p.textContent = ''; }
+}
+// 「2026-08-25T04:00:27.268Z」→「8/25 13:00」
+// ★かならず日本時間で出す。端末の時計の設定に左右されると、
+//   どの録音か見分けられなくなるため（保存時刻は世界標準時で入っている）。
+function mtgRecFmt(iso){
+  try {
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('ja-JP', { timeZone:'Asia/Tokyo',
+      month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' }).format(d);
+  } catch(e){ return ''; }
+}
+async function mtgRecoverReload(){
+  var el = document.getElementById('mtgRecoverList');
+  if (el) el.innerHTML = '<div style="padding:16px;color:#888;text-align:center;">読み込み中…</div>';
+  try {
+    var d = await (await fetch('/api/meeting/recover_list')).json();
+    if (d.status !== 'success') {
+      if (el) el.innerHTML = '<div style="padding:16px;color:#c0392b;">取得に失敗: ' + mtgEsc(d.message||'') + '</div>';
+      return;
+    }
+    var ss = d.sessions || [];
+    if (!ss.length) {
+      if (el) el.innerHTML = '<div style="padding:20px;color:#888;text-align:center;">保存されている録音はありません。</div>';
+      return;
+    }
+    el.innerHTML = ss.map(function(s){
+      var when = mtgRecFmt(s.latest) || '日時不明';
+      var info = s.saved && s.saved_info
+        ? '<span style="color:#2f6b5e;">記録あり：' + mtgEsc(s.saved_info.title || '') + '</span>'
+        : '<span style="color:#c0392b;font-weight:700;">どの記録にも紐づいていません</span>';
+      var mins = Math.max(1, (s.chunks||0) * 5);
+      return '<div style="padding:12px 14px;border-bottom:1px solid #eee;">'
+        + '<div style="font-weight:700;color:#2f3b38;">' + mtgEsc(when) + '　'
+        + (s.chunks||0) + '区間（最大' + mins + '分ほど）</div>'
+        + '<div style="font-size:.79rem;margin:3px 0 8px;">' + info + '</div>'
+        + '<button type="button" class="mtg-recover-go" data-sid="' + mtgEsc(s.session_id) + '" '
+        + 'data-chunks="' + (s.chunks||0) + '" '
+        + 'style="background:#2f6b5e;color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer;font-size:.86rem;">'
+        + '文字起こしをやり直す</button>'
+        + '</div>';
+    }).join('');
+    Array.prototype.forEach.call(el.querySelectorAll('.mtg-recover-go'), function(btn){
+      btn.onclick = function(){ mtgRecoverRun(btn.getAttribute('data-sid'),
+                                              parseInt(btn.getAttribute('data-chunks'),10) || 0); };
+    });
+  } catch(e) {
+    if (el) el.innerHTML = '<div style="padding:16px;color:#c0392b;">通信エラー</div>';
+  }
+}
+
+async function mtgRecoverRun(sid, chunks){
+  if (!sid) return;
+  if (mtgRecoverBusy) return;
+  var est = Math.max(1, Math.ceil((chunks||1) * 0.6));
+  if (!confirm('この録音から文字起こしをやり直します。\n\n'
+             + '・' + (chunks||'?') + '区間ぶん、おおよそ' + est + '分ほどかかります\n'
+             + '・終わるまで、この画面を閉じないでください\n'
+             + '・いまある記録は書き換わりません（新しい会議として開きます）')) return;
+
+  mtgRecoverBusy = true;
+  var prog = document.getElementById('mtgRecoverProg');
+  var closeBtn = document.getElementById('mtgRecoverCloseBtn');
+  if (closeBtn) closeBtn.disabled = true;
+  Array.prototype.forEach.call(document.querySelectorAll('.mtg-recover-go'), function(b){ b.disabled = true; });
+  function say(msg){ if (prog) { prog.style.display = 'block'; prog.innerHTML = msg; } }
+
+  var parts = [], start = 0, total = chunks || 0, errs = 0, guard = 0;
+  try {
+    while (guard++ < 200) {
+      say('<span class="mtg-spin"></span>文字起こし中… ' + start + ' / ' + (total || '?') + '区間<br>'
+        + '<small>この画面を閉じないでください。</small>');
+      var r = await fetch('/api/meeting/recover_transcribe', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ session_id: sid, start: start, count: RECOVER_STEP })
+      });
+      var d = await r.json();
+      if (d.status !== 'success') { throw new Error(d.message || '失敗しました'); }
+      if (d.transcript) parts.push(d.transcript);
+      errs += (d.errors || 0);
+      total = d.total_chunks || total;
+      var next = (typeof d.next_start === 'number') ? d.next_start : (start + RECOVER_STEP);
+      if (next <= start) break;             // 進まないときは止める（無限ループ防止）
+      start = next;
+      if (d.done || start >= total) break;
+    }
+  } catch(e) {
+    say('<b style="color:#c0392b;">途中で止まりました：' + mtgEsc(String(e.message||e)) + '</b><br>'
+      + 'ここまでの文字起こしは、このあと画面に入れます。');
+    await new Promise(function(res){ setTimeout(res, 2500); });
+  }
+
+  mtgRecoverBusy = false;
+  if (closeBtn) closeBtn.disabled = false;
+  Array.prototype.forEach.call(document.querySelectorAll('.mtg-recover-go'), function(b){ b.disabled = false; });
+
+  var text = parts.join('\n').trim();
+  if (!text) { alert('文字起こしができませんでした。音声が読めなかった可能性があります。'); return; }
+
+  mtgRecoverClose();
+  mtgStartNew();                                  // ★新しい会議として開く（上書きしない）
+  document.getElementById('mtgTranscript').value = text;
+  if (typeof mtgAutosave === 'function') mtgAutosave();
+  mtgShowSaveArea();
+  alert('文字起こしを復元しました（' + start + '区間'
+      + (errs ? '／読めなかった区間 ' + errs + '件' : '') + '）。\n\n'
+      + '利用者を選んで「議事録を作成」してください。\n'
+      + '※ これは新しい会議です。いまある記録は書き換わっていません。');
+  var t = document.getElementById('mtgTranscript');
+  if (t && t.scrollIntoView) t.scrollIntoView({ behavior:'smooth', block:'center' });
+}
+/* ===== meetings-recover-ui-v1 ここまで ===== */
 
 async function mtgToggleRec() {
   if (mtgState.recording) { mtgStopRec(); return; }

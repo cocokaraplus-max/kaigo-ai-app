@@ -32083,6 +32083,19 @@ def api_meeting_recover_transcribe():
             return jsonify({"status": "error", "message": "この録音の音声ファイルが見つかりませんでした"}), 404
         # チャンク名(0000, 0001 ...)で昇順
         afiles.sort(key=lambda x: (x.get("name") or ""))
+        # meetings-recover-ui-v1: 区間数が多いと1回の通信では時間切れになるため、
+        #   start / count で小分けにできるようにした。省略時は今まで通り全部やる。
+        total_chunks = len(afiles)
+        try:
+            _st = max(0, int(data.get("start") or 0))
+        except Exception:
+            _st = 0
+        try:
+            _ct = int(data.get("count") or 0)
+        except Exception:
+            _ct = 0
+        if _ct > 0:
+            afiles = afiles[_st:_st + _ct]
         model = get_generative_model()
         parts = []
         errors = 0
@@ -32103,7 +32116,12 @@ def api_meeting_recover_transcribe():
                 print(f"[meeting-recover] chunk fail {path}: {_te}", flush=True)
         transcript = "\n".join(parts).strip()
         return jsonify({"status": "success", "transcript": transcript,
-                        "chunks": len(afiles), "errors": errors, "session_id": session_id})
+                        "chunks": len(afiles), "errors": errors, "session_id": session_id,
+                        # meetings-recover-ui-v1: 続きがあるかを画面に返す
+                        "total_chunks": total_chunks,
+                        "start": _st,
+                        "next_start": _st + len(afiles),
+                        "done": (_st + len(afiles)) >= total_chunks})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 # --- /meetings-recover-audio-v1 ---
