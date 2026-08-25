@@ -469,6 +469,7 @@
 </div>
 
 <script src="{{ static_v('rec_keepalive.js') }}"></script><!-- rec-keepalive-v1 -->
+<script src="{{ static_v('rec_hold.js') }}"></script><!-- rec-hold-v1 -->
 <script src="{{ static_v('rec_overlay.js') }}"></script><!-- rec-overlay-v1: 録音したまま他の画面を重ねて開く -->
 <script>
 // ===== 状態 =====
@@ -967,6 +968,12 @@ async function mtgStartRec() {
       };
       mtgState.recorder = rec;
       rec.start();
+      // rec-hold-v1: 同じ音を保険の録音器でも録り、15秒ごとに端末へ書き溜める。
+      //   ★上の rec には一切触らない。サーバーへ送るものは今までと同じ。
+      if (window.recHold) {
+        recHold.begin({ sessionId: mtgState.sessionId, chunkIndex: mtgState.chunkIndex,
+                        stream: stream, label: '担当者会議' });
+      }
       // 5分後に区切る
       mtgState._chunkTimer = setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, MTG_CHUNK_MS);
     };
@@ -997,6 +1004,10 @@ async function mtgResumeRec() {
       };
       mtgState.recorder = rec;
       rec.start();
+      if (window.recHold) {   // rec-hold-v1: 中断から再開したときも保険を掛け直す
+        recHold.begin({ sessionId: mtgState.sessionId, chunkIndex: mtgState.chunkIndex,
+                        stream: stream, label: '担当者会議' });
+      }
       mtgState._chunkTimer = setTimeout(() => { if (rec.state === 'recording') rec.stop(); }, MTG_CHUNK_MS);
     };
     document.getElementById('mtgRecStatus').innerHTML = '<span class="mtg-rec-dot"></span>録音中...(再開)';
@@ -1009,6 +1020,7 @@ async function mtgResumeRec() {
 function mtgStopRec() {
   mtgState.recording = false;
   if (window.recKeepAlive) recKeepAlive.stop();  // rec-keepalive-v2
+  if (window.recHold) recHold.finish();  // rec-hold-v1: 保険の録音器も止める(最後の尻尾は残す)
   if (window.recOverlay) recOverlay.stop();  // rec-overlay-v1
   document.getElementById('mtgRecBtn').classList.remove('on');
   document.getElementById('mtgRecLabel').textContent = '録音開始';
@@ -1035,6 +1047,9 @@ async function mtgSendChunk(blob) {
       mtgState.transcriptParts[d.chunk_index] = d.transcript || '';
       mtgRebuildTranscript();
       mtgState.okChunks = (mtgState.okChunks||0)+1;
+      // rec-hold-v1: 無事に送れた区切りだけ、端末の書き溜めを消す。
+      // ★送信に失敗したままでは消さないこと。落ちたときの唯一の控えになる。
+      if (window.recHold) recHold.uploaded(idx);
       if (d.store_error) mtgState.storeError = d.store_error;  // meetings-audio-diag-v1: サーバー保存の失敗理由を控える
       document.getElementById('mtgChunks').textContent = '文字起こし済みチャンク: '+Object.keys(mtgState.transcriptParts).length;
     } else {
@@ -1922,5 +1937,88 @@ document.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 <!-- /meetings-autosave-draft-v1 -->
+
+<!-- rec-hold-v1: 端末に残った「まだ送っていない録音」を拾う -->
+<script id="mtg-hold-recover">
+(function(){
+  'use strict';
+  function fmt(sec){ return sec >= 60 ? (Math.round(sec/60) + '分') : (sec + '秒'); }
+
+  async function sendOne(g){
+    var ext = ((g.blob.type||'audio/webm').split('/')[1]||'webm').split(';')[0];
+    var fd = new FormData();
+    fd.append('audio', g.blob, 'hold_' + g.chunk + '.' + ext);
+    fd.append('session_id', g.sid);
+    fd.append('chunk_index', g.chunk);
+    var r = await fetch('/api/meeting/transcribe', { method:'POST', body: fd });
+    return await r.json();
+  }
+
+  async function recoverAll(list, bar, msgEl){
+    Array.prototype.slice.call(bar.querySelectorAll('button')).forEach(function(b){ b.disabled = true; });
+    // ★かならず「新しい会議」に入れる。既存の記録に書き戻すと上書き事故のもと。
+    if (typeof mtgStartNew === 'function') { try { mtgStartNew(); } catch(e) {} }
+    var texts = [], ng = 0;
+    for (var i = 0; i < list.length; i++){
+      msgEl.textContent = '文字起こし中… (' + (i+1) + '/' + list.length + ')';
+      try {
+        var d = await sendOne(list[i]);
+        if (d && d.status === 'success'){
+          if ((d.transcript||'').trim()) texts.push(d.transcript.trim());
+          await recHold.drop(list[i].sid, list[i].chunk);
+        } else { ng++; }
+      } catch(e) { ng++; }
+    }
+    var t = document.getElementById('mtgTranscript');
+    if (t) t.value = (t.value ? (t.value + '\n') : '') + texts.join('\n');
+    bar.remove();
+    alert('端末に残っていた録音から、文字起こしを復元しました（' + texts.length + '区間'
+        + (ng ? '／読めなかった区間 ' + ng + '件' : '') + '）。\n\n'
+        + '利用者を選んで「議事録を作成」してください。\n'
+        + '※ これは新しい会議です。いまある記録は書き換わっていません。');
+    if (t && t.scrollIntoView) t.scrollIntoView({ behavior:'smooth', block:'center' });
+  }
+
+  function show(list){
+    if (document.getElementById('mtg-hold-banner')) return;
+    var sec = list.reduce(function(m,x){ return m + (x.seconds||0); }, 0);
+    var top = document.getElementById('mtg-draft-banner') ? 64 : 0;   // 下書きの帯と重ねない
+    var bar = document.createElement('div');
+    bar.id = 'mtg-hold-banner';
+    bar.style.cssText = 'position:fixed;left:0;right:0;top:' + top + 'px;z-index:99998;'
+      + 'background:#e8f5e9;border-bottom:2px solid #2e7d32;'
+      + 'padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 10px;'
+      + 'display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;'
+      + 'font-size:14px;color:#1b5e20;box-shadow:0 2px 10px rgba(0,0,0,.15);';
+    var msg = document.createElement('span');
+    msg.className = 'holdmsg';
+    msg.innerHTML = '<b>前回の録音が、送信されないまま端末に残っています</b>（約'
+      + fmt(sec) + '・' + list.length + '件）。文字起こししますか？';
+    var b1 = document.createElement('button'); b1.textContent = '文字起こしする';
+    b1.style.cssText = 'background:#2e7d32;color:#fff;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;';
+    var b2 = document.createElement('button'); b2.textContent = '破棄';
+    b2.style.cssText = 'background:#eee;color:#555;border:none;border-radius:8px;padding:7px 16px;font-weight:700;cursor:pointer;';
+    b1.addEventListener('click', function(){ recoverAll(list, bar, msg); });
+    b2.addEventListener('click', function(){
+      if (!confirm('端末に残っている録音を捨てます。よろしいですか？（元に戻せません）')) return;
+      recHold.clearAll().then(function(){ bar.remove(); });
+    });
+    bar.appendChild(msg); bar.appendChild(b1); bar.appendChild(b2);
+    document.body.appendChild(bar);
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(function(){
+      if (!window.recHold) return;
+      // 録音中は出さない（いま書き溜めている途中のものを「残り」と誤って見せないため）
+      if (window.mtgState && mtgState.recording) return;
+      recHold.pending().then(function(list){
+        if (list && list.length) show(list);
+      }).catch(function(){});
+    }, 1400);
+  });
+})();
+</script>
+<!-- /rec-hold-v1 -->
 
 {% endblock %}
