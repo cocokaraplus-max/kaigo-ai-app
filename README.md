@@ -27,6 +27,182 @@ Session 56 までの完全な軌跡、技術的知見、作業方法論を記載
 
 ---
 
+## 利用者番号（カルテ番号）が画面によって違っていた 2026-08-25  <!-- patient-number-sync-2026-08-25 -->
+
+**本番反映済み**（`ee35d7f`）。データ側の一括修正も本番で実施済み。
+
+### 何が起きたか
+ケース記録閲覧の利用者検索で、
+1. 利用者基本情報に入っている番号と**違う番号**が出る人がいる
+2. 同じ人が**2件**表示される
+3. 姓だけ・ふりがな無しの**断片のような行**が出る
+
+### 原因
+利用者の番号は **2つの表に別々に保存されている**。
+
+| 表 | 列 | 使う画面 |
+|---|---|---|
+| `patient_profiles` | `patient_number` | 利用者基本情報（編集するのはここ） |
+| `patients` | `chart_number` | ケース記録閲覧の利用者検索、バイタル、姓名判断 など |
+
+`patients.chart_number` は **`_ensure_patient_row()` で行を作るときに一度コピーされるだけ**で、
+その後 `api_admin_patient_save()` で番号を直しても更新されなかった。
+改名時は `user_name` だけ追随する処理（`patient-int-link-fix-v1`）が入っていたのに、**番号だけ抜けていた**。
+
+さらに、番号が空のまま作られた行には `max+1` の**独自採番**が入る（`_ensure_patient_row`）。
+バイタル経由（`_resolve_visit_pid`）では `chart_number = chart or "臨時"` になることもある。
+この採番は `patient_number` と無関係なので、**別人に同じ番号が付く**ことがある。
+
+### 調べた結果（本番・氏名を出さない形で集計）
+- 番号がズレていた人：**23人**
+  - うち17人は `3` と `003` の**ゼロ埋めの差だけ**（実害小）
+  - 残り6人は**本当に違う番号**（例 250→248、252→250）。過去に番号を振り直したとき `patients` 側が取り残された
+- 同じ氏名が2件ある人：**1人**
+- 「臨時」など数字でない番号：**0件**
+- ふりがなが空の行：**1件**
+- `patient_profiles` に存在しない幽霊行：**2件**
+
+### やったこと① データの一括修正（本番SQL・実施済み）
+控えを取ってから `patient_profiles.patient_number` を正として上書きした。
+
+```sql
+create table if not exists patients_chart_backup_20260825 as
+select id, facility_code, chart_number from patients;   -- 89行
+
+update patients p
+set chart_number = pp.patient_number
+from patient_profiles pp
+where pp.facility_code = p.facility_code
+  and pp.user_name     = p.user_name
+  and coalesce(nullif(btrim(p.chart_number::text), ''), '-')
+   <> coalesce(nullif(btrim(pp.patient_number::text), ''), '-');
+```
+
+実行後の確認クエリで**ズレ 0件**。
+★戻すときは `patients_chart_backup_20260825` から `id` で書き戻す。
+
+### やったこと② 二度とズレないようにする（`patient-number-sync-v1`）
+`api_admin_patient_save()` の更新ブランチ、`patients rename sync` の直後に追加。
+`row` に `patient_number` があれば `patients.chart_number` も同じ値で更新する。
+氏名がリクエストに含まれない部分保存でも同期できるよう、氏名は `_new_name` → `_old_name` → DB引き の順で解決する。
+
+**なぜ上書きしてよいか：** `chart_number` は**表示専用**。記録の紐づけは `user_name` と `patients.id` で行っており、
+`chart_number` を検索キーにしている箇所は `api_bulk_register_patients` の insert 直後の自己参照1箇所だけ（全使用箇所を確認済み）。
+
+### やったこと③ 重複行・幽霊行の掃除（2026-08-25 実施・完了）
+
+番号の同期だけでは「同じ人が2件出る」「姓だけの断片が出る」は消えないので、続けて掃除した。
+
+**まず全部の紐づき先を洗い出した。** 最初は `patient_id` を持つ表を7つしか見ておらず、**危うく取りこぼしたまま消すところだった**。
+次からは必ずこれを先に流すこと。
+
+```sql
+select table_name, column_name, data_type
+from information_schema.columns
+where table_schema = 'public'
+  and column_name in ('patient_id', 'patient_int_id')
+order by table_name;
+```
+
+★**型で見分けること。** `patient_id` が **uuid** の表（`meetings` `soge_stops` `photo_orders` `care_level_history`
+`patient_jihi_weekdays` `soge_geocode` `line_friends` `visit_day_overrides`）は **`patient_profiles.id` を指している**。
+`patients.id`（整数）と突き合わせても必ず0件になるので、数えても意味がない。
+`patients.id` を持つのは **text 型**（`patient_visit_days` `vitals` `vital_daily_includes` `vital_daily_excludes`
+`vital_recheck_schedules` `visit_records` `body_weights` `fitness_tests` `life_check_appointments`
+`life_function_checks` `renraku_notes` `renraku_patient_settings`）と、
+**bigint の `disaster_records.patient_int_id`。**
+
+**対象4行の実態：**
+
+| `patients.id` | 番号 | 状態 | 紐づき | 処置 |
+|---|---|---|---|---|
+| 84 | 251 | 幽霊・かな無し（姓だけの断片） | 全表 0件 | **削除** |
+| 87 | 251 | 正常 | `patient_visit_days` 1件 | 残す |
+| 88 | 251 | 87 と同名の重複 | 全表 0件 | **削除** |
+| 82 | 249 | 幽霊 | `patient_visit_days` 1件 | **削除せず氏名を修正** |
+
+**id 82 は削除しなくてよかった。** 現役の利用者さんで、`patient_profiles` にもちゃんと居た。
+**2つの表で漢字が1字だけ違っていた**（`patients`=「小倉癒」／`patient_profiles`=「小倉愈」＝正）。
+番号もふりがなも一致していたので、`user_name` で join する処理が全部すり抜けていた。
+出どころは `api_scan_patients_from_image`（利用者一覧を撮影してAIに読ませる一括登録）の**誤読**とみられる。
+
+★**幽霊行を見つけても、いきなり消さないこと。** まず**ふりがなで突き合わせて**、漢字違いの同一人物でないか確かめる。
+スペースの違いだけを見ても足りない（今回それで一度空振りした）。
+
+```sql
+select p.id, p.chart_number, p.user_kana,
+       pp.id as profile_id, pp.patient_number, pp.user_name_kana,
+       (p.user_name = pp.user_name) as kanji_same
+from patients p
+join patient_profiles pp
+  on  pp.facility_code = p.facility_code
+ and  regexp_replace(coalesce(pp.user_name_kana, ''), '\s|　', '', 'g')
+    = regexp_replace(coalesce(p.user_kana, ''),      '\s|　', '', 'g')
+where p.id = <幽霊行のid>;
+```
+
+**実行したSQL（控え → 削除 → 氏名修正）：**
+
+```sql
+-- 控え
+create table if not exists patients_deleted_backup_20260825 as
+select * from patients where false;
+insert into patients_deleted_backup_20260825
+select * from patients where id in (84, 88);          -- 2行
+
+-- 削除（曜日設定がぶら下がっていたら消さない、という保険付き）
+delete from patients
+where id in (84, 88)
+  and not exists (select 1 from patient_visit_days v
+                  where v.patient_id = patients.id::text);
+
+-- id 82 の氏名を基本情報に合わせる
+create table if not exists patients_name_backup_20260825 as
+select id, facility_code, user_name, chart_number from patients where false;
+insert into patients_name_backup_20260825
+select id, facility_code, user_name, chart_number from patients where id = 82;
+
+update patients p
+set user_name = pp.user_name
+from patient_profiles pp
+where p.id = 82 and pp.id = '0e646dff-65a3-4f8d-b4f4-d106765ea37e';
+
+update patient_visit_days v
+set user_name = p.user_name
+from patients p
+where p.id = 82 and v.patient_id = '82';
+```
+
+**結果：`dup_names = 0` / `ghosts = 0` / `number_mismatch = 0`。**
+
+### 控えテーブル（残してある。落ち着いたら drop してよい）
+- `patients_chart_backup_20260825` … 番号一括更新の前の `id, facility_code, chart_number`（89行）
+- `patients_deleted_backup_20260825` … 削除した2行の**全カラム**
+- `patients_name_backup_20260825` … 氏名を直した1行の修正前
+
+★氏名が入っているので**要配慮個人情報**。外に出さないこと。不要になったら `drop table` すること。
+
+### 残っている問題（未対応）
+- ~~重複行1件・幽霊行2件~~ → **2026-08-25 に解消済み**（上の「やったこと③」）。
+- `patients` に **`(facility_code, user_name)` の一意制約が無い**。
+  `api_bulk_register_patients` と `api_add_patient` は**重複チェックをしていない**ので、今も増えうる。
+- 旧API **`/api/update_patient`** は `patients.chart_number` を直接書き換え、`patient_profiles` に戻さない。
+  **逆方向のズレ**が起きうる。まだ使われているか要確認。
+- 改名時の `update(user_name=新).eq(user_name=旧)` は**一致する行を全部**書き換える。
+  重複行があると両方が同じ名前になる。一意制約が入るまでの潜在バグ。
+
+### 調べ方（次に同じ疑いが出たとき）
+`db/diag_patient_number_20260825.sql` に、氏名を出さずに件数だけ出す診断クエリを置いてある。
+まず「1本で5つの数字が出る」クエリを流し、`number_mismatch` が 0 でなければ内訳を見る。
+
+### 作業メモ（同じ回り道をしないこと）
+Terminal への**大きな貼り付けは日本語が化ける／重複する**。4KBのヒアドキュメントで2回失敗し、
+base64 に逃がしても失敗した（Terminal 側が echo を取りこぼす）。
+`/Users/ZIMAX/dev` はセッションに接続されているので、**ファイルは直接書き込むのが正解**（`device_commit_files`）。
+渡したあとは `shasum -a 256` で一致を確認してから実行してもらうこと。
+
+---
+
 ## 担当者会議：録音からの復元機能を新設 2026-08-25  <!-- meetings-recover-2026-08-25 -->
 
 **本番で「録音した内容が行方不明」という事故が起きた。** 原因を追って、復元手段を作った。**本番反映済み**（`16aa494` → `7553b46`）。
