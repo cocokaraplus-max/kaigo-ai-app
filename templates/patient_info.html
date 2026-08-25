@@ -219,6 +219,11 @@
     <div id="errorMsg" class="error-msg"></div>
     <div id="successMsg" class="success-msg"></div>
 
+    <!-- patient-safety-notes-v1: サービス時の重要確認事項。
+         ★中身が空のときは出さない（毎回赤い帯が出ると、かえって見なくなるため）。
+         ★利用者を切り替えたら必ず入れ替える。前の人の注意事項が残ると重大な事故になる。 -->
+    <div id="safetyBanner" style="display:none;"></div>
+
     <!-- 利用者検索 -->
     <div class="section-card">
         <div class="section-title">
@@ -345,6 +350,16 @@
             <div id="ocrStatus" style="font-size:0.72rem; color:#5f6368; margin-top:4px;"></div>
           </div>
 
+          <!-- patient-safety-notes-v1: いちばん上に置く。事故につながる情報なので最優先で目に入れる -->
+          <div class="field-row">
+            <label style="color:#c5221f;">サービス時の重要確認事項</label>
+            <textarea data-basic="safety_notes" rows="3"
+              placeholder="例: そば・卵アレルギー（発疹）／ペースメーカーあり（電気治療器は不可）／右股関節に人工関節（金属）／内服の自己管理不可"></textarea>
+            <div class="goal-section-hint" style="margin-top:4px;">
+              アレルギー・ペースメーカー・体内金属・禁忌の処置など、<b>サービス中に必ず確認したいこと</b>を書いてください。
+              入力すると、この利用者を選んだときに画面のいちばん上へ赤い帯で表示されます。
+            </div>
+          </div>
           <div class="field-row">
             <label>既往歴</label>
             <textarea data-basic="medical_history" placeholder="例: 脳梗塞（2020年）、高血圧、糖尿病"></textarea>
@@ -626,6 +641,8 @@ const PATIENTS = {{ patients | tojson }};
                 const j = await res.json();
                 if (j.status !== "success") return;
                 this.hubPid = j.pid; this.hubData = j;
+                // patient-safety-notes-v1: 入力欄を埋めない画面でも、赤い帯は必ず出す
+                this.renderSafety(j.profile);
                 if (fillInputs) {
                     this.fillBasicInputs(j.profile);
                     this.familyMembers = (j.family || []).map(m => ({
@@ -788,6 +805,27 @@ const PATIENTS = {{ patients | tojson }};
             document.querySelectorAll('[data-basic]').forEach(el => {
                 el.value = (profile && profile[el.dataset.basic]) || "";
             });
+            this.renderSafety(profile);   // patient-safety-notes-v1
+        },
+
+        /* patient-safety-notes-v1: サービス時の重要確認事項を、画面のいちばん上に赤い帯で出す。
+           ★空なら必ず消すこと。前に見ていた利用者の注意事項が残ると、命に関わる取り違えになる。
+           ★色は赤にしている。ここだけは「見落とされない」ことを最優先にする。 */
+        renderSafety(profile) {
+            const el = document.getElementById("safetyBanner");
+            if (!el) return;
+            const txt = ((profile && profile.safety_notes) || "").trim();
+            if (!txt) { el.style.display = "none"; el.innerHTML = ""; return; }
+            el.style.display = "block";
+            el.innerHTML =
+                '<div style="background:#fdecea;border:2px solid #c5221f;border-radius:12px;'
+              + 'padding:12px 14px;margin-bottom:12px;">'
+              + '<div style="display:flex;align-items:center;gap:6px;color:#c5221f;font-weight:800;'
+              + 'font-size:.92rem;margin-bottom:6px;">'
+              + '<span class="material-symbols-outlined" style="font-size:20px;">warning</span>'
+              + 'サービス時の重要確認事項</div>'
+              + '<div style="color:#3c2f2b;font-size:.9rem;line-height:1.7;white-space:pre-line;">'
+              + this.esc(txt) + '</div></div>';
         },
 
         calcAge(birth) {
@@ -832,7 +870,8 @@ const PATIENTS = {{ patients | tojson }};
                 ? `<div class="tl">` + meds.map(m => `<div class="tl-item ${m.severity === 'minor' ? 'minor' : ''}"><div class="dot"></div><div class="tl-ym">${this.esc(m.event_ym || m.event_date || "")}</div><div class="tl-label">${this.esc(m.label)}</div>${m.detail ? `<div class="tl-detail">${this.esc(m.detail)}</div>` : ""}<div class="tl-src">${m.source === 'record_ai' ? '記録から' : '手入力'}<span onclick="window.patientInfoApp.setMedical('${m.id}','delete')" style="color:#c5221f;cursor:pointer;margin-left:8px;">削除</span></div></div>`).join("") + `</div>`
                 : (cands.length ? "" : `<div class="v-empty">まだ登録がありません。「入力」タブや「記録からAI抽出」で追加できます。</div>`);
 
-            const rows = [["既往歴", p.medical_history], ["家族構成", p.family_structure], ["職歴", p.job_history], ["趣味・嗜好", p.hobbies], ["好きなもの", p.likes], ["苦手・嫌いなもの", p.dislikes]];
+            // patient-safety-notes-v1: 閲覧タブでもいちばん上に出す
+            const rows = [["サービス時の重要確認事項", p.safety_notes], ["既往歴", p.medical_history], ["家族構成", p.family_structure], ["職歴", p.job_history], ["趣味・嗜好", p.hobbies], ["好きなもの", p.likes], ["苦手・嫌いなもの", p.dislikes]];
             document.getElementById("viewBasic").innerHTML = rows.map(([lbl, val]) =>
                 `<div class="v-row"><span class="lbl">${lbl}</span>${val ? this.esc(val).replace(/\n/g, "<br>") : '<span class="v-empty">未入力</span>'}</div>`).join("");
 
@@ -1565,6 +1604,8 @@ const PATIENTS = {{ patients | tojson }};
         
         clearSelection() {
             this.currentPatient = null;
+            this.renderSafety(null);   // patient-safety-notes-v1: 前の人の注意事項を必ず消す
+
             document.getElementById("searchBox").style.display = "block";
             document.getElementById("selectedPatient").style.display = "none";
             document.getElementById("tabbedArea").style.display = "none";

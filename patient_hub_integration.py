@@ -185,6 +185,8 @@ def register_patient_hub_routes(app):
                 "hobbies": pp.get("hobbies"),
                 "likes": pp.get("likes"),
                 "dislikes": pp.get("dislikes"),
+                # patient-safety-notes-v1: サービス中に必ず確認する注意事項
+                "safety_notes": pp.get("safety_notes"),
             },
             "family": family,
             "medical_approved": med_approved,
@@ -213,7 +215,8 @@ def register_patient_hub_routes(app):
             return jsonify({"status": "error", "message": "pid が必要です"}), 400
         # 更新可能な列のみホワイトリスト
         allow = ("medical_history", "family_structure", "job_history",
-                 "hobbies", "likes", "dislikes")
+                 "hobbies", "likes", "dislikes",
+                 "safety_notes")   # patient-safety-notes-v1
         row = {k: (data.get(k) if data.get(k) != "" else None)
                for k in allow if k in data}
         if not row:
