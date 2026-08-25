@@ -342,6 +342,9 @@
     ['svc_naiyo','サービス内容（重説用）'],
     ['svc_keiyaku','サービス内容（契約書用）'],
     ['kanran_time','記録閲覧の開始時刻'],
+    // keiyaku-fee-note-v1: 重説「6．当事業所の利用料金」に出す但し書き。
+    //   空なら何も出ない（今までと同じ）。改行でそのまま何行でも書ける。
+    ['fee_note','料金の補足説明（重要事項説明書に出ます・空欄可）'],
   ];
   // keiyaku-yobo-v2: 系統。未設定は chiiki（＝今までの地域密着型通所介護）。
 const KK_CATEGORIES = [
@@ -472,7 +475,7 @@ function renderTypeEditor(){
     // 8 fields
     SVC_FIELDS.forEach(([k,lab])=>{
       const val = node[k]||'';
-      if(k==='svc_naiyo'||k==='svc_keiyaku'){
+      if(k==='svc_naiyo'||k==='svc_keiyaku'||k==='fee_note'){   // keiyaku-fee-note-v1
         h += `<label class="kk-fld"><span>${lab}</span><textarea data-svc="${k}" rows="2">${escHtml(val)}</textarea></label>`;
       } else {
         h += `<label class="kk-fld"><span>${lab}</span><input type="text" data-svc="${k}" value="${escAttr(val)}"></label>`;

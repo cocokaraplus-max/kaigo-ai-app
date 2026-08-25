@@ -506,6 +506,22 @@ def _kasan_section(F, st):  # keiyaku-kasan-cat-v1
             'いずれも区分支給限度基準額の算定対象外です。</p></div>')
 
 
+# keiyaku-fee-note-v1: 料金欄に出す、事業所ごとの但し書き。
+#   例）「事業対象者の方は、要支援1と同じ料金となります。」
+#   ★空のときは何も返さない。入れていない事業所の書類は1文字も変わらない。
+#   ★改行はそのまま段落に分ける。職員さんが箇条書きのつもりで改行しても崩れないように。
+def _fee_note(sv):
+    txt = (sv or {}).get("fee_note") if isinstance(sv, dict) else None
+    txt = (txt or "").strip()
+    if not txt:
+        return ""
+    lines = [ln.strip() for ln in txt.replace("\r\n", "\n").split("\n")]
+    lines = [ln for ln in lines if ln]
+    if not lines:
+        return ""
+    return "".join('<p class="note">%s</p>' % _esc(ln) for ln in lines)
+
+
 def _fee_table(F, st):
     cat = _cat(F, st)
     if cat == CAT_YOBO:               # keiyaku-yobo-v1
@@ -707,7 +723,8 @@ def render_juyo(F, st):
 <p>下記の利用料金表により、要介護度に応じたサービス利用料金および加算料金から介護給付費額を除いた金額（自己負担額）と、おやつ等に係る自己負担額をお支払いください。自己負担額の変更があった場合には、契約書および重要事項説明書の再契約を必要とせず、下記の料金に変更といたします。</p>
 <p>・介護報酬1単位あたりの単価は <b>{_tanka(area)}円</b>　・サービス提供時間 {_esc(sv.get("teikyo_hours"))}　・下表は月額自己負担額（円／全ての加算を含む）</p>
 {_fee_table(F, st)}
-<p class="note">※週1回＝月{int(F.get("visits_per_month",4))}回換算で算出。利用回数により金額は変わります。</p></div>'''
+<p class="note">※週1回＝月{int(F.get("visits_per_month",4))}回換算で算出。利用回数により金額は変わります。</p>
+{_fee_note(sv)}</div>'''
 
     sec_kasan = _kasan_section(F, st)   # keiyaku-kasan-cat-v1: 系統ごとに出し分け
 
