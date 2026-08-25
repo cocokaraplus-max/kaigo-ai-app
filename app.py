@@ -1322,7 +1322,10 @@ def get_patients(supabase, f_code):
                 "discontinued_date": r.get("discontinued_date") or "",
             })
         return patients
-    except:
+    except Exception as _gpe:
+        # visit-unknown-not-transfer-v1: 黙って空を返すと「利用者が1人もいない」と同じ意味になり、
+        # 来所判定が「振替」に化ける。理由を残さないと、あとから絶対に追えない。
+        print(f"get_patients error: {_gpe}", flush=True)
         return []
 
 def get_birthday_users(supabase, f_code):
@@ -5121,7 +5124,10 @@ def _visit_planned_weekdays_for(supabase, f_code, patient_int_id):
         if res.data:
             return res.data[0].get("weekdays") or ""
     except Exception as e:
+        # visit-unknown-not-transfer-v1: 失敗は None。
+        # ★"" を返すと「予定曜日の登録が無い」と同じ意味になり、振替として保存されてしまう。
         print(f"visit planned weekdays error: {e}", flush=True)
+        return None
     return ""
 
 def _visit_nth_for(supabase, f_code, patient_int_id):  # visit-nth-apply-v1
@@ -5135,6 +5141,45 @@ def _visit_nth_for(supabase, f_code, patient_int_id):  # visit-nth-apply-v1
         print(f"visit nth fetch error: {e}", flush=True)
     return {}
 
+def _visit_resolve_int_id(supabase, f_code, patient_pid):
+    """visit-unknown-not-transfer-v1: patient_profiles.id から patients.id を解決する。
+    返り値 (patient_int_id, ok)。ok=False は「調べられなかった」。
+
+    ★ok=False のとき、呼び出し側は来所記録を書かないこと。
+      書くと「判定できなかった日」が「振替」として業務データに残り、
+      本物の振替と見分けられなくなる。請求・実績に効く数字なので影響が大きい。
+    ★突合は patient_profiles.user_name と patients.user_name の文字列一致。
+      漢字1字・全角半角スペースの違いでも成立しない。だから失敗を無視できない。
+    """
+    import time as _t_retry
+    # visit-resolve-retry-v1: 一瞬の混雑で失敗しただけなら、少し待てば通る。
+    # ★再試行するのは「名簿が取れなかった」ときだけ。
+    #   名簿は取れたのに該当者がいない/氏名が一致しないのはデータの問題で、
+    #   何度やっても同じ。待つだけバイタル保存の応答が遅くなるので即あきらめる。
+    for _attempt in (1, 2, 3):
+        plist = None
+        try:
+            plist = get_patients(supabase, f_code)
+        except Exception as _re:
+            print(f"[visit] 突合: get_patients が例外({_attempt}回目): {_re}", flush=True)
+        if plist:
+            _vp = next((p for p in plist if str(p.get("id")) == str(patient_pid)), None)
+            if not _vp:
+                print("[visit] 突合できず(一覧に該当の利用者なし)", flush=True)
+                return (None, False)
+            _vint = _vp.get("patient_int_id")
+            if not _vint:
+                print("[visit] 突合できず(patients 側の氏名が一致せず patient_int_id が無い)", flush=True)
+                return (None, False)
+            if _attempt > 1:
+                print(f"[visit] 突合: {_attempt}回目で成功(混雑からの復帰)", flush=True)
+            return (_vint, True)
+        if _attempt < 3:
+            _t_retry.sleep(0.5 * _attempt)   # 0.5秒 → 1.0秒
+    print("[visit] 突合できず(利用者一覧を3回とも取得できず)", flush=True)
+    return (None, False)
+
+
 def _visit_auto_upsert(supabase, f_code, patient_pid, date_str, staff_name, patient_int_id):
     """バイタル保存時の自動実績。予定曜日なら present、予定外なら transfer。
     手動(source=manual)レコードは上書きしない。"""
@@ -5142,6 +5187,11 @@ def _visit_auto_upsert(supabase, f_code, patient_pid, date_str, staff_name, pati
         from datetime import datetime as _dt, timezone as _tz
         now_iso = _dt.now(_tz.utc).isoformat()
         weekdays = _visit_planned_weekdays_for(supabase, f_code, patient_int_id) if patient_int_id else ""
+        # visit-unknown-not-transfer-v1: None は「調べられなかった」。書かずに次回に任せる。
+        # 空欄は直せるが、誤った「振替」は本物と区別が付かなくなる。
+        if weekdays is None:
+            print(f"[visit] 予定曜日を取得できず、来所記録を書かない date={date_str}", flush=True)
+            return
         nth = _visit_nth_for(supabase, f_code, patient_int_id) if patient_int_id else {}  # visit-nth-apply-v1
         status = 'present' if _visit_is_planned_weekday(weekdays, date_str, nth) else 'transfer'
         existing = supabase.table('visit_records').select('id,status,source').eq('facility_code', f_code).eq('patient_id', str(patient_pid)).eq('visit_date', date_str).execute()
@@ -5860,9 +5910,12 @@ def api_save_vital():
 
         # visit-mgmt-v1: バイタル保存で来所自動記録(予定曜日=出席/予定外=振替)
         try:
-            _vp = next((p for p in get_patients(supabase, f_code) if str(p["id"]) == str(data.get("patient_id"))), None)
-            _vint = _vp.get("patient_int_id") if _vp else None
-            _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
+            # visit-unknown-not-transfer-v1: 突合に失敗した日は書かない(振替に化けるため)
+            _vint, _vok = _visit_resolve_int_id(supabase, f_code, data.get("patient_id"))
+            if _vok:
+                _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
+            else:
+                print(f"[visit] 来所記録を見送り date={data.get('measured_date')}", flush=True)
         except Exception:
             pass
         return jsonify({"status": "success", "id": rid})
@@ -6206,9 +6259,12 @@ def api_add_vital():
         rid = res.data[0]["id"] if res.data else None
         # visit-mgmt-v1: バイタル保存で来所自動記録
         try:
-            _vp = next((p for p in get_patients(supabase, f_code) if str(p["id"]) == str(data.get("patient_id"))), None)
-            _vint = _vp.get("patient_int_id") if _vp else None
-            _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
+            # visit-unknown-not-transfer-v1: 突合に失敗した日は書かない(振替に化けるため)
+            _vint, _vok = _visit_resolve_int_id(supabase, f_code, data.get("patient_id"))
+            if _vok:
+                _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
+            else:
+                print(f"[visit] 来所記録を見送り date={data.get('measured_date')}", flush=True)
         except Exception:
             pass
         return jsonify({"status": "success", "id": rid})
