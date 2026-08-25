@@ -284,21 +284,9 @@
     </div>
 
     <!-- meetings-audio-manage-v1: 保存録音を選んで削除する整理モーダル -->
-    <div id="mtgAudioBack" onclick="if(event.target===this)mtgCloseAudioManage()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;align-items:center;justify-content:center;padding:16px;">
-      <div style="background:#fff;width:100%;max-width:460px;max-height:82vh;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.28);">
-        <div style="padding:14px 16px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px;">
-          <span class="material-symbols-outlined" style="color:#2f6b5e;">cleaning_services</span>
-          <b style="flex:1;font-size:1rem;">保存録音の整理</b>
-          <button type="button" onclick="mtgCloseAudioManage()" style="background:none;border:0;font-size:1.4rem;color:#888;cursor:pointer;line-height:1;padding:0 4px;">×</button>
-        </div>
-        <div style="padding:9px 14px;font-size:.79rem;color:#8a8f8c;border-bottom:1px solid #f2f2f2;line-height:1.5;">削除したい録音にチェックを入れて「削除」を押してください。議事録・文字起こしのテキストは消えません（音声ファイルのみ削除）。</div>
-        <div id="mtgAudioList" style="flex:1;overflow-y:auto;min-height:80px;"></div>
-        <div style="padding:12px 14px;border-top:1px solid #eee;display:flex;gap:10px;">
-          <button type="button" onclick="mtgCloseAudioManage()" style="flex:0 0 auto;background:#eee;color:#555;border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer;">閉じる</button>
-          <button type="button" id="mtgAudioDelBtn" onclick="mtgAudioDeleteSelected()" disabled style="flex:1;background:#c0392b;color:#fff;border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer;opacity:1;">選択した音声を削除</button>
-        </div>
-      </div>
-    </div>
+    <!-- meetings-audio-modal-fix-v1: 音声整理モーダルはここから外へ出した。
+         下の「★モーダルはここ」を参照。 -->
+
 
     <!-- ステップ2: 文字起こし -->
     <div class="mtg-card">
@@ -418,6 +406,34 @@
     </div>
   </div>
 </div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     ★モーダルはここ（meetings-audio-modal-fix-v1 / 2026-08-25）
+
+     以前は #mtgEditView（録音・編集の画面）の中に置かれていた。
+     ところが「音声を整理」のボタンは #mtgListView（一覧の画面）にある。
+     一覧を見ているとき #mtgEditView は display:none なので、
+     その中にあるモーダルは display:flex にしても出てこない。
+     ＝「ボタンを押しても一覧が出ない」。2026-08-25 に本番で発覚。
+
+     ★どちらの画面からでも開けるよう、両方の外side に置いてある。
+       この位置から中へ戻さないこと。
+     ══════════════════════════════════════════════════════════════ -->
+<div id="mtgAudioBack" onclick="if(event.target===this)mtgCloseAudioManage()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:100000;align-items:center;justify-content:center;padding:16px;">
+      <div style="background:#fff;width:100%;max-width:460px;max-height:82vh;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 10px 40px rgba(0,0,0,.28);">
+        <div style="padding:14px 16px;border-bottom:1px solid #eee;display:flex;align-items:center;gap:8px;">
+          <span class="material-symbols-outlined" style="color:#2f6b5e;">cleaning_services</span>
+          <b style="flex:1;font-size:1rem;">保存録音の整理</b>
+          <button type="button" onclick="mtgCloseAudioManage()" style="background:none;border:0;font-size:1.4rem;color:#888;cursor:pointer;line-height:1;padding:0 4px;">×</button>
+        </div>
+        <div style="padding:9px 14px;font-size:.79rem;color:#8a8f8c;border-bottom:1px solid #f2f2f2;line-height:1.5;">削除したい録音にチェックを入れて「削除」を押してください。議事録・文字起こしのテキストは消えません（音声ファイルのみ削除）。</div>
+        <div id="mtgAudioList" style="flex:1;overflow-y:auto;min-height:80px;"></div>
+        <div style="padding:12px 14px;border-top:1px solid #eee;display:flex;gap:10px;">
+          <button type="button" onclick="mtgCloseAudioManage()" style="flex:0 0 auto;background:#eee;color:#555;border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer;">閉じる</button>
+          <button type="button" id="mtgAudioDelBtn" onclick="mtgAudioDeleteSelected()" disabled style="flex:1;background:#c0392b;color:#fff;border:0;border-radius:9px;padding:11px 16px;font-weight:700;cursor:pointer;opacity:1;">選択した音声を削除</button>
+        </div>
+      </div>
+    </div>
 
 <script src="{{ static_v('rec_keepalive.js') }}"></script><!-- rec-keepalive-v1 -->
 <script src="{{ static_v('rec_overlay.js') }}"></script><!-- rec-overlay-v1: 録音したまま他の画面を重ねて開く -->
@@ -714,7 +730,12 @@ async function mtgStartRec() {
     try {
       const st = await (await fetch('/api/meeting/audio_stats?area=meetings')).json();
       if (st.status === 'success' && st.count >= (st.keep || 5)) {
-        alert('会議音声が' + st.count + '件たまっています。\n先に議事録を保存し、「音声を整理」で古い音声を減らしてから録音してください。');
+        // meetings-audio-modal-fix-v1: 「整理してください」と言うだけでなく、その場で整理画面を開く。
+        // （整理ボタンは一覧画面にしか無く、録音しようとしている人には見えないため）
+        alert('会議音声が' + st.count + '件たまっています。\n'
+            + 'このあと開く画面で、古い音声にチェックを入れて削除してください。\n'
+            + '※ 議事録・文字起こしの文字は消えません。音声だけです。');
+        if (typeof mtgCleanupAudio === 'function') await mtgCleanupAudio();
         return;
       }
     } catch (e) {}
