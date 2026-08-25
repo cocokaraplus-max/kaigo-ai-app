@@ -757,7 +757,9 @@ async function mtgAudioDeleteSelected() {
      そこで2区間ずつに分けて何度も呼び、つなげている（RECOVER_STEP）。
    ★復元した文字起こしは、かならず「新しい会議」に入れる。
      既存の記録に書き戻すと、上書き事故のもとになるため。 */
-var RECOVER_STEP = 2;          // 一度にお願いする区間の数
+var RECOVER_STEP = 1;          // meetings-recover-ui-v2: 1区間ずつ。
+                               // 録音中の文字起こしも1区間ずつで動いているので、それに合わせる。
+                               // まとめて頼むとサーバーが時間切れになる（実際になった）。
 var mtgRecoverBusy = false;
 
 function mtgRecoverOpen(){
@@ -825,7 +827,7 @@ async function mtgRecoverReload(){
 async function mtgRecoverRun(sid, chunks){
   if (!sid) return;
   if (mtgRecoverBusy) return;
-  var est = Math.max(1, Math.ceil((chunks||1) * 0.6));
+  var est = Math.max(1, Math.ceil((chunks||1) * 0.8));   // meetings-recover-ui-v2: 1区間ずつになったぶん
   if (!confirm('この録音から文字起こしをやり直します。\n\n'
              + '・' + (chunks||'?') + '区間ぶん、おおよそ' + est + '分ほどかかります\n'
              + '・終わるまで、この画面を閉じないでください\n'
@@ -838,7 +840,7 @@ async function mtgRecoverRun(sid, chunks){
   Array.prototype.forEach.call(document.querySelectorAll('.mtg-recover-go'), function(b){ b.disabled = true; });
   function say(msg){ if (prog) { prog.style.display = 'block'; prog.innerHTML = msg; } }
 
-  var parts = [], start = 0, total = chunks || 0, errs = 0, guard = 0;
+  var parts = [], start = 0, total = chunks || 0, errs = 0, guard = 0, miss = 0, lastErr = '';
   try {
     while (guard++ < 200) {
       say('<span class="mtg-spin"></span>文字起こし中… ' + start + ' / ' + (total || '?') + '区間<br>'
@@ -847,8 +849,28 @@ async function mtgRecoverRun(sid, chunks){
         method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify({ session_id: sid, start: start, count: RECOVER_STEP })
       });
-      var d = await r.json();
-      if (d.status !== 'success') { throw new Error(d.message || '失敗しました'); }
+      // meetings-recover-ui-v2: サーバーがJSON以外（エラー画面）を返すことがある。
+      //   そのまま .json() すると「The string did not match the expected pattern.」とだけ出て
+      //   何が起きたのか分からない。中身を読んで、そのまま見せる。
+      var raw = await r.text();
+      var d = null, parseErr = '';
+      try { d = JSON.parse(raw); }
+      catch (pe) {
+        parseErr = 'サーバーが応答を返せませんでした（HTTP ' + r.status + '）'
+                 + (raw ? '：' + String(raw).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) : '');
+      }
+      if (parseErr || !d || d.status !== 'success') {
+        // meetings-recover-ui-v2: この区間だけ飛ばして次へ。3回続けてダメなら打ち切る。
+        lastErr = parseErr || (d && d.message) || '失敗しました';
+        miss++; errs++;
+        say('<span class="mtg-spin"></span>文字起こし中… ' + start + ' / ' + (total || '?') + '区間<br>'
+          + '<small style="color:#c0392b;">' + mtgEsc(String(start)) + '区間目はうまくいきませんでした。次へ進みます。</small>');
+        if (miss >= 3) { throw new Error(lastErr); }
+        start = start + RECOVER_STEP;
+        if (total && start >= total) break;
+        continue;
+      }
+      miss = 0;
       if (d.transcript) parts.push(d.transcript);
       errs += (d.errors || 0);
       total = d.total_chunks || total;
