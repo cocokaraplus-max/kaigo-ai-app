@@ -5141,6 +5141,46 @@ def _visit_nth_for(supabase, f_code, patient_int_id):  # visit-nth-apply-v1
         print(f"visit nth fetch error: {e}", flush=True)
     return {}
 
+def _visit_lookup_int_id_light(supabase, f_code, patient_pid):
+    """visit-resolve-light-v1: 1人ぶんだけ引いて patients.id を求める。
+    返り値 (patient_int_id, ok, 理由)。
+      理由: 'ok' / 'error'(問い合わせ失敗) / 'no_profile' / 'no_match' / 'ambiguous'
+      ★'error' のときだけ再試行する意味がある。他は何度やっても同じ。
+
+    ★なぜ get_patients() を使わないか:
+      あちらは patient_profiles を select("*") で全件・全列、patients も全件取ってくる。
+      1人ぶんのID変換にそれをやると重く、混雑時に落ちやすい。
+      2026-08-25 09:14 に実際に落ちて、来所記録が「振替」に化けた。
+    """
+    try:
+        _pr = (supabase.table("patient_profiles").select("user_name")
+               .eq("facility_code", f_code).eq("id", str(patient_pid)).limit(1).execute())
+    except Exception as _e1:
+        print(f"[visit] 突合(軽量): patient_profiles の取得に失敗: {_e1}", flush=True)
+        return (None, False, "error")
+    _rows = _pr.data or []
+    if not _rows:
+        return (None, False, "no_profile")
+    _name = (_rows[0].get("user_name") or "").strip()
+    if not _name:
+        return (None, False, "no_profile")
+    try:
+        _pt = (supabase.table("patients").select("id")
+               .eq("facility_code", f_code).eq("user_name", _name).limit(2).execute())
+    except Exception as _e2:
+        print(f"[visit] 突合(軽量): patients の取得に失敗: {_e2}", flush=True)
+        return (None, False, "error")
+    _prows = _pt.data or []
+    if not _prows:
+        return (None, False, "no_match")
+    if len(_prows) > 1:
+        # ★同じ氏名の行が2つ以上ある。get_patients() の辞書だと後の方で黙って上書きされ、
+        #   予定曜日を持たない側を掴むことがあった。どちらが正しいか決められないので書かない。
+        print("[visit] 突合(軽量): 同じ氏名の patients 行が複数。判定を見送る", flush=True)
+        return (None, False, "ambiguous")
+    return (_prows[0].get("id"), True, "ok")
+
+
 def _visit_resolve_int_id(supabase, f_code, patient_pid):
     """visit-unknown-not-transfer-v1: patient_profiles.id から patients.id を解決する。
     返り値 (patient_int_id, ok)。ok=False は「調べられなかった」。
@@ -5153,30 +5193,23 @@ def _visit_resolve_int_id(supabase, f_code, patient_pid):
     """
     import time as _t_retry
     # visit-resolve-retry-v1: 一瞬の混雑で失敗しただけなら、少し待てば通る。
-    # ★再試行するのは「名簿が取れなかった」ときだけ。
-    #   名簿は取れたのに該当者がいない/氏名が一致しないのはデータの問題で、
+    # ★再試行するのは「問い合わせに失敗した」ときだけ。
+    #   該当者がいない/氏名が一致しない/同姓が複数 はデータの問題で、
     #   何度やっても同じ。待つだけバイタル保存の応答が遅くなるので即あきらめる。
+    _why = "error"
     for _attempt in (1, 2, 3):
-        plist = None
-        try:
-            plist = get_patients(supabase, f_code)
-        except Exception as _re:
-            print(f"[visit] 突合: get_patients が例外({_attempt}回目): {_re}", flush=True)
-        if plist:
-            _vp = next((p for p in plist if str(p.get("id")) == str(patient_pid)), None)
-            if not _vp:
-                print("[visit] 突合できず(一覧に該当の利用者なし)", flush=True)
-                return (None, False)
-            _vint = _vp.get("patient_int_id")
-            if not _vint:
-                print("[visit] 突合できず(patients 側の氏名が一致せず patient_int_id が無い)", flush=True)
-                return (None, False)
+        # visit-resolve-light-v1: 名簿の全件取得をやめ、1人ぶんだけ引く
+        _vint, _ok, _why = _visit_lookup_int_id_light(supabase, f_code, patient_pid)
+        if _ok:
             if _attempt > 1:
                 print(f"[visit] 突合: {_attempt}回目で成功(混雑からの復帰)", flush=True)
             return (_vint, True)
+        if _why != "error":
+            print(f"[visit] 突合できず({_why})。データの問題なので再試行しない", flush=True)
+            return (None, False)
         if _attempt < 3:
             _t_retry.sleep(0.5 * _attempt)   # 0.5秒 → 1.0秒
-    print("[visit] 突合できず(利用者一覧を3回とも取得できず)", flush=True)
+    print("[visit] 突合できず(3回とも問い合わせに失敗)", flush=True)
     return (None, False)
 
 
