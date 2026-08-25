@@ -12246,6 +12246,28 @@ def api_admin_patient_save():
                         .eq("facility_code", f_code).eq("user_name", _old_name).execute()
                 except Exception as _sync_e:
                     print(f"patients rename sync error: {_sync_e}", flush=True)
+            # patient-number-sync-v1: 利用者番号を patients.chart_number へ追随させる。
+            # patients.chart_number は行の作成時に一度コピーされるだけだったため、
+            # 基本情報で番号を直してもケース記録閲覧・バイタル等が古い番号を出し続けていた。
+            # 記録の紐づけは氏名と id で行っており chart_number は表示専用なので、
+            # ここで上書きしても記録が迷子になることはない。
+            if "patient_number" in row:
+                _sync_no = (row.get("patient_number") or "").strip()
+                _sync_name = _new_name or (_old_name or "")
+                if not _sync_name:
+                    # 氏名がリクエストに含まれない部分保存でも同期できるよう DB から引く
+                    try:
+                        _pn = supabase.table("patient_profiles").select("user_name") \
+                            .eq("id", pid).eq("facility_code", f_code).single().execute()
+                        _sync_name = ((_pn.data or {}).get("user_name") or "").strip()
+                    except Exception:
+                        _sync_name = ""
+                if _sync_name and _sync_no:
+                    try:
+                        supabase.table("patients").update({"chart_number": _sync_no}) \
+                            .eq("facility_code", f_code).eq("user_name", _sync_name).execute()
+                    except Exception as _num_e:
+                        print(f"patients chart_number sync error: {_num_e}", flush=True)
             # 更新後、対応する patients 行がまだ無ければ作成（旧データ救済）。
             try:
                 _chk = supabase.table("patients").select("id") \
