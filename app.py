@@ -32029,16 +32029,20 @@ def _mtg_saved_session_ids(supabase, f_code):
       staff_meetings(勉強会)は audio_session_id を保存していないため、
       勉強会の録音は常に「未保存」扱いになり、自動整理では消えない(安全側)。"""
     ids = set()
-    try:
-        r = supabase.table("meetings").select("audio_session_id")\
-            .eq("facility_code", f_code).execute()
+    # staff-minutes-audio-link-v1: 担当者会議(meetings)と勉強会(staff_meetings)の両方を見る。
+    # ★どちらか一方でも取得に失敗したら None を返す(＝何も消さない)。
+    #   片方だけ見て「保存されていない」と判断すると、消してはいけない音声を消す。
+    for _tbl in ("meetings", "staff_meetings"):
+        try:
+            r = supabase.table(_tbl).select("audio_session_id")\
+                .eq("facility_code", f_code).execute()
+        except Exception as _se:
+            print(f"[meeting] cleanup: saved session ids fetch failed ({_tbl}): {_se}", flush=True)
+            return None
         for m in (r.data or []):
             sid = (m.get("audio_session_id") or "").strip()
             if sid:
                 ids.add(sid)
-    except Exception as _se:
-        print(f"[meeting] cleanup: saved session ids fetch failed: {_se}", flush=True)
-        return None
     return ids
 
 
@@ -32183,6 +32187,13 @@ def api_meeting_audio_list():
         try:
             mr = supabase.table("meetings").select("audio_session_id,title,meeting_date").eq("facility_code", f_code).execute()
             for m in (mr.data or []):
+                sid = (m.get("audio_session_id") or "")
+                if sid:
+                    labelmap[sid] = {"title": m.get("title") or "", "date": m.get("meeting_date") or ""}
+            # staff-minutes-audio-link-v1: 勉強会の議事録タイトルも出す。
+            # 出さないと、整理の一覧で勉強会だけ「（未保存の録音）」に見えてしまう。
+            sr = supabase.table("staff_meetings").select("audio_session_id,title,meeting_date").eq("facility_code", f_code).execute()
+            for m in (sr.data or []):
                 sid = (m.get("audio_session_id") or "")
                 if sid:
                     labelmap[sid] = {"title": m.get("title") or "", "date": m.get("meeting_date") or ""}
@@ -32587,6 +32598,11 @@ def api_staff_minutes_save():
             "status": "confirmed",
             "created_by": my_name,
         }
+        # staff-minutes-audio-link-v1: 録音セッションを記録に紐づける。
+        # ★空のときは row に入れないこと。更新は row をそのまま流用するので、
+        #   入れてしまうと、録音を伴わない編集のたびに既存の紐づけが消える。
+        if audio_session_id:
+            row["audio_session_id"] = audio_session_id
         rec_id = (data.get("id") or "").strip()
         if rec_id and _SM_UUID_RE.match(rec_id):
             # record-owner-perm-v1: 編集(更新)は作成者または管理者のみ。作成者は変更しない。

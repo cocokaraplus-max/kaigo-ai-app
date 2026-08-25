@@ -488,7 +488,10 @@ async function smSave(){
     minutes_style: document.getElementById('smStyle').value,
     decisions: smDTtoArray('smDecisions'),
     todos: smDTtoArray('smTodos'),
-    mindmap: smMmMarkdown || null
+    mindmap: smMmMarkdown || null,
+    // staff-minutes-audio-link-v1: どの録音の議事録かを記録に残す。
+    // ★送らないと「（未保存の録音）」のままになり、音声を整理できない。
+    audio_session_id: smState.sessionId || null
   };
   smMsg('保存中...', true);
   try {
