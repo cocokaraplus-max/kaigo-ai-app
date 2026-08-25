@@ -913,17 +913,27 @@ async function mtgToggleRec() {
 
 async function mtgStartRec() {
   try {
-    // meetings-audio-retention-v1: 音声が5件たまっていたら整理を促してブロック(自動削除はしない)
+    // meetings-audio-retention-v1: 音声が5件たまっていたら整理を促す(自動削除はしない)
+    // mtg-audio-block-staff-v1: 録音開始を止めてよいのは、その場で音声を消せる管理者だけ。
+    //   旧: 5件で誰でもブロック → しかし削除API(/api/meeting/audio_delete)は管理者のみ。
+    //       一般職員は削除できず、会議の録音手段が無くなっていた。
+    //   新: 管理者は今まで通り整理画面へ。一般職員は警告だけ出して録音は始める。
+    //       is_admin が返らない場合も「録音は始まる」側に倒す(現場を止めない)。
     try {
       const st = await (await fetch('/api/meeting/audio_stats?area=meetings')).json();
       if (st.status === 'success' && st.count >= (st.keep || 5)) {
-        // meetings-audio-modal-fix-v1: 「整理してください」と言うだけでなく、その場で整理画面を開く。
-        // （整理ボタンは一覧画面にしか無く、録音しようとしている人には見えないため）
+        if (st.is_admin) {
+          // meetings-audio-modal-fix-v1: 「整理してください」と言うだけでなく、その場で整理画面を開く。
+          // （整理ボタンは一覧画面にしか無く、録音しようとしている人には見えないため）
+          alert('会議音声が' + st.count + '件たまっています。\n'
+              + 'このあと開く画面で、古い音声にチェックを入れて削除してください。\n'
+              + '※ 議事録・文字起こしの文字は消えません。音声だけです。');
+          if (typeof mtgCleanupAudio === 'function') await mtgCleanupAudio();
+          return;
+        }
         alert('会議音声が' + st.count + '件たまっています。\n'
-            + 'このあと開く画面で、古い音声にチェックを入れて削除してください。\n'
-            + '※ 議事録・文字起こしの文字は消えません。音声だけです。');
-        if (typeof mtgCleanupAudio === 'function') await mtgCleanupAudio();
-        return;
+            + 'このまま録音は始められます。あとで管理者に音声の整理を依頼してください。\n'
+            + '※ 議事録・文字起こしの文字は消えません。');
       }
     } catch (e) {}
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });

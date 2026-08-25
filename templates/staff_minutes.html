@@ -235,7 +235,8 @@ async function smCleanupAudio(){
   try{
     var st=await (await fetch('/api/meeting/audio_stats')).json();
     if(st.status!=='success'){ alert(st.message||'取得に失敗しました'); return; }
-    if(!st.deletable_count){ alert('整理対象の古い音声はありません（現在'+st.count+'件、各最新'+(st.keep||5)+'件は保持）。'); return; }
+    // mtg-audio-cleanup-guard-v1: 自動整理の条件が変わったので、消えない理由を画面にも書く。
+    if(!st.deletable_count){ alert('自動で整理できる音声はありません（現在'+st.count+'件）。\n\n自動整理で消すのは「議事録に紐づいていて、48時間以上前の音声」だけです。\n録音中のもの・まだ記録にしていない録音は、事故防止のため自動では消しません。\n\n個別に消したいときは、担当者会議の画面の「音声を整理」から1件ずつ選んでください。'); return; }
     var mb=(st.deletable_bytes/1048576).toFixed(0);
     if(!confirm('担当者会議・勉強会の古い音声 '+st.deletable_count+'件（約'+mb+'MB）を削除します（各最新'+(st.keep||5)+'件は保持）。よろしいですか？\n※議事録・文字起こしのテキストは残ります。音声ファイルのみ削除します。')) return;
     if(btn) btn.disabled=true;
@@ -327,11 +328,15 @@ document.addEventListener('click', function(e){
 async function smToggleRec(){
   if (smState.recording) { smStopRec(); return; }
   try {
+    // mtg-audio-block-staff-v1: 音声を消せるのは管理者だけなので、一般職員の録音は止めない。
     try {
       var _st = await (await fetch('/api/meeting/audio_stats?area=staff_minutes')).json();
       if (_st.status === 'success' && _st.count >= (_st.keep || 5)) {
-        alert('議事録の音声が' + _st.count + '件たまっています。\n先に議事録を保存し、「音声を整理」で古い音声を減らしてから録音してください。');
-        return;
+        if (_st.is_admin) {
+          alert('議事録の音声が' + _st.count + '件たまっています。\n先に議事録を保存し、「音声を整理」で古い音声を減らしてから録音してください。');
+          return;
+        }
+        alert('議事録の音声が' + _st.count + '件たまっています。\nこのまま録音は始められます。あとで管理者に「音声を整理」を依頼してください。\n※議事録・文字起こしのテキストは消えません。');
       }
     } catch (e) {}
     var stream = await navigator.mediaDevices.getUserMedia({ audio: true });

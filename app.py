@@ -31927,6 +31927,85 @@ def _mtg_list_sessions(supabase, f_code, area):
     return out
 
 
+# mtg-audio-cleanup-guard-v1: 自動整理で消してよい音声を決める。ここが唯一の判定場所。
+# 音声は消したら戻らない。迷ったら消さない側に倒す。
+_MTG_CLEANUP_SAFE_HOURS = 48
+
+
+def _mtg_saved_session_ids(supabase, f_code):
+    """保存済み記録に紐づく録音セッションIDの集合。
+    ここに載っている録音は、少なくとも文字起こしテキストが記録側に残っている。
+    ★取得に失敗したら None を返す。呼び出し側は None のとき何も消さない。
+    ★注意: いまは meetings(担当者会議)しか紐づけを保存していない。
+      staff_meetings(勉強会)は audio_session_id を保存していないため、
+      勉強会の録音は常に「未保存」扱いになり、自動整理では消えない(安全側)。"""
+    ids = set()
+    try:
+        r = supabase.table("meetings").select("audio_session_id")\
+            .eq("facility_code", f_code).execute()
+        for m in (r.data or []):
+            sid = (m.get("audio_session_id") or "").strip()
+            if sid:
+                ids.add(sid)
+    except Exception as _se:
+        print(f"[meeting] cleanup: saved session ids fetch failed: {_se}", flush=True)
+        return None
+    return ids
+
+
+def _mtg_too_recent(latest_iso):
+    """True なら消さない。
+    ★latest が空文字のときは必ず True。空文字は並べ替えで最下位に落ちるので、
+      録音中のセッションが「一番古い」と誤判定されて消える事故の入口になっていた。"""
+    s = (latest_iso or "").strip()
+    if not s:
+        return True
+    try:
+        from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+        t = _dt.fromisoformat(s.replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=_tz.utc)
+        return (_dt.now(_tz.utc) - t) < _td(hours=_MTG_CLEANUP_SAFE_HOURS)
+    except Exception:
+        return True
+
+
+def _mtg_cleanup_targets(supabase, f_code):
+    """自動整理の対象を決める。統計と実行の両方がこれを使う。
+    別々に数えると「3件消します」と言って0件になる。
+    返り値: (targets, remaining, skipped, count, total_bytes)"""
+    saved = _mtg_saved_session_ids(supabase, f_code)
+    targets = []
+    remaining = 0
+    count = 0
+    total_bytes = 0
+    skipped = {"recent": 0, "unsaved": 0, "unknown": 0}
+    for area in _MTG_AUDIO_AREAS:
+        ss = _mtg_list_sessions(supabase, f_code, area)
+        count += len(ss)
+        total_bytes += sum(z.get("bytes", 0) for z in ss)
+        remaining += min(len(ss), _MTG_AUDIO_KEEP)
+        for z in ss[_MTG_AUDIO_KEEP:]:
+            sid = z.get("session_id") or ""
+            if not sid or _mtg_too_recent(z.get("latest")):
+                # 録音中かもしれない / 時刻が読めない → 消さない
+                skipped["recent"] += 1
+                remaining += 1
+                continue
+            if saved is None:
+                # 紐づきが確認できなかった → 消さない
+                skipped["unknown"] += 1
+                remaining += 1
+                continue
+            if sid not in saved:
+                # まだ記録になっていない録音。消すと「録音から復元」でも取り出せない。
+                skipped["unsaved"] += 1
+                remaining += 1
+                continue
+            targets.append({"area": area, "session_id": sid, "bytes": z.get("bytes", 0)})
+    return targets, remaining, skipped, count, total_bytes
+
+
 @app.route("/api/meeting/audio_stats", methods=["GET"])
 @login_required
 def api_meeting_audio_stats():
@@ -31935,21 +32014,26 @@ def api_meeting_audio_stats():
         return jsonify({"status": "error", "message": "この機能は有効化されていません"}), 403
     try:
         supabase = get_supabase()
+        # mtg-audio-block-staff-v1: 録音開始を止めてよいのは、その場で音声を消せる管理者だけ。
+        # フロントがこの is_admin を見て、一般職員には警告だけ出して録音を続行する。
+        try:
+            _is_adm = bool(is_admin_user(supabase, f_code, my_name))
+        except Exception:
+            _is_adm = False
         req_area = request.args.get("area")
         if req_area in _MTG_AUDIO_AREAS:
             ss = _mtg_list_sessions(supabase, f_code, req_area)
             return jsonify({"status": "success", "keep": _MTG_AUDIO_KEEP,
+                            "is_admin": _is_adm,
                             "area": req_area, "count": len(ss),
                             "total_bytes": sum(z["bytes"] for z in ss)})
-        count = total_bytes = del_count = del_bytes = 0
-        for area in _MTG_AUDIO_AREAS:
-            ss = _mtg_list_sessions(supabase, f_code, area)
-            count += len(ss)
-            total_bytes += sum(z["bytes"] for z in ss)
-            old = ss[_MTG_AUDIO_KEEP:]
-            del_count += len(old)
-            del_bytes += sum(z["bytes"] for z in old)
+        # mtg-audio-cleanup-guard-v1: 削除できる件数は実行側とまったく同じ判定で数える。
+        # 旧: 「6件目以降は全部消せる」と数えていたので、実際の削除数と食い違っていた。
+        _tg, _rem, _sk, count, total_bytes = _mtg_cleanup_targets(supabase, f_code)
+        del_count = len(_tg)
+        del_bytes = sum(t.get("bytes", 0) for t in _tg)
         return jsonify({"status": "success", "keep": _MTG_AUDIO_KEEP,
+                        "is_admin": _is_adm,  # mtg-audio-block-staff-v1
                         "count": count, "total_bytes": total_bytes,
                         "deletable_count": del_count, "deletable_bytes": del_bytes})
     except Exception as e:
@@ -31967,28 +32051,32 @@ def api_meeting_audio_cleanup():
         supabase = get_supabase()
         if not is_admin_user(supabase, f_code, my_name):
             return jsonify({"status": "error", "message": "管理者のみ実行できます"}), 403
-        deleted = freed = remaining = 0
-        for area in _MTG_AUDIO_AREAS:
-            ss = _mtg_list_sessions(supabase, f_code, area)
-            remaining += min(len(ss), _MTG_AUDIO_KEEP)
+        # mtg-audio-cleanup-guard-v1: 対象の決定は _mtg_cleanup_targets に一本化。
+        # 旧: 新しい順に並べて6件目以降を無条件に削除していた。
+        #     保存済みかどうかも、録音中かどうかも見ていなかった。
+        targets, remaining, skipped, _cnt, _tb = _mtg_cleanup_targets(supabase, f_code)
+        deleted = freed = 0
+        for t in targets:
+            area = t["area"]
+            sid = t["session_id"]
             base = f"{f_code}/{area}"
-            for z in ss[_MTG_AUDIO_KEEP:]:
-                sid = z["session_id"]
-                try:
-                    files = supabase.storage.from_("assessment-audio").list(f"{base}/{sid}") or []
-                except Exception:
-                    files = []
-                paths = [f"{base}/{sid}/{x.get('name')}" for x in files if x.get("name")]
-                if not paths:
-                    continue
-                try:
-                    supabase.storage.from_("assessment-audio").remove(paths)
-                    deleted += 1
-                    freed += z["bytes"]
-                except Exception as _de:
-                    print(f"[meeting] audio cleanup remove failed {area}/{sid}: {_de}", flush=True)
+            try:
+                files = supabase.storage.from_("assessment-audio").list(f"{base}/{sid}") or []
+            except Exception:
+                files = []
+            paths = [f"{base}/{sid}/{x.get('name')}" for x in files if x.get("name")]
+            if not paths:
+                continue
+            try:
+                supabase.storage.from_("assessment-audio").remove(paths)
+                deleted += 1
+                freed += t.get("bytes", 0)
+            except Exception as _de:
+                print(f"[meeting] audio cleanup remove failed {area}/{sid}: {_de}", flush=True)
+        print(f"[meeting] audio cleanup done: deleted={deleted} skipped={skipped}", flush=True)
         return jsonify({"status": "success", "deleted_sessions": deleted,
-                        "freed_bytes": freed, "remaining": remaining})
+                        "freed_bytes": freed, "remaining": remaining,
+                        "skipped": skipped})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
