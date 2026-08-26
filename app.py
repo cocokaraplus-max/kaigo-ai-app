@@ -7954,7 +7954,8 @@ def api_acquire_edit_lock():
 
         my_name = session.get("my_name", "")
         supabase = get_supabase()
-        result = acquire_edit_lock(supabase, evaluation_id, my_name)
+        # eval-lock-scope-v1: 施設コードを必ず渡す（他施設の評価に触れないように）
+        result = acquire_edit_lock(supabase, evaluation_id, my_name, session["f_code"])
 
         if result.get("success"):
             return jsonify({"status": "success"})
@@ -7990,7 +7991,8 @@ def api_release_edit_lock():
 
         my_name = session.get("my_name", "")
         supabase = get_supabase()
-        release_edit_lock(supabase, evaluation_id, my_name)
+        # eval-lock-scope-v1: 施設コードを必ず渡す
+        release_edit_lock(supabase, evaluation_id, my_name, session["f_code"])
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "success", "warning": str(e)})

@@ -1928,11 +1928,24 @@ window.evalLoadExistingData = async function() {
     if (!evalState.pendingExisting) return;
     const ev = evalState.pendingExisting;
     evalState.pendingExisting = null;
-    evalFillForm(ev);
-
-    // ロック取得 (P4=A: ロード時にロック)
-    evalState.currentEvalId = ev.id;
-    await evalAcquireLock();
+    // eval-lock-guard-v1: 画面の復元で何かあっても、ロックだけは必ず取る。
+    //   以前は evalFillForm が止まると下の2行が実行されず、
+    //   編集ロックが効かないまま2人が同じ記録を開けてしまった。
+    //   ★復元に失敗したまま保存すると内容が欠けるので、画面にも知らせる。
+    let _fillOk = true;
+    try {
+        evalFillForm(ev);
+    } catch (e) {
+        _fillOk = false;
+        console.error('[eval] 画面の復元に失敗:', e);
+    } finally {
+        // ロック取得 (P4=A: ロード時にロック)
+        evalState.currentEvalId = ev.id;
+        await evalAcquireLock();
+    }
+    if (!_fillOk) {
+        showToast('記録の読み込みに一部失敗しました。保存せずに開き直してください', 'error');
+    }
 };
 
 // ===========================================================================
@@ -2212,21 +2225,36 @@ function evalFillForm(ev) {
         }
     });
 
-    // 各軸個別の継続/変更・新規目標を復元
-    const _axisRestorePairs = [
-        ['eval-short-function-cont',      ev.short_goal_function_cont,      'eval-short-function-new',       ev.short_goal_function_new],
-        ['eval-short-activity-cont',      ev.short_goal_activity_cont,      'eval-short-activity-new',       ev.short_goal_activity_new],
-        ['eval-short-participation-cont', ev.short_goal_participation_cont, 'eval-short-participation-new',  ev.short_goal_participation_new],
-        ['eval-long-function-cont',       ev.long_goal_function_cont,       'eval-long-function-new',        ev.long_goal_function_new],
-        ['eval-long-activity-cont',       ev.long_goal_activity_cont,       'eval-long-activity-new',        ev.long_goal_activity_new],
-        ['eval-long-participation-cont',  ev.long_goal_participation_cont,  'eval-long-participation-new',   ev.long_goal_participation_new],
-        ['eval-short-goal-simple-cont',   ev.short_goal_cont,               'eval-short-goal-simple-new',    ev.short_goal_new],
-        ['eval-long-goal-simple-cont',    ev.long_goal_cont,                'eval-long-goal-simple-new',     ev.long_goal_new],
+    // 各軸の「新規目標」を復元する（eval-contaxis-fix-v1）
+    //
+    // ★ここは2重に壊れていた。2026-08-26 に直した。
+    //   1) evalSelectContAxis(...) という【どこにも定義されていない関数】を
+    //      呼んでいた。保存時に *_cont は必ず書かれる（下の evalCollectFormData で
+    //      「新規目標の入力あり=変更 / なし=継続」と自動判定している）ので、
+    //      保存済みの評価を開くと【必ず】ここで JavaScript が止まっていた。
+    //      止まると、この関数を呼んでいる側の「編集ロックの取得」まで
+    //      実行されず、ロックが一度も効いていなかった。
+    //   2) 使っていた要素のid（eval-short-function-new など）が実在しなかった。
+    //      本当のidは short_goal_function_new（eval- が付かない）。
+    //      そのため、保存した新規目標が画面に戻らず、そのまま保存し直すと
+    //      【入力ずみの新規目標が消えていた】。
+    //
+    // ★継続／変更を選ぶ部品は画面に存在しない。保存時に自動判定される。
+    //   だから復元では文章を戻すだけでよい。*_cont は使わない。
+    // ★値が無いときは空にする（前に開いていた人の文章を残さないため）。
+    const _axisRestoreNew = [
+        ['short_goal_function_new',      ev.short_goal_function_new],
+        ['short_goal_activity_new',      ev.short_goal_activity_new],
+        ['short_goal_participation_new', ev.short_goal_participation_new],
+        ['long_goal_function_new',       ev.long_goal_function_new],
+        ['long_goal_activity_new',       ev.long_goal_activity_new],
+        ['long_goal_participation_new',  ev.long_goal_participation_new],
+        ['short_goal_new',               ev.short_goal_new],
+        ['long_goal_new',                ev.long_goal_new],
     ];
-    _axisRestorePairs.forEach(([contId, contVal, newId, newVal]) => {
-        if (contVal) evalSelectContAxis(contId, newId, contVal);
-        const newEl = document.getElementById(newId);
-        if (newEl && newVal) { newEl.value = newVal; if (contVal === '変更') newEl.classList.add('show'); }
+    _axisRestoreNew.forEach(([id, val]) => {
+        const el = document.getElementById(id);
+        if (el) el.value = val || '';
     });
 
 
@@ -2704,9 +2732,20 @@ window.evalEditFromDetail = async function() {
     document.getElementById('eval-form-body').style.display = '';
     document.getElementById('eval-lock-alert').hidden = true;
 
+    // eval-lock-guard-v1: 上と同じ理由。復元で止まってもロックは必ず取る。
     evalResetForm();
-    evalFillForm(ev);
-    await evalAcquireLock();
+    let _fillOk2 = true;
+    try {
+        evalFillForm(ev);
+    } catch (e) {
+        _fillOk2 = false;
+        console.error('[eval] 画面の復元に失敗:', e);
+    } finally {
+        await evalAcquireLock();
+    }
+    if (!_fillOk2) {
+        showToast('記録の読み込みに一部失敗しました。保存せずに開き直してください', 'error');
+    }
 };
 
 // ===========================================================================
