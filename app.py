@@ -16831,6 +16831,11 @@ register_patient_hub_routes(app)
 from self_eval_integration import register_self_eval_routes
 register_self_eval_routes(app)
 
+# guide-v1: 画面の案内役（読むだけのAPI）
+#   案内文は guide_integration.py の SCREENS に集約。テンプレートには手を入れない。
+from guide_integration import register_guide_routes
+register_guide_routes(app)
+
 
 
 # ===== 掲示板カテゴリー管理API =====

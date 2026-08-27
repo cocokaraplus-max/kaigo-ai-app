@@ -790,6 +790,11 @@ body.nav-editing {
         <button class="settings-fab" id="settings-fab-btn">
             <span class="material-symbols-outlined">settings</span>
         </button>
+        <!-- guide-v1: この画面の使い方 -->
+        <button class="settings-fab" id="guide-fab-btn" type="button"
+                title="この画面の使い方" aria-label="この画面の使い方" style="display:none;">
+            <span class="material-symbols-outlined">help</span>
+        </button>
     </div>
     {% endif %}
 
@@ -5047,6 +5052,298 @@ function ttResetLang() {
   }
   if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
+})();
+</script>
+
+<!-- ============================================================
+     guide-v1 : 画面の案内役
+     案内文は【サーバの guide_integration.py】に全部ある。
+     ここは出し方だけ。文章を直したいときは、このファイルではなく
+     guide_integration.py の SCREENS を直すこと。
+     ============================================================ -->
+<style>
+  /* 入力欄の横に出る小さな「？」 */
+  .tkg-chip{
+    display:inline-flex; align-items:center; justify-content:center;
+    width:17px; height:17px; margin-left:5px; flex:0 0 auto;
+    border:none; border-radius:50%; background:#e8f0fe; color:#1a73e8;
+    font-size:12px; font-weight:700; line-height:1; cursor:pointer;
+    padding:0; vertical-align:middle; font-family:inherit;
+  }
+  .tkg-chip:hover{ background:#d2e3fc; }
+
+  /* 「？」を押すと出る吹き出し */
+  #tkg-pop{
+    position:fixed; z-index:100002; max-width:min(320px, calc(100vw - 24px));
+    background:#fff; border-radius:12px; padding:12px 14px;
+    box-shadow:0 6px 24px rgba(0,0,0,.18); border:1px solid #e0e0e0;
+    font-size:.86rem; line-height:1.65; color:#3c4043; display:none;
+  }
+  #tkg-pop .tkg-pop-t{ font-weight:700; color:#1a73e8; margin-bottom:4px; font-size:.88rem; }
+
+  /* 右上の「？」を押すと出るカード */
+  #tkg-mask{
+    position:fixed; inset:0; background:rgba(0,0,0,.35);
+    z-index:100000; display:none;
+  }
+  #tkg-card{
+    position:fixed; z-index:100001; left:50%; transform:translateX(-50%);
+    bottom:0; width:min(560px, 100%); max-height:82vh; overflow-y:auto;
+    background:#fff; border-radius:16px 16px 0 0; padding:18px 18px 26px;
+    box-shadow:0 -6px 28px rgba(0,0,0,.2); display:none;
+    padding-bottom:calc(26px + env(safe-area-inset-bottom));
+  }
+  #tkg-card h3{ margin:0 0 4px; font-size:1.05rem; color:#202124; }
+  #tkg-card .tkg-what{ font-size:.88rem; color:#5f6368; line-height:1.7; margin:0 0 14px; }
+  #tkg-card .tkg-sec{ font-size:.76rem; font-weight:700; color:#80868b; margin:16px 0 7px; }
+  #tkg-card .tkg-step{
+    display:flex; align-items:flex-start; gap:9px; font-size:.87rem;
+    color:#3c4043; margin-bottom:7px; line-height:1.6;
+  }
+  #tkg-card .tkg-num{
+    flex:0 0 auto; width:19px; height:19px; border-radius:50%;
+    background:#1a73e8; color:#fff; font-size:.72rem; font-weight:700;
+    display:flex; align-items:center; justify-content:center; margin-top:2px;
+  }
+  #tkg-card .tkg-todo{
+    background:#fef7e0; border-left:3px solid #f9ab00; border-radius:6px;
+    padding:10px 12px; font-size:.86rem; color:#3c4043; line-height:1.65;
+    margin-bottom:8px;
+  }
+  #tkg-card .tkg-ok{
+    background:#e6f4ea; border-left:3px solid #34a853;
+  }
+  #tkg-card .tkg-row{
+    display:flex; align-items:center; justify-content:space-between;
+    gap:12px; margin-top:18px; padding-top:14px; border-top:1px solid #eee;
+    font-size:.85rem; color:#3c4043;
+  }
+  #tkg-card .tkg-sw{
+    width:42px; height:24px; border-radius:12px; background:#dadce0;
+    border:none; position:relative; cursor:pointer; flex:0 0 auto; padding:0;
+  }
+  #tkg-card .tkg-sw.on{ background:#1a73e8; }
+  #tkg-card .tkg-sw::after{
+    content:''; position:absolute; top:3px; left:3px; width:18px; height:18px;
+    border-radius:50%; background:#fff; transition:left .15s;
+  }
+  #tkg-card .tkg-sw.on::after{ left:21px; }
+  #tkg-card .tkg-close{
+    width:100%; margin-top:16px; padding:11px; border:none; border-radius:9px;
+    background:#f1f3f4; color:#3c4043; font-size:.9rem; font-weight:600;
+    cursor:pointer; font-family:inherit;
+  }
+  #tkg-card .tkg-manual{
+    display:inline-flex; align-items:center; gap:4px; margin-top:12px;
+    font-size:.83rem; color:#1a73e8; text-decoration:none;
+  }
+</style>
+
+<div id="tkg-mask"></div>
+<div id="tkg-card" role="dialog" aria-modal="true" aria-label="この画面の使い方"></div>
+<div id="tkg-pop" role="tooltip"></div>
+
+<script>
+(function(){
+  'use strict';
+  // guide-v1
+
+  var KEY  = 'tkg_hints_on';     // 欄の横の「？」を出すかどうか（この端末だけの設定）
+  var data = null;               // サーバから来た案内
+  var loaded = false;
+
+  function hintsOn(){
+    try{ return localStorage.getItem(KEY) !== '0'; }catch(e){ return true; }
+  }
+  function setHints(v){
+    try{ localStorage.setItem(KEY, v ? '1' : '0'); }catch(e){}
+  }
+
+  // いま開いている画面の名前。/input → 'input'、/ → 'top'
+  function screenName(){
+    var segs = (location.pathname || '/').split('/').filter(Boolean);
+    return segs.length ? segs[0] : 'top';
+  }
+
+  function esc(s){
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;');
+  }
+
+  // ---------- 吹き出し ----------
+  var pop = null;
+  function getPop(){ if(!pop) pop = document.getElementById('tkg-pop'); return pop; }
+
+  function hidePop(){
+    var p = getPop(); if(p) p.style.display = 'none';
+  }
+
+  function showPop(chip, t, d){
+    var p = getPop(); if(!p) return;
+    p.innerHTML = '<div class="tkg-pop-t">' + esc(t) + '</div>' + esc(d);
+    p.style.display = 'block';
+    p.style.visibility = 'hidden';
+    p.style.left = '0px'; p.style.top = '0px';
+
+    var r = chip.getBoundingClientRect();
+    var pw = p.offsetWidth, ph = p.offsetHeight;
+    var left = r.left + r.width/2 - pw/2;
+    var top  = r.bottom + 8;
+    if(left < 10) left = 10;
+    if(left + pw > window.innerWidth - 10) left = window.innerWidth - pw - 10;
+    if(top + ph > window.innerHeight - 10) top = r.top - ph - 8;   // 下に入らなければ上に出す
+    if(top < 10) top = 10;
+    p.style.left = Math.round(left) + 'px';
+    p.style.top  = Math.round(top) + 'px';
+    p.style.visibility = 'visible';
+  }
+
+  // ---------- 欄の横に「？」を付ける ----------
+  function anchorFor(el){
+    // この画面は .form-group の中に label.form-label がある作り。
+    // そこに並べれば、どの画面でも同じ見た目になる。
+    var g = el.closest ? el.closest('.form-group') : null;
+    if(g){
+      var l = g.querySelector('label.form-label');
+      if(l) return {node:l, how:'append'};
+    }
+    return {node:el, how:'after'};
+  }
+
+  function attachHints(){
+    if(!data || !data.fields) return;
+    var on = hintsOn();
+
+    data.fields.forEach(function(f){
+      var el = document.getElementById(f.id);
+      if(!el) return;                                  // その画面に無い欄は黙って飛ばす
+
+      var existing = document.querySelector('.tkg-chip[data-for="' + f.id + '"]');
+      if(existing){
+        existing.style.display = on ? 'inline-flex' : 'none';
+        return;
+      }
+      if(!on) return;
+
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'tkg-chip';
+      chip.setAttribute('data-for', f.id);
+      chip.setAttribute('aria-label', f.t + 'の説明');
+      chip.textContent = '?';
+      chip.onclick = function(ev){
+        ev.preventDefault(); ev.stopPropagation();
+        var p = getPop();
+        if(p && p.style.display === 'block' && p.dataset.for === f.id){ hidePop(); return; }
+        if(p) p.dataset.for = f.id;
+        showPop(chip, f.t, f.d);
+      };
+
+      var a = anchorFor(el);
+      try{
+        if(a.how === 'append') a.node.appendChild(chip);
+        else a.node.insertAdjacentElement('afterend', chip);
+      }catch(e){ /* 置けない形の画面では出さない */ }
+    });
+  }
+
+  // ---------- 右上の「？」のカード ----------
+  function closeCard(){
+    document.getElementById('tkg-mask').style.display = 'none';
+    document.getElementById('tkg-card').style.display = 'none';
+    hidePop();
+  }
+
+  function openCard(){
+    if(!data || !data.known) return;
+    var c = document.getElementById('tkg-card');
+
+    var h = '<h3>' + esc(data.title) + '</h3>';
+    if(data.what) h += '<p class="tkg-what">' + esc(data.what) + '</p>';
+
+    if(data.todos && data.todos.length){
+      h += '<div class="tkg-sec">いまの状況</div>';
+      data.todos.forEach(function(t){
+        // 「足りている」ときは緑、「まだ」のときは黄。どちらかはサーバが決める。
+        h += '<div class="tkg-todo' + (t.ok ? ' tkg-ok' : '') + '">' + esc(t.say) + '</div>';
+      });
+    }
+
+    if(data.flow && data.flow.length){
+      h += '<div class="tkg-sec">この画面の進め方</div>';
+      data.flow.forEach(function(s, i){
+        h += '<div class="tkg-step"><span class="tkg-num">' + (i+1) + '</span><span>'
+           + esc(s) + '</span></div>';
+      });
+    }
+
+    var on = hintsOn();
+    h += '<div class="tkg-row"><span>入力欄の横に「?」を出す</span>'
+       + '<button type="button" class="tkg-sw' + (on ? ' on' : '') + '" id="tkg-sw"'
+       + ' role="switch" aria-checked="' + (on ? 'true' : 'false') + '"></button></div>';
+
+    h += '<a class="tkg-manual" href="/manual">'
+       + '<span class="material-symbols-outlined" style="font-size:17px;">menu_book</span>'
+       + 'くわしい手引書をひらく</a>';
+
+    h += '<button type="button" class="tkg-close" id="tkg-close">閉じる</button>';
+
+    c.innerHTML = h;
+    document.getElementById('tkg-mask').style.display = 'block';
+    c.style.display = 'block';
+
+    document.getElementById('tkg-close').onclick = closeCard;
+    var sw = document.getElementById('tkg-sw');
+    sw.onclick = function(){
+      var next = !hintsOn();
+      setHints(next);
+      sw.classList.toggle('on', next);
+      sw.setAttribute('aria-checked', next ? 'true' : 'false');
+      attachHints();
+    };
+  }
+
+  // ---------- 読み込み ----------
+  function load(){
+    if(loaded) return;
+    loaded = true;
+    fetch('/api/guide/screen?screen=' + encodeURIComponent(screenName()), {
+      credentials: 'same-origin'
+    })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      if(!j || j.status !== 'success' || !j.known) return;   // 案内文がまだ無い画面
+      data = j;
+      var btn = document.getElementById('guide-fab-btn');
+      if(btn){
+        btn.style.display = '';
+        btn.onclick = openCard;
+      }
+      attachHints();
+      setTimeout(attachHints, 1200);   // 後から出てくる欄にも付ける
+    })
+    .catch(function(){ /* 案内が出ないだけ。画面は普通に使える */ });
+  }
+
+  document.getElementById('tkg-mask').onclick = closeCard;
+  document.addEventListener('click', function(ev){
+    var p = getPop();
+    if(!p || p.style.display !== 'block') return;
+    if(p.contains(ev.target)) return;
+    if(ev.target.classList && ev.target.classList.contains('tkg-chip')) return;
+    hidePop();
+  }, true);
+  document.addEventListener('keydown', function(ev){
+    if(ev.key === 'Escape'){ hidePop(); closeCard(); }
+  });
+  window.addEventListener('scroll', hidePop, true);
+  window.addEventListener('resize', hidePop);
+
+  window.tkGuide = { refresh: attachHints, open: openCard };
+
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', load);
+  else load();
 })();
 </script>
 </body>
