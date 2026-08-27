@@ -352,13 +352,21 @@ function a2Filter(){
   if(!q){ box.innerHTML = ''; box.style.display='none'; return; }
   var hits = A2_PATIENTS.filter(function(p){
     return (p.name+p.kana+p.chart).toLowerCase().indexOf(q) >= 0; }).slice(0,8);
+  // ★利用者のidは【UUIDの文字列】。引用符なしで埋めると
+  //   a2Pick(d302cbb5-6fef-…) となり JavaScript として壊れる（実際に踏んだ）。
+  //   属性に持たせて、押したときに読み出す形にする。
   box.innerHTML = hits.map(function(p){
-    return '<div onclick="a2Pick('+p.id+')">(No.'+esc(p.chart)+') '+esc(p.name)+' ('+esc(p.kana)+')</div>';
+    return '<div data-pid="'+esc(p.id)+'">(No.'+esc(p.chart)+') '+esc(p.name)+' ('+esc(p.kana)+')</div>';
   }).join('');
+  box.querySelectorAll('div').forEach(function(d){
+    d.onclick = function(){ a2Pick(d.dataset.pid); };
+  });
   box.style.display = hits.length ? 'block' : 'none';
 }
 function a2Pick(id){
-  A2.patient = A2_PATIENTS.filter(function(p){ return p.id === id; })[0] || null;
+  // ★id は文字列（UUID）でも数値でも来うるので、文字列にそろえて比べる
+  A2.patient = A2_PATIENTS.filter(function(p){ return String(p.id) === String(id); })[0] || null;
+  if(!A2.patient) return;
   $('a2-cands').style.display='none';
   $('a2-search').value='';
   $('a2-search').style.display='none';
