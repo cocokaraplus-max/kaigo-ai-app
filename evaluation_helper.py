@@ -330,8 +330,18 @@ def get_initial_care_classification(supabase, facility_code: str, user_name: str
 # 2. 編集ロック関数(悲観的ロック、10 分タイムアウト)
 # ===========================================================================
 
-def acquire_edit_lock(supabase, evaluation_id: int, current_user: str) -> dict:
+def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
+                      facility_code: str = None) -> dict:
     """編集ロックを取得する。
+
+    ★eval-lock-scope-v1（2026-08-26）
+      facility_code を必ず受け取り、その施設の評価だけを対象にする。
+      これが無かったため、ログインしていれば【他の施設の評価にも】
+      自分の名前でロックをかけられ、相手施設の職員名も見えていた。
+      （他の評価系のルートはすべて f_code でしぼっていた。ここだけ漏れていた）
+
+      ★facility_code を渡さない呼び出しは、通さずに失敗させる。
+        黙って全施設を対象にするより、はっきり失敗するほうが安全なため。
 
     動作:
       - 該当評価レコードが ID で存在する場合のみ動作(新規評価=ID 未確定の場合は不要)
@@ -351,10 +361,13 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str) -> dict:
             "lock_age_seconds": int (失敗時、ロック経過秒数),
         }
     """
+    if not facility_code:
+        return {"success": False, "error": "facility_code がありません（eval-lock-scope-v1）"}
     try:
         res = supabase.table("patient_evaluations") \
             .select("editing_by, editing_started_at") \
             .eq("id", evaluation_id) \
+            .eq("facility_code", facility_code) \
             .single() \
             .execute()
     except Exception as e:
@@ -385,14 +398,20 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str) -> dict:
         supabase.table("patient_evaluations").update({
             "editing_by": current_user,
             "editing_started_at": _now_utc_iso(),
-        }).eq("id", evaluation_id).execute()
+        }).eq("id", evaluation_id).eq("facility_code", facility_code).execute()
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": f"ロック取得失敗: {e}"}
 
 
-def release_edit_lock(supabase, evaluation_id: int, current_user: str) -> dict:
+def release_edit_lock(supabase, evaluation_id: int, current_user: str,
+                      facility_code: str = None) -> dict:
     """編集ロックを解放する(自分が保持している場合のみ)。
+
+    ★eval-lock-scope-v1（2026-08-26）
+      こちらは editing_by で自分のロックだけを解放していたが、
+      別の施設に【同じ名前の職員】がいると解放できてしまう。
+      facility_code でもしぼる。
 
     Args:
         supabase: Supabase Client instance
@@ -402,11 +421,14 @@ def release_edit_lock(supabase, evaluation_id: int, current_user: str) -> dict:
     Returns:
         {"success": True} または {"success": False, "error": "..."}
     """
+    if not facility_code:
+        return {"success": False, "error": "facility_code がありません（eval-lock-scope-v1）"}
     try:
         supabase.table("patient_evaluations").update({
             "editing_by": None,
             "editing_started_at": None,
-        }).eq("id", evaluation_id).eq("editing_by", current_user).execute()
+        }).eq("id", evaluation_id).eq("editing_by", current_user) \
+          .eq("facility_code", facility_code).execute()
         return {"success": True}
     except Exception as e:
         return {"success": False, "error": str(e)}

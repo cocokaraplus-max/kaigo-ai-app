@@ -456,13 +456,21 @@ def register_self_eval_routes(app):
     def api_self_eval_create():
         """利用者を選んで新規作成し、AIで質問のたたき台を作る。
         ★ここで作った質問は必ず職員が確認してから利用者に見せること（そのまま出さない）。"""
-        from app import get_supabase
+        from app import get_supabase, tokyo_tz          # self-eval-ym-tz-v1
         supabase = get_supabase()
         f_code = session["f_code"]
         me = session.get("my_name", "")
         data = request.json or {}
         pid = str(data.get("pid") or "").strip()
-        target_ym = (data.get("target_ym") or "").strip() or datetime.now().strftime("%Y-%m")
+        # ★self-eval-ym-tz-v1（2026-08-26）: 対象月は【日本時間】で決める。
+        #   以前は datetime.now()（時間帯の指定なし）だった。
+        #   Cloud Run のサーバはUTCで動いているので、日本時間の 00:00〜08:59 は
+        #   UTCではまだ前日。そのため【毎月1日の朝9時までに作ると、前の月の
+        #   セルフ評価】になっていた。取り込み先の評価も前月のものが選ばれ、
+        #   すでに仕上げた評価に追記されるおそれがあった。
+        #   ★画面（self_eval.html）は target_ym を送っていないので、
+        #     この既定値が【必ず】使われる。ここが唯一の決定点。
+        target_ym = (data.get("target_ym") or "").strip() or datetime.now(tokyo_tz).strftime("%Y-%m")
         if not pid:
             return jsonify({"status": "error", "message": "利用者を選んでください"}), 400
 
