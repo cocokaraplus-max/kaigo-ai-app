@@ -439,12 +439,29 @@ def release_edit_lock(supabase, evaluation_id: int, current_user: str,
 # ===========================================================================
 
 # 必須項目(B 必須、設計書 §論点 10)
-REQUIRED_FIELDS = ("user_name", "year_month", "care_classification", "evaluator_name", "training_goal")
+#
+# ★eval-required-legacy-v1（2026-08-26）: training_goal を必須から外した。
+#
+#   training_goal は【1つの文章で訓練目標を書いていた時代】の列。
+#   いまは利用者情報に登録した目標（要介護=ICF3軸×短期長期／要支援=短期長期）を
+#   評価画面に表示し、変えたい軸だけ「新規目標」欄に書く作りになっている。
+#   ★評価画面に training_goal を書き込む部品はもう無い
+#     （<input type="hidden" id="eval-training-goal"> が残っているだけ）。
+#   ★そのため【書けない項目を必須にしている】状態で、
+#     新しく作った評価はすべて「必須未入力」の赤いバッジになっていた。
+#     ＝「過去の評価」一覧でどれが仕上がっているか分からなくなっていた。
+#
+#   ★列そのものは消さないこと。過去の評価に実際の文章が入っており
+#     （例: 2026-07「自宅内を伝い歩きで安全に移動できる」）、
+#     過去評価の詳細画面で「訓練目標」として表示し続ける必要がある。
+#   ★ALLOWED_UPSERT_KEYS からも外さないこと。外すと、古い値が入っている
+#     記録を開いて保存し直したときに消えてしまう。
+REQUIRED_FIELDS = ("user_name", "year_month", "care_classification", "evaluator_name")
 
 # 全項目(完成度 100% 判定用、介護区分で分岐)
 ALL_FIELDS_KAIGO = (
-    # 必須
-    "user_name", "year_month", "care_classification", "evaluator_name", "training_goal",
+    # 必須（eval-required-legacy-v1: training_goal は書けない列なので外した）
+    "user_name", "year_month", "care_classification", "evaluator_name",
     # 計測値
     "weight_kg", "attendance_count", "attendance_target",
     # 短期 ICF 3 個 + 長期 ICF 3 個
@@ -458,8 +475,8 @@ ALL_FIELDS_KAIGO = (
 )
 
 ALL_FIELDS_SHIEN_OR_TAISHOU = (
-    # 必須
-    "user_name", "year_month", "care_classification", "evaluator_name", "training_goal",
+    # 必須（eval-required-legacy-v1: training_goal は書けない列なので外した）
+    "user_name", "year_month", "care_classification", "evaluator_name",
     # 計測値
     "weight_kg", "attendance_count", "attendance_target",
     # 短期/長期(単純)
