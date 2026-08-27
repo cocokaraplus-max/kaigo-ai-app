@@ -1790,6 +1790,61 @@ def register_self_eval_routes(app):
         print(f"[self-eval] source_data appended eval={eid} ym={ym} filled={filled}", flush=True)
         return jsonify({"status": "success", "chars": len(block), "filled": filled})
 
+    # ==========================================================
+    # self-eval-for-eval-v1 : 評価画面から「読むだけ」で取り出す
+    #
+    #   ★これまでの /api/self-eval/to-evaluation は【DBを直接書き換える】。
+    #     そのため「先に評価を作っておく」必要があり、職員は
+    #     評価画面 → /self-eval → 戻る、と往復していた。
+    #
+    #   ★ここでは【何も書かない】。文章を作って返すだけ。
+    #     評価画面がそれを入力欄に入れ、保存は職員が押したときに行う。
+    #     だから【評価をまだ作っていなくても使える】。
+    # ==========================================================
+    @app.route('/api/self-eval/for-eval/list', methods=['GET'])
+    @login_required
+    def api_self_eval_for_eval_list():
+        """その利用者のセルフ評価を、新しい順に返す。
+        ★まだ回答が終わっていないもの（draft）は出さない。取り込むものが無いため。
+        ★どれを取り込むかは【職員が選ぶ】。月がずれたまま取り込めると事故になる。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        uname = (request.args.get("user_name") or "").strip()
+        if not uname:
+            return jsonify({"status": "error", "message": "user_name が必要です"}), 400
+        try:
+            r = (supabase.table("patient_self_evaluations")
+                 .select("id,user_name,target_ym,status,answered_at,confirmed_at,staff_note")
+                 .eq("facility_code", f_code).eq("user_name", uname)
+                 .in_("status", ["answered", "confirmed"])
+                 .order("target_ym", desc=True).order("answered_at", desc=True)
+                 .limit(24).execute())
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "success", "items": r.data or []})
+
+    @app.route('/api/self-eval/for-eval/text', methods=['GET'])
+    @login_required
+    def api_self_eval_for_eval_text():
+        """選ばれた1件から、評価の材料に貼る文章を作って返す。★DBは書き換えない。"""
+        from app import get_supabase
+        supabase = get_supabase()
+        f_code = session["f_code"]
+        eid = (request.args.get("id") or "").strip()
+        if not eid:
+            return jsonify({"status": "error", "message": "id が必要です"}), 400
+        ev, answers = _eval_bundle(supabase, f_code, eid)
+        if not ev:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        return jsonify({
+            "status": "success",
+            "text": _build_source_block(ev, answers),
+            "user_name": ev.get("user_name") or "",
+            "target_ym": ev.get("target_ym") or "",
+            "answered_at": ev.get("answered_at") or "",
+        })
+
     @app.route('/api/self-eval/confirm', methods=['POST'])
     @login_required
     def api_self_eval_confirm():

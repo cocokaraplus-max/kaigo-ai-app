@@ -636,7 +636,8 @@ ALLOWED_UPSERT_KEYS = (
 )
 
 
-def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dict:
+def upsert_patient_evaluation(supabase, payload: dict, current_user: str,
+                              section: str = None) -> dict:
     """評価データを UPSERT する。
 
     動作:
@@ -682,8 +683,11 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dic
 
     # 既存検索
     try:
+        # eval-two-entrances-save: 入口ごとのロック列も読む
         existing_res = supabase.table("patient_evaluations") \
-            .select("id, editing_by, editing_started_at") \
+            .select("id, editing_by, editing_started_at, "
+                    "editing_by_eval, editing_started_at_eval, "
+                    "editing_by_ft, editing_started_at_ft") \
             .eq("facility_code", clean["facility_code"]) \
             .eq("user_name", clean["user_name"]) \
             .eq("year_month", clean["year_month"]) \
@@ -699,9 +703,24 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dic
         evaluation_id = existing["id"]
 
         # 競合判定(別ユーザーがロック中 + タイムアウト未経過)
-        lock_holder = existing.get("editing_by")
-        lock_started = existing.get("editing_started_at")
-        if lock_holder and lock_holder != current_user and lock_started:
+        #
+        # ★eval-two-entrances-save
+        #   入口を分けると、評価担当者と機能訓練指導員が同時に開く。
+        #   自分の入口のロックだけを見ればよい……ではない。
+        #   【分ける前の1枚の画面】は全部の欄を書き換えるので、
+        #   そちらが開いていたら、どの入口からも保存させてはいけない。
+        #   → 旧列 ＋ 自分の入口の列、その両方を見る。
+        _by_col, _at_col = _lock_cols(section)
+        _checks = []
+        if _by_col != "editing_by":
+            _checks.append(("editing_by", "editing_started_at"))
+        _checks.append((_by_col, _at_col))
+
+        for _b, _a in _checks:
+            lock_holder = existing.get(_b)
+            lock_started = existing.get(_a)
+            if not (lock_holder and lock_holder != current_user and lock_started):
+                continue
             try:
                 started = _parse_iso_datetime(lock_started)
                 age = (datetime.now(timezone.utc) - started).total_seconds()
@@ -716,9 +735,11 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dic
                 pass  # パース失敗時は競合扱いせず続行
 
         # 更新(updated_at を明示、ロック解放)
+        # ★解放するのは【自分が取った入口のロックだけ】。
+        #   相手の入口のロックまで外すと、相手が保存する前に横取りされる。
         clean["updated_at"] = _now_utc_iso()
-        clean["editing_by"] = None
-        clean["editing_started_at"] = None
+        clean[_by_col] = None
+        clean[_at_col] = None
         try:
             supabase.table("patient_evaluations").update(clean).eq("id", evaluation_id).execute()
             return {"success": True, "id": evaluation_id, "mode": "update"}
@@ -727,8 +748,13 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dic
     else:
         # ── INSERT 経路 ──
         # ロック関連は INSERT 時は NULL(新規作成と同時にロック解放)
+        # eval-two-entrances-save: 新規作成なので、どの入口の列も空でよい
         clean["editing_by"] = None
         clean["editing_started_at"] = None
+        clean["editing_by_eval"] = None
+        clean["editing_started_at_eval"] = None
+        clean["editing_by_ft"] = None
+        clean["editing_started_at_ft"] = None
         try:
             res = supabase.table("patient_evaluations").insert(clean).execute()
             new_id = (res.data or [{}])[0].get("id")

@@ -7655,6 +7655,29 @@ def assessment():
     )
 
 
+# ===== eval-two-entrances-v1 : 担当ごとに入口を分けた評価画面（新） =====
+#
+#   ★上の /assessment（いまの画面）は【1文字も触っていない】。
+#     こちらを別のURLに置き、並べて見比べられるようにする。
+#     現場で確かめて問題なければ、入れ替えを検討する。
+#   ★渡すものは上とまったく同じ。テンプレートだけが違う。
+@app.route('/assessment2')
+@login_required
+def assessment2():
+    """月次評価（入口2つ版）。評価担当者と機能訓練指導員で入口を分ける。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    this_month = datetime.now(tokyo_tz).strftime("%Y-%m")
+    return render(
+        "assessment2.html",
+        patients=patients,
+        this_month=this_month,
+        current_user=my_name,
+    )
+
+
 @app.route('/api/save_patient_evaluation', methods=['POST'])
 @login_required
 def api_save_patient_evaluation():
@@ -7666,7 +7689,9 @@ def api_save_patient_evaluation():
         data["facility_code"] = f_code  # クライアント指定は無視 (セキュリティ)
 
         supabase = get_supabase()
-        result = upsert_patient_evaluation(supabase, data, my_name)
+        # eval-two-entrances-save: どの入口から保存したかを渡す（省略時は今までどおり）
+        result = upsert_patient_evaluation(supabase, data, my_name,
+                                           (data.get("section") or "").strip() or None)
 
         if result.get("success"):
             return jsonify({

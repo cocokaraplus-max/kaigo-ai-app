@@ -1,0 +1,742 @@
+{% extends "base.html" %}
+{% block title %}評価（新）- TASUKARU{% endblock %}
+{% block nav_assessment %}active{% endblock %}
+
+{% block extra_style %}
+<style>
+.a2-wrap{max-width:640px;margin:0 auto;padding:14px 14px 40px;}
+.a2-head h2{font-size:1.15rem;font-weight:800;margin:0 0 12px;}
+.a2-pick{position:relative;margin-bottom:10px;}
+.a2-pick label,.a2-row2 label{font-size:.8rem;font-weight:700;color:#5f6368;display:block;margin-bottom:5px;}
+.a2-wrap input[type=text],.a2-wrap input[type=month],.a2-wrap textarea,.a2-sel{
+  width:100%;border:1px solid #dadce0;border-radius:9px;padding:9px 11px;font-size:.88rem;
+  font-family:inherit;color:#3c4043;background:#fff;}
+.a2-wrap textarea{resize:vertical;}
+.a2-sel.narrow{width:auto;}
+.a2-cands{position:absolute;left:0;right:0;top:100%;background:#fff;border:1px solid #dadce0;
+  border-radius:9px;box-shadow:0 4px 14px rgba(0,0,0,.1);z-index:20;display:none;}
+.a2-cands div{padding:9px 11px;font-size:.86rem;cursor:pointer;}
+.a2-cands div:hover{background:#e8f0fe;}
+.a2-chosen{display:flex;align-items:center;justify-content:space-between;background:#e8f0fe;
+  border-radius:9px;padding:9px 11px;font-size:.88rem;font-weight:700;color:#1558d6;}
+.a2-chosen button{border:none;background:none;color:#5f6368;font-size:1.05rem;cursor:pointer;}
+.a2-row2{display:flex;gap:10px;margin-bottom:14px;}
+.a2-row2>div{flex:1;}
+.a2-hint{background:#fef7e0;border:1px solid #fdd663;border-radius:10px;padding:11px 13px;
+  font-size:.84rem;color:#7a5200;}
+.a2-who{background:#f8f9fa;border:1px solid #e8eaed;border-radius:12px;padding:12px 14px;margin-bottom:14px;}
+.a2-who.small{margin-bottom:12px;}
+.a2-who .nm{font-size:1.05rem;font-weight:800;}
+.a2-who .sub{font-size:.8rem;color:#5f6368;margin-top:5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.a2-who .auto{background:#e8f0fe;color:#1558d6;font-weight:800;border-radius:6px;padding:2px 8px;font-size:.76rem;}
+.a2-who .from{color:#80868b;}
+.a2-who .chg{background:none;border:none;color:#1a73e8;font-size:.77rem;font-weight:800;
+  cursor:pointer;text-decoration:underline;font-family:inherit;padding:0;}
+.a2-ent{border:2px solid #e0e0e0;border-radius:14px;padding:15px 16px;margin-bottom:12px;cursor:pointer;
+  background:#fff;text-align:left;width:100%;font-family:inherit;color:inherit;display:block;}
+.a2-ent:hover{border-color:#1a73e8;box-shadow:0 3px 14px rgba(26,115,232,.13);}
+.a2-ent .top{display:flex;align-items:flex-start;gap:11px;}
+.a2-ent .ic{width:42px;height:42px;border-radius:11px;flex:0 0 42px;display:flex;align-items:center;justify-content:center;}
+.a2-ent .ic.blue{background:#e8f0fe;} .a2-ent .ic.green{background:#e6f4ea;}
+.a2-ent .tt{flex:1;}
+.a2-ent .t1{font-size:1.0rem;font-weight:800;line-height:1.35;}
+.a2-ent .t2{font-size:.8rem;color:#5f6368;margin-top:3px;line-height:1.55;}
+.a2-ent .meta{margin-top:10px;padding-top:9px;border-top:1px dashed #e8eaed;font-size:.78rem;color:#5f6368;}
+.a2-chip{display:inline-block;font-size:.75rem;font-weight:800;border-radius:999px;padding:3px 10px;white-space:nowrap;}
+.a2-chip.done{background:#e6f4ea;color:#137333;} .a2-chip.part{background:#fef7e0;color:#b06000;}
+.a2-chip.none{background:#f1f3f4;color:#5f6368;} .a2-chip.lock{background:#fce8e6;color:#c5221f;}
+.a2-bar{display:flex;align-items:center;gap:10px;margin-bottom:13px;}
+.a2-bar button{background:#f1f3f4;border:none;border-radius:8px;padding:7px 12px;font-size:.82rem;
+  font-weight:700;cursor:pointer;font-family:inherit;color:#5f6368;}
+.a2-bar b{font-size:1.02rem;font-weight:800;}
+.a2-sec{border:1px solid #e8eaed;border-radius:12px;margin-bottom:12px;overflow:hidden;}
+.a2-sec>h3{margin:0;font-size:.9rem;font-weight:800;padding:11px 14px;background:#f8f9fa;border-bottom:1px solid #e8eaed;}
+.a2-sec .bd{padding:13px 14px;}
+.a2-lab{font-size:.82rem;font-weight:700;color:#5f6368;margin-bottom:6px;display:block;}
+.a2-lab.small{font-size:.77rem;}
+.a2-row{margin-bottom:14px;} .a2-row:last-child{margin-bottom:0;}
+.a2-seg{display:flex;gap:6px;flex-wrap:wrap;}
+.a2-seg button{border:1px solid #dadce0;background:#fff;border-radius:8px;padding:6px 13px;font-size:.82rem;
+  cursor:pointer;font-family:inherit;color:#5f6368;font-weight:700;}
+.a2-seg button.on{background:#1a73e8;border-color:#1a73e8;color:#fff;}
+.a2-term{font-size:.8rem;font-weight:800;color:#1558d6;background:#e8f0fe;border-radius:7px;
+  padding:5px 10px;display:inline-block;margin-bottom:9px;}
+.a2-goal{border:1px solid #e8eaed;border-radius:10px;padding:10px 12px;margin-bottom:9px;}
+.a2-goal .ax{font-size:.74rem;font-weight:800;color:#5f6368;background:#f1f3f4;border-radius:5px;
+  padding:2px 7px;display:inline-block;margin-bottom:6px;}
+.a2-goal .tx{font-size:.86rem;line-height:1.65;margin-bottom:9px;}
+.a2-goal.none .tx{color:#9aa0a6;}
+.a2-btn{border:none;border-radius:10px;padding:11px 0;width:100%;font-size:.9rem;font-weight:800;
+  cursor:pointer;font-family:inherit;margin-top:8px;}
+.a2-btn.sub{background:#e8f0fe;color:#1558d6;}
+.a2-btn.ai{background:linear-gradient(135deg,#1a73e8,#0d47a1);color:#fff;}
+.a2-btn.save{background:#137333;color:#fff;}
+.a2-btn[disabled]{opacity:.6;cursor:default;}
+.a2-note{font-size:.76rem;color:#5f6368;line-height:1.65;margin-top:7px;}
+.a2-note.center{text-align:center;}
+.a2-warn{background:#fef7e0;border:1px solid #fdd663;border-radius:9px;padding:9px 12px;
+  font-size:.79rem;color:#7a5200;line-height:1.6;margin-bottom:11px;}
+.a2-other{background:#f8f9fa;border:1px dashed #c9d1d9;border-radius:10px;padding:11px 13px;}
+.a2-other .h{font-size:.76rem;font-weight:800;color:#5f6368;margin-bottom:7px;}
+.a2-other .tx{font-size:.83rem;line-height:1.75;white-space:pre-wrap;color:#3c4043;}
+.a2-auto{border:1px solid #e8eaed;border-radius:11px;padding:12px 13px;margin-bottom:10px;background:#fbfcfd;}
+.a2-auto .h{font-size:.75rem;font-weight:800;color:#137333;background:#e6f4ea;border-radius:6px;
+  padding:2px 8px;display:inline-block;margin-bottom:8px;}
+.a2-auto .h.none{color:#5f6368;background:#f1f3f4;}
+.a2-auto .v{font-size:1.45rem;font-weight:800;line-height:1.2;}
+.a2-auto .v span{font-size:.85rem;font-weight:700;color:#5f6368;margin-left:3px;}
+.a2-auto .s{font-size:.77rem;color:#5f6368;margin-top:4px;line-height:1.6;}
+.a2-spark{display:flex;align-items:flex-end;gap:4px;height:34px;margin-top:9px;}
+.a2-spark i{flex:1;background:#c6e2c9;border-radius:3px 3px 0 0;display:block;}
+.a2-spark i.last{background:#137333;}
+.a2-goto{background:#e8f0fe;border:none;border-radius:10px;padding:11px 13px;width:100%;text-align:left;
+  cursor:pointer;font-family:inherit;color:#1558d6;}
+.a2-goto b{font-size:.88rem;font-weight:800;display:block;}
+.a2-goto span{font-size:.77rem;color:#5f6368;display:block;margin-top:3px;line-height:1.6;}
+.a2-inline{display:flex;align-items:center;gap:9px;margin-bottom:9px;}
+.a2-inline .a2-lab{margin:0;}
+.a2-modal{position:fixed;inset:0;background:rgba(0,0,0,.42);display:flex;align-items:center;
+  justify-content:center;padding:20px;z-index:60;}
+.a2-modal .box{background:#fff;border-radius:16px;max-width:400px;width:100%;padding:18px;}
+.a2-modal h4{margin:0 0 4px;font-size:1rem;font-weight:800;}
+.a2-modal p{margin:0 0 13px;font-size:.81rem;color:#5f6368;line-height:1.65;}
+.a2-modal .opts{display:grid;gap:7px;margin-bottom:13px;}
+.a2-modal .opts button{border:1px solid #dadce0;background:#fff;border-radius:9px;padding:10px;
+  font-size:.88rem;font-weight:800;cursor:pointer;font-family:inherit;color:#3c4043;}
+.a2-modal .close{border:none;background:#f1f3f4;border-radius:9px;padding:9px 0;width:100%;
+  font-weight:800;cursor:pointer;font-family:inherit;color:#5f6368;font-size:.86rem;}
+</style>
+{% endblock %}
+
+{% block content %}
+{# =====================================================================
+   eval-two-entrances-v1 : 担当ごとに入口を分けた評価画面（新）
+
+   ★いまの /assessment（assessment.html）は【1文字も触っていない】。
+     これは別の画面として並べて置き、見比べられるようにしてある。
+     移行が済むまで、どちらも動く。
+
+   ★入口は2つ。
+       eval … ご本人に聞いて記録する（目標の達成度・聞き取り・満足度・体重）
+       ft   … 体の評価を記録する（体の評価・報告文）
+     それぞれ【自分の欄だけ】を送って保存する。相手の入力には触らない。
+     ロックも入口ごと。2人が同時に入っても弾き合わない。
+
+   ★材料の欄は2つに分けてある。
+       source_data      … 機能訓練指導員の材料（昔からある列。過去データもここ）
+       source_data_eval … 評価担当者の材料（新設）
+     AI生成には【両方】を渡す。
+   ===================================================================== #}
+<div class="a2-wrap">
+
+  {# 利用者・対象月・評価者 #}
+  <div class="a2-head">
+    <h2>月次評価</h2>
+    <div class="a2-pick">
+      <label>利用者</label>
+      <input type="text" id="a2-search" placeholder="名前・ふりがな・カルテ番号で検索"
+             autocomplete="off" oninput="a2Filter()">
+      <div id="a2-cands" class="a2-cands"></div>
+      <div id="a2-chosen" class="a2-chosen" style="display:none;">
+        <span id="a2-chosen-name"></span>
+        <button type="button" onclick="a2ClearPatient()">×</button>
+      </div>
+    </div>
+    <div class="a2-row2">
+      <div><label>対象月</label><input type="month" id="a2-ym" value="{{ this_month }}" onchange="a2Load()"></div>
+      <div><label>評価者</label><input type="text" id="a2-evaluator" value="{{ current_user }}"></div>
+    </div>
+  </div>
+
+  {# ── 画面A：入口 ── #}
+  <div id="a2-scA">
+    <div id="a2-nopatient" class="a2-hint">まず利用者を選んでください。</div>
+    <div id="a2-entries" style="display:none;">
+      <div class="a2-who">
+        <div class="nm" id="a2-whoName"></div>
+        <div class="sub">
+          <span id="a2-whoYm"></span>
+          <span class="auto" id="a2-whoCls">—</span>
+          <span class="from">利用者情報から自動</span>
+        </div>
+      </div>
+
+      <button type="button" class="a2-ent" id="a2-entEval" onclick="a2Enter('eval')">
+        <div class="top">
+          <div class="ic blue">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1558d6" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></svg>
+          </div>
+          <div class="tt">
+            <div class="t1">ご本人に聞いて記録する</div>
+            <div class="t2">目標がどこまでできたか・聞き取り・満足度・ご要望・体重</div>
+          </div>
+          <span class="a2-chip" id="a2-chipEval">—</span>
+        </div>
+        <div class="meta"><span id="a2-metaEval">読み込み中…</span></div>
+      </button>
+
+      <button type="button" class="a2-ent" id="a2-entFt" onclick="a2Enter('ft')">
+        <div class="top">
+          <div class="ic green">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#137333" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
+          </div>
+          <div class="tt">
+            <div class="t1">体の評価を記録する</div>
+            <div class="t2">体の状態を見て記録し、報告文を作る</div>
+          </div>
+          <span class="a2-chip" id="a2-chipFt">—</span>
+        </div>
+        <div class="meta"><span id="a2-metaFt">読み込み中…</span></div>
+      </button>
+    </div>
+  </div>
+
+  {# ── 画面B：ご本人に聞いて記録する ── #}
+  <div id="a2-scB" style="display:none;">
+    <div class="a2-bar"><button type="button" onclick="a2Back()">← 入口へ</button><b>ご本人に聞いて記録する</b></div>
+
+    <div class="a2-who small">
+      <div class="nm" id="a2-bName"></div>
+      <div class="sub">
+        <span id="a2-bYm"></span>
+        <span class="auto" id="a2-bCls">—</span>
+        <span class="from">利用者情報から自動</span>
+        <button type="button" class="chg" onclick="a2OpenCls()">変更</button>
+      </div>
+    </div>
+
+    <div class="a2-sec"><h3>1. 目標がどこまでできたか</h3><div class="bd" id="a2-goalBox"></div></div>
+
+    <div class="a2-sec"><h3>2. ご本人に聞く</h3><div class="bd">
+      <div class="a2-lab">タブレットや聞き取りで答えてもらった内容を取り込みます</div>
+      <select id="a2-seList" class="a2-sel"><option value="">読み込み中…</option></select>
+      <button type="button" class="a2-btn sub" onclick="a2PullSelfEval()">この回答を取り込む</button>
+      <div class="a2-note">★下の欄に<b>足します</b>（いまの文章は消しません）。
+        ★<b>選んだ回答の月</b>と、いま開いている対象月が違うときは確認します。</div>
+      <div style="height:12px;"></div>
+      <span class="a2-lab">聞き取りメモ（痛み・困っていること・できるようになったこと）</span>
+      <textarea id="a2-intake" rows="8" placeholder="聞いた内容をそのまま書いてください"></textarea>
+      <div class="a2-note">★この内容は、機能訓練指導員の画面でも<b>読めます</b>。報告文の材料になります。</div>
+    </div></div>
+
+    <div class="a2-sec"><h3>3. 満足度・ご要望</h3><div class="bd">
+      <div class="a2-row"><span class="a2-lab">サービスへの満足度</span>
+        <div class="a2-seg" data-target="a2-satis">
+          <button type="button" data-v="○">満足</button><button type="button" data-v="△">やや不満</button><button type="button" data-v="×">不満</button>
+        </div><input type="hidden" id="a2-satis"></div>
+      <div class="a2-row"><span class="a2-lab">サービス内容の適切さ</span>
+        <div class="a2-seg" data-target="a2-fit">
+          <button type="button" data-v="○">適切</button><button type="button" data-v="△">やや不適切</button><button type="button" data-v="×">不適切</button>
+        </div><input type="hidden" id="a2-fit"></div>
+      <div class="a2-row"><span class="a2-lab">新しいご希望・ご要望</span>
+        <div class="a2-seg" data-target="a2-req">
+          <button type="button" data-v="あり">あり</button><button type="button" data-v="なし">なし</button>
+        </div><input type="hidden" id="a2-req">
+        <textarea id="a2-reqDetail" rows="2" placeholder="「もう少し外を歩きたい」など" style="margin-top:8px;"></textarea></div>
+    </div></div>
+
+    <div class="a2-sec"><h3>4. 体重・出席</h3><div class="bd" id="a2-autoBox">
+      <div class="a2-note">読み込み中…</div>
+    </div></div>
+
+    <div class="a2-sec"><h3>5. 報告文</h3><div class="bd">
+      <button type="button" class="a2-goto" onclick="a2Switch('ft')">
+        <b>「体の評価を記録する」へ →</b>
+        <span>「訓練による変化」「課題とその要因」は向こうの画面にあります。
+          ★<b>誰でも入れます。</b>直したいときはそちらへ。</span>
+      </button>
+      <div class="a2-note">★同じ欄を2つの画面に置くと、どちらが本物か分からなくなります。<b>置き場所は1つ</b>にしています。</div>
+    </div></div>
+
+    <button type="button" class="a2-btn save" onclick="a2Save('eval')">保存する</button>
+    <div class="a2-note center">★保存されるのは、この画面にある欄だけです。相手の入力は触りません。</div>
+  </div>
+
+  {# ── 画面C：体の評価を記録する ── #}
+  <div id="a2-scC" style="display:none;">
+    <div class="a2-bar"><button type="button" onclick="a2Back()">← 入口へ</button><b>体の評価を記録する</b></div>
+
+    <div class="a2-who small">
+      <div class="nm" id="a2-cName"></div>
+      <div class="sub"><span id="a2-cYm"></span><span class="auto" id="a2-cCls">—</span></div>
+    </div>
+
+    <div class="a2-sec"><h3>1. 体の評価を記録する</h3><div class="bd">
+      <textarea id="a2-ftdata" rows="7"
+        placeholder="関節の動き・筋力・歩行・バランスなど、見たままを記録します"></textarea>
+      <div class="a2-note">★録音からの文字起こしは、次の段階でここに足します（いまの評価画面の仕組みを移します）。</div>
+    </div></div>
+
+    <div class="a2-sec"><h3>2. 評価担当者が聞き取った内容</h3><div class="bd">
+      <div class="a2-other"><div class="h" id="a2-mirrorH">（まだ記入がありません）</div>
+        <div class="tx" id="a2-mirror"></div></div>
+      <div class="a2-note">★ここでは<b>直せません</b>。直すのは書いた本人の画面です。</div>
+    </div></div>
+
+    <div class="a2-sec"><h3>3. 報告文を作る</h3><div class="bd">
+      <div class="a2-warn">AIは<b>上の2つ（体の評価 ＋ 聞き取った内容）の両方</b>を材料に作ります。</div>
+      <div class="a2-inline"><span class="a2-lab">長さ</span>
+        <select id="a2-len" class="a2-sel narrow">
+          <option value="200">200文字</option><option value="300">300文字</option>
+          <option value="400">400文字</option><option value="500">500文字</option></select></div>
+      <button type="button" class="a2-btn ai" id="a2-aiBtn" onclick="a2AiFill()">AIで報告文を作る</button>
+      <div style="height:12px;"></div>
+      <div class="a2-row"><span class="a2-lab">訓練による変化</span>
+        <textarea id="a2-changes" rows="4" placeholder="AIで作るか、直接書いてください"></textarea></div>
+      <div class="a2-row"><span class="a2-lab">課題とその要因</span>
+        <textarea id="a2-issues" rows="4" placeholder="AIで作るか、直接書いてください"></textarea></div>
+      <div class="a2-note">★作ったあと、そのまま使わず<b>必ず読んで直してください</b>。</div>
+    </div></div>
+
+    <div class="a2-sec"><h3>4. 特記事項</h3><div class="bd">
+      <textarea id="a2-special" rows="3" placeholder="上のどこにも当てはまらないこと"></textarea>
+    </div></div>
+
+    <button type="button" class="a2-btn save" onclick="a2Save('ft')">保存する</button>
+    <div class="a2-note center">★保存されるのは、この画面にある欄だけです。相手の入力は触りません。</div>
+  </div>
+
+  {# 介護区分を変える窓 #}
+  <div id="a2-clsModal" class="a2-modal" style="display:none;">
+    <div class="box">
+      <h4>介護区分を変える</h4>
+      <p>ふだんは利用者情報の介護度から自動で決まります。違っているときだけ変えてください。<br>
+        ★<b>介護度そのもの（要介護2 などの数字）は変わりません。</b></p>
+      <div class="opts">
+        <button type="button" onclick="a2SetCls('要介護')">要介護</button>
+        <button type="button" onclick="a2SetCls('要支援')">要支援</button>
+        <button type="button" onclick="a2SetCls('事業対象者')">事業対象者</button>
+      </div>
+      <button type="button" class="close" onclick="a2CloseCls()">閉じる</button>
+    </div>
+  </div>
+</div>
+
+
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* =====================================================================
+   eval-two-entrances-v1 の画面まわり
+   ★使うAPIはすべて既存 or 今回足したもの。新しい保存経路は作っていない。
+   ===================================================================== */
+const A2_PATIENTS = [
+  {% for p in patients %}
+  {"id": {{ p.id|tojson }}, "name": {{ p.user_name|tojson }},
+   "kana": {{ (p.user_kana or '')|tojson }}, "chart": {{ (p.chart_number or '')|tojson }},
+   "care_level": {{ (p.care_level or '')|tojson }}}{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
+
+var A2 = {
+  patient: null,      // 選ばれた利用者
+  evalId: null,       // patient_evaluations.id（無ければ null＝まだ作られていない）
+  section: null,      // いま開いている入口 'eval' / 'ft' / null
+  cls: '',            // 介護区分
+  ev: {},             // いまの評価の中身
+  initial: {},        // その月に有効だった目標など
+  selfEvals: []       // 取り込めるセルフ評価
+};
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s == null ? '' : s)
+  .replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+/* ── 利用者を選ぶ ── */
+function a2Filter(){
+  var q = ($('a2-search').value || '').trim().toLowerCase();
+  var box = $('a2-cands');
+  if(!q){ box.innerHTML = ''; box.style.display='none'; return; }
+  var hits = A2_PATIENTS.filter(function(p){
+    return (p.name+p.kana+p.chart).toLowerCase().indexOf(q) >= 0; }).slice(0,8);
+  box.innerHTML = hits.map(function(p){
+    return '<div onclick="a2Pick('+p.id+')">(No.'+esc(p.chart)+') '+esc(p.name)+' ('+esc(p.kana)+')</div>';
+  }).join('');
+  box.style.display = hits.length ? 'block' : 'none';
+}
+function a2Pick(id){
+  A2.patient = A2_PATIENTS.filter(function(p){ return p.id === id; })[0] || null;
+  $('a2-cands').style.display='none';
+  $('a2-search').value='';
+  $('a2-search').style.display='none';
+  $('a2-chosen').style.display='';
+  $('a2-chosen-name').textContent = '(No.'+(A2.patient.chart||'-')+') '+A2.patient.name;
+  a2Load();
+}
+function a2ClearPatient(){
+  a2ReleaseLock();
+  A2.patient = null; A2.evalId = null; A2.section = null;
+  $('a2-chosen').style.display='none';
+  $('a2-search').style.display='';
+  $('a2-entries').style.display='none';
+  $('a2-nopatient').style.display='';
+  a2Back();
+}
+
+/* ── 介護区分：利用者の介護度から自動で決める ──
+   ★care_level（「要介護2」「要支援1」「事業対象者」）の頭で判定する。
+     手で変えたときも、care_level そのものは【書き換えない】。
+     いまの画面は careMap で「要介護→要介護1」と上書きしていて、
+     要介護4 の人の介護度が 1 に化けていた。ここではそれをしない。 */
+function a2ClsFromLevel(lv){
+  lv = String(lv || '');
+  if(lv.indexOf('要介護') === 0) return '要介護';
+  if(lv.indexOf('要支援') === 0) return '要支援';
+  if(lv === '事業対象者') return '事業対象者';
+  return '';
+}
+function a2OpenCls(){ $('a2-clsModal').style.display=''; }
+function a2CloseCls(){ $('a2-clsModal').style.display='none'; }
+function a2SetCls(v){ A2.cls = v; a2CloseCls(); a2DrawCls(); a2DrawGoals(); }
+function a2DrawCls(){
+  var lv = (A2.patient && A2.patient.care_level) || '';
+  var show = A2.cls ? (A2.cls + (lv && a2ClsFromLevel(lv) === A2.cls ? '（'+lv+'）' : '（手で変更）')) : '未設定';
+  ['a2-whoCls','a2-bCls','a2-cCls'].forEach(function(id){ if($(id)) $(id).textContent = show; });
+}
+
+/* ── 評価を読み込む ── */
+async function a2Load(){
+  if(!A2.patient) return;
+  var ym = $('a2-ym').value;
+  $('a2-nopatient').style.display='none';
+  $('a2-entries').style.display='';
+  ['a2-whoName','a2-bName','a2-cName'].forEach(function(id){ if($(id)) $(id).textContent = A2.patient.name + ' さん'; });
+  ['a2-whoYm','a2-bYm','a2-cYm'].forEach(function(id){ if($(id)) $(id).textContent = ym; });
+
+  try{
+    var r = await fetch('/api/get_patient_evaluation?user_name='+encodeURIComponent(A2.patient.name)
+                        +'&year_month='+encodeURIComponent(ym), {credentials:'same-origin'});
+    var j = await r.json();
+    A2.ev = j.evaluation || {};
+    A2.initial = j.initial_values || {};
+    A2.evalId = A2.ev.id || null;
+  }catch(e){ A2.ev = {}; A2.initial = {}; A2.evalId = null; }
+
+  // 介護区分：保存ずみがあればそれ、無ければ利用者の介護度から
+  A2.cls = (A2.ev.care_classification || '').trim() || a2ClsFromLevel(A2.patient.care_level);
+  a2DrawCls();
+  a2FillForms();
+  a2DrawStatus();
+  a2LoadSelfEvals();
+  a2LoadAuto();
+}
+
+/* ── 入口カードの状態 ── */
+function a2DrawStatus(){
+  var ev = A2.ev;
+  function set(chipId, metaId, filled, total, by, lockBy){
+    var chip = $(chipId), meta = $(metaId);
+    if(lockBy){
+      chip.textContent = lockBy + ' が編集中'; chip.className = 'a2-chip lock';
+      meta.textContent = '終わるまで待つか、声をかけてください';
+      return;
+    }
+    if(filled === 0){ chip.textContent = '未記入'; chip.className = 'a2-chip none'; }
+    else if(filled < total){ chip.textContent = 'あと'+(total-filled)+'つ'; chip.className = 'a2-chip part'; }
+    else { chip.textContent = '記入ずみ'; chip.className = 'a2-chip done'; }
+    meta.textContent = by ? (by + ' が記入') : 'まだ記入がありません';
+  }
+  // 評価担当者：達成状況・聞き取り・満足度・要望 の4つ
+  var st = (A2.cls === '要介護')
+      ? ['short_goal_function_status','short_goal_activity_status','short_goal_participation_status']
+      : ['short_goal_status'];
+  var evalItems = [
+    st.some(function(k){ return (ev[k]||'').trim(); }),
+    (ev.source_data_eval||'').trim(),
+    (ev.satisfaction||'').trim(),
+    (ev.new_requests_exist||'').trim()
+  ];
+  set('a2-chipEval','a2-metaEval', evalItems.filter(Boolean).length, 4,
+      ev.evaluator_name, ev.editing_by_eval);
+  // 機能訓練指導員：体の評価・訓練による変化・課題とその要因 の3つ
+  var ftItems = [(ev.source_data||'').trim(), (ev.changes_by_training||'').trim(), (ev.issues_and_causes||'').trim()];
+  set('a2-chipFt','a2-metaFt', ftItems.filter(Boolean).length, 3,
+      ev.evaluator_name, ev.editing_by_ft);
+}
+
+/* ── 目標の表示（介護区分で出し分け） ── */
+var A2_AXES = [
+  ['short_goal_function','short_goal_function_status','short_goal_function_new','短期','機能'],
+  ['short_goal_activity','short_goal_activity_status','short_goal_activity_new','短期','活動'],
+  ['short_goal_participation','short_goal_participation_status','short_goal_participation_new','短期','参加'],
+  ['long_goal_function','long_goal_function_status','long_goal_function_new','長期','機能'],
+  ['long_goal_activity','long_goal_activity_status','long_goal_activity_new','長期','活動'],
+  ['long_goal_participation','long_goal_participation_status','long_goal_participation_new','長期','参加']
+];
+var A2_SIMPLE = [
+  ['short_goal_simple','short_goal_status','short_goal_new','短期','短期目標'],
+  ['long_goal_simple','long_goal_status','long_goal_new','長期','長期目標']
+];
+function a2DrawGoals(){
+  var rows = (A2.cls === '要介護') ? A2_AXES : A2_SIMPLE;
+  var h = '', term = '';
+  rows.forEach(function(x){
+    if(x[3] !== term){ term = x[3];
+      h += '<div class="a2-term">'+esc(term)+'目標</div>'; }
+    var text = (A2.initial[x[0]] || '').trim();
+    var cur  = (A2.ev[x[1]] || '');
+    h += '<div class="a2-goal'+(text?'':' none')+'">'
+       + '<span class="ax">'+esc(x[4])+'</span>'
+       + '<div class="tx">'+(text ? esc(text) : 'この軸には目標が登録されていません')+'</div>';
+    if(text){
+      h += '<div class="a2-seg" data-target="'+x[1]+'">'
+         + '<button type="button" data-v="達成">できた</button>'
+         + '<button type="button" data-v="一部達成">少しできた</button>'
+         + '<button type="button" data-v="未達成">できなかった</button></div>'
+         + '<input type="hidden" id="'+x[1]+'" value="'+esc(cur)+'">'
+         + '<div style="margin-top:8px;"><span class="a2-lab small">目標を変えるときだけ、新しい目標を書く</span>'
+         + '<textarea id="'+x[2]+'" rows="2" placeholder="変えないときは空のままで大丈夫です">'
+         + esc(A2.ev[x[2]] || '') + '</textarea></div>';
+    }
+    h += '</div>';
+  });
+  $('a2-goalBox').innerHTML = h;
+  a2BindSegs($('a2-goalBox'));
+}
+
+/* ── 3択ボタン ── */
+function a2BindSegs(root){
+  (root || document).querySelectorAll('.a2-seg').forEach(function(seg){
+    if(seg.dataset.bound) return;
+    seg.dataset.bound = '1';
+    var hid = $(seg.dataset.target);
+    seg.querySelectorAll('button').forEach(function(b){
+      if(hid && hid.value === b.dataset.v) b.classList.add('on');
+      b.onclick = function(){
+        seg.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+        b.classList.add('on');
+        if(hid) hid.value = b.dataset.v;
+        if(seg.dataset.target === 'a2-req')
+          $('a2-reqDetail').style.display = (b.dataset.v === 'あり') ? '' : 'none';
+      };
+    });
+  });
+}
+
+/* ── 入力欄に値を入れる ── */
+function a2FillForms(){
+  var ev = A2.ev;
+  $('a2-intake').value    = ev.source_data_eval || '';
+  $('a2-ftdata').value    = ev.source_data || '';
+  $('a2-changes').value   = ev.changes_by_training || '';
+  $('a2-issues').value    = ev.issues_and_causes || '';
+  $('a2-special').value   = ev.special_notes || '';
+  $('a2-reqDetail').value = ev.new_requests_detail || '';
+  $('a2-satis').value     = ev.satisfaction || '';
+  $('a2-fit').value       = ev.service_appropriateness || '';
+  $('a2-req').value       = ev.new_requests_exist || '';
+  if(ev.evaluator_name) $('a2-evaluator').value = ev.evaluator_name;
+  a2DrawGoals();
+  a2BindSegs(document);
+  document.querySelectorAll('.a2-seg').forEach(function(seg){
+    var hid = $(seg.dataset.target);
+    seg.querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('on', !!(hid && hid.value === b.dataset.v)); });
+  });
+  $('a2-reqDetail').style.display = (ev.new_requests_exist === 'あり') ? '' : 'none';
+  // 相手の材料（読むだけ）
+  var mv = (ev.source_data_eval || '').trim();
+  $('a2-mirror').textContent = mv;
+  $('a2-mirrorH').textContent = mv
+      ? ((ev.evaluator_name || '担当者') + ' が記入（読むだけ）')
+      : '（まだ記入がありません）';
+}
+
+/* ── 体重・出席を自動で引く ── */
+async function a2LoadAuto(){
+  var box = $('a2-autoBox');
+  box.innerHTML = '<div class="a2-note">読み込み中…</div>';
+  try{
+    var r = await fetch('/api/evaluation/auto_values?user_name='+encodeURIComponent(A2.patient.name)
+                        +'&year_month='+encodeURIComponent($('a2-ym').value), {credentials:'same-origin'});
+    var j = await r.json();
+    var h = '';
+    if(j.weight){
+      var ws = (j.weights || []).map(function(x){ return Number(x.weight_kg) || 0; }).filter(Boolean);
+      var mx = Math.max.apply(null, ws.concat([1])), mn = Math.min.apply(null, ws.concat([mx]));
+      var bars = ws.map(function(v, i){
+        var pct = mx === mn ? 60 : Math.round(((v - mn) / (mx - mn)) * 60 + 30);
+        return '<i class="'+(i === ws.length-1 ? 'last' : '')+'" style="height:'+pct+'%"></i>'; }).join('');
+      h += '<div class="a2-auto"><span class="h">体重測定から自動</span>'
+        + '<div class="v">'+esc(j.weight.weight_kg)+'<span>kg</span></div>'
+        + '<div class="s">'+esc(j.weight.measured_date)+' に測定'
+        + (j.weight.in_month ? '' : '　★<b>対象月には測定がありません</b>（その前の最新）') + '</div>'
+        + (bars ? '<div class="a2-spark">'+bars+'</div><div class="s">直近'+ws.length+'回の推移</div>' : '')
+        + '<input type="hidden" id="a2-weight" value="'+esc(j.weight.weight_kg)+'"></div>';
+    } else {
+      h += '<div class="a2-auto"><span class="h none">体重測定の記録がありません</span>'
+        + '<div class="s">体重測定の画面で記録すると、ここに出ます</div>'
+        + '<input type="hidden" id="a2-weight" value=""></div>';
+    }
+    if(j.attendance){
+      h += '<div class="a2-auto"><span class="h">来所記録から自動</span>'
+        + '<div class="v">'+esc(j.attendance.count)+'<span>回</span></div>'
+        + '<div class="s">'+esc(j.attendance.basis)+'</div>'
+        + '<input type="hidden" id="a2-att" value="'+esc(j.attendance.count)+'"></div>';
+    } else {
+      h += '<input type="hidden" id="a2-att" value="">';
+    }
+    h += '<div class="a2-note">★どちらも<b>すでにアプリの中にある数字</b>です。ここで打ち直す必要はありません。</div>';
+    box.innerHTML = h;
+  }catch(e){
+    box.innerHTML = '<div class="a2-note">読み込めませんでした。保存には影響しません。</div>'
+      + '<input type="hidden" id="a2-weight" value=""><input type="hidden" id="a2-att" value="">';
+  }
+}
+
+/* ── セルフ評価の取り込み ── */
+async function a2LoadSelfEvals(){
+  var sel = $('a2-seList');
+  try{
+    var r = await fetch('/api/self-eval/for-eval/list?user_name='+encodeURIComponent(A2.patient.name),
+                        {credentials:'same-origin'});
+    var j = await r.json();
+    A2.selfEvals = j.items || [];
+    if(!A2.selfEvals.length){
+      sel.innerHTML = '<option value="">（取り込める回答がありません）</option>'; return;
+    }
+    sel.innerHTML = A2.selfEvals.map(function(x){
+      var d = (x.answered_at || '').slice(0,10);
+      return '<option value="'+esc(x.id)+'">'+esc(x.target_ym)+' の回答'
+           + (d ? '（'+esc(d)+'）' : '') + '</option>'; }).join('');
+  }catch(e){ sel.innerHTML = '<option value="">（読み込めませんでした）</option>'; }
+}
+async function a2PullSelfEval(){
+  var id = $('a2-seList').value;
+  if(!id){ alert('取り込む回答を選んでください。'); return; }
+  var item = A2.selfEvals.filter(function(x){ return String(x.id) === String(id); })[0] || {};
+  var ym = $('a2-ym').value;
+  // ★月がずれていたら必ず確認する。ここが事故のもと。
+  if(item.target_ym && item.target_ym !== ym){
+    if(!confirm('選んだ回答は【'+item.target_ym+'】のものです。\n'
+              + 'いま開いているのは【'+ym+'】の評価です。\n\n'
+              + '月が違いますが、取り込みますか？')) return;
+  }
+  try{
+    var r = await fetch('/api/self-eval/for-eval/text?id='+encodeURIComponent(id), {credentials:'same-origin'});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '取り込めませんでした'); return; }
+    var t = $('a2-intake');
+    if(j.text && t.value.indexOf(j.text.split('\n')[0]) >= 0){
+      if(!confirm('同じ回答がすでに入っているようです。もう一度足しますか？')) return;
+    }
+    t.value = t.value.trim() ? (t.value.trim() + '\n\n' + j.text) : j.text;
+    t.focus();
+  }catch(e){ alert('取り込めませんでした'); }
+}
+
+/* ── AI生成（両方の材料を渡す） ── */
+async function a2AiFill(){
+  var ft = ($('a2-ftdata').value || '').trim();
+  var iv = ($('a2-intake').value || '').trim();
+  if(!ft && !iv){ alert('先に材料を入れてください（体の評価か、聞き取った内容）。'); return; }
+  var parts = [];
+  if(ft) parts.push('【体の評価（機能訓練指導員が記録）】\n' + ft);
+  if(iv) parts.push('【ご本人から聞き取った内容（評価担当者が記録）】\n' + iv);
+  var btn = $('a2-aiBtn'), old = btn.textContent;
+  btn.disabled = true; btn.textContent = '作っています…';
+  try{
+    var r = await fetch('/api/evaluation/ai_fill', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({source_data: parts.join('\n\n'), char_count: Number($('a2-len').value)})});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '作れませんでした'); return; }
+    // ★手で書いたものを黙って消さない
+    if(($('a2-changes').value||'').trim() || ($('a2-issues').value||'').trim()){
+      if(!confirm('すでに書かれている文章があります。AIの文章で置き換えますか？')) return;
+    }
+    if(j.changes_by_training) $('a2-changes').value = j.changes_by_training;
+    if(j.issues_and_causes)   $('a2-issues').value  = j.issues_and_causes;
+  }catch(e){ alert('作れませんでした'); }
+  finally{ btn.disabled = false; btn.textContent = old; }
+}
+
+/* ── 入口の出入りとロック ── */
+async function a2Enter(section){
+  A2.section = section;
+  $('a2-scA').style.display = 'none';
+  $('a2-scB').style.display = (section === 'eval') ? '' : 'none';
+  $('a2-scC').style.display = (section === 'ft')   ? '' : 'none';
+  window.scrollTo(0,0);
+  await a2AcquireLock();
+}
+async function a2Switch(section){ await a2ReleaseLock(); await a2Enter(section); }
+async function a2Back(){
+  await a2ReleaseLock();
+  A2.section = null;
+  $('a2-scB').style.display='none'; $('a2-scC').style.display='none';
+  $('a2-scA').style.display='';
+  if(A2.patient) await a2Load();
+  window.scrollTo(0,0);
+}
+async function a2AcquireLock(){
+  if(!A2.evalId || !A2.section) return;   // まだ評価が作られていないときはロック不要
+  try{
+    var r = await fetch('/api/acquire_edit_lock', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({evaluation_id: A2.evalId, section: A2.section})});
+    var j = await r.json();
+    if(j.status === 'conflict'){
+      alert((j.editing_by || '他の職員') + ' さんがこの入口を開いています。\n'
+          + '終わるまで待つか、声をかけてください。');
+      await a2Back();
+    }
+  }catch(e){}
+}
+async function a2ReleaseLock(){
+  if(!A2.evalId || !A2.section) return;
+  try{
+    await fetch('/api/release_edit_lock', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({evaluation_id: A2.evalId, section: A2.section})});
+  }catch(e){}
+}
+window.addEventListener('beforeunload', function(){
+  if(!A2.evalId || !A2.section) return;
+  navigator.sendBeacon('/api/release_edit_lock',
+    new Blob([JSON.stringify({evaluation_id:A2.evalId, section:A2.section})], {type:'application/json'}));
+});
+
+/* ── 保存：自分の入口の欄だけ送る ── */
+async function a2Save(section){
+  if(!A2.patient){ alert('利用者を選んでください。'); return; }
+  var d = {
+    user_name: A2.patient.name,
+    year_month: $('a2-ym').value,
+    evaluator_name: ($('a2-evaluator').value || '').trim(),
+    section: section
+  };
+  if(section === 'eval'){
+    d.care_classification = A2.cls;
+    d.source_data_eval    = $('a2-intake').value;
+    d.satisfaction        = $('a2-satis').value;
+    d.service_appropriateness = $('a2-fit').value;
+    d.new_requests_exist  = $('a2-req').value;
+    d.new_requests_detail = $('a2-reqDetail').value;
+    if($('a2-weight') && $('a2-weight').value) d.weight_kg = $('a2-weight').value;
+    if($('a2-att') && $('a2-att').value)       d.attendance_count = $('a2-att').value;
+    (A2.cls === '要介護' ? A2_AXES : A2_SIMPLE).forEach(function(x){
+      if($(x[1])) d[x[1]] = $(x[1]).value;
+      if($(x[2])) d[x[2]] = $(x[2]).value;
+    });
+  } else {
+    d.source_data        = $('a2-ftdata').value;
+    d.changes_by_training= $('a2-changes').value;
+    d.issues_and_causes  = $('a2-issues').value;
+    d.special_notes      = $('a2-special').value;
+  }
+  try{
+    var r = await fetch('/api/save_patient_evaluation', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(d)});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '保存できませんでした'); return; }
+    A2.evalId = j.id || A2.evalId;
+    alert('保存しました。');
+    await a2Back();
+  }catch(e){ alert('保存できませんでした'); }
+}
+</script>
+{% endblock %}
