@@ -103,6 +103,12 @@
 .a2-modal .opts{display:grid;gap:7px;margin-bottom:13px;}
 .a2-modal .opts button{border:1px solid #dadce0;background:#fff;border-radius:9px;padding:10px;
   font-size:.88rem;font-weight:800;cursor:pointer;font-family:inherit;color:#3c4043;}
+.a2-toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(14px);
+  background:#202124;color:#fff;border-radius:10px;padding:11px 18px;font-size:.86rem;font-weight:700;
+  box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+  z-index:80;max-width:90%;text-align:center;}
+.a2-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.a2-toast.ok{background:#137333;}
 .a2-modal .close{border:none;background:#f1f3f4;border-radius:9px;padding:9px 0;width:100%;
   font-weight:800;cursor:pointer;font-family:inherit;color:#5f6368;font-size:.86rem;}
 </style>
@@ -122,9 +128,9 @@
      それぞれ【自分の欄だけ】を送って保存する。相手の入力には触らない。
      ロックも入口ごと。2人が同時に入っても弾き合わない。
 
-   ★材料の欄は2つに分けてある。
-       source_data      … 機能訓練指導員の材料（昔からある列。過去データもここ）
-       source_data_eval … 評価担当者の材料（新設）
+   ★AIが読む欄は2つに分けてある。
+       source_data      … 機能訓練指導員が書く欄（昔からある列。過去データもここ）
+       source_data_eval … 評価担当者が書く欄（新設）
      AI生成には【両方】を渡す。
    ===================================================================== #}
 <div class="a2-wrap">
@@ -218,7 +224,7 @@
       <div style="height:12px;"></div>
       <span class="a2-lab">聞き取りメモ（痛み・困っていること・できるようになったこと）</span>
       <textarea id="a2-intake" rows="8" placeholder="聞いた内容をそのまま書いてください"></textarea>
-      <div class="a2-note">★この内容は、機能訓練指導員の画面でも<b>読めます</b>。報告文の材料になります。</div>
+      <div class="a2-note">★この内容は、機能訓練指導員の画面でも<b>読めます</b>。報告文を作るときに使われます。</div>
     </div></div>
 
     <div class="a2-sec"><h3>3. 満足度・ご要望</h3><div class="bd">
@@ -276,7 +282,7 @@
     </div></div>
 
     <div class="a2-sec"><h3>3. 報告文を作る</h3><div class="bd">
-      <div class="a2-warn">AIは<b>上の2つ（体の評価 ＋ 聞き取った内容）の両方</b>を材料に作ります。</div>
+      <div class="a2-warn">AIは<b>体の評価と、聞き取った内容の両方を読んで</b>作ります。</div>
       <div class="a2-inline"><span class="a2-lab">長さ</span>
         <select id="a2-len" class="a2-sel narrow">
           <option value="200">200文字</option><option value="300">300文字</option>
@@ -297,6 +303,16 @@
     <button type="button" class="a2-btn save" onclick="a2Save('ft')">保存する</button>
     <div class="a2-note center">★保存されるのは、この画面にある欄だけです。相手の入力は触りません。</div>
   </div>
+
+  {# 知らせの帯（eval-two-entrances-v1）
+     ★「終わりました」を伝えるだけの知らせは、ここに数秒だけ出して消す。
+       ブラウザの alert は【押すまで画面が固まる】ので、
+       10人ぶん入力すれば10回止まる。手を止めないためにこうする。
+     ★★止めるべきものは alert / confirm のまま残してある。
+       ・上書きの確認（confirm）……… 3か所。1つも減らしていない
+       ・保存に失敗したとき（alert）… 見逃されると困るので残す
+       ・他の職員が開いているとき（alert）… 気づかず入力すると困るので残す #}
+  <div id="a2-toast" class="a2-toast"></div>
 
   {# 介護区分を変える窓 #}
   <div id="a2-clsModal" class="a2-modal" style="display:none;">
@@ -342,6 +358,16 @@ var A2 = {
 };
 
 function $(id){ return document.getElementById(id); }
+
+/* 知らせの帯。★「終わりました」専用。止める必要のあるものには使わない。 */
+function a2Toast(msg, ok){
+  var t = $('a2-toast');
+  if(!t){ return; }
+  t.textContent = msg;
+  t.className = 'a2-toast show' + (ok ? ' ok' : '');
+  clearTimeout(a2Toast._t);
+  a2Toast._t = setTimeout(function(){ t.className = 'a2-toast'; }, 3000);
+}
 function esc(s){ return String(s == null ? '' : s)
   .replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
@@ -445,7 +471,16 @@ function a2DrawStatus(){
     if(filled === 0){ chip.textContent = '未記入'; chip.className = 'a2-chip none'; }
     else if(filled < total){ chip.textContent = 'あと'+(total-filled)+'つ'; chip.className = 'a2-chip part'; }
     else { chip.textContent = '記入ずみ'; chip.className = 'a2-chip done'; }
-    meta.textContent = by ? (by + ' が記入') : 'まだ記入がありません';
+    // ★a2-status-fix: 記入者は【この入口に中身があるときだけ】出す。
+    //   以前は評価者名があれば必ず出していたので、
+    //   「未記入」なのに「◯◯が記入」と並んで矛盾していた。
+    //   評価者名は記録ぜんたいに1つしかなく、入口ごとの記入者ではない。
+    if(filled === 0){
+      meta.textContent = 'まだ記入がありません';
+    } else {
+      meta.textContent = (by ? (by + ' が記入') : '記入あり')
+                       + '（' + filled + '／' + total + '項目）';
+    }
   }
   // 評価担当者：達成状況・聞き取り・満足度・要望 の4つ
   var st = (A2.cls === '要介護')
@@ -545,7 +580,7 @@ function a2FillForms(){
       b.classList.toggle('on', !!(hid && hid.value === b.dataset.v)); });
   });
   $('a2-reqDetail').style.display = (ev.new_requests_exist === 'あり') ? '' : 'none';
-  // 相手の材料（読むだけ）
+  // 相手が書いた内容（読むだけ）
   var mv = (ev.source_data_eval || '').trim();
   $('a2-mirror').textContent = mv;
   $('a2-mirrorH').textContent = mv
@@ -614,7 +649,7 @@ async function a2LoadSelfEvals(){
 }
 async function a2PullSelfEval(){
   var id = $('a2-seList').value;
-  if(!id){ alert('取り込む回答を選んでください。'); return; }
+  if(!id){ a2Toast('取り込む回答を選んでください'); return; }
   var item = A2.selfEvals.filter(function(x){ return String(x.id) === String(id); })[0] || {};
   var ym = $('a2-ym').value;
   // ★月がずれていたら必ず確認する。ここが事故のもと。
@@ -636,11 +671,11 @@ async function a2PullSelfEval(){
   }catch(e){ alert('取り込めませんでした'); }
 }
 
-/* ── AI生成（両方の材料を渡す） ── */
+/* ── AI生成（両方の欄を読ませる） ── */
 async function a2AiFill(){
   var ft = ($('a2-ftdata').value || '').trim();
   var iv = ($('a2-intake').value || '').trim();
-  if(!ft && !iv){ alert('先に材料を入れてください（体の評価か、聞き取った内容）。'); return; }
+  if(!ft && !iv){ alert('先に、体の評価か聞き取った内容を入れてください。'); return; }
   var parts = [];
   if(ft) parts.push('【体の評価（機能訓練指導員が記録）】\n' + ft);
   if(iv) parts.push('【ご本人から聞き取った内容（評価担当者が記録）】\n' + iv);
@@ -742,7 +777,8 @@ async function a2Save(section){
     var j = await r.json();
     if(j.status !== 'success'){ alert(j.message || '保存できませんでした'); return; }
     A2.evalId = j.id || A2.evalId;
-    alert('保存しました。');
+    // ★成功の知らせは帯に。押さなくても消える（手が止まらない）
+    a2Toast('保存しました', true);
     await a2Back();
   }catch(e){ alert('保存できませんでした'); }
 }
