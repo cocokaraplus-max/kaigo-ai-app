@@ -1368,7 +1368,13 @@ body.nav-editing {
   //   half … 見せる量だけ半分（手前の2列が押せる）
   //   full … 全部出る
   // app-drawer-2stage-off-v1: 半開きは廃止。開くときは常に全開。
+  // drawer-tap-v2: 開いた時刻。開いた直後にマスクへ飛んでくる
+  //   【合成click】を見分けるために使う。理由はこのファイル上部の説明と
+  //   patch_drawer_tap2.py を参照。
+  var openedAt = 0;
+
   function open() {
+    openedAt = Date.now();                      // drawer-tap-v2
     endDrag();
     stagger();
     dw.classList.add('on');
@@ -1424,7 +1430,17 @@ body.nav-editing {
   function crossOf(dx, dy) { return vertical() ? Math.abs(dx) : Math.abs(dy); }
 
   closeBtn.onclick = close;
-  mask.onclick = close;
+  // drawer-tap-v2: 開いた直後の click は無視する。
+  //   Android(Chromium)は pointerup の20〜30ms後に【合成click】を同じ座標へ送る。
+  //   そのときマスクはもう全画面を覆っているので、これが close() を呼び、
+  //   開いた瞬間に閉じてしまう（＝タップでは開けない、に見える）。
+  //   iOSは pointerdown の preventDefault() で合成clickが出ないため起きない。
+  //   ★人がマスクを押して閉じる操作は妨げない。開いて350ms以内にわざと
+  //     押す操作は現実には無く、万一そうなっても、もう一度押せば閉じる。
+  mask.onclick = function () {
+    if (Date.now() - openedAt < 350) return;
+    close();
+  };
   // 中の導線を押したら閉じる処理は、グリッドを描き直す側（app-drawer-edit-v2）が持つ。
   // ここで付けても、描き直した瞬間にリスナごと消えてしまう。
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') close(); });
@@ -1456,7 +1472,6 @@ body.nav-editing {
   }
   var pos = posOf(side());
   var moveTimer = null, moving = false;
-  var maxMove = 0;              // drawer-tap-v1: この操作で指が動いた最大の距離
 
   function applyPos() {
     var vert = vertical();
@@ -1486,7 +1501,6 @@ body.nav-editing {
     if (dw.classList.contains('on')) return;
     e.preventDefault();
     hx = e.clientX; hy = e.clientY; hdrag = false; hid = e.pointerId;
-    maxMove = 0;                                     // drawer-tap-v1
     try { handle.setPointerCapture(hid); } catch (err) {}
 
     // 長押し → 取っ手そのものを動かすモード（引き出しは開かない）
@@ -1517,15 +1531,10 @@ body.nav-editing {
     }
 
     var inward = inwardOf(dx, dy), cross = crossOf(dx, dy);
-    // drawer-tap-v1: 指が動いた最大の距離を覚えておく（離したときのタップ判定に使う）
-    var _d = Math.max(Math.abs(dx), Math.abs(dy));
-    if (_d > maxMove) maxMove = _d;
     if (!hdrag) {
       clearTimeout(moveTimer);      // 動かし始めたら「長押し」は成立させない
       if (cross > 24 && cross > inward) return;   // 引き出す向きと違う方へ動いている
-      // drawer-tap-v1: 6px は実寸で 1mm ほどしかなく、Android では
-      //   静止したつもりのタップでも超えてしまう。12px に上げる。
-      if (inward < 12) return;
+      if (inward < 6) return;
       hdrag = true;
       dw.classList.add('drag');
       mask.classList.add('on');
@@ -1555,11 +1564,6 @@ body.nav-editing {
     dw.classList.remove('drag');
     dw.style.transform = '';
     mask.style.opacity = '';
-    // drawer-tap-v1: 引き出しモードに入ってしまっても、指が最後まで
-    //   ほとんど動いていなければ【タップ】として開く。
-    //   Android は指のブレをそのまま出すため、タップでもここへ来てしまう。
-    //   ★大きく引いてから戻したときは maxMove が残るので、ちゃんと閉じる。
-    if (maxMove < 14) { open(); return; }
     // app-drawer-2stage-off-v1: 閉じる / 全開 の2択（しきい値 35%）
     if (inward / W() > SNAP) open(); else close();
   }
