@@ -1456,6 +1456,7 @@ body.nav-editing {
   }
   var pos = posOf(side());
   var moveTimer = null, moving = false;
+  var maxMove = 0;              // drawer-tap-v1: この操作で指が動いた最大の距離
 
   function applyPos() {
     var vert = vertical();
@@ -1485,6 +1486,7 @@ body.nav-editing {
     if (dw.classList.contains('on')) return;
     e.preventDefault();
     hx = e.clientX; hy = e.clientY; hdrag = false; hid = e.pointerId;
+    maxMove = 0;                                     // drawer-tap-v1
     try { handle.setPointerCapture(hid); } catch (err) {}
 
     // 長押し → 取っ手そのものを動かすモード（引き出しは開かない）
@@ -1515,10 +1517,15 @@ body.nav-editing {
     }
 
     var inward = inwardOf(dx, dy), cross = crossOf(dx, dy);
+    // drawer-tap-v1: 指が動いた最大の距離を覚えておく（離したときのタップ判定に使う）
+    var _d = Math.max(Math.abs(dx), Math.abs(dy));
+    if (_d > maxMove) maxMove = _d;
     if (!hdrag) {
       clearTimeout(moveTimer);      // 動かし始めたら「長押し」は成立させない
       if (cross > 24 && cross > inward) return;   // 引き出す向きと違う方へ動いている
-      if (inward < 6) return;
+      // drawer-tap-v1: 6px は実寸で 1mm ほどしかなく、Android では
+      //   静止したつもりのタップでも超えてしまう。12px に上げる。
+      if (inward < 12) return;
       hdrag = true;
       dw.classList.add('drag');
       mask.classList.add('on');
@@ -1548,6 +1555,11 @@ body.nav-editing {
     dw.classList.remove('drag');
     dw.style.transform = '';
     mask.style.opacity = '';
+    // drawer-tap-v1: 引き出しモードに入ってしまっても、指が最後まで
+    //   ほとんど動いていなければ【タップ】として開く。
+    //   Android は指のブレをそのまま出すため、タップでもここへ来てしまう。
+    //   ★大きく引いてから戻したときは maxMove が残るので、ちゃんと閉じる。
+    if (maxMove < 14) { open(); return; }
     // app-drawer-2stage-off-v1: 閉じる / 全開 の2択（しきい値 35%）
     if (inward / W() > SNAP) open(); else close();
   }
