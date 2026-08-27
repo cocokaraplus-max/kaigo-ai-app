@@ -7655,6 +7655,29 @@ def assessment():
     )
 
 
+# ===== eval-two-entrances-v1 : 担当ごとに入口を分けた評価画面（新） =====
+#
+#   ★上の /assessment（いまの画面）は【1文字も触っていない】。
+#     こちらを別のURLに置き、並べて見比べられるようにする。
+#     現場で確かめて問題なければ、入れ替えを検討する。
+#   ★渡すものは上とまったく同じ。テンプレートだけが違う。
+@app.route('/assessment2')
+@login_required
+def assessment2():
+    """月次評価（入口2つ版）。評価担当者と機能訓練指導員で入口を分ける。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    patients = get_patients(supabase, f_code)
+    this_month = datetime.now(tokyo_tz).strftime("%Y-%m")
+    return render(
+        "assessment2.html",
+        patients=patients,
+        this_month=this_month,
+        current_user=my_name,
+    )
+
+
 @app.route('/api/save_patient_evaluation', methods=['POST'])
 @login_required
 def api_save_patient_evaluation():
@@ -7666,7 +7689,9 @@ def api_save_patient_evaluation():
         data["facility_code"] = f_code  # クライアント指定は無視 (セキュリティ)
 
         supabase = get_supabase()
-        result = upsert_patient_evaluation(supabase, data, my_name)
+        # eval-two-entrances-save: どの入口から保存したかを渡す（省略時は今までどおり）
+        result = upsert_patient_evaluation(supabase, data, my_name,
+                                           (data.get("section") or "").strip() or None)
 
         if result.get("success"):
             return jsonify({
@@ -7678,6 +7703,7 @@ def api_save_patient_evaluation():
             status_code = 409 if result.get("conflict") else 400
             return jsonify({
                 "status": "error",
+                "lock_scope": result.get("lock_scope", ""),   # eval-two-entrances-v1
                 "message": result.get("error", "保存に失敗しました"),
                 "conflict": result.get("conflict", False),
                 "editing_by": result.get("editing_by", ""),
@@ -7942,6 +7968,84 @@ def api_get_patient_evaluation():
         }), 500
 
 
+# ===== eval-two-entrances-v1 : 体重・出席回数を、ほかの機能から自動で引く =====
+#
+#   ★これまで評価画面で手入力していたが、どちらも【すでにアプリの中にある数字】。
+#     打ち直しは二重入力で、間違いのもとになる。
+#
+#   体重     … body_weights（測定日つき）。月次の帳票でも直近6回を使っている。
+#              対象月のうち【いちばん新しい測定】を採用する。
+#              月内に測定が無ければ、その前の最新を出して「先月の値」と断る。
+#   出席回数 … vitals に記録のある【日数】。
+#              ★アプリ全体で「その日に来所したか」をバイタルの有無で判定している
+#                （monitoring-check-v1 と同じ数え方）。数え方をそろえるため踏襲する。
+#              ★バイタルを測り忘れた日は数に入らない。ここは手で直せるようにする。
+@app.route('/api/evaluation/auto_values', methods=['GET'])
+@login_required
+def api_evaluation_auto_values():
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        uname = (request.args.get("user_name") or "").strip()
+        ym = (request.args.get("year_month") or "").strip()
+        if not uname or not ym:
+            return jsonify({"status": "error", "message": "user_name と year_month が必要です"}), 400
+        try:
+            y, m = int(ym[:4]), int(ym[5:7])
+        except Exception:
+            return jsonify({"status": "error", "message": "year_month の形が違います"}), 400
+        # ★date は app.py で import していない（datetime だけ）。
+        #   日付オブジェクトを作らず、文字列で月の範囲を組む。
+        f_s = "%04d-%02d-01" % (y, m)
+        _ny, _nm = (y + 1, 1) if m == 12 else (y, m + 1)
+        n_s = "%04d-%02d-01" % (_ny, _nm)
+
+        out = {"status": "success", "weight": None, "weights": [], "attendance": None}
+
+        # ── 体重 ──
+        try:
+            bw = (supabase.table("body_weights")
+                  .select("weight_kg, measured_date")
+                  .eq("facility_code", f_code).eq("user_name", uname)
+                  .order("measured_date", desc=True).limit(12).execute())
+            rows = bw.data or []
+            out["weights"] = list(reversed(rows))[-6:]      # 古い順に直近6回
+            inmonth = [r for r in rows if f_s <= (r.get("measured_date") or "") < n_s]
+            pick = (inmonth or rows)
+            if pick:
+                out["weight"] = {
+                    "weight_kg": pick[0].get("weight_kg"),
+                    "measured_date": pick[0].get("measured_date"),
+                    "in_month": bool(inmonth),      # False = 対象月には測定が無い
+                }
+        except Exception as e:
+            out["weight_error"] = str(e)
+
+        # ── 出席回数（バイタルのある日数） ──
+        try:
+            pid = None
+            pr = (supabase.table("patients").select("id")
+                  .eq("facility_code", f_code).eq("user_name", uname).limit(1).execute())
+            if pr.data:
+                pid = pr.data[0].get("id")
+            if pid is not None:
+                vr = (supabase.table("vitals").select("measured_date")
+                      .eq("facility_code", f_code).eq("patient_id", pid)
+                      .gte("measured_date", f_s).lt("measured_date", n_s).execute())
+                days = set()
+                for v in (vr.data or []):
+                    d = (v.get("measured_date") or "")[:10]
+                    if d:
+                        days.add(d)
+                out["attendance"] = {"count": len(days), "basis": "バイタルの記録がある日数"}
+        except Exception as e:
+            out["attendance_error"] = str(e)
+
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/acquire_edit_lock', methods=['POST'])
 @login_required
 def api_acquire_edit_lock():
@@ -7955,7 +8059,9 @@ def api_acquire_edit_lock():
         my_name = session.get("my_name", "")
         supabase = get_supabase()
         # eval-lock-scope-v1: 施設コードを必ず渡す（他施設の評価に触れないように）
-        result = acquire_edit_lock(supabase, evaluation_id, my_name, session["f_code"])
+        # eval-two-entrances-v1: section で入口ごとのロックにする（省略時は今までどおり）
+        result = acquire_edit_lock(supabase, evaluation_id, my_name, session["f_code"],
+                                   (data.get("section") or "").strip() or None)
 
         if result.get("success"):
             return jsonify({"status": "success"})
@@ -7965,6 +8071,8 @@ def api_acquire_edit_lock():
                 "editing_by": result.get("editing_by", ""),
                 "editing_started_at": result.get("editing_started_at", ""),
                 "lock_age_seconds": result.get("lock_age_seconds", 0),
+                # eval-two-entrances-v1: どちらのロックで弾いたか（old / same）
+                "lock_scope": result.get("lock_scope", ""),
                 "error": result.get("error", ""),
             }), 409
     except Exception as e:
@@ -7992,7 +8100,9 @@ def api_release_edit_lock():
         my_name = session.get("my_name", "")
         supabase = get_supabase()
         # eval-lock-scope-v1: 施設コードを必ず渡す
-        release_edit_lock(supabase, evaluation_id, my_name, session["f_code"])
+        # eval-two-entrances-v1: 取ったときと同じ入口を指定して解放する
+        release_edit_lock(supabase, evaluation_id, my_name, session["f_code"],
+                          (data.get("section") or "").strip() or None)
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "success", "warning": str(e)})
@@ -11950,21 +12060,16 @@ def numerology():
     return render("numerology.html", patients=patients)
 
 
+# dead-caserecords-v1: モニタリング生成画面の【初代】の名残り。
+#   case_records.html は存在しないため、以前はここが必ず500になっていた。
+#   完成版は /monitoring。機能はそちらに全部ある。
+#   ★消さずに転送にしてある。リッチメニュー・ブックマーク・古いPWAのキャッシュなど
+#     リポジトリの外から叩いているものが居ても、正しい画面に着くようにするため。
+#   ★endpoint名 case_records は残すこと。url_for('case_records') が壊れる。
 @app.route('/case_records')
 @login_required
 def case_records():
-    f_code = session["f_code"]
-    supabase = get_supabase()
-    patients = get_patients(supabase, f_code)
-    now = datetime.now(tokyo_tz)
-    months = []
-    for i in range(6):
-        m = now.month - i
-        y = now.year
-        while m <= 0:
-            m += 12; y -= 1
-        months.append({"value": f"{y}-{m:02d}", "label": f"{y}年{m:02d}月"})
-    return render("case_records.html")
+    return redirect('/monitoring')
 
 @app.route('/admin_auth', methods=['POST'])
 @login_required
@@ -13879,9 +13984,12 @@ def api_monitoring_detail():
         return jsonify({"error": str(e)}), 500
 
 
+# dead-caserecords-v1: 昔のモニタリング履歴画面のURL。
+#   以前は /case_records へ転送していたので、こちらも道連れで500だった。
+#   ★ログイン確認は転送先(/monitoring)が行う。ここは転送するだけ。
 @app.route('/history')
 def history_redirect():
-    return redirect(url_for('case_records'))
+    return redirect('/monitoring')
 
 @app.route('/api/daily_records')
 @login_required
@@ -16720,6 +16828,11 @@ register_patient_hub_routes(app)
 #     外すと他の利用者の記録に到達される。設計は README の self-eval-design-2026-08-20。
 from self_eval_integration import register_self_eval_routes
 register_self_eval_routes(app)
+
+# guide-v1: 画面の案内役（読むだけのAPI）
+#   案内文は guide_integration.py の SCREENS に集約。テンプレートには手を入れない。
+from guide_integration import register_guide_routes
+register_guide_routes(app)
 
 
 

@@ -330,9 +330,32 @@ def get_initial_care_classification(supabase, facility_code: str, user_name: str
 # 2. 編集ロック関数(悲観的ロック、10 分タイムアウト)
 # ===========================================================================
 
+# ===== eval-two-entrances-v1: 入口ごとのロック列 =====
+#   入口を担当ごとに分けると、2人が同時に同じ月の記録を開く。
+#   ロックが【記録まるごと】に掛かっていると、後から保存したほうが必ず弾かれる。
+#   そこで入口ごとに別の列を使う。
+#     'eval' … 評価担当者（目標の達成度・聞き取り・満足度・体重）
+#     'ft'   … 機能訓練指導員（体の評価・報告文）
+#     None   … 分ける前の1枚の画面（今までどおり editing_by）
+#   ★移行が終わるまで、旧列も必ず一緒に見ること。
+#     旧画面が開いているのに新入口から保存できてしまうと、丸ごと上書きになる。
+_LOCK_COLS = {
+    "eval": ("editing_by_eval", "editing_started_at_eval"),
+    "ft":   ("editing_by_ft",   "editing_started_at_ft"),
+    None:   ("editing_by",      "editing_started_at"),
+}
+
+def _lock_cols(section):
+    """section から (誰が, いつから) の列名を返す。知らない値は旧列にする。"""
+    return _LOCK_COLS.get(section if section in ("eval", "ft") else None)
+
+
 def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
-                      facility_code: str = None) -> dict:
+                      facility_code: str = None, section: str = None) -> dict:
     """編集ロックを取得する。
+
+    ★eval-two-entrances-v1: section を渡すと、その入口のロックだけを取る。
+      渡さなければ今までどおり（1枚の画面のロック）。
 
     ★eval-lock-scope-v1（2026-08-26）
       facility_code を必ず受け取り、その施設の評価だけを対象にする。
@@ -363,9 +386,14 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
     """
     if not facility_code:
         return {"success": False, "error": "facility_code がありません（eval-lock-scope-v1）"}
+    by_col, at_col = _lock_cols(section)
+    # ★旧列も一緒に読む。分ける前の画面が開いているときは、そちらを優先して弾く。
+    sel = by_col + ", " + at_col
+    if by_col != "editing_by":
+        sel += ", editing_by, editing_started_at"
     try:
         res = supabase.table("patient_evaluations") \
-            .select("editing_by, editing_started_at") \
+            .select(sel) \
             .eq("id", evaluation_id) \
             .eq("facility_code", facility_code) \
             .single() \
@@ -376,28 +404,42 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
     current = res.data or {}
     now = datetime.now(timezone.utc)
 
-    if current.get("editing_by") and current.get("editing_started_at"):
+    # 見る順番：まず旧画面（全部を書き換えるので影響が大きい）、次に同じ入口
+    pairs = []
+    if by_col != "editing_by":
+        pairs.append(("editing_by", "editing_started_at"))
+    pairs.append((by_col, at_col))
+
+    for _b, _a in pairs:
+        if not (current.get(_b) and current.get(_a)):
+            continue
         try:
-            started = _parse_iso_datetime(current["editing_started_at"])
+            started = _parse_iso_datetime(current[_a])
             age_seconds = (now - started).total_seconds()
         except Exception:
             age_seconds = float("inf")  # パース失敗時は強制解放扱い
 
         # 別ユーザーがロック中 + タイムアウト未経過 → 失敗
-        if current["editing_by"] != current_user and age_seconds < LOCK_TIMEOUT_MINUTES * 60:
+        if current[_b] != current_user and age_seconds < LOCK_TIMEOUT_MINUTES * 60:
             return {
                 "success": False,
-                "editing_by": current["editing_by"],
-                "editing_started_at": current["editing_started_at"],
+                "editing_by": current[_b],
+                "editing_started_at": current[_a],
                 "lock_age_seconds": int(age_seconds),
+                # ★eval-two-entrances-v1: どちらのロックで弾いたかを返す。
+                #   'old'  … 分ける前の1枚の画面（全部の欄を書き換える）
+                #   'same' … 同じ入口
+                #   画面はこれを見て、職員に出す文を変える。
+                #   （どちらも「この入口を開いています」と出すと、実態と食い違う）
+                "lock_scope": ("old" if _b == "editing_by" else "same"),
             }
         # 自分のロック or タイムアウト → そのまま更新へ
 
     # ロック取得 or 更新
     try:
         supabase.table("patient_evaluations").update({
-            "editing_by": current_user,
-            "editing_started_at": _now_utc_iso(),
+            by_col: current_user,
+            at_col: _now_utc_iso(),
         }).eq("id", evaluation_id).eq("facility_code", facility_code).execute()
         return {"success": True}
     except Exception as e:
@@ -405,7 +447,7 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
 
 
 def release_edit_lock(supabase, evaluation_id: int, current_user: str,
-                      facility_code: str = None) -> dict:
+                      facility_code: str = None, section: str = None) -> dict:
     """編集ロックを解放する(自分が保持している場合のみ)。
 
     ★eval-lock-scope-v1（2026-08-26）
@@ -423,11 +465,12 @@ def release_edit_lock(supabase, evaluation_id: int, current_user: str,
     """
     if not facility_code:
         return {"success": False, "error": "facility_code がありません（eval-lock-scope-v1）"}
+    by_col, at_col = _lock_cols(section)      # eval-two-entrances-v1
     try:
         supabase.table("patient_evaluations").update({
-            "editing_by": None,
-            "editing_started_at": None,
-        }).eq("id", evaluation_id).eq("editing_by", current_user) \
+            by_col: None,
+            at_col: None,
+        }).eq("id", evaluation_id).eq(by_col, current_user) \
           .eq("facility_code", facility_code).execute()
         return {"success": True}
     except Exception as e:
@@ -439,12 +482,29 @@ def release_edit_lock(supabase, evaluation_id: int, current_user: str,
 # ===========================================================================
 
 # 必須項目(B 必須、設計書 §論点 10)
-REQUIRED_FIELDS = ("user_name", "year_month", "care_classification", "evaluator_name", "training_goal")
+#
+# ★eval-required-legacy-v1（2026-08-26）: training_goal を必須から外した。
+#
+#   training_goal は【1つの文章で訓練目標を書いていた時代】の列。
+#   いまは利用者情報に登録した目標（要介護=ICF3軸×短期長期／要支援=短期長期）を
+#   評価画面に表示し、変えたい軸だけ「新規目標」欄に書く作りになっている。
+#   ★評価画面に training_goal を書き込む部品はもう無い
+#     （<input type="hidden" id="eval-training-goal"> が残っているだけ）。
+#   ★そのため【書けない項目を必須にしている】状態で、
+#     新しく作った評価はすべて「必須未入力」の赤いバッジになっていた。
+#     ＝「過去の評価」一覧でどれが仕上がっているか分からなくなっていた。
+#
+#   ★列そのものは消さないこと。過去の評価に実際の文章が入っており
+#     （例: 2026-07「自宅内を伝い歩きで安全に移動できる」）、
+#     過去評価の詳細画面で「訓練目標」として表示し続ける必要がある。
+#   ★ALLOWED_UPSERT_KEYS からも外さないこと。外すと、古い値が入っている
+#     記録を開いて保存し直したときに消えてしまう。
+REQUIRED_FIELDS = ("user_name", "year_month", "care_classification", "evaluator_name")
 
 # 全項目(完成度 100% 判定用、介護区分で分岐)
 ALL_FIELDS_KAIGO = (
-    # 必須
-    "user_name", "year_month", "care_classification", "evaluator_name", "training_goal",
+    # 必須（eval-required-legacy-v1: training_goal は書けない列なので外した）
+    "user_name", "year_month", "care_classification", "evaluator_name",
     # 計測値
     "weight_kg", "attendance_count", "attendance_target",
     # 短期 ICF 3 個 + 長期 ICF 3 個
@@ -458,8 +518,8 @@ ALL_FIELDS_KAIGO = (
 )
 
 ALL_FIELDS_SHIEN_OR_TAISHOU = (
-    # 必須
-    "user_name", "year_month", "care_classification", "evaluator_name", "training_goal",
+    # 必須（eval-required-legacy-v1: training_goal は書けない列なので外した）
+    "user_name", "year_month", "care_classification", "evaluator_name",
     # 計測値
     "weight_kg", "attendance_count", "attendance_target",
     # 短期/長期(単純)
@@ -556,6 +616,10 @@ ALLOWED_UPSERT_KEYS = (
     "facility_code", "user_name", "year_month", "evaluator_name",
     "weight_kg", "attendance_count", "attendance_target",
     "training_goal", "care_classification",
+    # eval-two-entrances-v1: 評価担当者が集めた材料。
+    #   source_data（機能訓練指導員の材料）とは別の列。
+    #   2人が同時に書いてもぶつからないように分けてある。
+    "source_data_eval",
     # 目標達成ステータス
     "short_goal_function_status", "short_goal_activity_status", "short_goal_participation_status",
     "long_goal_function_status", "long_goal_activity_status", "long_goal_participation_status",
@@ -578,7 +642,8 @@ ALLOWED_UPSERT_KEYS = (
 )
 
 
-def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dict:
+def upsert_patient_evaluation(supabase, payload: dict, current_user: str,
+                              section: str = None) -> dict:
     """評価データを UPSERT する。
 
     動作:
@@ -624,8 +689,11 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dic
 
     # 既存検索
     try:
+        # eval-two-entrances-save: 入口ごとのロック列も読む
         existing_res = supabase.table("patient_evaluations") \
-            .select("id, editing_by, editing_started_at") \
+            .select("id, editing_by, editing_started_at, "
+                    "editing_by_eval, editing_started_at_eval, "
+                    "editing_by_ft, editing_started_at_ft") \
             .eq("facility_code", clean["facility_code"]) \
             .eq("user_name", clean["user_name"]) \
             .eq("year_month", clean["year_month"]) \
@@ -641,9 +709,24 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dic
         evaluation_id = existing["id"]
 
         # 競合判定(別ユーザーがロック中 + タイムアウト未経過)
-        lock_holder = existing.get("editing_by")
-        lock_started = existing.get("editing_started_at")
-        if lock_holder and lock_holder != current_user and lock_started:
+        #
+        # ★eval-two-entrances-save
+        #   入口を分けると、評価担当者と機能訓練指導員が同時に開く。
+        #   自分の入口のロックだけを見ればよい……ではない。
+        #   【分ける前の1枚の画面】は全部の欄を書き換えるので、
+        #   そちらが開いていたら、どの入口からも保存させてはいけない。
+        #   → 旧列 ＋ 自分の入口の列、その両方を見る。
+        _by_col, _at_col = _lock_cols(section)
+        _checks = []
+        if _by_col != "editing_by":
+            _checks.append(("editing_by", "editing_started_at"))
+        _checks.append((_by_col, _at_col))
+
+        for _b, _a in _checks:
+            lock_holder = existing.get(_b)
+            lock_started = existing.get(_a)
+            if not (lock_holder and lock_holder != current_user and lock_started):
+                continue
             try:
                 started = _parse_iso_datetime(lock_started)
                 age = (datetime.now(timezone.utc) - started).total_seconds()
@@ -653,14 +736,17 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dic
                         "error": f"{lock_holder} が編集中です(あと約 {int((LOCK_TIMEOUT_MINUTES * 60 - age) / 60)} 分)",
                         "conflict": True,
                         "editing_by": lock_holder,
+                        "lock_scope": ("old" if _b == "editing_by" else "same"),
                     }
             except Exception:
                 pass  # パース失敗時は競合扱いせず続行
 
         # 更新(updated_at を明示、ロック解放)
+        # ★解放するのは【自分が取った入口のロックだけ】。
+        #   相手の入口のロックまで外すと、相手が保存する前に横取りされる。
         clean["updated_at"] = _now_utc_iso()
-        clean["editing_by"] = None
-        clean["editing_started_at"] = None
+        clean[_by_col] = None
+        clean[_at_col] = None
         try:
             supabase.table("patient_evaluations").update(clean).eq("id", evaluation_id).execute()
             return {"success": True, "id": evaluation_id, "mode": "update"}
@@ -669,8 +755,13 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str) -> dic
     else:
         # ── INSERT 経路 ──
         # ロック関連は INSERT 時は NULL(新規作成と同時にロック解放)
+        # eval-two-entrances-save: 新規作成なので、どの入口の列も空でよい
         clean["editing_by"] = None
         clean["editing_started_at"] = None
+        clean["editing_by_eval"] = None
+        clean["editing_started_at_eval"] = None
+        clean["editing_by_ft"] = None
+        clean["editing_started_at_ft"] = None
         try:
             res = supabase.table("patient_evaluations").insert(clean).execute()
             new_id = (res.data or [{}])[0].get("id")
