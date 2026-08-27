@@ -5300,10 +5300,14 @@ function ttResetLang() {
       });
     }
 
+    // ★入力欄が1つも無い画面では、このスイッチは意味が無いので出さない。
     var on = hintsOn();
-    h += '<div class="tkg-row"><span>入力欄の横に「?」を出す</span>'
-       + '<button type="button" class="tkg-sw' + (on ? ' on' : '') + '" id="tkg-sw"'
-       + ' role="switch" aria-checked="' + (on ? 'true' : 'false') + '"></button></div>';
+    var hasField = (data.fields || []).some(function(f){ return !!document.getElementById(f.id); });
+    if(hasField){
+      h += '<div class="tkg-row"><span>入力欄の横に「?」を出す</span>'
+         + '<button type="button" class="tkg-sw' + (on ? ' on' : '') + '" id="tkg-sw"'
+         + ' role="switch" aria-checked="' + (on ? 'true' : 'false') + '"></button></div>';
+    }
 
     h += '<a class="tkg-manual" href="/manual">'
        + '<span class="material-symbols-outlined" style="font-size:17px;">menu_book</span>'
@@ -5317,7 +5321,7 @@ function ttResetLang() {
 
     document.getElementById('tkg-close').onclick = closeCard;
     var sw = document.getElementById('tkg-sw');
-    sw.onclick = function(){
+    if(sw) sw.onclick = function(){
       var next = !hintsOn();
       setHints(next);
       sw.classList.toggle('on', next);

@@ -172,7 +172,7 @@ SCREENS = {
     # 日々の記録  ※一覧画面
     # --------------------------------------------------------
     "/daily_view": {
-        "title": "日々の記録",
+        "title": "ケース記録閲覧",
         "what": "1日ぶんのケース記録を、利用者ごとにまとめて読む画面です。"
                 "AIがその日の要約を作って、読み上げることもできます。",
         "flow": [
@@ -204,7 +204,7 @@ SCREENS = {
     # タスクリスト  ※一覧画面
     # --------------------------------------------------------
     "/tasks": {
-        "title": "タスクリスト",
+        "title": "タスク",
         "what": "やることを人に振ったり、自分の分を確認したりする画面です。"
                 "「自分のタスク」「依頼したタスク」で切り替えられます。",
         "flow": [
@@ -327,6 +327,210 @@ SCREENS = {
         "checks": [],
     },
 
+    # --------------------------------------------------------
+    # 評価（担当ごとの入口）
+    # --------------------------------------------------------
+    "/assessment2": {
+        "title": "評価（担当ごとの入口）",
+        "what": "1か月ぶんの評価をつくる画面です。"
+                "評価担当者と機能訓練指導員で入口が分かれていて、"
+                "自分に関係のある欄だけが出ます。"
+                "★2人が同時に入っても、別の入口なら両方書けます。",
+        "flow": [
+            "利用者と月を選ぶ",
+            "自分の入口（評価担当者／機能訓練指導員）を選ぶ",
+            "自分の欄を書いて保存する",
+            "報告文はAIで作れる。誰でも直せます",
+        ],
+        "fields": {
+            "a2-ym": {
+                "t": "どの月の評価か",
+                "d": "★ここを間違えると、別の月の評価を書き換えてしまいます。"
+                     "先月ぶんを後から書くときは、必ず確かめてください。",
+            },
+            "a2-intake": {
+                "t": "ご本人に聞いた内容",
+                "d": "聞いた言葉のまま書いて大丈夫です。"
+                     "ここに書いた内容と、機能訓練指導員が書いた体の評価の"
+                     "【両方】から、AIが報告文を作ります。",
+            },
+            "a2-ftdata": {
+                "t": "体の評価の記録",
+                "d": "測った数値や気づいたことを、そのまま書いてください。"
+                     "評価担当者が聞き取った内容とは別の欄なので、"
+                     "同時に書いても消し合いません。",
+            },
+            "a2-changes": {
+                "t": "訓練による変化",
+                "d": "AIで作ったあと、誰でも直せます。"
+                     "おかしいと思ったところは、そのまま直してください。",
+            },
+            "a2-issues": {
+                "t": "課題とその要因",
+                "d": "AIで作ったあと、誰でも直せます。",
+            },
+            "a2-special": {
+                "t": "特記事項",
+                "d": "上のどこにも当てはまらないことを書きます。任意です。",
+            },
+        },
+        "checks": ["eval_this_month"],
+    },
+
+    # --------------------------------------------------------
+    # 評価（1枚のほう・従来）
+    # --------------------------------------------------------
+    "/assessment": {
+        "title": "評価（1枚のほう）",
+        "what": "1か月ぶんの評価を、1枚の画面にまとめて書く従来のやり方です。"
+                "★入口を分けた新しい画面（評価）もあります。"
+                "★この画面を開いている間は、新しい画面のどちらの入口も使えません。"
+                "1枚で全部を書き換えるためです。",
+        "flow": [
+            "利用者と月を選ぶ",
+            "上から順に埋めていく",
+            "保存する",
+        ],
+        "fields": {},
+        "checks": ["eval_this_month"],
+    },
+
+    # --------------------------------------------------------
+    # モニタリング文章生成
+    # --------------------------------------------------------
+    "/monitoring": {
+        "title": "モニタリング文章生成",
+        "what": "その月にたまったケース記録をAIが読んで、"
+                "ケアマネジャー向けの報告文を作る画面です。"
+                "★記録に書いてあることだけを使います。無い話は作りません。",
+        "flow": [
+            "利用者と対象月を選ぶ",
+            "カテゴリ別か、まとめて1本かを選ぶ",
+            "文字数を選んで生成する",
+            "読んで直してから、下書き保存または確定保存",
+        ],
+        "fields": {},
+        "checks": ["monitoring_this_month"],
+    },
+
+    # --------------------------------------------------------
+    # 生活機能チェック
+    # --------------------------------------------------------
+    "/life_check": {
+        "title": "生活機能チェック",
+        "what": "生活機能チェックシート（様式3-2）を入力する画面です。"
+                "介護区分によって使う様式が変わります。",
+        "flow": [
+            "利用者を選ぶ",
+            "要介護の方は様式3-2、要支援・事業対象者の方はBIを選ぶ",
+            "基本情報とADLを埋めて保存",
+        ],
+        "fields": {},
+        "checks": [],
+    },
+
+    # --------------------------------------------------------
+    # 書類出力
+    # --------------------------------------------------------
+    "/print_output": {
+        "title": "書類出力",
+        "what": "評価の内容を、印刷できる報告書の形にして出す画面です。"
+                "1人ずつでも、全員まとめてでも出せます。",
+        "flow": [
+            "介護区分と、載せる項目を選ぶ",
+            "「プレビューで確認」で中身を確かめる",
+            "印刷、またはPDFで保存",
+        ],
+        "fields": {},
+        "checks": ["eval_this_month"],
+    },
+
+    # --------------------------------------------------------
+    # 利用者セルフ評価（職員側）
+    # --------------------------------------------------------
+    "/self-eval": {
+        "title": "利用者セルフ評価",
+        "what": "ご本人に、目標の達成度や困りごとを答えてもらう仕組みです。"
+                "答えてもらう方法は2つあります。"
+                "★タブレットを渡す／職員が聞き取って入力する。どちらでも構いません。",
+        "flow": [
+            "「＋ 新しく始める」で利用者を選ぶ（AIが質問を考えます）",
+            "質問を確かめる。足したり消したりできます",
+            "「タブレットを渡す」か「職員が聞き取って入力する」を選ぶ",
+            "答えが返ってきたら確認して、評価の元データに足す",
+        ],
+        "fields": {},
+        "checks": ["selfeval_waiting"],
+    },
+
+    # --------------------------------------------------------
+    # 職員が聞き取って入力する
+    # --------------------------------------------------------
+    "/self-eval/interview": {
+        "title": "聞き取って入力する",
+        "what": "AIが考えた質問を、職員が順番に読み上げて、"
+                "答えを代わりに入れていく画面です。"
+                "タブレットの操作が難しい方でも答えてもらえます。",
+        "flow": [
+            "質問を1つずつ読み上げる",
+            "答えの度合いと、話された言葉を入れる",
+            "最後まで終わったら「聞き取り終了」",
+        ],
+        "fields": {},
+        "checks": [],
+    },
+
+    # --------------------------------------------------------
+    # 記録充足チェック（その日）
+    # --------------------------------------------------------
+    "/record_check": {
+        "title": "記録充足チェック（その日）",
+        "what": "選んだ【1日】について、利用者ごと・カテゴリごとに"
+                "記録が書けているかを一覧で見る画面です。"
+                "抜けている所がすぐ分かります。",
+        "flow": [
+            "見たい日を選ぶ",
+            "空いているマスを探す",
+            "「表示設定」で、並び順とチェックするカテゴリを変えられます",
+        ],
+        "fields": {},
+        "checks": ["today_missing_records"],
+    },
+
+    # --------------------------------------------------------
+    # 記録充足チェック（その月）
+    # --------------------------------------------------------
+    "/monitoring_check": {
+        "title": "記録充足チェック（その月）",
+        "what": "選んだ【1か月】について、記録が足りているかを見る画面です。"
+                "モニタリング文章を作る前の確認に使います。"
+                "★1日ぶんを見たいときは「記録充足チェック」のほうです。",
+        "flow": [
+            "月を選ぶ",
+            "記録の少ない利用者・カテゴリを探す",
+            "足りていればモニタリング文章生成へ",
+        ],
+        "fields": {},
+        "checks": [],
+    },
+
+    # --------------------------------------------------------
+    # 利用者情報
+    # --------------------------------------------------------
+    "/patient-info": {
+        "title": "利用者情報",
+        "what": "利用者ごとの情報を見たり直したりする画面です。"
+                "★介護区分（要介護／要支援／事業対象者）もここで決まります。"
+                "空のままだと、評価の目標欄の出方が決まりません。",
+        "flow": [
+            "利用者を選ぶ",
+            "見たい情報のタブを開く",
+            "直したい所を直して保存",
+        ],
+        "fields": {},
+        "checks": ["careclass_missing"],
+    },
+
 }
 
 
@@ -344,6 +548,17 @@ def _norm_path(p):
     return p
 
 
+
+# ★案内を絶対に出さない画面（完全一致）
+#   利用者にタブレットを渡している画面。職員向けの案内が見えてはいけない。
+#   いまは利用者モード中に /api/ が403で止まるので実害は無いが、
+#   モード外で開いたときに前方一致で /self-eval の案内が付くのを防ぐ。
+_NO_GUIDE = (
+    "/self-eval/run",
+    "/self-eval/locked",
+)
+
+
 def _match_screen(path):
     """完全一致 → いちばん長い前方一致 の順で探す。
 
@@ -352,6 +567,8 @@ def _match_screen(path):
     返す形: (見つかったキー, 中身) または (None, None)
     """
     p = _norm_path(path)
+    if p in _NO_GUIDE:
+        return None, None
     if p in SCREENS:
         return p, SCREENS[p]
     best = None
@@ -518,6 +735,90 @@ def _check_today_missing_vitals(supabase, tokyo_tz, f_code, my_name):
                    % (len(wrote), len(missing), names)}
 
 
+def _this_month(tokyo_tz):
+    return datetime.now(tokyo_tz).strftime("%Y-%m")
+
+
+def _active_patient_names(supabase, f_code):
+    """利用中の方の名前。
+
+    ★care_level も利用状況も patient_profiles にある。
+      evaluation_helper のコメントには「patients.care_level」とあるが、
+      実際に画面へ渡しているのは patient_profiles のほう（get_patients を参照）。
+      ここを取り違えると、件数がまるごと狂う。
+    """
+    res = (supabase.table("patient_profiles")
+           .select("user_name,care_level,is_discontinued")
+           .eq("facility_code", f_code).execute())
+    return [r for r in (res.data or []) if not r.get("is_discontinued")]
+
+
+def _check_eval_this_month(supabase, tokyo_tz, f_code, my_name):
+    """今月の評価が、何人ぶんできているか。"""
+    ym = _this_month(tokyo_tz)
+    people = _active_patient_names(supabase, f_code)
+    if not people:
+        return None
+    res = (supabase.table("patient_evaluations").select("user_name")
+           .eq("facility_code", f_code).eq("year_month", ym).execute())
+    done = {(r.get("user_name") or "").strip() for r in (res.data or [])}
+    done.discard("")
+    n, tot = len(done), len(people)
+    if n >= tot:
+        return {"say": "%s の評価は、%d人ぶんそろっています。" % (ym, tot), "ok": True}
+    return {"say": "%s の評価は %d人ぶん。あと %d人 残っています。" % (ym, n, tot - n)}
+
+
+def _check_monitoring_this_month(supabase, tokyo_tz, f_code, my_name):
+    """今月のモニタリング報告が、何人ぶん確定しているか。
+
+    ★target_month は <input type="month"> の値なので "YYYY-MM"。
+    """
+    ym = _this_month(tokyo_tz)
+    res = (supabase.table("monitoring_reports").select("user_name,confirmed_at")
+           .eq("facility_code", f_code).eq("target_month", ym).execute())
+    rows = res.data or []
+    if not rows:
+        return {"say": "%s のモニタリング文章は、まだ1件も作られていません。" % ym}
+    fixed = {(r.get("user_name") or "") for r in rows if r.get("confirmed_at")}
+    draft = len({(r.get("user_name") or "") for r in rows}) - len(fixed)
+    if draft <= 0:
+        return {"say": "%s のモニタリング文章は %d人ぶん確定ずみです。" % (ym, len(fixed)),
+                "ok": True}
+    return {"say": "%s のモニタリング文章: 確定 %d人、下書きのまま %d人。"
+                   % (ym, len(fixed), draft)}
+
+
+def _check_selfeval_waiting(supabase, tokyo_tz, f_code, my_name):
+    """答えが返ってきて、職員の確認を待っているセルフ評価。"""
+    res = (supabase.table("patient_self_evaluations").select("user_name")
+           .eq("facility_code", f_code).eq("status", "answered").execute())
+    n = len(res.data or [])
+    if not n:
+        return None
+    return {"say": "答えが返ってきて確認待ちのセルフ評価が %d 件あります。" % n}
+
+
+def _check_careclass_missing(supabase, tokyo_tz, f_code, my_name):
+    """介護区分が空のまま の方。
+
+    ★空だと、評価の画面で目標欄をいくつ出すかが決まらない。
+      本番では86人中7人が空だった（2026-08 の調査）。
+    """
+    people = _active_patient_names(supabase, f_code)
+    if not people:
+        return None
+    bad = [r for r in people
+           if (r.get("care_level") or "").strip().lower() in ("", "none", "null")]
+    if not bad:
+        return {"say": "介護区分は %d人ぶん、全員入っています。" % len(people), "ok": True}
+    names = "、".join([(r.get("user_name") or "") for r in bad[:3]])
+    if len(bad) > 3:
+        names += " ほか%d人" % (len(bad) - 3)
+    return {"say": "介護区分が空の方が %d人 います（%s）。評価の目標欄が正しく出ません。"
+                   % (len(bad), names)}
+
+
 _CHECKS = {
     "today_no_record": _check_today_no_record,
     "today_missing_records": _check_today_missing_records,
@@ -526,6 +827,11 @@ _CHECKS = {
     "my_tasks_overdue": _check_my_tasks_overdue,
     "today_no_vitals": _check_today_no_vitals,
     "today_missing_vitals": _check_today_missing_vitals,
+    # guide-batchB
+    "eval_this_month": _check_eval_this_month,
+    "monitoring_this_month": _check_monitoring_this_month,
+    "selfeval_waiting": _check_selfeval_waiting,
+    "careclass_missing": _check_careclass_missing,
 }
 
 
