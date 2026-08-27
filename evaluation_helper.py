@@ -330,9 +330,32 @@ def get_initial_care_classification(supabase, facility_code: str, user_name: str
 # 2. 編集ロック関数(悲観的ロック、10 分タイムアウト)
 # ===========================================================================
 
+# ===== eval-two-entrances-v1: 入口ごとのロック列 =====
+#   入口を担当ごとに分けると、2人が同時に同じ月の記録を開く。
+#   ロックが【記録まるごと】に掛かっていると、後から保存したほうが必ず弾かれる。
+#   そこで入口ごとに別の列を使う。
+#     'eval' … 評価担当者（目標の達成度・聞き取り・満足度・体重）
+#     'ft'   … 機能訓練指導員（体の評価・報告文）
+#     None   … 分ける前の1枚の画面（今までどおり editing_by）
+#   ★移行が終わるまで、旧列も必ず一緒に見ること。
+#     旧画面が開いているのに新入口から保存できてしまうと、丸ごと上書きになる。
+_LOCK_COLS = {
+    "eval": ("editing_by_eval", "editing_started_at_eval"),
+    "ft":   ("editing_by_ft",   "editing_started_at_ft"),
+    None:   ("editing_by",      "editing_started_at"),
+}
+
+def _lock_cols(section):
+    """section から (誰が, いつから) の列名を返す。知らない値は旧列にする。"""
+    return _LOCK_COLS.get(section if section in ("eval", "ft") else None)
+
+
 def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
-                      facility_code: str = None) -> dict:
+                      facility_code: str = None, section: str = None) -> dict:
     """編集ロックを取得する。
+
+    ★eval-two-entrances-v1: section を渡すと、その入口のロックだけを取る。
+      渡さなければ今までどおり（1枚の画面のロック）。
 
     ★eval-lock-scope-v1（2026-08-26）
       facility_code を必ず受け取り、その施設の評価だけを対象にする。
@@ -363,9 +386,14 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
     """
     if not facility_code:
         return {"success": False, "error": "facility_code がありません（eval-lock-scope-v1）"}
+    by_col, at_col = _lock_cols(section)
+    # ★旧列も一緒に読む。分ける前の画面が開いているときは、そちらを優先して弾く。
+    sel = by_col + ", " + at_col
+    if by_col != "editing_by":
+        sel += ", editing_by, editing_started_at"
     try:
         res = supabase.table("patient_evaluations") \
-            .select("editing_by, editing_started_at") \
+            .select(sel) \
             .eq("id", evaluation_id) \
             .eq("facility_code", facility_code) \
             .single() \
@@ -376,19 +404,27 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
     current = res.data or {}
     now = datetime.now(timezone.utc)
 
-    if current.get("editing_by") and current.get("editing_started_at"):
+    # 見る順番：まず旧画面（全部を書き換えるので影響が大きい）、次に同じ入口
+    pairs = []
+    if by_col != "editing_by":
+        pairs.append(("editing_by", "editing_started_at"))
+    pairs.append((by_col, at_col))
+
+    for _b, _a in pairs:
+        if not (current.get(_b) and current.get(_a)):
+            continue
         try:
-            started = _parse_iso_datetime(current["editing_started_at"])
+            started = _parse_iso_datetime(current[_a])
             age_seconds = (now - started).total_seconds()
         except Exception:
             age_seconds = float("inf")  # パース失敗時は強制解放扱い
 
         # 別ユーザーがロック中 + タイムアウト未経過 → 失敗
-        if current["editing_by"] != current_user and age_seconds < LOCK_TIMEOUT_MINUTES * 60:
+        if current[_b] != current_user and age_seconds < LOCK_TIMEOUT_MINUTES * 60:
             return {
                 "success": False,
-                "editing_by": current["editing_by"],
-                "editing_started_at": current["editing_started_at"],
+                "editing_by": current[_b],
+                "editing_started_at": current[_a],
                 "lock_age_seconds": int(age_seconds),
             }
         # 自分のロック or タイムアウト → そのまま更新へ
@@ -396,8 +432,8 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
     # ロック取得 or 更新
     try:
         supabase.table("patient_evaluations").update({
-            "editing_by": current_user,
-            "editing_started_at": _now_utc_iso(),
+            by_col: current_user,
+            at_col: _now_utc_iso(),
         }).eq("id", evaluation_id).eq("facility_code", facility_code).execute()
         return {"success": True}
     except Exception as e:
@@ -405,7 +441,7 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
 
 
 def release_edit_lock(supabase, evaluation_id: int, current_user: str,
-                      facility_code: str = None) -> dict:
+                      facility_code: str = None, section: str = None) -> dict:
     """編集ロックを解放する(自分が保持している場合のみ)。
 
     ★eval-lock-scope-v1（2026-08-26）
@@ -423,11 +459,12 @@ def release_edit_lock(supabase, evaluation_id: int, current_user: str,
     """
     if not facility_code:
         return {"success": False, "error": "facility_code がありません（eval-lock-scope-v1）"}
+    by_col, at_col = _lock_cols(section)      # eval-two-entrances-v1
     try:
         supabase.table("patient_evaluations").update({
-            "editing_by": None,
-            "editing_started_at": None,
-        }).eq("id", evaluation_id).eq("editing_by", current_user) \
+            by_col: None,
+            at_col: None,
+        }).eq("id", evaluation_id).eq(by_col, current_user) \
           .eq("facility_code", facility_code).execute()
         return {"success": True}
     except Exception as e:
@@ -573,6 +610,10 @@ ALLOWED_UPSERT_KEYS = (
     "facility_code", "user_name", "year_month", "evaluator_name",
     "weight_kg", "attendance_count", "attendance_target",
     "training_goal", "care_classification",
+    # eval-two-entrances-v1: 評価担当者が集めた材料。
+    #   source_data（機能訓練指導員の材料）とは別の列。
+    #   2人が同時に書いてもぶつからないように分けてある。
+    "source_data_eval",
     # 目標達成ステータス
     "short_goal_function_status", "short_goal_activity_status", "short_goal_participation_status",
     "long_goal_function_status", "long_goal_activity_status", "long_goal_participation_status",

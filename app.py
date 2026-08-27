@@ -7942,6 +7942,84 @@ def api_get_patient_evaluation():
         }), 500
 
 
+# ===== eval-two-entrances-v1 : 体重・出席回数を、ほかの機能から自動で引く =====
+#
+#   ★これまで評価画面で手入力していたが、どちらも【すでにアプリの中にある数字】。
+#     打ち直しは二重入力で、間違いのもとになる。
+#
+#   体重     … body_weights（測定日つき）。月次の帳票でも直近6回を使っている。
+#              対象月のうち【いちばん新しい測定】を採用する。
+#              月内に測定が無ければ、その前の最新を出して「先月の値」と断る。
+#   出席回数 … vitals に記録のある【日数】。
+#              ★アプリ全体で「その日に来所したか」をバイタルの有無で判定している
+#                （monitoring-check-v1 と同じ数え方）。数え方をそろえるため踏襲する。
+#              ★バイタルを測り忘れた日は数に入らない。ここは手で直せるようにする。
+@app.route('/api/evaluation/auto_values', methods=['GET'])
+@login_required
+def api_evaluation_auto_values():
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        uname = (request.args.get("user_name") or "").strip()
+        ym = (request.args.get("year_month") or "").strip()
+        if not uname or not ym:
+            return jsonify({"status": "error", "message": "user_name と year_month が必要です"}), 400
+        try:
+            y, m = int(ym[:4]), int(ym[5:7])
+        except Exception:
+            return jsonify({"status": "error", "message": "year_month の形が違います"}), 400
+        # ★date は app.py で import していない（datetime だけ）。
+        #   日付オブジェクトを作らず、文字列で月の範囲を組む。
+        f_s = "%04d-%02d-01" % (y, m)
+        _ny, _nm = (y + 1, 1) if m == 12 else (y, m + 1)
+        n_s = "%04d-%02d-01" % (_ny, _nm)
+
+        out = {"status": "success", "weight": None, "weights": [], "attendance": None}
+
+        # ── 体重 ──
+        try:
+            bw = (supabase.table("body_weights")
+                  .select("weight_kg, measured_date")
+                  .eq("facility_code", f_code).eq("user_name", uname)
+                  .order("measured_date", desc=True).limit(12).execute())
+            rows = bw.data or []
+            out["weights"] = list(reversed(rows))[-6:]      # 古い順に直近6回
+            inmonth = [r for r in rows if f_s <= (r.get("measured_date") or "") < n_s]
+            pick = (inmonth or rows)
+            if pick:
+                out["weight"] = {
+                    "weight_kg": pick[0].get("weight_kg"),
+                    "measured_date": pick[0].get("measured_date"),
+                    "in_month": bool(inmonth),      # False = 対象月には測定が無い
+                }
+        except Exception as e:
+            out["weight_error"] = str(e)
+
+        # ── 出席回数（バイタルのある日数） ──
+        try:
+            pid = None
+            pr = (supabase.table("patients").select("id")
+                  .eq("facility_code", f_code).eq("user_name", uname).limit(1).execute())
+            if pr.data:
+                pid = pr.data[0].get("id")
+            if pid is not None:
+                vr = (supabase.table("vitals").select("measured_date")
+                      .eq("facility_code", f_code).eq("patient_id", pid)
+                      .gte("measured_date", f_s).lt("measured_date", n_s).execute())
+                days = set()
+                for v in (vr.data or []):
+                    d = (v.get("measured_date") or "")[:10]
+                    if d:
+                        days.add(d)
+                out["attendance"] = {"count": len(days), "basis": "バイタルの記録がある日数"}
+        except Exception as e:
+            out["attendance_error"] = str(e)
+
+        return jsonify(out)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/api/acquire_edit_lock', methods=['POST'])
 @login_required
 def api_acquire_edit_lock():
@@ -7955,7 +8033,9 @@ def api_acquire_edit_lock():
         my_name = session.get("my_name", "")
         supabase = get_supabase()
         # eval-lock-scope-v1: 施設コードを必ず渡す（他施設の評価に触れないように）
-        result = acquire_edit_lock(supabase, evaluation_id, my_name, session["f_code"])
+        # eval-two-entrances-v1: section で入口ごとのロックにする（省略時は今までどおり）
+        result = acquire_edit_lock(supabase, evaluation_id, my_name, session["f_code"],
+                                   (data.get("section") or "").strip() or None)
 
         if result.get("success"):
             return jsonify({"status": "success"})
@@ -7992,7 +8072,9 @@ def api_release_edit_lock():
         my_name = session.get("my_name", "")
         supabase = get_supabase()
         # eval-lock-scope-v1: 施設コードを必ず渡す
-        release_edit_lock(supabase, evaluation_id, my_name, session["f_code"])
+        # eval-two-entrances-v1: 取ったときと同じ入口を指定して解放する
+        release_edit_lock(supabase, evaluation_id, my_name, session["f_code"],
+                          (data.get("section") or "").strip() or None)
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "success", "warning": str(e)})
