@@ -2295,13 +2295,36 @@ function evalResetForm() {
 }
 
 function evalHasInput() {
-    return ['eval-training-goal', 'eval-changes', 'eval-issues', 'eval-special-notes',
-            'eval-new-requests-detail'
-           ].some(id => {
+    // ★eval-hasinput-v1（2026-08-26）
+    //   「入力がありますか」の判定に、いくつもの欄が抜けていた。
+    //   とくに【元データ（文字起こし）】が入っていなかったため、
+    //   録音から起こした長い文章を入れたあとに利用者を選び直すと、
+    //   確認のダイアログが出ないまま evalResetForm() で消えていた。
+    //   （evalResetForm は元データも消す。判定だけが見ていなかった）
+    //   ★介護区分が空の利用者で起きる。実データで7人いる（2026-08-26 調べ）。
+    //   ★ここに足す欄は、evalResetForm が消す欄と同じにしておくこと。
+    //     片方だけ増えると、また「気づかないうちに消える」が起きる。
+    const _textIds = [
+        'eval-training-goal', 'eval-changes', 'eval-issues', 'eval-special-notes',
+        'eval-new-requests-detail',
+        'eval-source-data', 'eval-memo',                      // ← 抜けていた
+        'short_goal_function_new', 'short_goal_activity_new',  // ← 抜けていた（新規目標8つ）
+        'short_goal_participation_new',
+        'long_goal_function_new', 'long_goal_activity_new',
+        'long_goal_participation_new',
+        'short_goal_new', 'long_goal_new',
+    ];
+    const _valueIds = [
+        'eval-care-classification', 'eval-satisfaction', 'eval-service-appropriateness',
+        'eval-new-requests-exist',
+        'eval-short-function', 'eval-short-activity', 'eval-short-participation',   // ← 抜けていた
+        'eval-long-function', 'eval-long-activity', 'eval-long-participation',      // ← 抜けていた
+        'eval-short-goal-simple', 'eval-long-goal-simple',                          // ← 抜けていた
+    ];
+    return _textIds.some(id => {
         const el = document.getElementById(id);
         return el && el.value && el.value.trim() !== '';
-    }) || ['eval-care-classification', 'eval-satisfaction', 'eval-service-appropriateness',
-           'eval-new-requests-exist'].some(id => {
+    }) || _valueIds.some(id => {
         const el = document.getElementById(id);
         return el && el.value;
     });
@@ -2345,7 +2368,13 @@ window.evalShowGoalDisplay = function(mode) {
 
 // goal-period-config-v1: 評価画面の目標期間 自動入力(施設設定・区分別)
 var _EVGP_DEF={jigyou:{short:6,long:12},youshien:{short:3,long:6},yokaigo:{short:3,long:6}};
-function evalGoalPeriodCat(){ var c=(window.evalState&&evalState.careClass)||''; if(c.indexOf('要介護')===0)return 'yokaigo'; if(c.indexOf('要支援')===0)return 'youshien'; return 'jigyou'; }
+/* eval-goalperiod-scope-v1（2026-08-26）
+   evalState は let で宣言されているため、window のプロパティにはならない。
+   window.evalState は常に undefined で、c が常に空文字になり、
+   下の判定が【いつも 'jigyou'（事業対象者）】を返していた。
+   その結果、要介護でも要支援でも 6か月/12か月 の期間が使われ、
+   施設で設定した値（/api/goal_period_config）が一度も効いていなかった。 */
+function evalGoalPeriodCat(){ var c=(typeof evalState!=='undefined'&&evalState.careClass)||''; if(c.indexOf('要介護')===0)return 'yokaigo'; if(c.indexOf('要支援')===0)return 'youshien'; return 'jigyou'; }
 function evalGoalPeriodMonths(kind){ var cat=evalGoalPeriodCat(); var cfg=(window._goalPeriodCfg||{})[cat]||{}; var v=cfg[kind]; return (v&&v>0)?v:_EVGP_DEF[cat][kind]; }
 function evalSetupPeriodAuto(fromId,toId,kind){
   var fromEl=document.getElementById(fromId); if(!fromEl) return;
