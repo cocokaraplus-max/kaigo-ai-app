@@ -5113,6 +5113,11 @@ function ttResetLang() {
   #tkg-card .tkg-ok{
     background:#e6f4ea; border-left:3px solid #34a853;
   }
+  #tkg-card .tkg-fld{
+    font-size:.85rem; color:#3c4043; line-height:1.65; margin-bottom:9px;
+    padding-left:10px; border-left:2px solid #e0e0e0;
+  }
+  #tkg-card .tkg-fld b{ display:block; color:#1a73e8; font-size:.86rem; margin-bottom:1px; }
   #tkg-card .tkg-row{
     display:flex; align-items:center; justify-content:space-between;
     gap:12px; margin-top:18px; padding-top:14px; border-top:1px solid #eee;
@@ -5204,24 +5209,32 @@ function ttResetLang() {
   }
 
   // ---------- 欄の横に「？」を付ける ----------
+  // 「?」を置ける場所を探す。見つからなければ null。
+  //   ★欄のうしろに置く方法はやめた。横幅いっぱいの入力欄だと
+  //     「?」が次の行に落ちて、宙に浮いて見える（バイタルの検索欄で実際にそうなった）。
+  //   置ける所が無い欄は、説明をカードの中に載せる（下の noAnchor）。
   function anchorFor(el){
-    // この画面は .form-group の中に label.form-label がある作り。
-    // そこに並べれば、どの画面でも同じ見た目になる。
     var g = el.closest ? el.closest('.form-group') : null;
     if(g){
-      var l = g.querySelector('label.form-label');
-      if(l) return {node:l, how:'append'};
+      var l = g.querySelector('label.form-label') || g.querySelector('label');
+      if(l) return l;
     }
-    return {node:el, how:'after'};
+    var p = el.previousElementSibling;
+    if(p && p.tagName === 'LABEL') return p;
+    return null;
   }
+
+  var noAnchor = [];        // 「?」を置ける所が無かった欄。カードに載せる。
 
   function attachHints(){
     if(!data || !data.fields) return;
     var on = hintsOn();
+    noAnchor = [];
 
     data.fields.forEach(function(f){
       var el = document.getElementById(f.id);
       if(!el) return;                                  // その画面に無い欄は黙って飛ばす
+      if(!anchorFor(el)){ noAnchor.push(f); return; }  // 置き場所が無い → カードへ
 
       var existing = document.querySelector('.tkg-chip[data-for="' + f.id + '"]');
       if(existing){
@@ -5244,11 +5257,8 @@ function ttResetLang() {
         showPop(chip, f.t, f.d);
       };
 
-      var a = anchorFor(el);
-      try{
-        if(a.how === 'append') a.node.appendChild(chip);
-        else a.node.insertAdjacentElement('afterend', chip);
-      }catch(e){ /* 置けない形の画面では出さない */ }
+      try{ anchorFor(el).appendChild(chip); }
+      catch(e){ /* 置けない形の画面では出さない */ }
     });
   }
 
@@ -5279,6 +5289,14 @@ function ttResetLang() {
       data.flow.forEach(function(s, i){
         h += '<div class="tkg-step"><span class="tkg-num">' + (i+1) + '</span><span>'
            + esc(s) + '</span></div>';
+      });
+    }
+
+    // 「?」を置ける所が無かった欄は、ここに文章で出す。
+    if(noAnchor.length){
+      h += '<div class="tkg-sec">この画面の入力欄</div>';
+      noAnchor.forEach(function(f){
+        h += '<div class="tkg-fld"><b>' + esc(f.t) + '</b>' + esc(f.d) + '</div>';
       });
     }
 

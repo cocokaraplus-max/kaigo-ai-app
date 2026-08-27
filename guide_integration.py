@@ -152,6 +152,181 @@ SCREENS = {
         "checks": ["today_no_record", "today_missing_records"],
     },
 
+    # --------------------------------------------------------
+    # TOP（入り口）  ※入力欄が無いのでカードだけ
+    # --------------------------------------------------------
+    "/top": {
+        "title": "TOP",
+        "what": "今日の様子がひと目でわかる入り口です。"
+                "今日のケース記録、自分に来ているタスク、今日が誕生日の方が並びます。",
+        "flow": [
+            "上のお知らせ（閲覧必須・タスク）を見る",
+            "下のメニューから、やりたいことの画面へ行く",
+            "迷ったら、どの画面でも右上の「?」を押す",
+        ],
+        "fields": {},
+        "checks": ["unread_must_read", "my_tasks_overdue", "today_no_record"],
+    },
+
+    # --------------------------------------------------------
+    # 日々の記録  ※一覧画面
+    # --------------------------------------------------------
+    "/daily_view": {
+        "title": "日々の記録",
+        "what": "1日ぶんのケース記録を、利用者ごとにまとめて読む画面です。"
+                "AIがその日の要約を作って、読み上げることもできます。",
+        "flow": [
+            "見たい日を選ぶ（左右の矢印で前の日・次の日）",
+            "利用者ごとに開いて読む",
+            "直したい記録は、その場で「編集」から直せる",
+        ],
+        "fields": {},
+        "checks": ["unread_must_read", "today_missing_records"],
+    },
+
+    # --------------------------------------------------------
+    # 掲示板  ※一覧画面
+    # --------------------------------------------------------
+    "/board": {
+        "title": "掲示板",
+        "what": "職員どうしの連絡を貼る場所です。"
+                "利用者ごとの記録ではなく、事業所ぜんたいへのお知らせに使います。",
+        "flow": [
+            "「未読」で自分がまだ読んでいないものを確認する",
+            "読んだら開く（開くと既読になります）",
+            "書くときは右上の鉛筆から",
+        ],
+        "fields": {},
+        "checks": [],
+    },
+
+    # --------------------------------------------------------
+    # タスクリスト  ※一覧画面
+    # --------------------------------------------------------
+    "/tasks": {
+        "title": "タスクリスト",
+        "what": "やることを人に振ったり、自分の分を確認したりする画面です。"
+                "「自分のタスク」「依頼したタスク」で切り替えられます。",
+        "flow": [
+            "「自分のタスク」で、自分に来ているものを見る",
+            "終わったら状態を変える",
+            "人に頼むときは右上の＋から（誰に・いつまでに・優先度）",
+        ],
+        "fields": {},
+        "checks": ["my_tasks_overdue"],
+    },
+
+    # --------------------------------------------------------
+    # バイタル
+    # --------------------------------------------------------
+    "/vitals": {
+        "title": "バイタル",
+        "what": "血圧・体温・脈などを記録する画面です。"
+                "★ここに記録があると、その方は【その日に来所した】とみなされます。"
+                "出席回数や月次評価の数字は、ここから出ています。",
+        "flow": [
+            "日付と、午前／午後を選ぶ",
+            "利用者を選んで、数値を入れる（カメラ読み取り・音声入力も使えます）",
+            "決められた範囲を外れた方は、再検査の対象として上に出ます",
+        ],
+        "fields": {
+            "vital-date": {
+                "t": "測定した日",
+                "d": "今日の日付が最初から入っています。"
+                     "前の日のぶんを後から入れるときだけ変えてください。"
+                     "★この日付が、その方の来所した日として残ります。",
+            },
+            "daily-date": {
+                "t": "見たい日",
+                "d": "その日に測ったぶんを一覧で確かめられます。"
+                     "入れ忘れがないかの確認に使ってください。",
+            },
+            "history-search": {
+                "t": "利用者で絞る",
+                "d": "名前を入れると、その方の過去の測定値だけが並びます。"
+                     "血圧の移り変わりを見たいときに。",
+            },
+            "s-recheck-notify": {
+                "t": "再検査のお知らせ時刻",
+                "d": "決めた時刻に「まだ再検査していない方がいます」と知らせます。"
+                     "時刻は何個でも足せます。",
+            },
+        },
+        "checks": ["today_no_vitals", "today_missing_vitals"],
+    },
+
+    # --------------------------------------------------------
+    # カレンダー
+    # --------------------------------------------------------
+    "/calendar": {
+        "title": "カレンダー",
+        "what": "職員の予定・希望休・会議などを入れる画面です。"
+                "記録入力で「休み連絡」「追加利用連絡」を保存すると、"
+                "ここにも自動で入ります（二重入力は要りません）。",
+        "flow": [
+            "月／週を切り替えて、入れたい日を押す",
+            "タイトルと日時を入れる",
+            "どのカレンダーに入れるかを選んで保存",
+        ],
+        "fields": {
+            "ev-title": {
+                "t": "タイトル",
+                "d": "一覧に出る名前です。「希望休」「担当者会議」など短くて構いません。",
+            },
+            "ev-start-date": {
+                "t": "始まりの日",
+                "d": "押した日が最初から入っています。",
+            },
+            "ev-end-date": {
+                "t": "終わりの日",
+                "d": "1日だけの予定なら、始まりの日と同じで大丈夫です。",
+            },
+            "ev-allday": {
+                "t": "終日",
+                "d": "入にすると時刻の欄が消えます。"
+                     "希望休など、時間の決まっていない予定に使ってください。",
+            },
+            "ev-start-time": {
+                "t": "始まりの時刻",
+                "d": "「終日」を入にしているときは使いません。",
+            },
+            "ev-end-time": {
+                "t": "終わりの時刻",
+                "d": "「終日」を入にしているときは使いません。",
+            },
+            "ev-calendar": {
+                "t": "どのカレンダーに入れるか",
+                "d": "種類ごとに分けておくと、色で見分けられて後から絞り込めます。"
+                     "新しい種類は、この下の「作成」から足せます。",
+            },
+            "ev-repeat": {
+                "t": "繰り返し",
+                "d": "毎週の会議など、決まって続く予定に使います。"
+                     "1回だけならそのままで大丈夫です。",
+            },
+            "ev-repeat-until": {
+                "t": "繰り返しの終わり",
+                "d": "いつまで続けるかを決めます。"
+                     "★決めないと、ずっと先まで作られ続けます。",
+            },
+            "ev-notify": {
+                "t": "通知",
+                "d": "予定の前に、端末にお知らせが出ます。"
+                     "★スマホの通知が許可されていないと届きません。",
+            },
+            "ev-memo": {
+                "t": "メモ",
+                "d": "任意です。場所や持ち物など、当日わかると助かることを。",
+            },
+            "new-cal-name": {
+                "t": "新しいカレンダーの名前",
+                "d": "「希望休」「会議」のように、種類の名前を付けます。"
+                     "後から色を変えられます。",
+            },
+        },
+        "checks": [],
+    },
+
 }
 
 
@@ -252,9 +427,105 @@ def _check_today_missing_records(supabase, tokyo_tz, f_code, my_name):
     }
 
 
+def _check_unread_must_read(supabase, tokyo_tz, f_code, my_name):
+    """自分にとって未読の【閲覧必須】が何件あるか。
+
+    ★数え方は既存の /api/records/unread_count と同じにそろえてある。
+      ここだけ違う数え方にすると、画面によって件数が食い違う。
+    """
+    res = (supabase.table("records").select("id")
+           .eq("facility_code", f_code).eq("must_read", True).execute())
+    ids = [r["id"] for r in (res.data or [])]
+    if not ids:
+        return None
+    rr = (supabase.table("record_reads").select("record_id")
+          .eq("facility_code", f_code).eq("staff_name", my_name)
+          .in_("record_id", ids).execute())
+    read = {r["record_id"] for r in (rr.data or [])}
+    n = sum(1 for i in ids if i not in read)
+    if not n:
+        return None
+    return {"say": "必ず読む記録が %d 件、まだ未読です。" % n}
+
+
+def _check_my_tasks_overdue(supabase, tokyo_tz, f_code, my_name):
+    """自分あてのタスクで、期限が過ぎたもの・今日が期限のもの。"""
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    res = (supabase.table("tasks").select("title,due_date,status")
+           .eq("facility_code", f_code).eq("assigned_to", my_name)
+           .neq("status", "done").execute())
+    over, due = [], []
+    for t in (res.data or []):
+        d = (t.get("due_date") or "")[:10]
+        if not d:
+            continue
+        if d < today:
+            over.append(t.get("title") or "")
+        elif d == today:
+            due.append(t.get("title") or "")
+    if not over and not due:
+        return None
+    parts = []
+    if over:
+        parts.append("期限が過ぎたタスクが %d 件" % len(over))
+    if due:
+        parts.append("今日が期限のタスクが %d 件" % len(due))
+    return {"say": "、".join(parts) + "あります。"}
+
+
+def _check_today_no_vitals(supabase, tokyo_tz, f_code, my_name):
+    """今日のバイタルがまだ1件も無い。"""
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    res = (supabase.table("vitals").select("id")
+           .eq("facility_code", f_code).eq("measured_date", today)
+           .limit(1).execute())
+    if res.data:
+        return None
+    return {"say": "今日のバイタルは、まだ1件も入っていません。"}
+
+
+def _check_today_missing_vitals(supabase, tokyo_tz, f_code, my_name):
+    """今日ケース記録がある人のうち、バイタルがまだの人。
+
+    ★/input に入れた判定の裏返し。
+      あちらは「来たのに記録が無い人」、こちらは「記録はあるのにバイタルが無い人」。
+    """
+    s, e = _today_range(tokyo_tz)
+    today = s.strftime("%Y-%m-%d")
+
+    rres = (supabase.table("records").select("user_name")
+            .eq("facility_code", f_code)
+            .gte("created_at", s.isoformat())
+            .lt("created_at", e.isoformat())
+            .execute())
+    wrote = {(r.get("user_name") or "").strip() for r in (rres.data or [])}
+    wrote.discard("")
+    if not wrote:
+        return None
+
+    vres = (supabase.table("vitals").select("user_name")
+            .eq("facility_code", f_code).eq("measured_date", today).execute())
+    measured = {(v.get("user_name") or "").strip() for v in (vres.data or [])}
+
+    missing = sorted(wrote - measured)
+    if not missing:
+        return {"say": "今日ケース記録がある %d 人ぶん、バイタルもそろっています。" % len(wrote),
+                "ok": True}
+    names = "、".join(missing[:3])
+    if len(missing) > 3:
+        names += " ほか%d人" % (len(missing) - 3)
+    return {"say": "今日ケース記録がある %d 人のうち、%d 人はバイタルがまだです（%s）。"
+                   % (len(wrote), len(missing), names)}
+
+
 _CHECKS = {
     "today_no_record": _check_today_no_record,
     "today_missing_records": _check_today_missing_records,
+    # guide-batchA
+    "unread_must_read": _check_unread_must_read,
+    "my_tasks_overdue": _check_my_tasks_overdue,
+    "today_no_vitals": _check_today_no_vitals,
+    "today_missing_vitals": _check_today_missing_vitals,
 }
 
 
