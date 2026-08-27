@@ -15,20 +15,22 @@ TASUKARU 画面の案内役  guide-v1
 
 【絶対に守ること】
   ★このモジュールは【データを読むだけ】。
-    insert / update / delete / upsert を書いてはいけない。
+    insert / update / delete / upsert / rpc を書いてはいけない。
     案内役が利用者の記録を書き換えたら、誰も気づけない事故になる。
-    確認スクリプトでも、この4語が出てこないことを機械的に見ている。
+    確認スクリプトでも、この5語が出てこないことを機械的に見ている。
 
   ★checks（いま足りないこと）は【必ず件数を返す軽い問い合わせ】にすること。
     どの画面を開いても走るので、重いクエリを置くと全体が遅くなる。
 
 【増やし方】
   SCREENS に画面を1つ足すだけ。
+  キーは【URLのパスまるごと】（"/input" "/admin/jisseki"）。
+  ★先頭の1語だけにしてはいけない。/admin の下が全部おなじ名前になる。
   "fields" のキーは、その画面の HTML にある id をそのまま書く。
   画面に無い id を書いても無視される（確認スクリプトが警告してくれる）。
 
 提供API:
-  GET /api/guide/screen?screen=input   … 画面の案内一式（読むだけ）
+  GET /api/guide/screen?path=/input   … 画面の案内一式（読むだけ）
 """
 
 from flask import request, jsonify, session
@@ -39,6 +41,14 @@ from datetime import datetime, timedelta, time as dt_time
 # ============================================================
 # 案内文の置き場
 # ============================================================
+#   キーは【URLのパスまるごと】。先頭の1語だけにしてはいけない。
+#   ★理由: /admin ・/admin/jisseki ・/admin/timecard … が全部おなじ名前になり、
+#     8画面が区別できなくなる。ここで一度これを間違えた。
+#
+#   探し方は「完全一致 → いちばん長い前方一致」の順（下の _match_screen）。
+#     /chat/<部屋のid> は "/chat" に当たる（部屋ごとに書かなくてよい）
+#     /admin/jisseki は "/admin" ではなく "/admin/jisseki" に当たる
+#
 #   title  … 画面の名前
 #   what   … この画面は何をする所か（1〜2文）
 #   flow   … だいたいの手順（3〜5個）
@@ -50,7 +60,7 @@ SCREENS = {
     # --------------------------------------------------------
     # 記録入力
     # --------------------------------------------------------
-    "input": {
+    "/input": {
         "title": "記録入力",
         "what": "利用者ごとのケース記録を書く画面です。"
                 "キーボードで打つほかに、話した声から作ることもできます。",
@@ -146,6 +156,37 @@ SCREENS = {
 
 
 # ============================================================
+# どの画面か決める
+# ============================================================
+
+def _norm_path(p):
+    """URLのパスをそろえる。末尾の / を落とし、小文字にする。"""
+    p = (p or "").split("?")[0].split("#")[0].strip().lower()
+    if not p.startswith("/"):
+        p = "/" + p
+    while len(p) > 1 and p.endswith("/"):
+        p = p[:-1]
+    return p
+
+
+def _match_screen(path):
+    """完全一致 → いちばん長い前方一致 の順で探す。
+
+    ★前方一致は【/ で区切れている所】だけ。
+      これをしないと /inputXXX が /input に当たってしまう。
+    返す形: (見つかったキー, 中身) または (None, None)
+    """
+    p = _norm_path(path)
+    if p in SCREENS:
+        return p, SCREENS[p]
+    best = None
+    for k in SCREENS:
+        if p.startswith(k + "/") and (best is None or len(k) > len(best)):
+            best = k
+    return (best, SCREENS[best]) if best else (None, None)
+
+
+# ============================================================
 # 「次は何をしたらいい？」の判定
 # ============================================================
 #   ★ここも【読むだけ】。
@@ -238,11 +279,12 @@ def register_guide_routes(app):
     @login_required
     def api_guide_screen():
         """画面の案内一式を返す。★読むだけ。何も書き換えない。"""
-        name = (request.args.get("screen") or "").strip()
-        conf = SCREENS.get(name)
+        path = (request.args.get("path") or "").strip()
+        name, conf = _match_screen(path)
         if not conf:
             # まだ案内文を書いていない画面。エラーにはしない（画面側が静かに諦める）
-            return jsonify({"status": "success", "known": False, "screen": name})
+            return jsonify({"status": "success", "known": False,
+                            "screen": "", "path": _norm_path(path)})
 
         fields = [{"id": k, "t": v.get("t", ""), "d": v.get("d", "")}
                   for k, v in conf.get("fields", {}).items()]
@@ -271,6 +313,7 @@ def register_guide_routes(app):
             "status": "success",
             "known": True,
             "screen": name,
+            "path": _norm_path(path),
             "title": conf.get("title", ""),
             "what": conf.get("what", ""),
             "flow": conf.get("flow", []),

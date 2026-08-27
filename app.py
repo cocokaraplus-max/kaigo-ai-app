@@ -12060,21 +12060,16 @@ def numerology():
     return render("numerology.html", patients=patients)
 
 
+# dead-caserecords-v1: モニタリング生成画面の【初代】の名残り。
+#   case_records.html は存在しないため、以前はここが必ず500になっていた。
+#   完成版は /monitoring。機能はそちらに全部ある。
+#   ★消さずに転送にしてある。リッチメニュー・ブックマーク・古いPWAのキャッシュなど
+#     リポジトリの外から叩いているものが居ても、正しい画面に着くようにするため。
+#   ★endpoint名 case_records は残すこと。url_for('case_records') が壊れる。
 @app.route('/case_records')
 @login_required
 def case_records():
-    f_code = session["f_code"]
-    supabase = get_supabase()
-    patients = get_patients(supabase, f_code)
-    now = datetime.now(tokyo_tz)
-    months = []
-    for i in range(6):
-        m = now.month - i
-        y = now.year
-        while m <= 0:
-            m += 12; y -= 1
-        months.append({"value": f"{y}-{m:02d}", "label": f"{y}年{m:02d}月"})
-    return render("case_records.html")
+    return redirect('/monitoring')
 
 @app.route('/admin_auth', methods=['POST'])
 @login_required
@@ -13989,9 +13984,12 @@ def api_monitoring_detail():
         return jsonify({"error": str(e)}), 500
 
 
+# dead-caserecords-v1: 昔のモニタリング履歴画面のURL。
+#   以前は /case_records へ転送していたので、こちらも道連れで500だった。
+#   ★ログイン確認は転送先(/monitoring)が行う。ここは転送するだけ。
 @app.route('/history')
 def history_redirect():
-    return redirect(url_for('case_records'))
+    return redirect('/monitoring')
 
 @app.route('/api/daily_records')
 @login_required
