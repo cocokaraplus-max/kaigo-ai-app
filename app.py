@@ -7703,6 +7703,7 @@ def api_save_patient_evaluation():
             status_code = 409 if result.get("conflict") else 400
             return jsonify({
                 "status": "error",
+                "lock_scope": result.get("lock_scope", ""),   # eval-two-entrances-v1
                 "message": result.get("error", "保存に失敗しました"),
                 "conflict": result.get("conflict", False),
                 "editing_by": result.get("editing_by", ""),
@@ -8070,6 +8071,8 @@ def api_acquire_edit_lock():
                 "editing_by": result.get("editing_by", ""),
                 "editing_started_at": result.get("editing_started_at", ""),
                 "lock_age_seconds": result.get("lock_age_seconds", 0),
+                # eval-two-entrances-v1: どちらのロックで弾いたか（old / same）
+                "lock_scope": result.get("lock_scope", ""),
                 "error": result.get("error", ""),
             }), 409
     except Exception as e:

@@ -426,6 +426,12 @@ def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
                 "editing_by": current[_b],
                 "editing_started_at": current[_a],
                 "lock_age_seconds": int(age_seconds),
+                # ★eval-two-entrances-v1: どちらのロックで弾いたかを返す。
+                #   'old'  … 分ける前の1枚の画面（全部の欄を書き換える）
+                #   'same' … 同じ入口
+                #   画面はこれを見て、職員に出す文を変える。
+                #   （どちらも「この入口を開いています」と出すと、実態と食い違う）
+                "lock_scope": ("old" if _b == "editing_by" else "same"),
             }
         # 自分のロック or タイムアウト → そのまま更新へ
 
@@ -730,6 +736,7 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str,
                         "error": f"{lock_holder} が編集中です(あと約 {int((LOCK_TIMEOUT_MINUTES * 60 - age) / 60)} 分)",
                         "conflict": True,
                         "editing_by": lock_holder,
+                        "lock_scope": ("old" if _b == "editing_by" else "same"),
                     }
             except Exception:
                 pass  # パース失敗時は競合扱いせず続行

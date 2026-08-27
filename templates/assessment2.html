@@ -723,8 +723,18 @@ async function a2AcquireLock(){
       body: JSON.stringify({evaluation_id: A2.evalId, section: A2.section})});
     var j = await r.json();
     if(j.status === 'conflict'){
-      alert((j.editing_by || '他の職員') + ' さんがこの入口を開いています。\n'
-          + '終わるまで待つか、声をかけてください。');
+      // ★どちらのロックで弾かれたかで、文を変える。
+      //   old  … 分ける前の1枚の評価画面が開いている（全部の欄を書き換えるので、
+      //          こちらのどの入口からも保存できない）
+      //   same … 同じ入口を、別の職員が開いている
+      var who = j.editing_by || '他の職員';
+      var msg = (j.lock_scope === 'old')
+        ? (who + ' さんが、いまの評価画面（1枚のほう）を開いています。\n'
+           + 'そちらは全部の欄を書き換えるため、こちらのどの入口も使えません。\n'
+           + '終わるまで待つか、声をかけてください。')
+        : (who + ' さんが、この入口を開いています。\n'
+           + 'もう一方の入口は使えます。終わるまで待つか、声をかけてください。');
+      alert(msg);
       await a2Back();
     }
   }catch(e){}
