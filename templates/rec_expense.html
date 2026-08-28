@@ -8,7 +8,8 @@
 /* TASUKARU は --page-max-width(既定480px)の固定幅カラム。ビューポート幅ではなく
    コンテナ幅で切り替える必要があるため @container を使う。既定は1カラム。 */
 .rec-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; container-type: inline-size; }
-.rec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  /* fab-overlap-tabs-v1: 右上の「?」に右端が隠れていたので、その分だけ右を空ける */
+.rec-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; padding-right:var(--fab-safe, 0px); }
 .rec-title { font-size:1.15rem; font-weight:800; }
 .rec-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem; }
 .rec-btn-primary { background:#1a73e8; color:#fff; }

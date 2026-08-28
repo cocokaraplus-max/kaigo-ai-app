@@ -5,7 +5,8 @@
 <style>
 /* jisseki-payment-list-v1 */
 .jp-wrap { max-width: 1100px; margin: 0 auto; padding: 12px 12px 90px; }
-.jp-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  /* fab-overlap-tabs-v1: 右上の「?」に右端が隠れていたので、その分だけ右を空ける */
+.jp-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:12px; flex-wrap:wrap; padding-right:var(--fab-safe, 0px); }
 .jp-title { font-size:1.15rem; font-weight:800; }
 .jp-input { border:1px solid #d6dbe3; border-radius:8px; padding:8px 10px; font-size:0.92rem; }
 .jp-btn { border:none; border-radius:8px; padding:8px 14px; font-weight:700; cursor:pointer; font-size:0.9rem;
