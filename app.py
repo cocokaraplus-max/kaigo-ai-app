@@ -5949,8 +5949,11 @@ def api_save_vital():
                 _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
             else:
                 print(f"[visit] 来所記録を見送り date={data.get('measured_date')}", flush=True)
-        except Exception:
-            pass
+        except Exception as _vae:
+            # visit-guard-failclosed-v1: バイタルは保存済みなので処理は止めない。
+            #   ★ただし黙って捨てない。来所記録が付かなかったことに気づけなくなる。
+            print("[visit] 来所自動記録に失敗: date=%s err=%s"
+                  % (data.get('measured_date'), _vae), flush=True)
         return jsonify({"status": "success", "id": rid})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -6298,8 +6301,10 @@ def api_add_vital():
                 _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
             else:
                 print(f"[visit] 来所記録を見送り date={data.get('measured_date')}", flush=True)
-        except Exception:
-            pass
+        except Exception as _vae:
+            # visit-guard-failclosed-v1: 記録に残す（理由は上の api_save_vital と同じ）
+            print("[visit] 来所自動記録に失敗: date=%s err=%s"
+                  % (data.get('measured_date'), _vae), flush=True)
         return jsonify({"status": "success", "id": rid})
     except Exception as e:
         print(f"add_vital error: {e}", flush=True)
@@ -6375,17 +6380,30 @@ def api_delete_vital():
             return jsonify({"status": "error", "message": "idは必須です"}), 400
         # visit-mgmt-v1: 削除対象の患者・日付を控えてから削除し、実績を後始末
         _vrow = None
+        # visit-guard-failclosed-v1: ここは元々「引けなかったら None」だった。
+        #   ★None のまま削除すると、下の実績の後始末が飛ばされる。
+        #     結果、バイタルは消えたのに来所記録（実績）が残り、食い違う。
+        #   ★「引けなかった」と「そんな行は無い」は別物。
+        #     引けなかったときは削除しない。消さなければ、やり直せる。
         try:
             _vq = supabase.table("vitals").select("patient_id,measured_date").eq("id", rid).execute()
             _vrow = _vq.data[0] if _vq.data else None
-        except Exception:
-            _vrow = None
+        except Exception as _ve:
+            print("[vital] 削除前の情報を取得できませんでした: %s" % _ve, flush=True)
+            return jsonify({"status": "error",
+                            "message": "この記録の情報を確認できませんでした。"
+                                       "実績が食い違うおそれがあるため、削除していません。"
+                                       "少し待ってからもう一度お試しください。"}), 503
         supabase.table("vitals").delete().eq("id", rid).execute()
         if _vrow:
             try:
                 _visit_cleanup_on_vital_delete(supabase, session.get("f_code"), _vrow.get("patient_id"), _vrow.get("measured_date"))
-            except Exception:
-                pass
+            except Exception as _ce:
+                # ★バイタルはもう消えている。戻せないので、必ず記録に残す。
+                #   ここが黙っていると、実績だけ残ったことに誰も気づけない。
+                print("[vital] 実績の後始末に失敗（来所記録が残っている可能性）: "
+                      "patient=%s date=%s err=%s"
+                      % (_vrow.get("patient_id"), _vrow.get("measured_date"), _ce), flush=True)
         return jsonify({"status": "success"})
     except Exception as e:
         print(f"delete_vital error: {e}", flush=True)
@@ -9391,9 +9409,16 @@ def _ledger_period_end_balances(supabase, f_code, period_start_iso):
     return {str(k): int(v) for k, v in bal.items()}
 
 
-def _ledger_is_period_closed(supabase, f_code, entry_date):
-    """entry_date(iso str or date) が確定済み期に属するなら True。
-    確定ガードの共通判定。例外時は安全側で False（ブロックしない）。"""
+def _ledger_is_period_closed_checked(supabase, f_code, entry_date):
+    """ledger-guard-failclosed-v1
+    (確定済みか, 確かめられたか) を返す。
+
+    ★以前は例外のとき False を返し、コメントに「安全側で（ブロックしない）」と
+      書かれていた。鍵の判定では、これは逆。
+      確かめられないときに通すと【確定済みの決算期の帳簿を書き換えられる】。
+      鍵は、確かめられないときこそ掛けたままにするのが安全側。
+    ★呼ぶ側は「確かめられたか」を見て、確かめられなければ断ること。
+    """
     try:
         import datetime as _dt
         d = _dt.date.fromisoformat(entry_date) if isinstance(entry_date, str) else entry_date
@@ -9402,9 +9427,29 @@ def _ledger_is_period_closed(supabase, f_code, entry_date):
                .select('is_closed')
                .eq('facility_code', f_code).eq('period_start', ps.isoformat())
                .eq('is_closed', True).execute())
-        return bool(res.data)
-    except Exception:
-        return False
+        return bool(res.data), True
+    except Exception as e:
+        print("[ledger] 決算確定の確認に失敗: %s" % e, flush=True)
+        return False, False
+
+
+# ledger-guard-failclosed-v1: 確かめられなかったときに返す返事。文言をそろえる。
+_LEDGER_CHECK_NG = {
+    'status': 'error', 'code': 'fiscal_check_failed',
+    'message': '決算が確定済みかどうかを確認できませんでした。'
+               '安全のため保存していません。少し待ってからもう一度お試しください。'
+}
+
+
+def _ledger_is_period_closed(supabase, f_code, entry_date):
+    """後方互換のための入口。
+    ★確かめられなかったときは【確定済み扱い】にして通さない。
+      新しく書くところは _ledger_is_period_closed_checked を使い、
+      「確認できませんでした」と正直に伝えること。
+      ここで「確定済みです」と出すと、現場が決算確定を解除しようとしてしまう。
+    """
+    closed, ok = _ledger_is_period_closed_checked(supabase, f_code, entry_date)
+    return closed or (not ok)
 
 
 @app.route('/api/ledger/fiscal_close', methods=['GET'])  # ledger-fiscal-close-v1
@@ -9633,7 +9678,11 @@ def api_ledger_transfer():
         amount = int(data.get('amount', 0))
         entry_date = data.get('entry_date', datetime.now(tokyo_tz).strftime('%Y-%m-%d'))
         # ledger-fiscal-close-guard-v1: 確定済み期への事業間移動をブロック
-        if _ledger_is_period_closed(supabase, f_code, entry_date):
+        # ledger-guard-failclosed-v1: 確かめられなかったときも通さない
+        _fc, _fok = _ledger_is_period_closed_checked(supabase, f_code, entry_date)
+        if not _fok:
+            return jsonify(_LEDGER_CHECK_NG), 503
+        if _fc:
             return jsonify({'status': 'error', 'code': 'fiscal_closed',
                             'message': 'この日付の決算期は確定済みです。決算確定を解除してください。'}), 409
         description = data.get('description', '事業間現金移動')
@@ -9699,30 +9748,51 @@ def api_ledger_entry_save():
         data = request.json or {}
         # ledger-fiscal-close-guard-v1: 確定済み期への保存/編集をブロック
         _g_newdate = data.get('entry_date')
-        if _g_newdate and _ledger_is_period_closed(supabase, f_code, _g_newdate):
-            return jsonify({'status': 'error', 'code': 'fiscal_closed',
-                            'message': 'この日付の決算期は確定済みです。編集するには決算確定を解除してください。'}), 409
+        if _g_newdate:
+            # ledger-guard-failclosed-v1: 確かめられなかったときも保存しない
+            _fc, _fok = _ledger_is_period_closed_checked(supabase, f_code, _g_newdate)
+            if not _fok:
+                return jsonify(_LEDGER_CHECK_NG), 503
+            if _fc:
+                return jsonify({'status': 'error', 'code': 'fiscal_closed',
+                                'message': 'この日付の決算期は確定済みです。編集するには決算確定を解除してください。'}), 409
         _g_eid = data.get('id')
         if _g_eid:
+            # ledger-guard-failclosed-v1: ここは元々 except: pass だった。
+            #   ★元の日付を引けなかっただけで、確定済みの期の仕訳を書き換えられていた。
+            #     ガードを見に行った問い合わせが失敗したときに通すのは、
+            #     ガードが無いのと同じ。
             try:
                 _g_old = supabase.table('journal_entries').select('entry_date').eq('id', _g_eid).eq('facility_code', f_code).execute()
                 _g_olddate = _g_old.data[0]['entry_date'] if _g_old.data else None
-                if _g_olddate and _ledger_is_period_closed(supabase, f_code, _g_olddate):
+            except Exception as _ge:
+                print("[ledger] 元の日付の取得に失敗: %s" % _ge, flush=True)
+                return jsonify(_LEDGER_CHECK_NG), 503
+            if _g_olddate:
+                _fc, _fok = _ledger_is_period_closed_checked(supabase, f_code, _g_olddate)
+                if not _fok:
+                    return jsonify(_LEDGER_CHECK_NG), 503
+                if _fc:
                     return jsonify({'status': 'error', 'code': 'fiscal_closed',
                                     'message': 'この仕訳が属する決算期は確定済みです。編集するには決算確定を解除してください。'}), 409
-            except Exception:
-                pass
         # ledger-credit-ocrguard-v1: CSV方式はOCRクレカの仕訳化を弾く(クレカはCSVが正)
         _rcpt_id = data.get('receipt_id')
         if _rcpt_id and not data.get('id') and is_credit_csv_enabled(supabase, f_code):
+            # ledger-guard-failclosed-v1: ここも元々 except: pass だった。
+            #   ★領収書を引けなかっただけで、クレカの仕訳が通っていた。
+            #     クレカはCSVでも記録されるので、通すと【二重計上】になる。
             try:
                 _rc = supabase.table('receipts').select('ocr_result').eq('id', _rcpt_id).eq('facility_code', f_code).execute()
-                _ocr = (_rc.data[0].get('ocr_result') if _rc.data else None) or {}
-                if isinstance(_ocr, dict) and _ocr.get('payment_method') == 'credit':
-                    return jsonify({'status': 'error', 'code': 'credit_csv_blocked',
-                                    'message': 'クレジットカードの利用はクレカ明細(CSV取込)で記録します。この領収書は保管庫に保管されます。'}), 409
-            except Exception:
-                pass
+            except Exception as _re:
+                print("[ledger] 領収書の確認に失敗: %s" % _re, flush=True)
+                return jsonify({'status': 'error', 'code': 'receipt_check_failed',
+                                'message': 'この領収書の内容を確認できませんでした。'
+                                           '安全のため保存していません。'
+                                           '少し待ってからもう一度お試しください。'}), 503
+            _ocr = (_rc.data[0].get('ocr_result') if _rc.data else None) or {}
+            if isinstance(_ocr, dict) and _ocr.get('payment_method') == 'credit':
+                return jsonify({'status': 'error', 'code': 'credit_csv_blocked',
+                                'message': 'クレジットカードの利用はクレカ明細(CSV取込)で記録します。この領収書は保管庫に保管されます。'}), 409
         _rdiv = data.get('division_id')
         payload = {
             'facility_code': f_code,
@@ -9761,8 +9831,11 @@ def api_ledger_entry_save():
             if _rid and new_id:
                 try:
                     supabase.table('receipts').update({'entry_id': new_id}).eq('id', _rid).eq('facility_code', f_code).execute()
-                except Exception:
-                    pass
+                except Exception as _le:
+                    # ledger-guard-failclosed-v1: 仕訳は保存済みなので処理は止めない。
+                    #   ただし黙って捨てない。紐付かないと領収書が仕訳から辿れなくなる。
+                    print("[ledger] 領収書と仕訳の紐付けに失敗 (receipt=%s entry=%s): %s"
+                          % (_rid, new_id, _le), flush=True)
             return jsonify({'status': 'success', 'id': new_id})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -9783,9 +9856,14 @@ def api_ledger_entry_delete(entry_id):
         del_res = supabase.table('journal_entries').select('entry_date').eq('id', entry_id).execute()
         del_date = del_res.data[0]['entry_date'] if del_res.data else None
         # ledger-fiscal-close-guard-v1: 確定済み期の削除をブロック
-        if del_date and _ledger_is_period_closed(supabase, f_code, del_date):
-            return jsonify({'status': 'error', 'code': 'fiscal_closed',
-                            'message': 'この仕訳が属する決算期は確定済みです。削除するには決算確定を解除してください。'}), 409
+        # ledger-guard-failclosed-v1: 確かめられなかったときも消さない
+        if del_date:
+            _fc, _fok = _ledger_is_period_closed_checked(supabase, f_code, del_date)
+            if not _fok:
+                return jsonify(_LEDGER_CHECK_NG), 503
+            if _fc:
+                return jsonify({'status': 'error', 'code': 'fiscal_closed',
+                                'message': 'この仕訳が属する決算期は確定済みです。削除するには決算確定を解除してください。'}), 409
         supabase.table('journal_entries').delete().eq('id', entry_id).eq('facility_code', f_code).execute()
         if del_date:
             _ledger_recalc_day(supabase, f_code, del_date)
@@ -14955,6 +15033,96 @@ def api_shift_calendar_month():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ===== daily-summary-cache-fix-v1 : 日時をきちんと比べる =====
+def _ds_parse_ts(v):
+    """DBが返す日時を datetime にする。読めなければ None。
+
+    ★文字列のまま大小比較してはいけない。
+      '2026-07-17 08:05:29.6+00' と '2026-07-17T08:05:29.600109+00:00' は
+      同じ時刻でも文字列としては別物になる。
+    """
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v
+    s = str(v).strip().replace(" ", "T")
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    # '+00' のように時差が2桁だけのことがある。fromisoformat は ':00' を要る版がある
+    m = re.search(r"([+-]\d{2})$", s)
+    if m:
+        s = s + ":00"
+    # マイクロ秒が7桁以上のことがある。fromisoformat は6桁までしか読めない
+    m = re.match(r"^(.*\.\d{6})\d+(.*)$", s)
+    if m:
+        s = m.group(1) + m.group(2)
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
+def _ds_ts_ge(a, b):
+    """a >= b か。★両方きちんと読めたときだけ日時として比べる。"""
+    da, db = _ds_parse_ts(a), _ds_parse_ts(b)
+    if da is not None and db is not None:
+        return da >= db
+    print("[daily-summary] 日時を読めませんでした: %r / %r" % (a, b), flush=True)
+    return str(a or "") >= str(b or "")      # 最後の手段
+
+
+@app.route('/api/daily_summaries', methods=['GET'])   # daily-summary-cache-fix-v1
+@login_required
+def api_daily_summaries_cached():
+    """その日ぶんの【すでにある】要約をまとめて返す。AIは呼ばない。
+
+    ★画面は今まで、利用者の数だけ生成APIを呼んでいた。
+      キャッシュが効いていても人数ぶんの通信が走り、それ自体が重かった。
+      ここで1回にまとめ、【まだ無い人のぶんだけ】生成を呼ばせる。
+    """
+    try:
+        f_code = session['f_code']
+        date_str = (request.args.get('date') or '').strip()
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_str):
+            return jsonify({'status': 'error', 'message': 'date が不正です',
+                            'summaries': {}}), 400
+        supabase = get_supabase()
+        day_start = tokyo_tz.localize(datetime.strptime(date_str, '%Y-%m-%d'))
+        day_end = day_start + timedelta(days=1)
+
+        rec = (supabase.table('records')
+               .select('user_name, created_at, image_urls')
+               .eq('facility_code', f_code)
+               .gte('created_at', day_start.isoformat())
+               .lt('created_at', day_end.isoformat())
+               .neq('staff_name', 'AI統合記録').execute())
+        latest, imgs = {}, {}
+        for r in (rec.data or []):
+            u = r.get('user_name') or ''
+            if not u:
+                continue
+            ca = r.get('created_at') or ''
+            # ★同じ列どうしの比較なので、ここは文字列のままで安全
+            if u not in latest or str(ca) > str(latest[u]):
+                latest[u] = ca
+            for x in (r.get('image_urls') or []):
+                imgs.setdefault(u, []).append(x)
+
+        cur = (supabase.table('daily_summaries')
+               .select('user_name, summary, last_record_at')
+               .eq('facility_code', f_code).eq('summary_date', date_str).execute())
+        out = {}
+        for c in (cur.data or []):
+            u = c.get('user_name')
+            if u in latest and _ds_ts_ge(c.get('last_record_at'), latest[u]):
+                out[u] = {'summary': c.get('summary'), 'image_urls': imgs.get(u, [])}
+        return jsonify({'status': 'success', 'summaries': out})
+    except Exception as e:
+        # ★握りつぶさない。画面は「まだ無い」として生成に回るので、動きは止まらない
+        print(f"[daily-summary] 一括取得に失敗: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e), 'summaries': {}}), 500
+
+
 @app.route('/api/generate_daily_summary', methods=['POST'])
 @login_required
 def api_generate_daily_summary():
@@ -14981,21 +15149,39 @@ def api_generate_daily_summary():
         if not records:
             return jsonify({'error': '記録がありません'}), 404
 
+        # daily-summary-cache-fix-v1: 写真のURLは【毎回この記録から組み立てる】。
+        #   ★以前は daily_summaries.image_urls を読み書きしていたが、その列は実在しない。
+        #     読み取りも保存も失敗し、except: pass で握りつぶされ、
+        #     2026-07-17 以降キャッシュが更新されないまま毎回AIを呼び直していた。
+        #   ★どのみち記録は全部読んでいる。ここから作れば、列のずれで壊れない。
+        all_image_urls = []
+        for _r in records:
+            _urls = _r.get('image_urls') or []
+            if isinstance(_urls, list):
+                all_image_urls.extend(_urls)
+
         latest_record_at = records[-1]['created_at']
         force = data.get('force', False)
+        # ★「無かった」と「確かめられなかった」を分ける（患者の重複対策と同じ考え方）
+        cache_ok, cached_row = True, None
         try:
             cached = supabase.table('daily_summaries').select(
-                'summary, last_record_at, image_urls'
+                'summary, last_record_at'
             ).eq('facility_code', f_code).eq(
                 'user_name', user_name
-            ).eq('summary_date', date_str).execute()
-            if not force and cached.data and cached.data[0]['last_record_at'] >= latest_record_at:
-                c_urls = cached.data[0].get('image_urls') or []
-                if not isinstance(c_urls, list):
-                    c_urls = []
-                return jsonify({'summary': cached.data[0]['summary'], 'cached': True, 'image_urls': c_urls})
-        except:
-            pass
+            ).eq('summary_date', date_str).limit(1).execute()
+            cached_row = (cached.data or [None])[0]
+        except Exception as _ce:
+            cache_ok = False
+            print(f"[daily-summary] キャッシュ取得に失敗: {_ce}", flush=True)
+
+        if not force and cached_row and _ds_ts_ge(cached_row.get('last_record_at'), latest_record_at):
+            # 記録が増えていないので作り直さない
+            return jsonify({'summary': cached_row.get('summary'), 'cached': True,
+                            'image_urls': all_image_urls})
+        if not force and not cache_ok:
+            # ★確かめられていないのに作り直すと、AIを無駄に呼び、文章まで変わる。
+            return jsonify({'error': 'いま確認できませんでした。少し待ってからもう一度お試しください。'}), 503
 
         contents = [r['content'] for r in records]
         recs_text = '\n'.join(contents)
@@ -15017,12 +15203,7 @@ def api_generate_daily_summary():
             )
             summary = model.generate_content([prompt]).text.strip()
 
-        all_image_urls = []
-        for r in records:
-            urls = r.get('image_urls') or []
-            if isinstance(urls, list):
-                all_image_urls.extend(urls)
-
+        # daily-summary-cache-fix-v1: image_urls は送らない（その列は存在しない）
         try:
             supabase.table('daily_summaries').upsert({
                 'facility_code':  f_code,
@@ -15030,11 +15211,12 @@ def api_generate_daily_summary():
                 'summary_date':   date_str,
                 'summary':        summary,
                 'last_record_at': latest_record_at,
-                'image_urls':     all_image_urls,
                 'updated_at':     datetime.now(tokyo_tz).isoformat()
             }, on_conflict='facility_code,user_name,summary_date').execute()
-        except:
-            pass
+        except Exception as _ue:
+            # ★握りつぶさない。ここが黙っていたせいで1か月以上だれも気づけなかった。
+            #   保存できないと、次に開いたときもまた作り直しになる。
+            print(f"[daily-summary] 保存に失敗（次も作り直しになります）: {_ue}", flush=True)
 
         return jsonify({'summary': summary, 'cached': False, 'image_urls': all_image_urls})
     except Exception as e:
@@ -15605,15 +15787,35 @@ def api_goal_apply():
                          "valid_from": _valid_from, "changed_by": my})   # goal-valid-from-v1
         if not upd:
             return jsonify({"status": "success", "updated": 0, "message": "変更はありません"})
+        # goal-history-first-v1: 【記録を先に残してから変える】。
+        #   ★以前は書き換えてから履歴を入れ、履歴の失敗は except: pass だった。
+        #     そのため「目標だけ変わって、変えた記録が無い」状態が起こり得た。
+        #     goal-valid-from-v1 で過去の月の目標は履歴から決めているので、
+        #     履歴が欠けると月ごとの目標そのものが狂う。しかも誰も気づけない。
+        #   ★先に残せば、残せなかったときは【まだ何も変わっていない】。
+        _hist_ids = []
+        if hist:
+            try:
+                _hr = supabase.table("goal_history").insert(hist).execute()
+                _hist_ids = [r.get("id") for r in (_hr.data or []) if r.get("id") is not None]
+            except Exception as _he:
+                print("[goal] 履歴の保存に失敗したため、目標を変更しませんでした: %s" % _he, flush=True)
+                return jsonify({"status": "error",
+                                "message": "変更の記録を残せませんでした。"
+                                           "記録に残らない変更はしない決まりなので、"
+                                           "目標は変更していません。"
+                                           "少し待ってからもう一度お試しください。"}), 503
         try:
             supabase.table("patient_profiles").update(upd).eq("facility_code", f_code).eq("user_name", user_name).execute()
         except Exception as e:
+            # ★目標を変えられなかったのに履歴だけ残ると、
+            #   評価の画面が「その月から変わった」ことにしてしまう。入れた履歴を取り消す。
+            for _hid in _hist_ids:
+                try:
+                    supabase.table("goal_history").delete().eq("id", _hid).eq("facility_code", f_code).execute()
+                except Exception as _de:
+                    print("[goal] 履歴の取り消しに失敗 (id=%s): %s" % (_hid, _de), flush=True)
             return jsonify({"status": "error", "message": f"更新失敗: {e}"}), 500
-        try:
-            if hist:
-                supabase.table("goal_history").insert(hist).execute()
-        except Exception:
-            pass
         return jsonify({"status": "success", "updated": len(upd)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -23930,8 +24132,12 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
               .eq("facility_code", f_code).execute())
         for x in (wr.data or []):
             wc[str(x["id"])] = bool(x.get("is_wheelchair"))
-    except Exception:
-        pass
+    except Exception as _we:
+        # visit-guard-failclosed-v1: 取れないと【全員「車椅子でない」扱い】になり、
+        #   車椅子の方の座席が確保されない送迎表ができる。
+        #   表は人が見て確定するので止めはしないが、黙って進めてはいけない。
+        print("[soge] 車椅子情報を取得できませんでした（全員なし扱いになります）: %s"
+              % _we, flush=True)
 
     try:
         vr = (supabase.table("rec_cars")
@@ -25590,8 +25796,10 @@ def api_soge_run_replan():
                   .eq("facility_code", f_code).execute())
             for x in (wr.data or []):
                 wc[str(x["id"])] = bool(x.get("is_wheelchair"))
-        except Exception:
-            pass
+        except Exception as _we:
+            # visit-guard-failclosed-v1: 理由は _soge_saved_week と同じ
+            print("[soge] 車椅子情報を取得できませんでした（全員なし扱いになります）: %s"
+                  % _we, flush=True)
 
         leave_names = _soge_leave_names(supabase, f_code, date_str)
         settings = get_soge_settings(supabase, f_code)
@@ -28749,15 +28957,18 @@ def api_cancel_subscription():
             "facility_code", f_code).eq("staff_name", my_name).eq("is_active", True).execute()
         if _sres.data:
             requester_uid = _sres.data[0].get("line_user_id")
-    except Exception:
-        pass
+    except Exception as _se:
+        # cancel-guard-failclosed-v1: 解約自体は進めてよい（本人への控えが届かないだけ）。
+        #   ただし黙って捨てない。届いていないことに誰も気づけなくなる。
+        print("[cancel] 申請者のLINE IDを取得できませんでした: " + str(_se), flush=True)
 
     def _notify_requester(text):
         if requester_uid:
             try:
                 line_send_message(requester_uid, [{"type": "text", "text": text}])
-            except Exception:
-                pass
+            except Exception as _ne:
+                # cancel-guard-failclosed-v1: 送れなくても解約は進める。記録は残す。
+                print("[cancel] 申請者への通知に失敗: " + str(_ne), flush=True)
 
     base_row = {
         "facility_code": f_code, "plan": ov.get("plan"),
@@ -28780,12 +28991,22 @@ def api_cancel_subscription():
     # 違約金なし → その場で期間末解約
     if kind in ("trial", "monthly"):
         sub_id = None
+        # cancel-guard-failclosed-v1: ここは元々 except: pass だった。
+        #   ★問い合わせが失敗すると sub_id が None のままになり、
+        #     「サブスクIDが登録されていない」扱いで先へ進んでいた。
+        #     その結果、画面には「解約を受け付けました」と出るのに
+        #     Stripe では解約されておらず、【課金が続く】。
+        #   ★「引けなかった」と「登録されていない」は別物。
+        #     引けなかったときは、受け付けたことにしない。
         try:
             fres = supabase.table("facilities").select("stripe_subscription_id").eq("facility_code", f_code).execute()
             if fres.data:
                 sub_id = fres.data[0].get("stripe_subscription_id")
-        except Exception:
-            pass
+        except Exception as _fe:
+            print("[cancel] 契約情報の取得に失敗: " + str(_fe), flush=True)
+            return jsonify({"error": "契約情報を確認できませんでした。"
+                                     "解約は受け付けていません。"
+                                     "時間をおいて再度お試しください。"}), 503
         if sub_id:
             try:
                 stripe.api_key = get_secret("STRIPE_SECRET_KEY")
@@ -29400,6 +29621,10 @@ def stripe_webhook():
         # Stripeオブジェクトはdict()変換でKeyErrorになることがあるため、
         # to_dict()→JSON経由で確実にプレーンな辞書へ変換する
         def _to_plain_dict(obj):
+            # cancel-guard-failclosed-v1: 2通り試すのはよい。
+            #   ★どちらも駄目だったときに黙って {} を返すのが問題。
+            #     {} になると metadata が空になり、
+            #     【入金があったのに何も起きない】まま誰も気づけない。
             try:
                 return json.loads(json.dumps(obj.to_dict()))
             except Exception:
@@ -29408,6 +29633,8 @@ def stripe_webhook():
                 return json.loads(json.dumps(dict(obj)))
             except Exception:
                 pass
+            print("[stripe] 受け取った内容を辞書にできませんでした。"
+                  "この決済は処理されません: type=%s" % type(obj), flush=True)
             return {}
         session_data = _to_plain_dict(session_obj)
         meta = session_data.get("metadata") or {}
