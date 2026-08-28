@@ -5264,6 +5264,18 @@ function ttResetLang() {
   //     「?」が次の行に落ちて、宙に浮いて見える（バイタルの検索欄で実際にそうなった）。
   //   置ける所が無い欄は、説明をカードの中に載せる（下の noAnchor）。
   function anchorFor(el){
+    // tkg-anchor-optin-v1: 画面側が置き場所を指定していれば、それを最優先で使う。
+    //   書き方:  <span data-tkg-anchor="欄のid">…</span>
+    //   ★自動で探す範囲は広げない。広げると、押すと動いてしまう要素に
+    //     「?」を付ける事故が起きる（/input の写真選択ラベルで実際に危なかった）。
+    //     指定は画面側から明示する。指定が無い画面は、これまでと1つも変わらない。
+    //   ★idは英数字・ハイフン・下線だけを通す。
+    //     おかしな文字が混ざると querySelector が例外を投げ、
+    //     その先の「?」が【全部】付かなくなる。1つの綴り間違いで全滅させない。
+    if(el && el.id && /^[A-Za-z0-9_-]+$/.test(el.id)){
+      var pinned = document.querySelector('[data-tkg-anchor="' + el.id + '"]');
+      if(pinned) return pinned;
+    }
     // guide-anchor-nearest-v1
     //   ★「その欄のすぐ上にある label.form-label」を選ぶ。
     //     旧: el.closest('.form-group') の【最初の】label を返していた。
@@ -5422,6 +5434,10 @@ function ttResetLang() {
       }
       attachHints();
       setTimeout(attachHints, 1200);   // 後から出てくる欄にも付ける
+      // tkg-anchor-optin-v1: 画面側から呼べるようにする。
+      //   ★読み込み時と1.2秒後にしか走らないので、
+      //     利用者を選んでから出てくるカードには付かなかった。
+      window.tkgRefreshHints = function(){ try{ attachHints(); }catch(e){} };
     })
     .catch(function(){ /* 案内が出ないだけ。画面は普通に使える */ });
   }

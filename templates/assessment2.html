@@ -191,7 +191,8 @@
                  stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></svg>
           </div>
           <div class="tt">
-            <div class="t1">ご本人に聞いて記録する</div>
+            <!-- tkg-anchor-optin-v1: このカードの「?」をここに付ける -->
+            <div class="t1" data-tkg-anchor="a2-entEval">ご本人に聞いて記録する</div>
             <div class="t2">目標がどこまでできたか・聞き取り・満足度・ご要望・体重</div>
           </div>
           <span class="a2-chip" id="a2-chipEval">—</span>
@@ -206,7 +207,8 @@
                  stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
           </div>
           <div class="tt">
-            <div class="t1">体の評価を記録する</div>
+            <!-- tkg-anchor-optin-v1: このカードの「?」をここに付ける -->
+            <div class="t1" data-tkg-anchor="a2-entFt">体の評価を記録する</div>
             <div class="t2">体の状態を見て記録し、報告文を作る</div>
           </div>
           <span class="a2-chip" id="a2-chipFt">—</span>
@@ -454,6 +456,8 @@ async function a2Load(){
   var ym = $('a2-ym').value;
   $('a2-nopatient').style.display='none';
   $('a2-entries').style.display='';
+  // tkg-anchor-optin-v1: 入口カードはここで初めて出るので、「?」を付け直す
+  if(window.tkgRefreshHints) window.tkgRefreshHints();
   ['a2-whoName','a2-bName','a2-cName'].forEach(function(id){ if($(id)) $(id).textContent = A2.patient.name + ' さん'; });
   ['a2-whoYm','a2-bYm','a2-cYm'].forEach(function(id){ if($(id)) $(id).textContent = ym; });
 
