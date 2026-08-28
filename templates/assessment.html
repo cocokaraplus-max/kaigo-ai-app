@@ -709,9 +709,16 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-title">
-    <span class="material-symbols-outlined">assignment</span>
-    月次評価
+<div class="page-title" style="display:flex;align-items:center;justify-content:space-between;">
+    <span style="display:flex;align-items:center;gap:6px;">
+        <span class="material-symbols-outlined">assignment</span>
+        月次評価
+    </span>
+    <!-- assessment-select-v1: 入口を選び直せるようにしておく -->
+    <a href="/assessment-select?ask=1"
+       style="font-size:.72rem;font-weight:700;color:#1a73e8;text-decoration:none;
+              border:1px solid #d2e3fc;background:#e8f0fe;border-radius:8px;
+              padding:4px 9px;white-space:nowrap;">画面を切り替える</a>
 </div>
 
 <!-- タブ -->

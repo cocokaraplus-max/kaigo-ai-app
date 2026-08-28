@@ -137,7 +137,14 @@
 
   {# 利用者・対象月・評価者 #}
   <div class="a2-head">
-    <h2>月次評価</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <h2 style="margin:0;">月次評価</h2>
+      {# assessment-select-v1: 入口を選び直せるようにしておく #}
+      <a href="/assessment-select?ask=1"
+         style="font-size:.72rem;font-weight:700;color:#1a73e8;text-decoration:none;
+                border:1px solid #d2e3fc;background:#e8f0fe;border-radius:8px;
+                padding:4px 9px;white-space:nowrap;">画面を切り替える</a>
+    </div>
     <div class="a2-pick">
       <label>利用者</label>
       <input type="text" id="a2-search" placeholder="名前・ふりがな・カルテ番号で検索"

@@ -2453,6 +2453,11 @@ function updateNavActive(url) {
         // /chat/<room_id> でもトークナビをアクティブに
         if (href === '/board' && (basePath === '/board' || basePath.startsWith('/board/'))) {
             item.classList.add('active');
+        // assessment-select-v1: 評価はどの画面に居ても「評価」を選択表示にする
+        } else if (href === '/assessment-select' &&
+                   (basePath === '/assessment-select' || basePath === '/assessment' ||
+                    basePath === '/assessment2')) {
+            item.classList.add('active');
         } else if (href === basePath) {
             item.classList.add('active');
         }
