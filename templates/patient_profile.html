@@ -615,6 +615,18 @@
           </div>
         </div>  
         </div>
+        <!-- goal-valid-from-ui-v1: 目標をいつから使うか -->
+        <div class="form-grid full" id="gvf-group" style="display:none;">
+          <div class="form-group">
+            <label>この目標をいつから使うか（適用日）</label>
+            <input type="date" id="goal_valid_from" name="goal_valid_from">
+            <div style="font-size:.72rem;color:#888;margin-top:3px;">
+              目標を書き換えたときだけ出ます。月の途中で変えたときも、この日から新しい目標になります。
+            </div>
+            <div id="gvf-msg" style="font-size:.78rem;color:#1a73e8;font-weight:700;margin-top:5px;"></div>
+          </div>
+        </div>
+
         <div class="form-grid full">
           <div class="form-group">
             <label>備考</label>
@@ -625,8 +637,19 @@
       </div>
     </div>
 
-    <!-- 利用日登録 -->
     {% if selected %}
+    <!-- goal-valid-from-ui-v1: 目標の変更履歴 -->
+    <div class="profile-section">
+      <div class="profile-section-header">🕘 目標の変更履歴</div>
+      <div class="profile-section-body">
+        <div style="font-size:.74rem;color:#888;margin-bottom:8px;">
+          目標を変えると、その場でここに残ります。★間違えて変えたときは「取り消す」で1件ずつ戻せます。
+        </div>
+        <div id="goal-hist-body" style="font-size:.82rem;color:#888;">読み込み中…</div>
+      </div>
+    </div>
+
+    <!-- 利用日登録 -->
     <div class="profile-section">
       <div class="profile-section-header">📅 利用日登録</div>
       <div class="profile-section-body">
@@ -768,7 +791,148 @@ document.addEventListener('DOMContentLoaded', () => {
   setupGoalPeriodAuto('long_goal_period_from', 'long_goal_period_to', 'long');
   setupGoalPeriodAuto('kaigo_short_goal_period_from', 'kaigo_short_goal_period_to', 'short');
   setupGoalPeriodAuto('kaigo_long_goal_period_from', 'kaigo_long_goal_period_to', 'long');
+  goalWatchInit();          // goal-valid-from-ui-v1
+  loadGoalHistory();        // goal-valid-from-ui-v1
 });
+
+// ===== goal-valid-from-ui-v1 : 目標の変更を「いつから」とセットで扱う =====
+//
+//   ★元の値を data-orig で12か所書くのではなく、読み込んだ時点で控える。
+//     テンプレートを12か所いじらずに済み、書き忘れも起きない。
+//   ★要介護のときは期間の欄が kaigo_ 付きの別の欄になる。両方を見る。
+var GOAL_TEXT_FIELDS = [
+  'long_goal','short_goal',
+  'long_goal_function','short_goal_function',
+  'long_goal_activity','short_goal_activity',
+  'long_goal_participation','short_goal_participation'
+];
+var GOAL_DATE_FIELDS = [
+  'long_goal_period_from','long_goal_period_to',
+  'short_goal_period_from','short_goal_period_to',
+  'kaigo_long_goal_period_from','kaigo_long_goal_period_to',
+  'kaigo_short_goal_period_from','kaigo_short_goal_period_to'
+];
+var GOAL_ORIG = {};
+
+function goalTodayStr() {
+  // ★日本時間の今日。UTCで作ると月初・月末に1日ずれる。
+  var d = new Date(Date.now() + (new Date().getTimezoneOffset() + 540) * 60000);
+  return d.getFullYear() + '-' +
+         ('0' + (d.getMonth() + 1)).slice(-2) + '-' +
+         ('0' + d.getDate()).slice(-2);
+}
+
+function goalWatchInit() {
+  var all = GOAL_TEXT_FIELDS.concat(GOAL_DATE_FIELDS);
+  all.forEach(function (f) {
+    var el = document.getElementById(f);
+    if (!el) return;
+    GOAL_ORIG[f] = el.value || '';
+    el.addEventListener('input', goalOnChange);
+    el.addEventListener('change', goalOnChange);
+  });
+}
+
+function goalChangedFields() {
+  var out = [];
+  var all = GOAL_TEXT_FIELDS.concat(GOAL_DATE_FIELDS);
+  all.forEach(function (f) {
+    var el = document.getElementById(f);
+    if (!el) return;
+    // ★要介護と要支援で使う欄が切り替わる。隠れている欄は見ない。
+    //   見ると「切り替えただけ」で変更ありと誤判定する。
+    if (el.offsetParent === null) return;
+    if ((el.value || '') !== (GOAL_ORIG[f] || '')) out.push(f);
+  });
+  return out;
+}
+
+function goalEffectMsg(vf) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(vf || '')) return '';
+  var y = vf.slice(0, 4), m = String(parseInt(vf.slice(5, 7), 10));
+  var d = String(parseInt(vf.slice(8, 10), 10));
+  return y + '年' + m + '月' + d + '日から新しい目標になります（' + m + '月の評価から反映されます）';
+}
+
+function goalOnChange() {
+  var g = document.getElementById('gvf-group');
+  if (!g) return;
+  if (goalChangedFields().length === 0) { g.style.display = 'none'; return; }
+  g.style.display = '';
+  var v = document.getElementById('goal_valid_from');
+  if (v && !v.value) v.value = goalTodayStr();
+  var msg = document.getElementById('gvf-msg');
+  if (msg && v) msg.textContent = goalEffectMsg(v.value);
+}
+
+// ===== 目標の変更履歴 =====
+function goalEsc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function loadGoalHistory() {
+  var box = document.getElementById('goal-hist-body');
+  if (!box) return;
+  var nameEl = document.getElementById('user_name');
+  var uname = (nameEl && nameEl.value || '').trim();
+  if (!uname) { box.textContent = '利用者を選ぶと表示されます。'; return; }
+  try {
+    var r = await fetch('/api/goal/history?user_name=' + encodeURIComponent(uname),
+                        { credentials: 'same-origin' });
+    var j = await r.json();
+    var rows = (j && j.history) || [];
+    if (!rows.length) { box.textContent = 'まだ変更の記録はありません。'; return; }
+    var h = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;min-width:560px;">'
+          + '<tr style="background:#f1f3f4;font-size:.74rem;">'
+          + '<th style="padding:6px;text-align:left;">項目</th>'
+          + '<th style="padding:6px;text-align:left;">変更前 → 変更後</th>'
+          + '<th style="padding:6px;text-align:left;white-space:nowrap;">いつから</th>'
+          + '<th style="padding:6px;text-align:left;white-space:nowrap;">記録</th>'
+          + '<th style="padding:6px;"></th></tr>';
+    rows.forEach(function (x) {
+      var before = (x.old_value == null || x.old_value === '') ? '（空）' : x.old_value;
+      var after  = (x.new_value == null || x.new_value === '') ? '（空）' : x.new_value;
+      h += '<tr style="border-top:1px solid #e8eaed;font-size:.78rem;">'
+         + '<td style="padding:6px;white-space:nowrap;">' + goalEsc(x.field_label || x.field) + '</td>'
+         + '<td style="padding:6px;"><span style="color:#9aa0a6;">' + goalEsc(before) + '</span>'
+         + ' <span style="color:#1a73e8;">→</span> <b>' + goalEsc(after) + '</b></td>'
+         + '<td style="padding:6px;white-space:nowrap;">' + goalEsc(x.valid_from || '-') + '</td>'
+         + '<td style="padding:6px;white-space:nowrap;color:#9aa0a6;">'
+         + goalEsc((x.changed_at || '').slice(0, 10)) + '<br>' + goalEsc(x.changed_by || '') + '</td>'
+         + '<td style="padding:6px;white-space:nowrap;">'
+         + '<button type="button" onclick="deleteGoalHistory(\'' + goalEsc(x.id) + '\')" '
+         + 'style="font-size:.72rem;padding:4px 8px;border:1px solid #e0e0e0;border-radius:6px;'
+         + 'background:#fff;color:#c62828;cursor:pointer;">取り消す</button></td></tr>';
+    });
+    box.innerHTML = h + '</table></div>';
+  } catch (e) {
+    box.textContent = '履歴を読めませんでした。';
+  }
+}
+
+async function deleteGoalHistory(id) {
+  // ★何が起きるかを先に伝える。「消す」だけでは、いまの目標がどうなるか分からない。
+  if (!confirm('この変更の記録を取り消します。\n\n'
+             + 'いまの目標は、残った記録から作り直されます。\n'
+             + '（記録が1件も残らないときは、変更する前の目標に戻ります）\n\n'
+             + 'よろしいですか？')) return;
+  try {
+    var r = await fetch('/api/goal/history/delete', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id })
+    });
+    var j = await r.json();
+    if (!r.ok || j.status !== 'success') throw new Error(j.message || ('HTTP ' + r.status));
+    showToast('✅ 取り消しました（' + (j.field_label || '') + '）');
+    // ★画面の目標欄も作り直された値に合わせる。ずれたまま保存されると、また食い違う。
+    setTimeout(function () { location.reload(); }, 900);
+  } catch (e) {
+    showToast('❌ 取り消せませんでした: ' + e.message);
+  }
+}
 
 function updateGoalSection() {
   const care = document.getElementById('care_level').value;
@@ -914,6 +1078,17 @@ async function saveProfile(e) {
         }
         data.care_level_valid_from = vfTrim;
       }
+    }
+
+    // goal-valid-from-ui-v1: 目標が変わっていたら、いつから使うかを確かめてから送る。
+    //   ★確認を出すのは【変わったときだけ】。毎回出すと読まれなくなる。
+    const _gch = goalChangedFields();
+    if (id && _gch.length) {
+      const _gvfEl = document.getElementById('goal_valid_from');
+      const _gvf = ((_gvfEl && _gvfEl.value) || '').trim() || goalTodayStr();
+      if (!confirm('目標を変更します。\n\n' + goalEffectMsg(_gvf) + '\n\n'
+                 + '変更した記録は残ります。よろしいですか？')) return;
+      data.goal_valid_from = _gvf;
     }
 
     const res = await fetch('/api/admin/patient/save', {
