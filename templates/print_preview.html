@@ -1488,15 +1488,21 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     <table class="rep-monitoring-table" id="mon-table-{{ loop.index if loop is defined else 0 }}">
         {% for cat_name, cat_text in filtered_cats %}
         {% set is_empty = not cat_text or cat_text == "" or "今月このカテゴリの報告はありませんでした" in cat_text %}
+        {# gen-fail-visible-v1: AI生成に失敗した行。
+           ★画面では赤字で見せる（職員が気づいて作り直せるように）
+           ★印刷とPDFには出さない。ケアマネジャーへ渡す書類にエラー文を載せないため。
+             no-print は @media print で display:none になる。WeasyPrint も print 扱いなのでPDFにも出ない。
+           ★「黙って消える」のが元の不具合。ここで消しているのは【紙だけ】で、画面には必ず残る。 #}
+        {% set is_genfail = cat_text and "AIの生成に失敗しました" in cat_text %}
         {% if not is_empty or items.get("no_record", false) %}
-        <tr>
+        <tr{% if is_genfail %} class="no-print"{% endif %}>
             <td>{{ cat_name }}</td>
             <td class="no-print-border" contenteditable="true"
                 data-cat="{{ cat_name }}" data-user="{{ p.user_name }}"
                 style="outline:none;cursor:text;"
                 onfocus="this.style.background='#fffde7';this.style.outline='1px solid #1a73e8';"
                 onblur="this.style.background='';this.style.outline='none';">
-                {% if is_empty %}<span style="color:#9aa0a6;font-style:italic;">今月の報告はありませんでした</span>{% else %}{{ cat_text }}{% endif %}
+                {% if is_empty %}<span style="color:#9aa0a6;font-style:italic;">今月の報告はありませんでした</span>{% elif is_genfail %}<span style="color:#d93025;font-weight:700;">{{ cat_text }}</span>{% else %}{{ cat_text }}{% endif %}
             </td>
         </tr>
         {% endif %}
@@ -2776,7 +2782,8 @@ async function shortenToFit(userName, yearMonth, btn){
     else if(fitted){ msg='✅ A4・1枚に収まりました（文字サイズを'+pct+'%に自動調整）。\nこの内容で保存しますか？'; }
     else { msg='⚠ 文字'+pct+'%まで調整しましたが、情報量が多くまだ1枚に収まりきりません。\nこの内容で保存しますか？（「原寸2枚」レイアウトの利用もご検討ください）'; }
     if(confirm(msg)){
-      var catsObj={}; catCells().forEach(function(td){ var c=td.getAttribute('data-cat'); var t=(td.innerText||'').trim(); if(t!=='今月の報告はありませんでした'){ catsObj[c]=t; } });
+      // gen-fail-visible-v1: 生成失敗の文章を、報告書の本文として保存し直さない
+      var catsObj={}; catCells().forEach(function(td){ var c=td.getAttribute('data-cat'); var t=(td.innerText||'').trim(); if(t!=='今月の報告はありませんでした' && t.indexOf('AIの生成に失敗しました')===-1){ catsObj[c]=t; } });
       try{ await fetch('/api/save_monitoring',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:userName, month:yearMonth, mode:'category', categories:catsObj, confirm:false, allow_confirmed:true})}); }catch(e){}
       var payload={user_name:userName, year_month:yearMonth, font_scale:usedScale};
       evalCells().forEach(function(el){ var f=el.getAttribute('data-field'); var t=(el.innerText||'').replace(/ /g,' ').trim(); if(t==='（未入力）') t=''; payload[f]=t; });
@@ -2795,7 +2802,8 @@ function saveMonitoring(userName, yearMonth) {
     rows.forEach(function(td) {
         var cat = td.getAttribute('data-cat');
         var txt = td.innerText.trim();
-        if (txt !== '今月の報告はありませんでした') cats[cat] = txt;
+        // gen-fail-visible-v1: 生成失敗の文章は保存し直さない
+        if (txt !== '今月の報告はありませんでした' && txt.indexOf('AIの生成に失敗しました') === -1) cats[cat] = txt;
     });
     var btn = (document.activeElement && document.activeElement.tagName === 'BUTTON') ? document.activeElement : null;
     function _markSaved() {
