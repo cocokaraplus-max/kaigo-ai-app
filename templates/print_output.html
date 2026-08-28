@@ -362,7 +362,12 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
             <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">その他</div>
             <div class="po-toggle-grid">
                 <button class="po-toggle-btn on" id="tog-special" onclick="poToggleItem('special')">特記事項</button>
-                <button class="po-toggle-btn" id="tog-no-record" onclick="poToggleItem('no_record')">報告なし項目も印刷</button>
+                <!-- no-record-toggle-fix-v1: id は poItems のキーと完全に同じにする。
+                     旧は id が tog-no-record（ハイフン）で、キーは no_record（アンダーバー）。不一致だった。
+                     poToggleItem() も復元処理も 'tog-' + key で引くので、このボタンだけ
+                     【押しても見た目が変わらず、再読み込みでも ON に見えない】状態だった。
+                     状態だけ localStorage に残るので、知らないうちに ON のままになり得た。 -->
+                <button class="po-toggle-btn" id="tog-no_record" onclick="poToggleItem('no_record')">報告なし項目も印刷</button>
                 <button class="po-toggle-btn" id="tog-images" onclick="poToggleItem('images')">添付画像</button>
             </div>
             <div id="po-images-hint" style="display:none;font-size:0.72rem;color:#1a73e8;margin-top:4px;padding:6px 10px;background:#e8f0fe;border-radius:8px;">
