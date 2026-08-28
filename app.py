@@ -28913,15 +28913,18 @@ def api_cancel_subscription():
             "facility_code", f_code).eq("staff_name", my_name).eq("is_active", True).execute()
         if _sres.data:
             requester_uid = _sres.data[0].get("line_user_id")
-    except Exception:
-        pass
+    except Exception as _se:
+        # cancel-guard-failclosed-v1: 解約自体は進めてよい（本人への控えが届かないだけ）。
+        #   ただし黙って捨てない。届いていないことに誰も気づけなくなる。
+        print("[cancel] 申請者のLINE IDを取得できませんでした: " + str(_se), flush=True)
 
     def _notify_requester(text):
         if requester_uid:
             try:
                 line_send_message(requester_uid, [{"type": "text", "text": text}])
-            except Exception:
-                pass
+            except Exception as _ne:
+                # cancel-guard-failclosed-v1: 送れなくても解約は進める。記録は残す。
+                print("[cancel] 申請者への通知に失敗: " + str(_ne), flush=True)
 
     base_row = {
         "facility_code": f_code, "plan": ov.get("plan"),
@@ -28944,12 +28947,22 @@ def api_cancel_subscription():
     # 違約金なし → その場で期間末解約
     if kind in ("trial", "monthly"):
         sub_id = None
+        # cancel-guard-failclosed-v1: ここは元々 except: pass だった。
+        #   ★問い合わせが失敗すると sub_id が None のままになり、
+        #     「サブスクIDが登録されていない」扱いで先へ進んでいた。
+        #     その結果、画面には「解約を受け付けました」と出るのに
+        #     Stripe では解約されておらず、【課金が続く】。
+        #   ★「引けなかった」と「登録されていない」は別物。
+        #     引けなかったときは、受け付けたことにしない。
         try:
             fres = supabase.table("facilities").select("stripe_subscription_id").eq("facility_code", f_code).execute()
             if fres.data:
                 sub_id = fres.data[0].get("stripe_subscription_id")
-        except Exception:
-            pass
+        except Exception as _fe:
+            print("[cancel] 契約情報の取得に失敗: " + str(_fe), flush=True)
+            return jsonify({"error": "契約情報を確認できませんでした。"
+                                     "解約は受け付けていません。"
+                                     "時間をおいて再度お試しください。"}), 503
         if sub_id:
             try:
                 stripe.api_key = get_secret("STRIPE_SECRET_KEY")
@@ -29564,6 +29577,10 @@ def stripe_webhook():
         # Stripeオブジェクトはdict()変換でKeyErrorになることがあるため、
         # to_dict()→JSON経由で確実にプレーンな辞書へ変換する
         def _to_plain_dict(obj):
+            # cancel-guard-failclosed-v1: 2通り試すのはよい。
+            #   ★どちらも駄目だったときに黙って {} を返すのが問題。
+            #     {} になると metadata が空になり、
+            #     【入金があったのに何も起きない】まま誰も気づけない。
             try:
                 return json.loads(json.dumps(obj.to_dict()))
             except Exception:
@@ -29572,6 +29589,8 @@ def stripe_webhook():
                 return json.loads(json.dumps(dict(obj)))
             except Exception:
                 pass
+            print("[stripe] 受け取った内容を辞書にできませんでした。"
+                  "この決済は処理されません: type=%s" % type(obj), flush=True)
             return {}
         session_data = _to_plain_dict(session_obj)
         meta = session_data.get("metadata") or {}
