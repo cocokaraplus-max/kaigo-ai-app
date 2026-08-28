@@ -532,24 +532,54 @@ var A2_SIMPLE = [
 ];
 function a2DrawGoals(){
   var rows = (A2.cls === '要介護') ? A2_AXES : A2_SIMPLE;
-  // a2-entry-clarity-v1: 要介護でも、3軸の6欄が【全部空】で
-  //   2軸（短期目標・長期目標）に目標が入っているときは、そちらを出す。
-  //   ★2軸の欄に目標が入ったまま要介護になった方がいる（DEV 青木利夫さん）。
-  //     3軸しか見ないと「登録されていません」になり、目標が在るのに評価できない。
-  //   ★1つでも3軸に入っていれば、そちらが本来の入力。混ぜない。
-  //   ★書き換えはしない。表示の落とし先を足すだけ。
-  var fellBack = false;
+  // a2-goal-axis-guide-v1: 要介護なのに、目標が【分ける前の欄】に入ったままの方がいる。
+  //   （2軸の欄に目標が入ったまま要介護になった。DEV 青木利夫さんで確認）
+  //   ★2軸を出して「そのまま評価できる」ようにしてはいけない（HIROさん指摘 2026-08-29）。
+  //     そのまま評価できてしまうと、2軸のまま運用が続き、いつまでも直らない。
+  //   ★正しくは「3軸で登録してください」と促す。
+  //     ただし、いまの目標を消すと、何を振り分ければよいか分からなくなる。
+  //     だから【参考として上に出す】。書き写す元が要る。
+  //   ★3軸に1つでも入れば、この案内は自動的に消える（出す条件がそれ）。
+  var needAxis = false;
   if (rows === A2_AXES) {
     var anyAxis = A2_AXES.some(function (x) { return (A2.initial[x[0]] || '').trim(); });
     var anySimple = A2_SIMPLE.some(function (x) { return (A2.initial[x[0]] || '').trim(); });
-    if (!anyAxis && anySimple) { rows = A2_SIMPLE; fellBack = true; }
+    needAxis = (!anyAxis && anySimple);
   }
   var h = '', term = '';
-  if (fellBack) {
+  if (needAxis) {
+    var oldGoals = '';
+    A2_SIMPLE.forEach(function (x) {
+      var t = (A2.initial[x[0]] || '').trim();
+      if (!t) return;
+      oldGoals += '<div style="margin-top:6px;"><span style="display:inline-block;'
+                + 'background:#fff;border:1px solid #e0c58a;border-radius:5px;'
+                + 'padding:1px 7px;font-size:.72rem;font-weight:700;margin-right:6px;">'
+                + esc(x[4]) + '</span>' + esc(t) + '</div>';
+    });
+    // ★リンク先は、その人の利用者情報。A2.patient.id は patient_profiles の id。
+    var pid = (A2.patient && A2.patient.id) ? String(A2.patient.id) : '';
     h += '<div style="background:#fef7e0;border:1px solid #fdd663;border-radius:9px;'
-       + 'padding:9px 11px;font-size:.8rem;color:#7a5200;margin-bottom:10px;line-height:1.6;">'
-       + 'この方の目標は、機能・活動・参加に分ける前の欄に入っています。'
-       + 'そのまま評価できます。<br>分けて管理したいときは、利用者情報で入れ直してください。'
+       + 'padding:11px 13px;font-size:.82rem;color:#7a5200;margin-bottom:12px;line-height:1.7;">'
+       + '<b>この方は要介護です。目標は「機能・活動・参加」の3つに分けて登録してください。</b>'
+       // ★どこに入力するのかを必ず書く（HIROさん指摘 2026-08-29）。
+       //   書かないと、目の前の3軸の欄に打ち込んでしまう。
+       //   この画面の欄は「評価のときに目標を変える」ためのもので、
+       //   目標そのものの登録場所ではない。
+       + '<div style="margin-top:8px;background:#fff;border:1px solid #e0c58a;'
+       + 'border-radius:7px;padding:8px 10px;font-size:.78rem;line-height:1.7;">'
+       + '★登録する場所は<b>利用者情報</b>です。<b>この画面では登録できません。</b><br>'
+       + 'この画面の軸ごとの入力欄は、<b>評価のときに目標を変える</b>ためのものです。'
+       + '</div>'
+       + '<div style="margin-top:10px;font-size:.78rem;">いまの目標（分ける前）</div>'
+       + oldGoals
+       + '<div style="margin-top:10px;">'
+       + '<a href="/patient_profile' + (pid ? ('?id=' + encodeURIComponent(pid)) : '') + '"'
+       + ' style="display:inline-block;background:#1a73e8;color:#fff;text-decoration:none;'
+       + 'font-weight:700;font-size:.8rem;border-radius:8px;padding:7px 13px;">'
+       + '利用者情報で目標を入れる</a></div>'
+       + '<div style="margin-top:8px;font-size:.74rem;color:#8a6400;">'
+       + '※ 3つの軸に入れて保存すると、この案内は出なくなります。</div>'
        + '</div>';
   }
   rows.forEach(function(x){
