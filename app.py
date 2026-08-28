@@ -6716,16 +6716,18 @@ def _resolve_visit_pid(supabase, f_code, patient_id, user_name=""):
         print(f"_resolve_visit_pid lookup error: {e}", flush=True)
 
     # 3) 無ければ作る（これをしないと永久に表示されない）
+    #    patients-dup-guard-v1: 作る前に氏名と番号の両方で探す。
     try:
-        ins = supabase.table("patients").insert({
+        _pid, _created = _patients_insert_guarded(supabase, f_code, {
             "facility_code": f_code,
             "user_name": name,
             "user_kana": kana,
             "chart_number": chart or "臨時",
-        }).execute()
-        if ins.data:
-            print(f"[vital-add] patients 行を新規作成: {f_code}", flush=True)
-            return str(ins.data[0]["id"]), name, "created"
+        }, "バイタル追加")
+        if _pid:
+            if _created:
+                print(f"[vital-add] patients 行を新規作成: {f_code}", flush=True)
+            return _pid, name, ("created" if _created else "found")
     except Exception as e:
         print(f"_resolve_visit_pid create error: {e}", flush=True)
 
@@ -6812,14 +6814,12 @@ def api_add_today_patient():
                 print(f"add_today_patient profile insert error: {e}", flush=True)
                 return jsonify({"status": "error", "message": f"利用者の作成に失敗しました: {e}"}), 500
             # patients 側にも行を用意しておく（他機能が patients.id を使うため）
+            #   patients-dup-guard-v1: 氏名だけの確認をやめ、番号でも照合してから作る
             try:
-                pt = (supabase.table("patients").select("id")
-                      .eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute())
-                if not pt.data:
-                    supabase.table("patients").insert({
-                        "facility_code": f_code, "user_name": user_name,
-                        "user_kana": kana, "chart_number": chart,
-                    }).execute()
+                _patients_insert_guarded(supabase, f_code, {
+                    "facility_code": f_code, "user_name": user_name,
+                    "user_kana": kana, "chart_number": chart,
+                }, "今日だけ追加")
             except Exception as e:
                 print(f"add_today_patient patients insert skip: {e}", flush=True)
 
@@ -12393,16 +12393,180 @@ def _record_goal_history(supabase, f_code, patient_id, user_name,
         return 0
 
 
+# ===== patients-dup-guard-v1 : 利用者の行が二重にできるのを止める =====
+#
+#   ★2026-08-28 小倉愈さんの事故を受けて追加。
+#     patients に行を作る場所が4か所に散らばり、どれも【氏名だけ】で
+#     「もう居るか」を見ていた。氏名が一時的に食い違うと2行目ができ、
+#     利用曜日が2つに分かれて、画面ごとに午前・午後が違って見えていた。
+#   ★これからは、行を足すときは必ずここを通す。
+
+
+def _patients_find_existing(supabase, f_code, name, chart):
+    """同じ人とみなせる patients 行を探す。
+
+    戻り値: (見つかった行 または None, 確かめられたか True/False)
+
+    ★【居なかった】と【確かめられなかった】を必ず分ける。
+      通信や権限で問い合わせが失敗したとき、None だけを返すと、
+      呼ぶ側が「居ないから作ろう」と判断して二重に作ってしまう。
+      ＝データが無いのではなく、答えが返ってこなかっただけ。
+      （実績の振替でも同じ壊れ方をした・HIROさん指摘 2026-08-28）
+    ★氏名 と カルテ番号 の【両方】で探す。
+      氏名だけでは今回の事故を止められない（氏名が食い違ったのが原因）。
+    ★'臨時' は番号ではなく仮の印なので、番号としては照合しない。
+      これで照合すると、別人どうしが同じ人にされてしまう。
+    """
+    name = (name or "").strip()
+    chart = str(chart or "").strip()
+    try:
+        if name:
+            r = (supabase.table("patients").select("id,user_name,chart_number")
+                 .eq("facility_code", f_code).eq("user_name", name).limit(1).execute())
+            if r.data:
+                return r.data[0], True
+        if chart and chart != "臨時":
+            r = (supabase.table("patients").select("id,user_name,chart_number")
+                 .eq("facility_code", f_code).eq("chart_number", chart).limit(1).execute())
+            if r.data:
+                return r.data[0], True
+    except Exception as e:
+        print("_patients_find_existing error: %s" % e, flush=True)
+        return None, False       # 確かめられていない。居ないとは言えない。
+    return None, True            # 確かに居ない
+
+
+def _patients_insert_guarded(supabase, f_code, row, source):
+    """patients に行を作る。ただし同じ人が居たら作らない。
+
+    戻り値: (id文字列 または None, 新しく作ったか True/False)
+    ★見つかったのに中身が食い違うときは、黙って使わずLINEで知らせる。
+      食い違いこそが「橋が切れかけている」合図で、放っておくと必ず再発する。
+    ★確かめられなかったときは【作らない】。
+      作って二重になるより、作らずに失敗として返すほうが直しやすい。
+      消すのは手間だが、作らなかっただけならもう一度押せば済む。
+    """
+    name = (row.get("user_name") or "").strip()
+    chart = str(row.get("chart_number") or "").strip()
+    exist, checked = _patients_find_existing(supabase, f_code, name, chart)
+    if not checked:
+        try:
+            line_notify_admin(
+                "【TASUKARU】利用者の登録を見送りました\n"
+                "事業所: %s\n"
+                "対象: %s (No.%s)\n"
+                "きっかけ: %s\n"
+                "※すでに登録済みかを確かめられませんでした（通信エラー等）。\n"
+                "　二重登録を避けるため作成していません。もう一度お試しください。"
+                % (f_code, name or "(空)", chart or "-", source))
+        except Exception:
+            pass
+        return None, False
+    if exist:
+        _en = (exist.get("user_name") or "").strip()
+        _ec = str(exist.get("chart_number") or "").strip()
+        if _en != name or (chart and _ec != chart):
+            try:
+                line_notify_admin(
+                    "【TASUKARU】利用者の二重登録を止めました\n"
+                    "事業所: %s\n"
+                    "登録しようとした: %s (No.%s)\n"
+                    "すでにある行: %s (No.%s) / id=%s\n"
+                    "きっかけ: %s\n"
+                    "※名前か番号が食い違っています。利用者基本情報をご確認ください。"
+                    % (f_code, name or "(空)", chart or "-",
+                       _en or "(空)", _ec or "-", exist.get("id"), source))
+            except Exception:
+                pass
+        return str(exist.get("id")), False
+    try:
+        ins = supabase.table("patients").insert(row).execute()
+        if ins.data:
+            return str(ins.data[0]["id"]), True
+    except Exception as e:
+        print("_patients_insert_guarded error (%s): %s" % (source, e), flush=True)
+    return None, False
+
+
+def _patients_dup_groups(supabase, f_code):
+    """氏名が同じ／カルテ番号が同じ patients 行が2つ以上ある組を返す。
+
+    戻り値: (組の一覧, 確かめられたか True/False)
+    ★ここでも【重複が無かった】と【確かめられなかった】を分ける。
+      失敗を「重複なし」と読むと、控えを『重複なし』で上書きしてしまい、
+      本当に重複しているのに知らせが出なくなる。
+    """
+    groups = []
+    try:
+        r = (supabase.table("patients").select("id,user_name,chart_number")
+             .eq("facility_code", f_code).execute())
+        by_name, by_chart = {}, {}
+        for x in (r.data or []):
+            n = (x.get("user_name") or "").strip()
+            c = str(x.get("chart_number") or "").strip()
+            if n:
+                by_name.setdefault(n, []).append(x)
+            if c and c != "臨時":
+                by_chart.setdefault(c, []).append(x)
+        seen = set()
+        for key, xs in list(by_name.items()) + list(by_chart.items()):
+            if len(xs) < 2:
+                continue
+            ids = tuple(sorted(str(x["id"]) for x in xs))
+            if ids in seen:
+                continue      # 氏名でも番号でも当たる組は1回だけ数える
+            seen.add(ids)
+            groups.append({"key": key, "ids": list(ids), "rows": xs})
+    except Exception as e:
+        print("_patients_dup_groups error: %s" % e, flush=True)
+        return [], False
+    return groups, True
+
+
+def _patients_dup_notify(supabase, f_code):
+    """二重になっている利用者が居たらLINEで知らせる。戻り値: 組の数。
+
+    ★同じ内容を何度も送らない。前に送った内容を admin_settings に控えて比べる。
+      毎回送ると、通知そのものが読まれなくなる。
+    ★直ったときも控えを更新する。そうしないと、次に別の重複が出ても
+      「前と同じ」と判定されて送られなくなる。
+    """
+    try:
+        groups, _checked = _patients_dup_groups(supabase, f_code)
+        if not _checked:
+            return 0                     # 確かめられていない。控えは触らない。
+        sig = ";".join("|".join(g["ids"]) for g in groups)
+        cur = (supabase.table("admin_settings").select("id,value")
+               .eq("facility_code", f_code).eq("key", "patients_dup_notified").execute())
+        prev = (cur.data[0].get("value") if cur.data else "") or ""
+        if sig == prev:
+            return len(groups)           # 変わっていないので送らない
+        if groups:
+            _lines = ["【TASUKARU】利用者が二重に登録されています",
+                      "事業所: %s" % f_code]
+            for g in groups[:10]:
+                _lines.append("・%s → id %s" % (g["key"], " / ".join(g["ids"])))
+            _lines.append("※利用曜日やバイタルが分かれている可能性があります。")
+            line_notify_admin("\n".join(_lines))
+        if cur.data:
+            (supabase.table("admin_settings").update({"value": sig})
+             .eq("id", cur.data[0]["id"]).execute())
+        else:
+            supabase.table("admin_settings").insert(
+                {"facility_code": f_code, "key": "patients_dup_notified",
+                 "value": sig}).execute()
+        return len(groups)
+    except Exception as e:
+        print("_patients_dup_notify error: %s" % e, flush=True)
+        return 0
+
+
 def _ensure_patient_row(supabase, f_code, profile_row):
     """profile_row(dict: user_name/user_name_kana/birth_date/patient_number)に対応する
     patients行を必要なら作成する。戻り値: 作成したら True / 既存なら False。"""
     try:
         name = (profile_row.get("user_name") or "").strip()
         if not name:
-            return False
-        # 既に同名のpatients行があれば作らない
-        exist = supabase.table("patients").select("id").eq("facility_code", f_code).eq("user_name", name).execute()
-        if exist.data:
             return False
         # chart_number: patient_number をコピー。空ならフォールバック採番
         chart = str(profile_row.get("patient_number") or "").strip()
@@ -12414,14 +12578,17 @@ def _ensure_patient_row(supabase, f_code, profile_row):
                 except: pass
             chart = str(max(nums, default=0) + 1).zfill(3)
         birth = profile_row.get("birth_date") or None
-        supabase.table("patients").insert({
+        # patients-dup-guard-v1: 氏名だけの確認をやめ、番号でも照合してから作る。
+        #   ★以前はここで「同名が居なければ作る」だった。氏名が食い違うと
+        #     2行目ができ、利用曜日が分かれた（2026-08-28 小倉さん）。
+        _pid, _created = _patients_insert_guarded(supabase, f_code, {
             "facility_code": f_code,
             "user_name":     name,
             "user_kana":     profile_row.get("user_name_kana") or "",
             "birth_date":    birth,
             "chart_number":  chart,
-        }).execute()
-        return True
+        }, "利用者基本情報からの自動作成")
+        return _created
     except Exception as e:
         print(f"_ensure_patient_row error: {e}", flush=True)
         return False
@@ -12741,35 +12908,44 @@ def api_bulk_register_patients():
                 except:
                     birth_date = None
 
-            supabase.table("patients").insert({
+            # patients-dup-guard-v1: 確認せずに足していたので、同じ人が二重に入り得た
+            _pid, _created = _patients_insert_guarded(supabase, f_code, {
                 "facility_code": f_code,
                 "user_name":     name,
                 "user_kana":     p.get("kana", "") or "",
                 "birth_date":    birth_date,
                 "chart_number":  chart,
-            }).execute()
+            }, "一括登録")
 
             # 利用曜日・AM/PMをpatient_visit_daysに保存
             weekdays = p.get("weekdays", "") or ""
             ampm     = p.get("ampm", "BOTH") or "BOTH"
             if weekdays:
-                # 登録したpatientsのIDを取得
-                new_p = supabase.table("patients").select("id").eq("facility_code", f_code).eq("user_name", name).eq("chart_number", chart).execute()
-                if new_p.data:
-                    pid = str(new_p.data[0]["id"])
-                    # Session 18: weekdays から ampm_per_day を生成(全曜日 ALL)
-                    ampm_per_day_init = {ch: "ALL" for ch in weekdays if ch in "0123456"}
-                    try:
-                        supabase.table("patient_visit_days").insert({
-                            "facility_code": f_code,
-                            "patient_id":    pid,
-                            "user_name":     name,
-                            "weekdays":      weekdays,
-                            "ampm":          ampm,
-                            "ampm_per_day":  ampm_per_day_init,
-                        }).execute()
-                    except:
-                        pass
+                # patients-dup-guard-v1: 追加時に返ってきた id をそのまま使う。
+                #   ★氏名＋番号で引き直すと、番号だけ直された行を取り違える。
+                pid = _pid
+                if pid:
+                    # patients-dup-guard-v1: すでに曜日がある人には足さない。
+                    #   ★足すと曜日の行が二重になり、今回と同じ壊れ方をする。
+                    #   ★continue で飛ばすと、この下の「登録件数」を数え損なう。
+                    #     だから飛ばさず、「無いときだけ作る」で囲う。
+                    _vd_exist = (supabase.table("patient_visit_days").select("id")
+                                 .eq("facility_code", f_code).eq("patient_id", pid)
+                                 .limit(1).execute())
+                    if not _vd_exist.data:
+                        # Session 18: weekdays から ampm_per_day を生成(全曜日 ALL)
+                        ampm_per_day_init = {ch: "ALL" for ch in weekdays if ch in "0123456"}
+                        try:
+                            supabase.table("patient_visit_days").insert({
+                                "facility_code": f_code,
+                                "patient_id":    pid,
+                                "user_name":     name,
+                                "weekdays":      weekdays,
+                                "ampm":          ampm,
+                                "ampm_per_day":  ampm_per_day_init,
+                            }).execute()
+                        except:
+                            pass
             registered += 1
 
         return jsonify({"status": "success", "count": registered})
@@ -12932,6 +13108,13 @@ def patient_profile():
         except Exception:
             selected = None
             # patient_id と利用日データを取得
+    # patients-dup-guard-v1: この画面は管理者しか開かない。開いたときに点検して、
+    #   二重登録が残っていたらLINEで知らせる（内容が変わったときだけ送る）。
+    #   ★開発者MENUに置くだけだと、見に行かないと気づけない（HIROさん指摘）。
+    try:
+        _patients_dup_notify(supabase, f_code)
+    except Exception:
+        pass
     patient_id = None
     visit_day_data = {}
     if selected:
@@ -15188,7 +15371,13 @@ def api_add_patient():
         }
         if data.get("birth"):
             insert_data["birth_date"] = data["birth"]
-        supabase.table("patients").insert(insert_data).execute()
+        # patients-dup-guard-v1: 確認せずに足していたので、同じ人が二重に入り得た
+        _pid, _created = _patients_insert_guarded(
+            supabase, f_code, insert_data, "利用者の追加(api_add_patient)")
+        if not _created:
+            return jsonify({"status": "duplicate", "id": _pid,
+                            "message": "同じ名前かカルテ番号の方がすでに登録されています。"
+                                       "別の方として登録する場合は、カルテ番号を変えてください。"}), 409
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500

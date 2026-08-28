@@ -8,6 +8,8 @@
 .task-header {
     display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 1rem;
+    /* fab-overlap-v1: 右上の「?」と＋ボタンが重なるのを防ぐ */
+    padding-right: var(--fab-safe, 0px);
 }
 .task-title { display: flex; align-items: center; gap: 6px; font-size: 1.1rem; font-weight: 800; color: #202124; }
 .task-title .material-symbols-outlined { color: #1a73e8; font-size: 22px; }

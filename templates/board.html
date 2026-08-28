@@ -9,6 +9,8 @@
     display: flex; align-items: center;
     justify-content: space-between; margin: 0;
     padding: 0 0 2px;
+    /* fab-overlap-v1: 右上の「?」と投稿ボタンが重なっていたので、右へ余白を作って逃がす */
+    padding-right: var(--fab-safe, 0px);
     position: relative; z-index: 1;
     background: #f1f3f4;
 }
