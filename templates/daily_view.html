@@ -3680,25 +3680,48 @@ function prefetchAllSummaries() {
     if (!usersJson) return;
     try {
         var users = JSON.parse(usersJson);
-        // 1秒後から順番に先読み（UIをブロックしないよう間隔を空ける）
-        users.forEach(function(userName, i) {
-            setTimeout(function() {
-                fetch('/api/generate_daily_summary', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({user_name: userName, date: dateStr})
-                }).then(function(res) { return res.json(); })
-                .then(function(data) {
-                    if (data.summary) {
-                        // キャッシュに保存してあるので次に開いたとき即表示される
-                        // すでに開いているアコーディオンがあれば即反映
-                        var ac = document.getElementById('ai-content-' + (i+1));
-                        if (ac && ac.querySelector('span[style*="9aa0a6"]')) {
-                            ac.textContent = data.summary;
-                        }
+        // daily-summary-cache-fix-v1:
+        //   ★まず「すでにある要約」を【1回でまとめて】取る（AIは呼ばない）。
+        //     以前は利用者の人数ぶん生成APIをPOSTしていた。キャッシュが効いていても
+        //     人数ぶんの通信が走り、それ自体が重かった。
+        //   ★そのうえで、まだ無い人のぶんだけ生成を呼ぶ。
+        fetch('/api/daily_summaries?date=' + encodeURIComponent(dateStr),
+              { credentials: 'same-origin' })
+        .then(function(r) { return r.json(); })
+        .catch(function() { return { summaries: {} }; })   // 取れなくても先へ進む
+        .then(function(j) {
+            var have = (j && j.summaries) || {};
+            var todo = [];
+            users.forEach(function(userName, i) {
+                var ac = document.getElementById('ai-content-' + (i + 1));
+                if (have[userName] && have[userName].summary) {
+                    // すでにある。AIは呼ばない
+                    if (ac && ac.querySelector('span[style*="9aa0a6"]')) {
+                        ac.textContent = have[userName].summary;
                     }
-                }).catch(function(){});
-            }, 1000 + i * 800); // 1秒後から0.8秒間隔で順番に
+                } else {
+                    todo.push({ name: userName, idx: i });
+                }
+            });
+            // まだ無い人だけ、間隔を空けて順番に生成する
+            todo.forEach(function(t, k) {
+                setTimeout(function() {
+                    fetch('/api/generate_daily_summary', {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({user_name: t.name, date: dateStr})
+                    }).then(function(res) { return res.json(); })
+                    .then(function(data) {
+                        if (data.summary) {
+                            var ac = document.getElementById('ai-content-' + (t.idx + 1));
+                            if (ac && ac.querySelector('span[style*="9aa0a6"]')) {
+                                ac.textContent = data.summary;
+                            }
+                        }
+                    }).catch(function(){});
+                }, 1000 + k * 800); // 1秒後から0.8秒間隔で順番に
+            });
         });
     } catch(e) {}
 }

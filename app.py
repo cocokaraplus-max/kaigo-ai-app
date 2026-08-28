@@ -14955,6 +14955,96 @@ def api_shift_calendar_month():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ===== daily-summary-cache-fix-v1 : 日時をきちんと比べる =====
+def _ds_parse_ts(v):
+    """DBが返す日時を datetime にする。読めなければ None。
+
+    ★文字列のまま大小比較してはいけない。
+      '2026-07-17 08:05:29.6+00' と '2026-07-17T08:05:29.600109+00:00' は
+      同じ時刻でも文字列としては別物になる。
+    """
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v
+    s = str(v).strip().replace(" ", "T")
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    # '+00' のように時差が2桁だけのことがある。fromisoformat は ':00' を要る版がある
+    m = re.search(r"([+-]\d{2})$", s)
+    if m:
+        s = s + ":00"
+    # マイクロ秒が7桁以上のことがある。fromisoformat は6桁までしか読めない
+    m = re.match(r"^(.*\.\d{6})\d+(.*)$", s)
+    if m:
+        s = m.group(1) + m.group(2)
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
+
+
+def _ds_ts_ge(a, b):
+    """a >= b か。★両方きちんと読めたときだけ日時として比べる。"""
+    da, db = _ds_parse_ts(a), _ds_parse_ts(b)
+    if da is not None and db is not None:
+        return da >= db
+    print("[daily-summary] 日時を読めませんでした: %r / %r" % (a, b), flush=True)
+    return str(a or "") >= str(b or "")      # 最後の手段
+
+
+@app.route('/api/daily_summaries', methods=['GET'])   # daily-summary-cache-fix-v1
+@login_required
+def api_daily_summaries_cached():
+    """その日ぶんの【すでにある】要約をまとめて返す。AIは呼ばない。
+
+    ★画面は今まで、利用者の数だけ生成APIを呼んでいた。
+      キャッシュが効いていても人数ぶんの通信が走り、それ自体が重かった。
+      ここで1回にまとめ、【まだ無い人のぶんだけ】生成を呼ばせる。
+    """
+    try:
+        f_code = session['f_code']
+        date_str = (request.args.get('date') or '').strip()
+        if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_str):
+            return jsonify({'status': 'error', 'message': 'date が不正です',
+                            'summaries': {}}), 400
+        supabase = get_supabase()
+        day_start = tokyo_tz.localize(datetime.strptime(date_str, '%Y-%m-%d'))
+        day_end = day_start + timedelta(days=1)
+
+        rec = (supabase.table('records')
+               .select('user_name, created_at, image_urls')
+               .eq('facility_code', f_code)
+               .gte('created_at', day_start.isoformat())
+               .lt('created_at', day_end.isoformat())
+               .neq('staff_name', 'AI統合記録').execute())
+        latest, imgs = {}, {}
+        for r in (rec.data or []):
+            u = r.get('user_name') or ''
+            if not u:
+                continue
+            ca = r.get('created_at') or ''
+            # ★同じ列どうしの比較なので、ここは文字列のままで安全
+            if u not in latest or str(ca) > str(latest[u]):
+                latest[u] = ca
+            for x in (r.get('image_urls') or []):
+                imgs.setdefault(u, []).append(x)
+
+        cur = (supabase.table('daily_summaries')
+               .select('user_name, summary, last_record_at')
+               .eq('facility_code', f_code).eq('summary_date', date_str).execute())
+        out = {}
+        for c in (cur.data or []):
+            u = c.get('user_name')
+            if u in latest and _ds_ts_ge(c.get('last_record_at'), latest[u]):
+                out[u] = {'summary': c.get('summary'), 'image_urls': imgs.get(u, [])}
+        return jsonify({'status': 'success', 'summaries': out})
+    except Exception as e:
+        # ★握りつぶさない。画面は「まだ無い」として生成に回るので、動きは止まらない
+        print(f"[daily-summary] 一括取得に失敗: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e), 'summaries': {}}), 500
+
+
 @app.route('/api/generate_daily_summary', methods=['POST'])
 @login_required
 def api_generate_daily_summary():
@@ -14981,21 +15071,39 @@ def api_generate_daily_summary():
         if not records:
             return jsonify({'error': '記録がありません'}), 404
 
+        # daily-summary-cache-fix-v1: 写真のURLは【毎回この記録から組み立てる】。
+        #   ★以前は daily_summaries.image_urls を読み書きしていたが、その列は実在しない。
+        #     読み取りも保存も失敗し、except: pass で握りつぶされ、
+        #     2026-07-17 以降キャッシュが更新されないまま毎回AIを呼び直していた。
+        #   ★どのみち記録は全部読んでいる。ここから作れば、列のずれで壊れない。
+        all_image_urls = []
+        for _r in records:
+            _urls = _r.get('image_urls') or []
+            if isinstance(_urls, list):
+                all_image_urls.extend(_urls)
+
         latest_record_at = records[-1]['created_at']
         force = data.get('force', False)
+        # ★「無かった」と「確かめられなかった」を分ける（患者の重複対策と同じ考え方）
+        cache_ok, cached_row = True, None
         try:
             cached = supabase.table('daily_summaries').select(
-                'summary, last_record_at, image_urls'
+                'summary, last_record_at'
             ).eq('facility_code', f_code).eq(
                 'user_name', user_name
-            ).eq('summary_date', date_str).execute()
-            if not force and cached.data and cached.data[0]['last_record_at'] >= latest_record_at:
-                c_urls = cached.data[0].get('image_urls') or []
-                if not isinstance(c_urls, list):
-                    c_urls = []
-                return jsonify({'summary': cached.data[0]['summary'], 'cached': True, 'image_urls': c_urls})
-        except:
-            pass
+            ).eq('summary_date', date_str).limit(1).execute()
+            cached_row = (cached.data or [None])[0]
+        except Exception as _ce:
+            cache_ok = False
+            print(f"[daily-summary] キャッシュ取得に失敗: {_ce}", flush=True)
+
+        if not force and cached_row and _ds_ts_ge(cached_row.get('last_record_at'), latest_record_at):
+            # 記録が増えていないので作り直さない
+            return jsonify({'summary': cached_row.get('summary'), 'cached': True,
+                            'image_urls': all_image_urls})
+        if not force and not cache_ok:
+            # ★確かめられていないのに作り直すと、AIを無駄に呼び、文章まで変わる。
+            return jsonify({'error': 'いま確認できませんでした。少し待ってからもう一度お試しください。'}), 503
 
         contents = [r['content'] for r in records]
         recs_text = '\n'.join(contents)
@@ -15017,12 +15125,7 @@ def api_generate_daily_summary():
             )
             summary = model.generate_content([prompt]).text.strip()
 
-        all_image_urls = []
-        for r in records:
-            urls = r.get('image_urls') or []
-            if isinstance(urls, list):
-                all_image_urls.extend(urls)
-
+        # daily-summary-cache-fix-v1: image_urls は送らない（その列は存在しない）
         try:
             supabase.table('daily_summaries').upsert({
                 'facility_code':  f_code,
@@ -15030,11 +15133,12 @@ def api_generate_daily_summary():
                 'summary_date':   date_str,
                 'summary':        summary,
                 'last_record_at': latest_record_at,
-                'image_urls':     all_image_urls,
                 'updated_at':     datetime.now(tokyo_tz).isoformat()
             }, on_conflict='facility_code,user_name,summary_date').execute()
-        except:
-            pass
+        except Exception as _ue:
+            # ★握りつぶさない。ここが黙っていたせいで1か月以上だれも気づけなかった。
+            #   保存できないと、次に開いたときもまた作り直しになる。
+            print(f"[daily-summary] 保存に失敗（次も作り直しになります）: {_ue}", flush=True)
 
         return jsonify({'summary': summary, 'cached': False, 'image_urls': all_image_urls})
     except Exception as e:
