@@ -2023,23 +2023,19 @@ window.addEventListener('beforeunload', function() {
 // 介護区分セレクタ
 // ===========================================================================
 window.evalSelectCareClass = function(value, fromUser) {
-    // ユーザー操作による変更の場合はアラート＋patient_profiles更新
+    // careclass-no-overwrite-v1:
+    //   介護区分を変えても、利用者情報の介護度（care_level）は書き換えない。
+    //   ★ここは 要介護 / 要支援 / 事業対象者 の3択しか無い。
+    //     ここから care_level を決めると「要介護 → 要介護1」と当て推量で書くことになり、
+    //     要介護4 の人が 要介護1 に化けて元の値が消えていた。
+    //   ★介護度を直すのは［利用者情報］だけ。あちらは 要介護1〜5 を選べて履歴も残る。
+    //   ★新しい /assessment2 も同じ振る舞い（care_level は書き換えない）。
     if (fromUser && evalState.careClass && evalState.careClass !== value) {
-        if (!confirm(`介護区分を「${evalState.careClass}」から「${value}」に変更します。\n利用者情報の介護度も更新されます。よろしいですか？`)) {
+        if (!confirm(`介護区分を「${evalState.careClass}」から「${value}」に変更します。\nこの評価の中だけの変更です。利用者情報の介護度は変わりません。\nよろしいですか？`)) {
             return;
         }
-        // patient_profilesのcare_levelを更新
-        if (evalState.selectedPatient) {
-            const careMap = {'要介護':'要介護1', '要支援':'要支援1', '事業対象者':'事業対象者'};
-            // care_classificationからcare_levelへのマッピングは大まかに行う
-            fetch(`/api/update_patient_care_level`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    user_name: evalState.selectedPatient.name,
-                    care_classification: value
-                })
-            }).catch(e => console.warn('care_level update failed:', e));
+        if (typeof showToast === 'function') {
+            showToast('介護度そのものを直すときは［利用者情報］で変更してください。');
         }
     }
     evalState.careClass = value;
