@@ -5949,8 +5949,11 @@ def api_save_vital():
                 _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
             else:
                 print(f"[visit] 来所記録を見送り date={data.get('measured_date')}", flush=True)
-        except Exception:
-            pass
+        except Exception as _vae:
+            # visit-guard-failclosed-v1: バイタルは保存済みなので処理は止めない。
+            #   ★ただし黙って捨てない。来所記録が付かなかったことに気づけなくなる。
+            print("[visit] 来所自動記録に失敗: date=%s err=%s"
+                  % (data.get('measured_date'), _vae), flush=True)
         return jsonify({"status": "success", "id": rid})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -6298,8 +6301,10 @@ def api_add_vital():
                 _visit_auto_upsert(supabase, f_code, data.get("patient_id"), data.get("measured_date"), my_name, _vint)
             else:
                 print(f"[visit] 来所記録を見送り date={data.get('measured_date')}", flush=True)
-        except Exception:
-            pass
+        except Exception as _vae:
+            # visit-guard-failclosed-v1: 記録に残す（理由は上の api_save_vital と同じ）
+            print("[visit] 来所自動記録に失敗: date=%s err=%s"
+                  % (data.get('measured_date'), _vae), flush=True)
         return jsonify({"status": "success", "id": rid})
     except Exception as e:
         print(f"add_vital error: {e}", flush=True)
@@ -6375,17 +6380,30 @@ def api_delete_vital():
             return jsonify({"status": "error", "message": "idは必須です"}), 400
         # visit-mgmt-v1: 削除対象の患者・日付を控えてから削除し、実績を後始末
         _vrow = None
+        # visit-guard-failclosed-v1: ここは元々「引けなかったら None」だった。
+        #   ★None のまま削除すると、下の実績の後始末が飛ばされる。
+        #     結果、バイタルは消えたのに来所記録（実績）が残り、食い違う。
+        #   ★「引けなかった」と「そんな行は無い」は別物。
+        #     引けなかったときは削除しない。消さなければ、やり直せる。
         try:
             _vq = supabase.table("vitals").select("patient_id,measured_date").eq("id", rid).execute()
             _vrow = _vq.data[0] if _vq.data else None
-        except Exception:
-            _vrow = None
+        except Exception as _ve:
+            print("[vital] 削除前の情報を取得できませんでした: %s" % _ve, flush=True)
+            return jsonify({"status": "error",
+                            "message": "この記録の情報を確認できませんでした。"
+                                       "実績が食い違うおそれがあるため、削除していません。"
+                                       "少し待ってからもう一度お試しください。"}), 503
         supabase.table("vitals").delete().eq("id", rid).execute()
         if _vrow:
             try:
                 _visit_cleanup_on_vital_delete(supabase, session.get("f_code"), _vrow.get("patient_id"), _vrow.get("measured_date"))
-            except Exception:
-                pass
+            except Exception as _ce:
+                # ★バイタルはもう消えている。戻せないので、必ず記録に残す。
+                #   ここが黙っていると、実績だけ残ったことに誰も気づけない。
+                print("[vital] 実績の後始末に失敗（来所記録が残っている可能性）: "
+                      "patient=%s date=%s err=%s"
+                      % (_vrow.get("patient_id"), _vrow.get("measured_date"), _ce), flush=True)
         return jsonify({"status": "success"})
     except Exception as e:
         print(f"delete_vital error: {e}", flush=True)
@@ -15769,15 +15787,35 @@ def api_goal_apply():
                          "valid_from": _valid_from, "changed_by": my})   # goal-valid-from-v1
         if not upd:
             return jsonify({"status": "success", "updated": 0, "message": "変更はありません"})
+        # goal-history-first-v1: 【記録を先に残してから変える】。
+        #   ★以前は書き換えてから履歴を入れ、履歴の失敗は except: pass だった。
+        #     そのため「目標だけ変わって、変えた記録が無い」状態が起こり得た。
+        #     goal-valid-from-v1 で過去の月の目標は履歴から決めているので、
+        #     履歴が欠けると月ごとの目標そのものが狂う。しかも誰も気づけない。
+        #   ★先に残せば、残せなかったときは【まだ何も変わっていない】。
+        _hist_ids = []
+        if hist:
+            try:
+                _hr = supabase.table("goal_history").insert(hist).execute()
+                _hist_ids = [r.get("id") for r in (_hr.data or []) if r.get("id") is not None]
+            except Exception as _he:
+                print("[goal] 履歴の保存に失敗したため、目標を変更しませんでした: %s" % _he, flush=True)
+                return jsonify({"status": "error",
+                                "message": "変更の記録を残せませんでした。"
+                                           "記録に残らない変更はしない決まりなので、"
+                                           "目標は変更していません。"
+                                           "少し待ってからもう一度お試しください。"}), 503
         try:
             supabase.table("patient_profiles").update(upd).eq("facility_code", f_code).eq("user_name", user_name).execute()
         except Exception as e:
+            # ★目標を変えられなかったのに履歴だけ残ると、
+            #   評価の画面が「その月から変わった」ことにしてしまう。入れた履歴を取り消す。
+            for _hid in _hist_ids:
+                try:
+                    supabase.table("goal_history").delete().eq("id", _hid).eq("facility_code", f_code).execute()
+                except Exception as _de:
+                    print("[goal] 履歴の取り消しに失敗 (id=%s): %s" % (_hid, _de), flush=True)
             return jsonify({"status": "error", "message": f"更新失敗: {e}"}), 500
-        try:
-            if hist:
-                supabase.table("goal_history").insert(hist).execute()
-        except Exception:
-            pass
         return jsonify({"status": "success", "updated": len(upd)})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -24094,8 +24132,12 @@ def _soge_saved_week(supabase, f_code, weekday, settings):  # soge-week-v1
               .eq("facility_code", f_code).execute())
         for x in (wr.data or []):
             wc[str(x["id"])] = bool(x.get("is_wheelchair"))
-    except Exception:
-        pass
+    except Exception as _we:
+        # visit-guard-failclosed-v1: 取れないと【全員「車椅子でない」扱い】になり、
+        #   車椅子の方の座席が確保されない送迎表ができる。
+        #   表は人が見て確定するので止めはしないが、黙って進めてはいけない。
+        print("[soge] 車椅子情報を取得できませんでした（全員なし扱いになります）: %s"
+              % _we, flush=True)
 
     try:
         vr = (supabase.table("rec_cars")
@@ -25754,8 +25796,10 @@ def api_soge_run_replan():
                   .eq("facility_code", f_code).execute())
             for x in (wr.data or []):
                 wc[str(x["id"])] = bool(x.get("is_wheelchair"))
-        except Exception:
-            pass
+        except Exception as _we:
+            # visit-guard-failclosed-v1: 理由は _soge_saved_week と同じ
+            print("[soge] 車椅子情報を取得できませんでした（全員なし扱いになります）: %s"
+                  % _we, flush=True)
 
         leave_names = _soge_leave_names(supabase, f_code, date_str)
         settings = get_soge_settings(supabase, f_code)
