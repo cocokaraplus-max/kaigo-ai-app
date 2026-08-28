@@ -566,7 +566,7 @@ function makeResultCard(cat, text, count, catName) {
       </div>
     </div>
     <div class="result-text${isNoRecord ? ' no-record' : (isGenFail ? ' gen-fail' : '')}" data-raw="${encodeURIComponent(text)}">${escHtml(text)}</div>
-    <div class="result-meta">${count > 0 ? `参照記録: ${count}件 ／ ` : ""}${isNoRecord ? "記録なし" : (isGenFail ? "生成に失敗（書類には出ません）" : `${text.length}文字`)}</div>
+    <div class="result-meta">${count > 0 ? `参照記録: ${count}件 ／ ` : ""}${isNoRecord ? "記録なし" : (isGenFail ? "⚠ 生成に失敗しました ／ この文章は書類には印刷されません" : `${text.length}文字`)}</div>
   `;
   return card;
 }

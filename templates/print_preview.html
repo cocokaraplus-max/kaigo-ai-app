@@ -1496,7 +1496,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% set is_genfail = cat_text and "AIの生成に失敗しました" in cat_text %}
         {% if not is_empty or items.get("no_record", false) %}
         <tr{% if is_genfail %} class="no-print"{% endif %}>
-            <td>{{ cat_name }}</td>
+            <td>{{ cat_name }}{% if is_genfail %}<br><span style="display:inline-block;margin-top:2px;padding:1px 5px;border-radius:3px;background:#fce8e6;color:#d93025;font-size:6.5pt;font-weight:700;">印刷されません</span>{% endif %}</td>
             <td class="no-print-border" contenteditable="true"
                 data-cat="{{ cat_name }}" data-user="{{ p.user_name }}"
                 style="outline:none;cursor:text;"
