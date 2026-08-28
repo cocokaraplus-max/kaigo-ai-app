@@ -41,6 +41,8 @@
 .btn-del:active { background:#fce8e6; }
 .result-text { font-size:0.85rem; color:#202124; line-height:1.8; white-space:pre-wrap; }
 .result-text.no-record { color:#f57c00; font-style:italic; font-size:0.82rem; }
+/* gen-fail-visible-v1: 生成に失敗した文章。画面でだけ赤く出す（書類には出ない） */
+.result-text.gen-fail { color:#d93025; font-weight:700; font-size:0.82rem; }
 .result-meta { font-size:0.72rem; color:#80868b; margin-top:6px; text-align:right; }
 .result-footer { display:flex; gap:8px; margin-top:12px; }
 .btn-save { flex:1; padding:12px; border-radius:10px; background:#e8f0fe; color:#1a73e8; font-size:0.88rem; font-weight:700; border:none; cursor:pointer; }
@@ -551,6 +553,8 @@ function makeResultCard(cat, text, count, catName) {
   const card = document.createElement("div");
   card.className = "result-card";
   const isNoRecord = text === NO_RECORD_MSG;
+  // gen-fail-visible-v1: AI生成に失敗した文章。画面では目立たせ、書類には出さない
+  const isGenFail = String(text).indexOf("AIの生成に失敗しました") !== -1;
 
   card.innerHTML = `
     <div class="result-card-header">
@@ -561,8 +565,8 @@ function makeResultCard(cat, text, count, catName) {
         ${cat ? '<button class="btn-del" onclick="deleteResultCard(this)">削除</button>' : ''}
       </div>
     </div>
-    <div class="result-text${isNoRecord ? ' no-record' : ''}" data-raw="${encodeURIComponent(text)}">${escHtml(text)}</div>
-    <div class="result-meta">${count > 0 ? `参照記録: ${count}件 ／ ` : ""}${isNoRecord ? "記録なし" : `${text.length}文字`}</div>
+    <div class="result-text${isNoRecord ? ' no-record' : (isGenFail ? ' gen-fail' : '')}" data-raw="${encodeURIComponent(text)}">${escHtml(text)}</div>
+    <div class="result-meta">${count > 0 ? `参照記録: ${count}件 ／ ` : ""}${isNoRecord ? "記録なし" : (isGenFail ? "⚠ 生成に失敗しました ／ この文章は書類には印刷されません" : `${text.length}文字`)}</div>
   `;
   return card;
 }
@@ -874,7 +878,8 @@ function buildReport(d){
   if(cats && typeof cats==='object'){
     Object.keys(cats).forEach(function(k){
       var t=cats[k];
-      if(t && String(t).indexOf('報告はありませんでした')===-1 && String(t).trim()!==''){
+      // gen-fail-visible-v1: 生成失敗の行は、ケアマネジャーへ渡す書類には出さない（画面のカードには出る）
+      if(t && String(t).indexOf('報告はありませんでした')===-1 && String(t).indexOf('AIの生成に失敗しました')===-1 && String(t).trim()!==''){
         monRows+='<tr><td class="cat">'+repEsc(k)+'</td><td>'+repNl(t)+'</td></tr>';
       }
     });

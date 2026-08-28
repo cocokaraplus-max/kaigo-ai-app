@@ -29424,6 +29424,25 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
             "・口調は外部のケアマネジャーへの報告文書として読みやすい丁寧語(です・ます)。二重敬語や過剰な敬語(「お〜になられる」「ございました」等)は避け、硬すぎず砕けすぎない自然な丁寧さにとどめる\n"
         )
         NO_RECORD_MSG = "今月このカテゴリの報告はありませんでした"
+        # gen-fail-visible-v1: 生成に失敗したカテゴリを「報告なし」にしない。
+        #   ★旧: except の中で NO_RECORD_MSG を入れていた。
+        #     記録があるのに「今月このカテゴリの報告はありませんでした」として保存され、
+        #     さらに print_preview.html がその文言を印刷対象から外すため、
+        #     【記録があるのに、書類から黙って消える】状態だった。職員は気づけない。
+        #   ★モニタリング画面側(api_generate_monitoring)は「（生成エラー: …）」と
+        #     見えるようにしてある。2か所で扱いが割れていたのを揃える。
+        #   ★まず1回だけ作り直す。通信の一時的な失敗はこれで大半が通る。
+        #     それでも駄目なら、見て分かる文章を残し、ログにも出す。
+        #   ★この文章は NO_RECORD_MSG を含まないので、書類からは消えずに印刷される。
+        #     消してしまうと元の不具合に戻る。消さないことが目的。
+        #   ★文面の先頭に「印刷されません」を置く。
+        #     これが無いと、画面で見た職員が「これがケアマネジャーに渡るのか」と慌てる。
+        #     慌てさせないことも、この直しの目的のうち。
+        #   ★「AIの生成に失敗しました」の文言は、画面側が行を見分ける目印に使っている。
+        #     文面を変えるときも、この語は残すこと（print_preview.html / monitoring.html）。
+        GEN_FAIL_MSG = ("【この行は書類には印刷されません・画面だけの表示です】"
+                        "AIの生成に失敗しました。記録は{n}件あります。"
+                        "モニタリング画面でもう一度生成してください。")
         results = {}
         counts = {}
         for cat in CATEGORIES:
@@ -29438,10 +29457,18 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
                 f"・カテゴリ「{cat}」に関する記録だけをまとめて200文字程度で生成\n\n"
                 f"【{cat}の記録】\n{cat_text}"
             )
-            try:
-                results[cat] = model.generate_content([prompt]).text.strip()
-            except Exception:
-                results[cat] = NO_RECORD_MSG
+            _gen_err = None
+            for _attempt in (1, 2):
+                try:
+                    results[cat] = model.generate_content([prompt]).text.strip()
+                    _gen_err = None
+                    break
+                except Exception as _e:
+                    _gen_err = _e
+            if _gen_err is not None:
+                print("monitoring auto-gen failed: %s / %s / %s -> %s"
+                      % (u_name, year_month, cat, _gen_err), flush=True)
+                results[cat] = GEN_FAIL_MSG.format(n=len(recs_in_cat))
 
         # DBに保存
         existing = supabase.table("monitoring_reports").select("id").eq(
