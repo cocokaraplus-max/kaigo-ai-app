@@ -5102,6 +5102,14 @@ function ttResetLang() {
     border:none; border-radius:50%; background:#e8f0fe; color:#1a73e8;
     font-size:12px; font-weight:700; line-height:1; cursor:pointer;
     padding:0; vertical-align:middle; font-family:inherit;
+    /* tkg-chip-align-v1: となりの文字より少し下に見えるのを直す。
+       vertical-align:middle は「文字の中心」ではなく【小文字の高さの中心】に
+       合わせる決まりなので、漢字の行では下がって見える。
+       実測：親の文字12.8pxで1.3px下、16pxで1.6px下＝どちらも文字の1割。
+       ★px で固定しない。このアプリは文字サイズを変えられるので、
+         px だと大きくしたときにまたずれる。
+       ★margin ではなく top。margin だと行の高さが変わって行間が動く。 */
+    position:relative; top:-0.1em;
   }
   .tkg-chip:hover{ background:#d2e3fc; }
   /* guide-link-v1: 案内文の中のリンク */
