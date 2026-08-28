@@ -18,7 +18,7 @@ Session 38 / Phase 5 で新規作成。
   - DB スキーマ: patient_evaluations 29 カラム、patients 8 カラム
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 # goal-asof-current-month-v1: 「今月かどうか」は日本時間で判定する。
 #   ★UTCで判定すると、月初と月末に1日ずれる。
@@ -210,7 +210,17 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
             "short_goal_period_from": "short_goal_period_from", "short_goal_period_to": "short_goal_period_to",
             "long_goal_period_from": "long_goal_period_from", "long_goal_period_to": "long_goal_period_to",
         }
-        # goal-asof-current-month-v1: 【今月は巻き戻さない】
+        # goal-valid-from-v1: その月に有効だった目標を【適用日】から決める。
+        #   ★「どの月の画面で操作したか(year_month)」ではなく、
+        #     「いつから有効か(valid_from)」で決める。
+        #     操作した画面に左右されなくなる。
+        #     介護度の _care_level_at_month_end と同じ考え方。
+        #
+        #   決め方:
+        #     適用日 <= その月の月末 の変更のうち【最新】の new_value。
+        #     1件も無ければ、一番古い変更の old_value（＝まだ変わる前の値）。
+        #
+        # goal-asof-current-month-v1: 【今月と先の月は巻き戻さない】
         #   ★巻き戻しの目的は「過去の評価が、後から変えた新しい目標に見えて
         #     しまう」のを防ぐこと。今月にまで効かせると、逆に
         #     【いま変更した目標が今月に反映されない】。
@@ -223,23 +233,34 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
             return result
 
         _gh = supabase.table("goal_history") \
-            .select("field, old_value, year_month, changed_at") \
+            .select("field, old_value, new_value, valid_from, changed_at") \
             .eq("facility_code", facility_code) \
             .eq("user_name", user_name) \
-            .gte("year_month", target_month) \
-            .order("year_month") \
-            .order("changed_at") \
             .execute()
-        _seen = set()
+
+        # その月の月末（'YYYY-MM-DD'）
+        _y, _m = int(target_month[:4]), int(target_month[5:7])
+        _next = date(_y + 1, 1, 1) if _m == 12 else date(_y, _m + 1, 1)
+        _month_end = (_next - timedelta(days=1)).isoformat()
+
+        _by_field = {}
         for _row in (_gh.data or []):
-            _rk = _fmap.get(_row.get("field"))
-            if not _rk or _rk in _seen:
-                continue  # 各フィールド最初(=対象月以降で最古の変更)の old_value のみ採用
-            _seen.add(_rk)
-            _ov = _row.get("old_value")
-            if _ov is None or str(_ov).strip().lower() in ("none", "null"):
-                _ov = ""
-            result[_rk] = _ov
+            _f = _row.get("field")
+            if _f in _fmap:
+                _by_field.setdefault(_f, []).append(_row)
+
+        for _f, _rows in _by_field.items():
+            # 適用日の順に並べる。同じ日なら、後から記録したほうを後ろに。
+            _rows.sort(key=lambda r: ((r.get("valid_from") or ""),
+                                      (r.get("changed_at") or "")))
+            _applied = [r for r in _rows if (r.get("valid_from") or "") <= _month_end]
+            if _applied:
+                _v = _applied[-1].get("new_value")      # 効いている中で最新
+            else:
+                _v = _rows[0].get("old_value")          # まだ一度も効いていない
+            if _v is None or str(_v).strip().lower() in ("none", "null"):
+                _v = ""
+            result[_fmap[_f]] = _v
     except Exception:
         pass
 

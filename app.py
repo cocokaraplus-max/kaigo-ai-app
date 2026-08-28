@@ -15285,6 +15285,23 @@ def api_goal_apply():
                  "long_goal_activity": "長期目標（活動）", "long_goal_participation": "長期目標（参加）",
                  "short_goal_period_from": "短期目標期間(開始)", "short_goal_period_to": "短期目標期間(終了)",
                  "long_goal_period_from": "長期目標期間(開始)", "long_goal_period_to": "長期目標期間(終了)"}
+        # goal-valid-from-v1: この変更が【いつから有効か】を決める。
+        #   ・呼び出し側が valid_from を指定していれば、それを使う
+        #     （利用者基本情報からの「月途中の変更」で使う）
+        #   ・指定が無く year_month があれば、【評価月の翌月1日】
+        #     ★HIROさん判断(2026-08-28)：7月の評価なら8/1から。
+        #       8月に7月の評価をしていても8/1から。操作した日に左右されない。
+        #   ・どちらも無ければ、今日（日本時間）
+        from datetime import date as _gvf_date   # このリポジトリの書き方に合わせる
+        _valid_from = (data.get("valid_from") or "").strip() or None
+        if not _valid_from:
+            if year_month and re.fullmatch(r"\d{4}-\d{2}", year_month):
+                _vy, _vm = int(year_month[:4]), int(year_month[5:7])
+                _valid_from = (_gvf_date(_vy + 1, 1, 1) if _vm == 12
+                               else _gvf_date(_vy, _vm + 1, 1)).isoformat()
+            else:
+                _valid_from = datetime.now(tokyo_tz).date().isoformat()
+
         pr = supabase.table("patient_profiles").select("*").eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute()
         prof = (pr.data or [None])[0]
         if not prof:
@@ -15304,7 +15321,8 @@ def api_goal_apply():
             upd[field] = new_v
             hist.append({"facility_code": f_code, "patient_profile_id": pid, "user_name": user_name,
                          "field": field, "field_label": LABEL.get(field, field),
-                         "old_value": old_v, "new_value": new_v, "year_month": year_month, "changed_by": my})
+                         "old_value": old_v, "new_value": new_v, "year_month": year_month,
+                         "valid_from": _valid_from, "changed_by": my})   # goal-valid-from-v1
         if not upd:
             return jsonify({"status": "success", "updated": 0, "message": "変更はありません"})
         try:
