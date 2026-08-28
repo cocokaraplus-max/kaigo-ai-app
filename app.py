@@ -15446,27 +15446,28 @@ def api_patient_care_level_history():
 @app.route('/api/update_patient_care_level', methods=['POST'])
 @login_required
 def api_update_patient_care_level():
-    try:
-        data = request.json
-        f_code = session["f_code"]
-        supabase = get_supabase()
-        user_name = data.get("user_name")
-        care_classification = data.get("care_classification")
-        if not user_name or not care_classification:
-            return jsonify({"status": "error", "message": "パラメータ不足"}), 400
-        # care_classificationからcare_levelへのマッピング
-        care_map = {
-            "要介護": "要介護1",
-            "要支援": "要支援1",
-            "事業対象者": "事業対象者"
-        }
-        # patient_profilesのcare_levelを更新
-        supabase.table("patient_profiles").update({
-            "care_level": care_map.get(care_classification, care_classification)
-        }).eq("facility_code", f_code).eq("user_name", user_name).execute()
-        return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+    """careclass-no-overwrite-v1: この API は【何も書き込まない】。
+
+    ★なぜ書かないか
+      旧 /assessment の「介護区分」は 要介護 / 要支援 / 事業対象者 の3択しか無い。
+      そこから patient_profiles.care_level を決めようとすると
+      「要介護 → 要介護1」と当て推量で書くしかなく、
+      要介護4 の利用者が 要介護1 に化けて、元の値がどこにも残らなかった。
+      区分を押し間違えて押し戻すだけで壊れる。戻す操作が戻らない。
+    ★さらにこの経路は _record_care_level_history() を呼ばないため、
+      実績集計表（月末時点の介護度で判定）とプロフィールが食い違う原因にもなっていた。
+    ★新しい /assessment2 は最初から「care_level そのものは書き換えない」設計。
+      （templates/assessment2.html の a2ClsFromLevel のコメントを参照）旧画面もそれに合わせる。
+    ★介護度を実際に変えるのは /patient-info（/api/admin/patient/save）だけ。
+      あちらは 要介護1〜5 を正しく選べて、care_level_history も積む。
+    ★ルート自体は残す：職員の端末に古い JS が残っていても 404 で騒がせないため。
+      呼び出し元が完全に無くなったら、このルートごと削除してよい。
+    """
+    return jsonify({
+        "status": "success",
+        "changed": False,
+        "message": "介護区分は評価にのみ保存しました。利用者情報の介護度は変更していません。",
+    })
 @app.route('/api/update_password', methods=['POST'])
 @login_required
 def api_update_password():
