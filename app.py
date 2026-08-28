@@ -9391,9 +9391,16 @@ def _ledger_period_end_balances(supabase, f_code, period_start_iso):
     return {str(k): int(v) for k, v in bal.items()}
 
 
-def _ledger_is_period_closed(supabase, f_code, entry_date):
-    """entry_date(iso str or date) が確定済み期に属するなら True。
-    確定ガードの共通判定。例外時は安全側で False（ブロックしない）。"""
+def _ledger_is_period_closed_checked(supabase, f_code, entry_date):
+    """ledger-guard-failclosed-v1
+    (確定済みか, 確かめられたか) を返す。
+
+    ★以前は例外のとき False を返し、コメントに「安全側で（ブロックしない）」と
+      書かれていた。鍵の判定では、これは逆。
+      確かめられないときに通すと【確定済みの決算期の帳簿を書き換えられる】。
+      鍵は、確かめられないときこそ掛けたままにするのが安全側。
+    ★呼ぶ側は「確かめられたか」を見て、確かめられなければ断ること。
+    """
     try:
         import datetime as _dt
         d = _dt.date.fromisoformat(entry_date) if isinstance(entry_date, str) else entry_date
@@ -9402,9 +9409,29 @@ def _ledger_is_period_closed(supabase, f_code, entry_date):
                .select('is_closed')
                .eq('facility_code', f_code).eq('period_start', ps.isoformat())
                .eq('is_closed', True).execute())
-        return bool(res.data)
-    except Exception:
-        return False
+        return bool(res.data), True
+    except Exception as e:
+        print("[ledger] 決算確定の確認に失敗: %s" % e, flush=True)
+        return False, False
+
+
+# ledger-guard-failclosed-v1: 確かめられなかったときに返す返事。文言をそろえる。
+_LEDGER_CHECK_NG = {
+    'status': 'error', 'code': 'fiscal_check_failed',
+    'message': '決算が確定済みかどうかを確認できませんでした。'
+               '安全のため保存していません。少し待ってからもう一度お試しください。'
+}
+
+
+def _ledger_is_period_closed(supabase, f_code, entry_date):
+    """後方互換のための入口。
+    ★確かめられなかったときは【確定済み扱い】にして通さない。
+      新しく書くところは _ledger_is_period_closed_checked を使い、
+      「確認できませんでした」と正直に伝えること。
+      ここで「確定済みです」と出すと、現場が決算確定を解除しようとしてしまう。
+    """
+    closed, ok = _ledger_is_period_closed_checked(supabase, f_code, entry_date)
+    return closed or (not ok)
 
 
 @app.route('/api/ledger/fiscal_close', methods=['GET'])  # ledger-fiscal-close-v1
@@ -9633,7 +9660,11 @@ def api_ledger_transfer():
         amount = int(data.get('amount', 0))
         entry_date = data.get('entry_date', datetime.now(tokyo_tz).strftime('%Y-%m-%d'))
         # ledger-fiscal-close-guard-v1: 確定済み期への事業間移動をブロック
-        if _ledger_is_period_closed(supabase, f_code, entry_date):
+        # ledger-guard-failclosed-v1: 確かめられなかったときも通さない
+        _fc, _fok = _ledger_is_period_closed_checked(supabase, f_code, entry_date)
+        if not _fok:
+            return jsonify(_LEDGER_CHECK_NG), 503
+        if _fc:
             return jsonify({'status': 'error', 'code': 'fiscal_closed',
                             'message': 'この日付の決算期は確定済みです。決算確定を解除してください。'}), 409
         description = data.get('description', '事業間現金移動')
@@ -9699,30 +9730,51 @@ def api_ledger_entry_save():
         data = request.json or {}
         # ledger-fiscal-close-guard-v1: 確定済み期への保存/編集をブロック
         _g_newdate = data.get('entry_date')
-        if _g_newdate and _ledger_is_period_closed(supabase, f_code, _g_newdate):
-            return jsonify({'status': 'error', 'code': 'fiscal_closed',
-                            'message': 'この日付の決算期は確定済みです。編集するには決算確定を解除してください。'}), 409
+        if _g_newdate:
+            # ledger-guard-failclosed-v1: 確かめられなかったときも保存しない
+            _fc, _fok = _ledger_is_period_closed_checked(supabase, f_code, _g_newdate)
+            if not _fok:
+                return jsonify(_LEDGER_CHECK_NG), 503
+            if _fc:
+                return jsonify({'status': 'error', 'code': 'fiscal_closed',
+                                'message': 'この日付の決算期は確定済みです。編集するには決算確定を解除してください。'}), 409
         _g_eid = data.get('id')
         if _g_eid:
+            # ledger-guard-failclosed-v1: ここは元々 except: pass だった。
+            #   ★元の日付を引けなかっただけで、確定済みの期の仕訳を書き換えられていた。
+            #     ガードを見に行った問い合わせが失敗したときに通すのは、
+            #     ガードが無いのと同じ。
             try:
                 _g_old = supabase.table('journal_entries').select('entry_date').eq('id', _g_eid).eq('facility_code', f_code).execute()
                 _g_olddate = _g_old.data[0]['entry_date'] if _g_old.data else None
-                if _g_olddate and _ledger_is_period_closed(supabase, f_code, _g_olddate):
+            except Exception as _ge:
+                print("[ledger] 元の日付の取得に失敗: %s" % _ge, flush=True)
+                return jsonify(_LEDGER_CHECK_NG), 503
+            if _g_olddate:
+                _fc, _fok = _ledger_is_period_closed_checked(supabase, f_code, _g_olddate)
+                if not _fok:
+                    return jsonify(_LEDGER_CHECK_NG), 503
+                if _fc:
                     return jsonify({'status': 'error', 'code': 'fiscal_closed',
                                     'message': 'この仕訳が属する決算期は確定済みです。編集するには決算確定を解除してください。'}), 409
-            except Exception:
-                pass
         # ledger-credit-ocrguard-v1: CSV方式はOCRクレカの仕訳化を弾く(クレカはCSVが正)
         _rcpt_id = data.get('receipt_id')
         if _rcpt_id and not data.get('id') and is_credit_csv_enabled(supabase, f_code):
+            # ledger-guard-failclosed-v1: ここも元々 except: pass だった。
+            #   ★領収書を引けなかっただけで、クレカの仕訳が通っていた。
+            #     クレカはCSVでも記録されるので、通すと【二重計上】になる。
             try:
                 _rc = supabase.table('receipts').select('ocr_result').eq('id', _rcpt_id).eq('facility_code', f_code).execute()
-                _ocr = (_rc.data[0].get('ocr_result') if _rc.data else None) or {}
-                if isinstance(_ocr, dict) and _ocr.get('payment_method') == 'credit':
-                    return jsonify({'status': 'error', 'code': 'credit_csv_blocked',
-                                    'message': 'クレジットカードの利用はクレカ明細(CSV取込)で記録します。この領収書は保管庫に保管されます。'}), 409
-            except Exception:
-                pass
+            except Exception as _re:
+                print("[ledger] 領収書の確認に失敗: %s" % _re, flush=True)
+                return jsonify({'status': 'error', 'code': 'receipt_check_failed',
+                                'message': 'この領収書の内容を確認できませんでした。'
+                                           '安全のため保存していません。'
+                                           '少し待ってからもう一度お試しください。'}), 503
+            _ocr = (_rc.data[0].get('ocr_result') if _rc.data else None) or {}
+            if isinstance(_ocr, dict) and _ocr.get('payment_method') == 'credit':
+                return jsonify({'status': 'error', 'code': 'credit_csv_blocked',
+                                'message': 'クレジットカードの利用はクレカ明細(CSV取込)で記録します。この領収書は保管庫に保管されます。'}), 409
         _rdiv = data.get('division_id')
         payload = {
             'facility_code': f_code,
@@ -9761,8 +9813,11 @@ def api_ledger_entry_save():
             if _rid and new_id:
                 try:
                     supabase.table('receipts').update({'entry_id': new_id}).eq('id', _rid).eq('facility_code', f_code).execute()
-                except Exception:
-                    pass
+                except Exception as _le:
+                    # ledger-guard-failclosed-v1: 仕訳は保存済みなので処理は止めない。
+                    #   ただし黙って捨てない。紐付かないと領収書が仕訳から辿れなくなる。
+                    print("[ledger] 領収書と仕訳の紐付けに失敗 (receipt=%s entry=%s): %s"
+                          % (_rid, new_id, _le), flush=True)
             return jsonify({'status': 'success', 'id': new_id})
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -9783,9 +9838,14 @@ def api_ledger_entry_delete(entry_id):
         del_res = supabase.table('journal_entries').select('entry_date').eq('id', entry_id).execute()
         del_date = del_res.data[0]['entry_date'] if del_res.data else None
         # ledger-fiscal-close-guard-v1: 確定済み期の削除をブロック
-        if del_date and _ledger_is_period_closed(supabase, f_code, del_date):
-            return jsonify({'status': 'error', 'code': 'fiscal_closed',
-                            'message': 'この仕訳が属する決算期は確定済みです。削除するには決算確定を解除してください。'}), 409
+        # ledger-guard-failclosed-v1: 確かめられなかったときも消さない
+        if del_date:
+            _fc, _fok = _ledger_is_period_closed_checked(supabase, f_code, del_date)
+            if not _fok:
+                return jsonify(_LEDGER_CHECK_NG), 503
+            if _fc:
+                return jsonify({'status': 'error', 'code': 'fiscal_closed',
+                                'message': 'この仕訳が属する決算期は確定済みです。削除するには決算確定を解除してください。'}), 409
         supabase.table('journal_entries').delete().eq('id', entry_id).eq('facility_code', f_code).execute()
         if del_date:
             _ledger_recalc_day(supabase, f_code, del_date)
