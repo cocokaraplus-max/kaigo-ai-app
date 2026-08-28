@@ -36,6 +36,9 @@
 .cat-badge { padding:4px 10px; border-radius:20px; font-size:0.75rem; font-weight:700; }
 .result-actions { display:flex; gap:5px; }
 .btn-copy { padding:5px 12px; border-radius:7px; background:#e8f0fe; color:#1a73e8; font-size:0.75rem; font-weight:700; border:none; cursor:pointer; }
+/* mon-card-delete-v1: 報告書から外すボタン。印刷には出ない(.result-actions が print で非表示) */
+.btn-del { padding:3px 10px; border-radius:6px; background:#fff; color:#d93025; font-size:0.75rem; border:1px solid #f3b8b4; cursor:pointer; }
+.btn-del:active { background:#fce8e6; }
 .result-text { font-size:0.85rem; color:#202124; line-height:1.8; white-space:pre-wrap; }
 .result-text.no-record { color:#f57c00; font-style:italic; font-size:0.82rem; }
 .result-meta { font-size:0.72rem; color:#80868b; margin-top:6px; text-align:right; }
@@ -555,12 +558,35 @@ function makeResultCard(cat, text, count, catName) {
       <div class="result-actions">
         <button class="btn-edit" onclick="toggleEdit(this)">✏️ 編集</button>
         <button class="btn-copy" onclick="copyText(this)">コピー</button>
+        ${cat ? '<button class="btn-del" onclick="deleteResultCard(this)">削除</button>' : ''}
       </div>
     </div>
     <div class="result-text${isNoRecord ? ' no-record' : ''}" data-raw="${encodeURIComponent(text)}">${escHtml(text)}</div>
     <div class="result-meta">${count > 0 ? `参照記録: ${count}件 ／ ` : ""}${isNoRecord ? "記録なし" : `${text.length}文字`}</div>
   `;
   return card;
+}
+
+// mon-card-delete-v1: このカテゴリを、この月の報告書から外す。
+//   ★消すのは「この月の報告書の中身」だけ。カテゴリそのものを無効にするのではない。
+//     あとで記録が足されて再生成すれば、そのカテゴリはまた出てくる。
+//   ★画面から消えるだけでは確定しない。［保存］を押して初めて報告書から消える。
+function deleteResultCard(btn) {
+  const card = btn.closest(".result-card");
+  const badge = card.querySelector(".cat-badge");
+  const catName = badge ? badge.textContent.replace(/^● /, "").trim() : null;
+  if (!catName || !currentResult || !currentResult.categories) return;
+  if (!confirm(
+      "「" + catName + "」をこの月の報告書から外します。\n" +
+      "※保存を押すと確定します。押さなければ元のままです。\n" +
+      "※あとで記録が追加されて再生成すれば、また出てきます。\n" +
+      "よろしいですか？")) return;
+  delete currentResult.categories[catName];
+  if (currentResult.record_counts) delete currentResult.record_counts[catName];
+  card.remove();
+  if (typeof showToast === "function") {
+    showToast("「" + catName + "」を外しました。保存を押すと確定します。");
+  }
 }
 
 function toggleEdit(btn) {

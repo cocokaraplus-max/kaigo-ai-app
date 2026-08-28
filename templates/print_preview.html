@@ -1479,6 +1479,12 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
                 style="font-size:7pt;padding:2px 8px;background:#1a73e8;color:#fff;border:none;border-radius:3px;cursor:pointer;margin-left:4px;">保存</button>
         </span>
     </div>
+    {# no-record-toggle-fix-v1: 「報告なし項目も印刷」がONのとき、印刷前に気づけるようにする #}
+    {% if items.get("no_record", false) %}
+    <div class="no-print" style="background:#fff8e1;border:1px solid #ffd54f;border-radius:4px;padding:6px 10px;font-size:8pt;color:#795548;margin-bottom:2mm;">
+        「報告なし項目も印刷」が <b>ON</b> です。記録の無いカテゴリも印刷されます。書類出力の画面で切り替えられます。
+    </div>
+    {% endif %}
     <table class="rep-monitoring-table" id="mon-table-{{ loop.index if loop is defined else 0 }}">
         {% for cat_name, cat_text in filtered_cats %}
         {% set is_empty = not cat_text or cat_text == "" or "今月このカテゴリの報告はありませんでした" in cat_text %}
