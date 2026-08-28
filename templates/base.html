@@ -272,6 +272,18 @@ body.nav-editing {
             top: auto !important; right: auto !important;
             z-index: auto !important;
         }
+        /* fab-overlap-v1: 右上の「?」と、画面が自分で置く右上のボタンが重なるのを防ぐ。
+           ・「?」が居座るのは【画面の右から56px】まで（ボタン40px + 右の余白16px）。
+           ・本文は最大 --page-max-width で中央寄せ。
+             本文の右端と画面の右端の間の余白 = (100vw - --page-max-width) / 2。
+             PCではこの余白が56pxより広くなるので、ずらす必要がない。
+           ・だから「はみ出してくるぶん」＝ 56px - その余白（マイナスなら0）。
+           使い方: 重なる要素の側で padding-right や right に足す。
+                   例) padding-right: var(--fab-safe, 0px);
+           ★「?」の位置は変えない（HIROさん指示 2026-08-28）。動かすのは画面側。 */
+        :root {
+            --fab-safe: max(0px, calc(56px - max(0px, (100vw - var(--page-max-width, 480px)) / 2)));
+        }
         .settings-fab {
             width: 40px; height: 40px; border-radius: 50%;
             background: #f0f4ff; border: none; cursor: pointer;
@@ -5087,6 +5099,8 @@ function ttResetLang() {
     padding:0; vertical-align:middle; font-family:inherit;
   }
   .tkg-chip:hover{ background:#d2e3fc; }
+  /* guide-link-v1: 案内文の中のリンク */
+  .tkg-link{ color:#1a73e8; font-weight:700; text-decoration:underline; }
 
   /* 「？」を押すと出る吹き出し */
   #tkg-pop{
@@ -5196,6 +5210,21 @@ function ttResetLang() {
       .replace(/"/g,'&quot;');
   }
 
+  // guide-link-v1: 案内文の中にアプリ内リンクを置けるようにする。
+  //   書き方:  [[/patient_profile|利用者プロフィール]]
+  //   ★必ず esc() で無害化してから、この印だけをリンクに変える。
+  //     順番が逆だと、案内文に < > が混ざったときに壊れる。
+  //   ★行き先は「/」で始まるアプリ内のパスだけ。外のURLは受け付けない。
+  //     案内文はサーバ側にしか無いが、ここを緩めると穴になる。
+  //   ★印が書かれていない案内文は、これまでとまったく同じ見た目のまま。
+  function escLink(s){
+    return esc(s).replace(
+      /\[\[(\/[A-Za-z0-9_\-\/]*)\|([^\]|]{1,40})\]\]/g,
+      function(_m, href, label){
+        return '<a href="' + href + '" class="tkg-link">' + label + '</a>';
+      });
+  }
+
   // ---------- 吹き出し ----------
   var pop = null;
   function getPop(){ if(!pop) pop = document.getElementById('tkg-pop'); return pop; }
@@ -5206,7 +5235,7 @@ function ttResetLang() {
 
   function showPop(chip, t, d){
     var p = getPop(); if(!p) return;
-    p.innerHTML = '<div class="tkg-pop-t">' + esc(t) + '</div>' + esc(d);
+    p.innerHTML = '<div class="tkg-pop-t">' + esc(t) + '</div>' + escLink(d);   // guide-link-v1
     p.style.display = 'block';
     p.style.visibility = 'hidden';
     p.style.left = '0px'; p.style.top = '0px';
@@ -5314,7 +5343,7 @@ function ttResetLang() {
     var c = document.getElementById('tkg-card');
 
     var h = '<h3>' + esc(data.title) + '</h3>';
-    if(data.what) h += '<p class="tkg-what">' + esc(data.what) + '</p>';
+    if(data.what) h += '<p class="tkg-what">' + escLink(data.what) + '</p>';   // guide-link-v1
 
     if(data.todos && data.todos.length){
       h += '<div class="tkg-sec">いまの状況</div>';
@@ -5328,7 +5357,7 @@ function ttResetLang() {
       h += '<div class="tkg-sec">この画面の進め方</div>';
       data.flow.forEach(function(s, i){
         h += '<div class="tkg-step"><span class="tkg-num">' + (i+1) + '</span><span>'
-           + esc(s) + '</span></div>';
+           + escLink(s) + '</span></div>';   // guide-link-v1
       });
     }
 
@@ -5336,7 +5365,7 @@ function ttResetLang() {
     if(noAnchor.length){
       h += '<div class="tkg-sec">この画面の入力欄</div>';
       noAnchor.forEach(function(f){
-        h += '<div class="tkg-fld"><b>' + esc(f.t) + '</b>' + esc(f.d) + '</div>';
+        h += '<div class="tkg-fld"><b>' + esc(f.t) + '</b>' + escLink(f.d) + '</div>';   // guide-link-v1
       });
     }
 
