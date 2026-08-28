@@ -12327,6 +12327,72 @@ def _record_care_level_history(supabase, f_code, patient_id, new_level, valid_fr
         return False
 
 
+# ===== goal-history-on-save-v1 : 目標を変えたら、その場で履歴に残す =====
+#
+#   ★介護度(clh-history-v1)とまったく同じ考え方。
+#     「いつから有効か(valid_from)」を持たせて、月ごとの目標はそこから決める。
+#   ★これが無かったので、利用者基本情報で目標を書き換えても
+#     誰が・いつ・何を・いつから変えたのかが一切残らなかった。
+_GOAL_HISTORY_FIELDS = {
+    "short_goal": "短期目標",
+    "long_goal": "長期目標",
+    "short_goal_function": "短期目標（心身機能）",
+    "short_goal_activity": "短期目標（活動）",
+    "short_goal_participation": "短期目標（参加）",
+    "long_goal_function": "長期目標（心身機能）",
+    "long_goal_activity": "長期目標（活動）",
+    "long_goal_participation": "長期目標（参加）",
+    "short_goal_period_from": "短期目標期間(開始)",
+    "short_goal_period_to": "短期目標期間(終了)",
+    "long_goal_period_from": "長期目標期間(開始)",
+    "long_goal_period_to": "長期目標期間(終了)",
+}
+
+
+def _goal_norm(v):
+    """比べるための正規化。None/'none'/'null' は空として扱う。"""
+    s = "" if v is None else str(v).strip()
+    return "" if s.lower() in ("none", "null") else s
+
+
+def _record_goal_history(supabase, f_code, patient_id, user_name,
+                         before, after, valid_from, changed_by):
+    """変わった目標だけ goal_history に残す。戻り値: 残した件数。
+
+    before / after は patient_profiles の辞書（変更前・変更後）。
+    ★変わっていない項目は書かない。履歴が意味の無い行で埋まると読めなくなる。
+    ★valid_from が空なら今日（日本時間）。UTCだと月初・月末に1日ずれる。
+    """
+    rows = []
+    try:
+        vf = (valid_from or "").strip() or datetime.now(tokyo_tz).date().isoformat()
+        for field, label in _GOAL_HISTORY_FIELDS.items():
+            if field not in after:
+                continue          # 今回の保存に含まれていない項目は触らない
+            old_v = _goal_norm((before or {}).get(field))
+            new_v = _goal_norm(after.get(field))
+            if old_v == new_v:
+                continue          # 変化なし
+            rows.append({
+                "facility_code": f_code,
+                "patient_profile_id": str(patient_id),
+                "user_name": user_name,
+                "field": field,
+                "field_label": label,
+                "old_value": old_v,
+                "new_value": new_v,
+                "year_month": None,     # 基本情報からの変更は「評価月」を持たない
+                "valid_from": vf,
+                "changed_by": changed_by,
+            })
+        if rows:
+            supabase.table("goal_history").insert(rows).execute()
+        return len(rows)
+    except Exception as e:
+        print("_record_goal_history error: %s" % e, flush=True)
+        return 0
+
+
 def _ensure_patient_row(supabase, f_code, profile_row):
     """profile_row(dict: user_name/user_name_kana/birth_date/patient_number)に対応する
     patients行を必要なら作成する。戻り値: 作成したら True / 既存なら False。"""
@@ -12405,7 +12471,10 @@ def api_admin_patient_save():
         pid = (data.get("id") or "").strip()
         # idは書き込み対象カラムから除外し、facility_codeは強制
         # clh-history-v1-fix1: care_level_valid_from は履歴用なので patient_profiles へは書かない
-        row = {k: v for k, v in data.items() if k not in ("id", "facility_code", "care_level_valid_from")}
+        # goal-history-on-save-v1: goal_valid_from は履歴用。patient_profiles へは書かない
+        #   （care_level_valid_from と同じ扱い）
+        row = {k: v for k, v in data.items()
+               if k not in ("id", "facility_code", "care_level_valid_from", "goal_valid_from")}
         row["facility_code"] = f_code
         row["updated_at"] = datetime.now(tokyo_tz).isoformat()
         # patient-number-zerofill-v1: 利用者番号を整形
@@ -12430,6 +12499,19 @@ def api_admin_patient_save():
                     _old_name = ((_prev.data or {}).get("user_name") or "").strip()
                 except Exception:
                     _old_name = None
+            # goal-history-on-save-v1: 目標が変わったかを見るため、【更新の前に】控える。
+            #   ★更新したあとでは、変更前の値がもう分からない。
+            _goal_before = None
+            if any(k in row for k in _GOAL_HISTORY_FIELDS):
+                try:
+                    _gb = supabase.table("patient_profiles") \
+                        .select(",".join(list(_GOAL_HISTORY_FIELDS.keys()) + ["user_name"])) \
+                        .eq("id", pid).eq("facility_code", f_code).single().execute()
+                    _goal_before = _gb.data or {}
+                except Exception as _gbe:
+                    print("goal before-fetch error: %s" % _gbe, flush=True)
+                    _goal_before = None
+
             # 更新: id + facility_code の二条件でログイン施設のみ
             res = supabase.table("patient_profiles").update(row) \
                 .eq("id", pid).eq("facility_code", f_code).execute()
@@ -12475,7 +12557,16 @@ def api_admin_patient_save():
             # clh-history-v1: 介護度履歴を記録（変わったときだけ）
             if "care_level" in row:
                 _record_care_level_history(supabase, f_code, pid, row.get("care_level"), data.get("care_level_valid_from"))
-            return jsonify({"status": "success", "id": pid})
+            # goal-history-on-save-v1: 目標が変わっていたら、その場で履歴に残す
+            _goal_logged = 0
+            if _goal_before is not None:
+                _goal_logged = _record_goal_history(
+                    supabase, f_code, pid,
+                    (_new_name or _goal_before.get("user_name") or ""),
+                    _goal_before, row,
+                    data.get("goal_valid_from"),
+                    session.get("my_name", ""))
+            return jsonify({"status": "success", "id": pid, "goal_history_added": _goal_logged})
         else:
             # 新規: insert して id を返す
             res = supabase.table("patient_profiles").insert(row).execute()
@@ -15285,6 +15376,23 @@ def api_goal_apply():
                  "long_goal_activity": "長期目標（活動）", "long_goal_participation": "長期目標（参加）",
                  "short_goal_period_from": "短期目標期間(開始)", "short_goal_period_to": "短期目標期間(終了)",
                  "long_goal_period_from": "長期目標期間(開始)", "long_goal_period_to": "長期目標期間(終了)"}
+        # goal-valid-from-v1: この変更が【いつから有効か】を決める。
+        #   ・呼び出し側が valid_from を指定していれば、それを使う
+        #     （利用者基本情報からの「月途中の変更」で使う）
+        #   ・指定が無く year_month があれば、【評価月の翌月1日】
+        #     ★HIROさん判断(2026-08-28)：7月の評価なら8/1から。
+        #       8月に7月の評価をしていても8/1から。操作した日に左右されない。
+        #   ・どちらも無ければ、今日（日本時間）
+        from datetime import date as _gvf_date   # このリポジトリの書き方に合わせる
+        _valid_from = (data.get("valid_from") or "").strip() or None
+        if not _valid_from:
+            if year_month and re.fullmatch(r"\d{4}-\d{2}", year_month):
+                _vy, _vm = int(year_month[:4]), int(year_month[5:7])
+                _valid_from = (_gvf_date(_vy + 1, 1, 1) if _vm == 12
+                               else _gvf_date(_vy, _vm + 1, 1)).isoformat()
+            else:
+                _valid_from = datetime.now(tokyo_tz).date().isoformat()
+
         pr = supabase.table("patient_profiles").select("*").eq("facility_code", f_code).eq("user_name", user_name).limit(1).execute()
         prof = (pr.data or [None])[0]
         if not prof:
@@ -15304,7 +15412,8 @@ def api_goal_apply():
             upd[field] = new_v
             hist.append({"facility_code": f_code, "patient_profile_id": pid, "user_name": user_name,
                          "field": field, "field_label": LABEL.get(field, field),
-                         "old_value": old_v, "new_value": new_v, "year_month": year_month, "changed_by": my})
+                         "old_value": old_v, "new_value": new_v, "year_month": year_month,
+                         "valid_from": _valid_from, "changed_by": my})   # goal-valid-from-v1
         if not upd:
             return jsonify({"status": "success", "updated": 0, "message": "変更はありません"})
         try:
@@ -15368,6 +15477,66 @@ def _goal_period_config(supabase, f_code):
     except Exception as e:
         print(f"_goal_period_config error: {e}", flush=True)
     return cfg
+
+
+@app.route('/api/goal/history/delete', methods=['POST'])  # goal-history-on-save-v1
+@login_required
+def api_goal_history_delete():
+    """目標の変更履歴を1件消す。間違えて変更したときのため。
+
+    ★消しっぱなしにしない。消したあと、その項目の【いまの目標】を
+      残った履歴から作り直して合わせる。
+      そうしないと「履歴にはもう無いのに、いまの目標だけ変わったまま」になる。
+        ・履歴が残っていれば → 一番新しい変更の new_value
+        ・1件も残らなければ  → 消した行の old_value（＝変わる前に戻す）
+    """
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        hid = str(data.get("id") or "").strip()
+        if not hid:
+            return jsonify({"status": "error", "message": "id が必要です"}), 400
+        supabase = get_supabase()
+
+        # 施設で必ず絞る（他の事業所の履歴を消さないため）
+        r = supabase.table("goal_history").select("*") \
+            .eq("id", hid).eq("facility_code", f_code).limit(1).execute()
+        target = (r.data or [None])[0]
+        if not target:
+            return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+
+        field = target.get("field")
+        user_name = target.get("user_name")
+        supabase.table("goal_history").delete() \
+            .eq("id", hid).eq("facility_code", f_code).execute()
+
+        # 残った履歴から、いまの目標を作り直す
+        rest = supabase.table("goal_history") \
+            .select("new_value, valid_from, changed_at") \
+            .eq("facility_code", f_code).eq("user_name", user_name) \
+            .eq("field", field).execute()
+        rows = rest.data or []
+        if rows:
+            rows.sort(key=lambda x: ((x.get("valid_from") or ""), (x.get("changed_at") or "")))
+            restored = rows[-1].get("new_value")
+        else:
+            restored = target.get("old_value")
+        restored = "" if restored is None else str(restored)
+
+        try:
+            supabase.table("patient_profiles").update({field: restored}) \
+                .eq("facility_code", f_code).eq("user_name", user_name).execute()
+        except Exception as _ue:
+            print("goal history delete: profile restore error: %s" % _ue, flush=True)
+            return jsonify({"status": "error",
+                            "message": "履歴は消えましたが、いまの目標を戻せませんでした"}), 500
+
+        return jsonify({"status": "success", "field": field,
+                        "field_label": target.get("field_label") or field,
+                        "restored": restored})
+    except Exception as e:
+        print("api_goal_history_delete error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route('/api/goal_period_config', methods=['GET'])

@@ -150,7 +150,12 @@
     </div>
     <div class="a2-row2">
       <div><label>対象月</label><input type="month" id="a2-ym" value="{{ this_month }}" onchange="a2Load()"></div>
-      <div><label>評価者</label><input type="text" id="a2-evaluator" value="{{ current_user }}"></div>
+      <div><label>評価者</label><input type="text" id="a2-evaluator" value="{{ current_user }}">
+        {# eval-evaluator-owner-v1: 機能訓練指導員の入口では触らせない（保存もしない）。
+           この欄は入口を選ぶ前から見えているので、送らないだけだと
+           「打ったのに保存されない欄」になってしまう。 #}
+        <div id="a2-evaluator-note" style="display:none;font-size:0.72rem;color:#80868b;margin-top:4px;">評価者は「評価担当者」の入口で設定します</div>
+      </div>
     </div>
   </div>
 
@@ -697,12 +702,27 @@ async function a2AiFill(){
   finally{ btn.disabled = false; btn.textContent = old; }
 }
 
+/* eval-evaluator-owner-v1: 評価者の欄を、機能訓練指導員の入口では触れないようにする。
+   ★保存で送らないだけにすると「打ったのに保存されない欄」になり、かえって分かりにくい。
+     触れないことと、その理由を、その場に出す。 */
+function a2EvaluatorLock(lock){
+  var el = $('a2-evaluator');
+  var note = $('a2-evaluator-note');
+  if(el){
+    el.readOnly = !!lock;
+    el.style.background = lock ? '#f1f3f4' : '';
+    el.style.color = lock ? '#5f6368' : '';
+  }
+  if(note) note.style.display = lock ? '' : 'none';
+}
+
 /* ── 入口の出入りとロック ── */
 async function a2Enter(section){
   A2.section = section;
   $('a2-scA').style.display = 'none';
   $('a2-scB').style.display = (section === 'eval') ? '' : 'none';
   $('a2-scC').style.display = (section === 'ft')   ? '' : 'none';
+  a2EvaluatorLock(section === 'ft');   // eval-evaluator-owner-v1
   window.scrollTo(0,0);
   await a2AcquireLock();
 }
@@ -712,6 +732,7 @@ async function a2Back(){
   A2.section = null;
   $('a2-scB').style.display='none'; $('a2-scC').style.display='none';
   $('a2-scA').style.display='';
+  a2EvaluatorLock(false);              // eval-evaluator-owner-v1
   if(A2.patient) await a2Load();
   window.scrollTo(0,0);
 }
@@ -759,10 +780,14 @@ async function a2Save(section){
   var d = {
     user_name: A2.patient.name,
     year_month: $('a2-ym').value,
-    evaluator_name: ($('a2-evaluator').value || '').trim(),
     section: section
   };
   if(section === 'eval'){
+    // eval-evaluator-owner-v1: 評価者名を書くのは【評価担当者の入口だけ】。
+    //   ★以前は共通ヘッダーの値を両方の入口が送っていたため、
+    //     機能訓練指導員が保存すると評価者名がその人の名前に置き換わっていた
+    //     （欄の初期値が current_user のため）。
+    d.evaluator_name      = ($('a2-evaluator').value || '').trim();
     d.care_classification = A2.cls;
     d.source_data_eval    = $('a2-intake').value;
     d.satisfaction        = $('a2-satis').value;

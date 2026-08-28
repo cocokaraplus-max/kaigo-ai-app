@@ -5230,7 +5230,31 @@ function ttResetLang() {
   //     「?」が次の行に落ちて、宙に浮いて見える（バイタルの検索欄で実際にそうなった）。
   //   置ける所が無い欄は、説明をカードの中に載せる（下の noAnchor）。
   function anchorFor(el){
+    // guide-anchor-nearest-v1
+    //   ★「その欄のすぐ上にある label.form-label」を選ぶ。
+    //     旧: el.closest('.form-group') の【最初の】label を返していた。
+    //     1つの form-group に欄が複数ある画面では、そこに「?」が全部並んだ。
+    //     （/input の休み連絡＝#leave-form-block は4欄で「?」が4個並んでいた。
+    //       休み期間・飛び飛び・理由 の「?」が「誰から聞いたか」に付いていた）
+    //   ★form-group の外までは探しに行かない。遠くの無関係なラベルを拾わないため。
+    //   ★拾うのは label.form-label だけ。class無しの label も拾う案だと、
+    //     /input の「タップして写真・動画を選択」（押すとファイル選択が開く label）に
+    //     「?」が付いてしまい、押した瞬間に写真選択が開く。
+    //   ★見つからなければ、下の従来の処理に落ちる。だから他の画面は変わらない。
     var g = el.closest ? el.closest('.form-group') : null;
+
+    var node = el;
+    while(node && node !== g){
+      var sib = node.previousElementSibling;
+      while(sib){
+        if(sib.tagName === 'LABEL' && sib.classList && sib.classList.contains('form-label')) return sib;
+        sib = sib.previousElementSibling;
+      }
+      if(!g) break;               // 囲いが無いときは1段だけ見る
+      node = node.parentElement;  // g に着いたら while の条件で止まる
+    }
+
+    // ここから下は従来どおり（変えていない）
     if(g){
       var l = g.querySelector('label.form-label') || g.querySelector('label');
       if(l) return l;

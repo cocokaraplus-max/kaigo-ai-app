@@ -18,7 +18,12 @@ Session 38 / Phase 5 で新規作成。
   - DB スキーマ: patient_evaluations 29 カラム、patients 8 カラム
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
+
+# goal-asof-current-month-v1: 「今月かどうか」は日本時間で判定する。
+#   ★UTCで判定すると、月初と月末に1日ずれる。
+#     このリポジトリでは同じ理由で一度事故が起きている（セルフ評価の対象月）。
+_JST = timezone(timedelta(hours=9))
 
 
 # ===========================================================================
@@ -133,7 +138,11 @@ def get_initial_training_goal(supabase, facility_code: str, user_name: str, targ
 
 def get_initial_goal_values(supabase, facility_code: str, user_name: str, target_month: str) -> dict:
     """各軸の目標初期値を返す。
-    前月の patient_evaluations から各軸の目標テキストを取得する。
+
+    どこから読むか（上から順に、後のものが優先）:
+      1. patient_profiles（いまの目標。マスタ）
+      2. goal_history（★過去の月だけ。当時の目標に巻き戻す）
+    ★今月は巻き戻さない。今月は 1 がそのまま正しい。
     要介護: short/long × function/activity/participation の6軸
     要支援/事業対象者: short/long_goal_simple の2軸
     Returns:
@@ -147,22 +156,14 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
         "long_goal_function": "",  "long_goal_activity": "",  "long_goal_participation": "",
         "short_goal_simple": "", "long_goal_simple": "",
     }
-    try:
-        res = supabase.table("patient_evaluations") \
-            .select(",".join(result.keys())) \
-            .eq("facility_code", facility_code) \
-            .eq("user_name", user_name) \
-            .lt("year_month", target_month) \
-            .order("year_month", desc=True) \
-            .limit(1) \
-            .execute()
-        if res.data and res.data[0]:
-            for key in result:
-                val = res.data[0].get(key)
-                if val:
-                    result[key] = val
-    except Exception:
-        pass
+    # goal-dead-prevmonth-remove-v1: ここには「前月の patient_evaluations から
+    #   目標を読む」処理があったが、patient_evaluations に short_goal_function
+    #   などの列は【存在しない】。2026-08-28に本番で確認：
+    #       column "short_goal_function" does not exist
+    #   問い合わせは毎回エラーになり、except Exception: pass で握りつぶされて
+    #   いた。一度も動いたことがない。読む人を惑わせるので消した。
+    #   目標は下の patient_profiles から読めているので、動きは変わらない。
+    #   ★もし将来「前月の評価から引き継ぐ」を作るなら、まず列を作ること（DDL先行）。
     # goal-period-config-v1: 期間キーを追加(評価テーブルには列が無いのでselect対象外)
     for _pk in ("short_goal_period_from", "short_goal_period_to",
                 "long_goal_period_from", "long_goal_period_to"):
@@ -209,24 +210,57 @@ def get_initial_goal_values(supabase, facility_code: str, user_name: str, target
             "short_goal_period_from": "short_goal_period_from", "short_goal_period_to": "short_goal_period_to",
             "long_goal_period_from": "long_goal_period_from", "long_goal_period_to": "long_goal_period_to",
         }
+        # goal-valid-from-v1: その月に有効だった目標を【適用日】から決める。
+        #   ★「どの月の画面で操作したか(year_month)」ではなく、
+        #     「いつから有効か(valid_from)」で決める。
+        #     操作した画面に左右されなくなる。
+        #     介護度の _care_level_at_month_end と同じ考え方。
+        #
+        #   決め方:
+        #     適用日 <= その月の月末 の変更のうち【最新】の new_value。
+        #     1件も無ければ、一番古い変更の old_value（＝まだ変わる前の値）。
+        #
+        # goal-asof-current-month-v1: 【今月と先の月は巻き戻さない】
+        #   ★巻き戻しの目的は「過去の評価が、後から変えた新しい目標に見えて
+        #     しまう」のを防ぐこと。今月にまで効かせると、逆に
+        #     【いま変更した目標が今月に反映されない】。
+        #   ★2026-08 に実際に起きた：7月の画面から目標を直したのに、
+        #     8月の画面が古いままだった（現場から「変更しても変わらない」）。
+        #     7月からの変更には「7月」のタグが付くので、8月を見るときの
+        #     gte(year_month, '2026-08') に入らず、無視されるため。
+        #   ★今月は「いまの目標（patient_profiles）」がそのまま正しい。
+        if target_month >= datetime.now(_JST).strftime("%Y-%m"):
+            return result
+
         _gh = supabase.table("goal_history") \
-            .select("field, old_value, year_month, changed_at") \
+            .select("field, old_value, new_value, valid_from, changed_at") \
             .eq("facility_code", facility_code) \
             .eq("user_name", user_name) \
-            .gte("year_month", target_month) \
-            .order("year_month") \
-            .order("changed_at") \
             .execute()
-        _seen = set()
+
+        # その月の月末（'YYYY-MM-DD'）
+        _y, _m = int(target_month[:4]), int(target_month[5:7])
+        _next = date(_y + 1, 1, 1) if _m == 12 else date(_y, _m + 1, 1)
+        _month_end = (_next - timedelta(days=1)).isoformat()
+
+        _by_field = {}
         for _row in (_gh.data or []):
-            _rk = _fmap.get(_row.get("field"))
-            if not _rk or _rk in _seen:
-                continue  # 各フィールド最初(=対象月以降で最古の変更)の old_value のみ採用
-            _seen.add(_rk)
-            _ov = _row.get("old_value")
-            if _ov is None or str(_ov).strip().lower() in ("none", "null"):
-                _ov = ""
-            result[_rk] = _ov
+            _f = _row.get("field")
+            if _f in _fmap:
+                _by_field.setdefault(_f, []).append(_row)
+
+        for _f, _rows in _by_field.items():
+            # 適用日の順に並べる。同じ日なら、後から記録したほうを後ろに。
+            _rows.sort(key=lambda r: ((r.get("valid_from") or ""),
+                                      (r.get("changed_at") or "")))
+            _applied = [r for r in _rows if (r.get("valid_from") or "") <= _month_end]
+            if _applied:
+                _v = _applied[-1].get("new_value")      # 効いている中で最新
+            else:
+                _v = _rows[0].get("old_value")          # まだ一度も効いていない
+            if _v is None or str(_v).strip().lower() in ("none", "null"):
+                _v = ""
+            result[_fmap[_f]] = _v
     except Exception:
         pass
 
