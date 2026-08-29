@@ -10,10 +10,18 @@
     margin-bottom: 1rem;
     /* fab-overlap-v1: 右上の「?」と＋ボタンが重なるのを防ぐ */
     padding-right: var(--fab-safe, 0px);
+    /* fab-align-more-v1: 右上の「?」と真横にそろえる。
+       「?」は画面の上から16px（px固定）。本文は 枠線3px + 余白1.5rem から始まる。
+       1.5rem は文字と一緒に伸びるので、その差も文字サイズで変わる。
+       ★数字を並べただけにしない。どこから来た数字かが読めば分かるように書く。 */
+    margin-top: calc(16px - 3px - 1.5rem);
 }
 .task-title { display: flex; align-items: center; gap: 6px; font-size: 1.1rem; font-weight: 800; color: #202124; }
 .task-title .material-symbols-outlined { color: #1a73e8; font-size: 22px; }
 .new-task-btn {
+    /* fab-align-more-v1: 行の中央ではなく上に置く。
+       文字を大きくすると見出しの行だけが高くなり、中央だとボタンが下がるため。 */
+    align-self: flex-start;
     width: 40px; height: 40px; border-radius: 50%;
     background: #1a73e8; border: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
