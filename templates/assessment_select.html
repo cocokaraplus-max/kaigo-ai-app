@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}評価 - TASUKARU{% endblock %}
+{% block nav_assessment %}active{% endblock %}
+
+{# =====================================================================
+   assessment-select-v1 : 評価画面の入口（新旧を選ぶ）
+
+   ★なぜ選択画面を挟むか
+     入口を2つメニューに並べると、どちらを使うのか職員が迷う。
+     ここで1回だけ選んでもらい、次からはその画面へ直行する。
+
+   ★選択は【人】に紐づける（staff_settings の assessment_pref）。
+     端末のブラウザに覚えさせると、共有PCで前の人の選択が残る。
+
+   ★直行させたあとも切り替えられるように、
+     どちらの画面にも「切り替える」リンクを置いてある。
+     ここへ戻りたいときは /assessment-select?ask=1。
+   ===================================================================== #}
+
+{% block extra_style %}
+<style>
+.as-wrap{max-width:560px;margin:0 auto;padding:18px 14px 40px;}
+.as-wrap h2{font-size:1.15rem;font-weight:800;margin:0 0 6px;}
+.as-lead{font-size:.85rem;color:#5f6368;margin:0 0 18px;line-height:1.7;}
+.as-card{display:block;width:100%;text-align:left;background:#fff;border:1.5px solid #dadce0;
+  border-radius:14px;padding:16px;margin-bottom:12px;cursor:pointer;}
+.as-card:active{background:#f8f9fa;}
+.as-card.rec{border-color:#1a73e8;}
+.as-badge{display:inline-block;font-size:.68rem;font-weight:700;color:#fff;background:#1a73e8;
+  border-radius:20px;padding:2px 9px;margin-bottom:8px;}
+.as-ttl{font-size:1rem;font-weight:800;color:#202124;margin-bottom:6px;display:flex;align-items:center;gap:7px;}
+.as-desc{font-size:.82rem;color:#5f6368;line-height:1.7;}
+.as-note{font-size:.76rem;color:#80868b;margin-top:16px;line-height:1.7;}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="as-wrap">
+  <h2>評価</h2>
+  <p class="as-lead">どちらの画面を使いますか。<br>
+    <b>次からは、選んだほうが直接開きます。</b>あとから切り替えられます。</p>
+
+  <button type="button" class="as-card rec" onclick="asChoose('/assessment2')">
+    <span class="as-badge">新しい画面</span>
+    <div class="as-ttl">
+      <span class="material-symbols-outlined" style="color:#1a73e8;">group</span>
+      担当ごとの入口
+    </div>
+    <div class="as-desc">
+      評価担当者と機能訓練指導員で入口が分かれます。<br>
+      自分に関係のある欄だけが出て、<b>2人が同時に書いても消し合いません。</b>
+    </div>
+  </button>
+
+  <button type="button" class="as-card" onclick="asChoose('/assessment')">
+    <div class="as-ttl">
+      <span class="material-symbols-outlined" style="color:#5f6368;">assignment</span>
+      これまでの画面
+    </div>
+    <div class="as-desc">
+      1つの画面で全部を書く、今までのかたちです。<br>
+      使い慣れているほうがよければ、こちらで大丈夫です。
+    </div>
+  </button>
+
+  <div class="as-note">
+    ※ ここでの選びかたは、<b>あなた個人の設定</b>として保存されます。<br>
+    ※ ほかの職員の画面は変わりません。
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// assessment-select-v1
+async function asChoose(path){
+  // 先に覚えてから移動する。覚えるのに失敗しても、移動は必ずする。
+  //   ★ここで止めると「選んだのに何も起きない」画面になってしまう。
+  try{
+    await fetch('/api/me/setting', {
+      method:'PUT', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({key:'assessment_pref', value: path})
+    });
+  }catch(e){ /* 覚えられなくても進む */ }
+  location.href = path;
+}
+</script>
+{% endblock %}

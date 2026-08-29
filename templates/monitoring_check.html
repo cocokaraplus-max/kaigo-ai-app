@@ -17,20 +17,51 @@
 .mc-chip.ng { background:#fce8e6; color:#c5221f; }
 .mc-chip.mut { background:#f1f3f4; color:#5f6368; }
 .mc-lead { font-size:0.8rem; color:#5f6368; line-height:1.6; margin:0 0 12px; }
+/* mc-scroll-fontsize-v1: 文字を大きくすると窓が画面からはみ出すのを直す。
+   ★引き算する量を px から rem にした。
+     引いているのは上の説明文と下の注記＝【文字でできた部分】なので、
+     文字を大きくしたら一緒に伸びるのが正しい。
+     300px固定のままだと、文字を大きくしたとき窓が画面からはみ出していた。
+     19rem = 100%のとき304px（元とほぼ同じ）。
+     実測（本番86人）：100%で窓419px、130%で窓328px（どちらも画面内）。
+
+   ★overscroll-behavior:none は【外さない】。
+     一度外そうとしたが、record_check.html に
+     「record-check-bounce-v6: 強く払ったときのバウンドで、貼りついた見出し・氏名が
+       一緒に動いて見えていた。contain では自分のバウンドが止まらないので none」
+     と書かれていた。この表も同じ貼りつき方をしているので、外すと
+     iPhoneでバウンドの不具合が戻る。
+     ★CSSには「バウンドは止めるが、端まで来たらページに伝える」という指定が無い。
+       none は両方止め、auto は両方許す。だから片方は諦めるしかない。
+       ここでは【バウンドを止めるほう】を残す（そちらが先に直されていた）。
+     窓が短くなったぶんページの余白が増えるので、表の外を触れば下へ動かせる。 */
 .mc-wrap { overflow:auto; border:1px solid #e6ebf2; border-radius:10px; min-width:0;
-  background:#fff; max-height:calc(100vh - 300px); min-height:240px; overscroll-behavior:none; }
-@supports (height:100dvh){ .mc-wrap{ max-height:calc(100dvh - 300px);} }
+  background:#fff; max-height:calc(100vh - 19rem); min-height:15rem;
+  overscroll-behavior:none; }
+@supports (height:100dvh){ .mc-wrap{ max-height:calc(100dvh - 19rem);} }
 table.mc { border-collapse:separate; border-spacing:0; font-size:0.86rem;
   width:max-content; min-width:100%; table-layout:fixed; }
 table.mc th, table.mc td { border-bottom:1px solid #eef1f5; background:#fff; }
 table.mc td { padding:9px 2px; }
 table.mc thead th { background:#f8fafc; border-bottom:2px solid #e2e8f0;
   position:sticky; top:0; z-index:2; padding:6px 2px 8px; vertical-align:bottom; text-align:center; }
-table.mc col.cat, table.mc thead th.cat { width:38px; min-width:38px; }
+/* vhead-fontsize-v1: 文字サイズを上げると見出しが切れていたのを直す。
+   箱の高さ・幅・字間を px から rem／em にした。文字と同じ比で伸びるので、
+   入る文字数が【どの文字サイズでも12文字】で変わらない。
+   実測（Chromiumで描画して確認）
+     直す前 … 月間 130%で10文字、日次 130%で5文字しか入らなかった
+     直す後 … 100% / 115% / 130% どれも12文字
+   ★100%のときの見た目は今までと同じ（6rem=96px、2.4rem=38.4px）。 */
+table.mc col.cat, table.mc thead th.cat { width:2.4rem; min-width:2.4rem; }
 table.mc .vt { display:flex; justify-content:center; align-items:flex-start;
-  width:100%; height:96px; border-radius:6px; padding:5px 0; box-sizing:border-box; overflow:hidden; }
-table.mc .vt span { writing-mode:vertical-rl; text-orientation:upright;
-  font-size:0.72rem; font-weight:800; letter-spacing:1px; line-height:1.05; }
+  width:100%; height:6rem; border-radius:6px; padding:0.32rem 0; box-sizing:border-box; overflow:hidden; }
+/* vhead-kinsoku-v1: 小書きの「ョ」や長音符「ー」が行頭に来ないようにする。
+   ・直接の子（.vt > span）＝縦書きの本体
+   ・その中の span.nb ＝「前の文字＋小書き文字」のひとかたまり。ここでは折り返さない。
+   ★CSS の line-break:strict は Chromium で効かなかった（実測）。ブラウザ任せにしない。 */
+table.mc .vt > span { writing-mode:vertical-rl; text-orientation:upright;
+  font-size:0.72rem; font-weight:800; letter-spacing:0.08em; line-height:1.05; }
+table.mc .vt span.nb { white-space:nowrap; }
 table.mc col.tot, table.mc thead th.tot-h { width:38px; min-width:38px; }
 table.mc thead th.tot-h { font-size:0.7rem; color:#5f6368; font-weight:800; }
 table.mc .nm { position:sticky; left:0; z-index:3; font-weight:700; text-align:left;
@@ -123,7 +154,28 @@ table.mc tr.gaprow .nm { color:#c5221f; }
         {% for c in cats %}
         <th class="cat" title="{{ c.name }}">
           <div class="vt" style="background:{{ c.color }}20;">
-            <span style="color:{{ c.color }};">{{ c.name[:6] }}</span>
+            {# vhead-fontsize-v1: 6文字で捨てていたのをやめる。
+                 「コミュニケーション」が「コミュニケー」になっていた。
+                 6文字で切っていたのは【帯に高さを付ける前】の名残で、
+                 いまは長い名前は下に伸びず左へ折り返すので切る必要が無い。
+                 実測で12文字までは欠けずに入る（どの文字サイズでも）。
+                 13文字以上のときだけ11文字＋「…」。★黙って捨てない。
+                 フルの名前は上の th の title に入れてある。 #}
+            {# vhead-kinsoku-v1: 小書きの かな と 長音符は行頭に置かない（日本語の禁則）。
+                 前の文字とひとかたまりにして、その間では折り返せないようにする。
+                 コミュニケーション → コ｜ミュ｜ニ｜ケー｜ショ｜ン
+                 ★CSS の line-break:strict は効かず、折り返し位置はブラウザごとに違った。
+                   だからブラウザに任せず、こちらで区切りを決める。 #}
+            {%- set _lbl = c.name if c.name|length <= 12 else c.name[:11] ~ '…' -%}
+            {%- set _cl = [] -%}
+            {%- for _ch in _lbl -%}
+              {%- if _cl and _ch in 'ァィゥェォャュョッヮヵヶぁぃぅぇぉゃゅょっゎー・' -%}
+                {%- set _ = _cl.append(_cl.pop() ~ _ch) -%}
+              {%- else -%}
+                {%- set _ = _cl.append(_ch) -%}
+              {%- endif -%}
+            {%- endfor -%}
+            <span style="color:{{ c.color }};">{% for _c in _cl %}<span class="nb">{{ _c }}</span>{% endfor %}</span>
           </div>
         </th>
         {% endfor %}

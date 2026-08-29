@@ -577,6 +577,23 @@
           </div>
         </div>
         <!-- 要介護用（機能・活動・参加 × 長期・短期） -->
+        <!-- profile-axis-notice-v1: 2軸の欄に目標が残っている方への案内 -->
+        <div id="goal-axis-notice" class="form-grid full" style="display:none;">
+          <div style="grid-column:1/-1;background:#fef7e0;border:1px solid #fdd663;
+                      border-radius:9px;padding:11px 13px;font-size:.82rem;
+                      color:#7a5200;line-height:1.7;">
+            <b>この方は要介護です。目標は下の「機能・活動・参加」に分けて入れてください。</b>
+            <div style="margin-top:8px;font-size:.78rem;">
+              いまの目標（分ける前に入れたもの）
+            </div>
+            <div id="goal-axis-notice-old" style="margin-top:4px;"></div>
+            <div style="margin-top:8px;font-size:.74rem;color:#8a6400;">
+              ※ 下の欄に書き写して保存すると、この案内は出なくなります。<br>
+              ※ 分ける前の目標は自動では消しません。移し終わってから消してください。
+            </div>
+          </div>
+        </div>
+
         <div id="goal-kaigo" class="form-grid full" style="display:none;">
           {% for axis, label in [('function','機能'), ('activity','活動'), ('participation','参加')] %}
           <div class="form-group" style="grid-column:1/-1;">
@@ -800,6 +817,11 @@ document.addEventListener('DOMContentLoaded', () => {
   goalWatchInit();          // goal-valid-from-ui-v1
   goalHistRestore();        // goal-hist-accordion-v1
   loadGoalHistory();        // goal-valid-from-ui-v1
+  // profile-axis-notice-v1: 3軸の欄に打った時点で案内を見直す（保存を待たない）
+  GOAL_AXIS_FIELDS.forEach(function (f) {
+    var el = document.getElementById(f);
+    if (el) el.addEventListener('input', updateGoalAxisNotice);
+  });
 });
 
 // ===== goal-valid-from-ui-v1 : 目標の変更を「いつから」とセットで扱う =====
@@ -984,6 +1006,37 @@ function updateGoalSection() {
   const isSimple = ['事業対象者','要支援1','要支援2'].includes(care);
   document.getElementById('goal-simple').style.display = isSimple ? '' : 'none';
   document.getElementById('goal-kaigo').style.display = isKaigo ? '' : 'none';
+  updateGoalAxisNotice();   // profile-axis-notice-v1
+}
+
+// profile-axis-notice-v1: 要介護なのに、目標が「分ける前の欄」に残っている方へ案内を出す。
+//   ★出す条件は評価画面（a2-goal-axis-guide-v1）とそろえる。
+//     片方だけ条件が違うと、「評価では出るのに、入力画面では出ない」が起きる。
+//   ★3軸に1つでも打った時点で消す。保存を待たない。
+//     打ったのに案内が残っていると、直っていないように見える。
+var GOAL_AXIS_FIELDS = ['short_goal_function','short_goal_activity','short_goal_participation',
+                        'long_goal_function','long_goal_activity','long_goal_participation'];
+var GOAL_SIMPLE_FIELDS = [['short_goal','短期目標'], ['long_goal','長期目標']];
+
+function updateGoalAxisNotice() {
+  var box = document.getElementById('goal-axis-notice');
+  if (!box) return;
+  var care = (document.getElementById('care_level') || {}).value || '';
+  var isKaigo = ['要介護1','要介護2','要介護3','要介護4','要介護5'].indexOf(care) >= 0;
+  function val(id) { var el = document.getElementById(id); return el ? (el.value || '').trim() : ''; }
+  var anyAxis = GOAL_AXIS_FIELDS.some(function (f) { return val(f); });
+  var olds = GOAL_SIMPLE_FIELDS.filter(function (p) { return val(p[0]); });
+  if (!isKaigo || anyAxis || !olds.length) { box.style.display = 'none'; return; }
+  var h = '';
+  olds.forEach(function (p) {
+    var d = document.createElement('div');
+    d.textContent = val(p[0]);
+    h += '<div style="margin-top:5px;"><span style="display:inline-block;background:#fff;'
+       + 'border:1px solid #e0c58a;border-radius:5px;padding:1px 7px;font-size:.72rem;'
+       + 'font-weight:700;margin-right:6px;">' + p[1] + '</span>' + d.innerHTML + '</div>';
+  });
+  document.getElementById('goal-axis-notice-old').innerHTML = h;
+  box.style.display = '';
 }
 function setupGoalPeriodAuto(fromId, toId, kind) {
   const fromEl = document.getElementById(fromId);

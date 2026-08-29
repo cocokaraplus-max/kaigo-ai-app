@@ -34,10 +34,15 @@
 /* record-check-bounce-v6: 強く払ったときの「バウンド」（ラバーバンド）で、貼りついた見出し・氏名が
    一緒に動いて見えていた。バウンド中はスクロール位置が範囲の外に出るので、sticky では止められない。
    `contain` は親へスクロールを伝えないだけで、自分のバウンドは止まらない。`none` で消す。 */
+/* rc-scroll-fontsize-v1: 文字を大きくすると窓が画面からはみ出すのを直す。
+   引いている280pxは【上の説明文と下の注記】＝文字でできた部分の見積もりなので、
+   文字と一緒に伸び縮みする rem にした。17.5rem は100%のとき280px（今までと同じ）。
+   月間（mc-scroll-fontsize-v1）と同じ直し方。
+   ★すぐ上の overscroll-behavior:none は触っていない。外すとバウンドの不具合が戻る。 */
 .rc-wrap { overflow:auto; border:1px solid #e6ebf2; border-radius:10px; min-width:0;
-  background:#fff; max-height:calc(100vh - 280px); min-height:240px;
+  background:#fff; max-height:calc(100vh - 17.5rem); min-height:15rem;
   overscroll-behavior:none; }
-@supports (height: 100dvh) { .rc-wrap { max-height:calc(100dvh - 280px); } }
+@supports (height: 100dvh) { .rc-wrap { max-height:calc(100dvh - 17.5rem); } }
 /* record-check-stick-v4: width:100% だと、列の合計幅が画面より広いとき table-layout:fixed は
    「箱は広げず中身だけはみ出す」。すると枠は溢れていないと判断して横スクロールを作らない。
    中身なりに広がる指定にして、初めて枠が横スクロールの箱になる。 */
@@ -54,15 +59,27 @@ table.rc td { padding:9px 2px; }
 table.rc thead th { background:#f8fafc; border-bottom:2px solid #e2e8f0;
   position:sticky; top:0; z-index:2; padding:6px 2px 8px; vertical-align:bottom;
   text-align:center; }
-table.rc col.cat, table.rc thead th.cat { width:34px; min-width:34px; }
+/* vhead-fontsize-v1: 文字サイズを上げると見出しが切れていたのを直す。
+   箱の高さ・幅・字間を px から rem／em にした。文字と同じ比で伸びるので、
+   入る文字数が【どの文字サイズでも12文字】で変わらない。
+   実測（Chromiumで描画して確認）
+     直す前 … 月間 130%で10文字、日次 130%で5文字しか入らなかった
+     直す後 … 100% / 115% / 130% どれも12文字
+   ★100%のときの見た目は今までと同じ（6rem=96px、2.4rem=38.4px）。 */
+table.rc col.cat, table.rc thead th.cat { width:2.1rem; min-width:2.1rem; }
 
 /* record-check-vhead-v3: 縦書きは行が右→左に流れるので、短い名前は帯の右端に寄ってしまう。
    帯を flex の箱にして、中の文字を水平方向センターに置く。揃えは上（align-items:flex-start）。 */
 table.rc .vt { display:flex; justify-content:center; align-items:flex-start;
-  width:100%; height:96px; border-radius:6px; padding:5px 0; box-sizing:border-box;
+  width:100%; height:6rem; border-radius:6px; padding:0.32rem 0; box-sizing:border-box;
   overflow:hidden; }
-table.rc .vt span { writing-mode:vertical-rl; text-orientation:upright;
-  font-size:0.72rem; font-weight:800; letter-spacing:1px; line-height:1.05; }
+/* vhead-kinsoku-v1: 小書きの「ョ」や長音符「ー」が行頭に来ないようにする。
+   ・直接の子（.vt > span）＝縦書きの本体
+   ・その中の span.nb ＝「前の文字＋小書き文字」のひとかたまり。ここでは折り返さない。
+   ★CSS の line-break:strict は Chromium で効かなかった（実測）。ブラウザ任せにしない。 */
+table.rc .vt > span { writing-mode:vertical-rl; text-orientation:upright;
+  font-size:0.72rem; font-weight:800; letter-spacing:0.08em; line-height:1.05; }
+table.rc .vt span.nb { white-space:nowrap; }
 table.rc col.tot, table.rc thead th.tot-h { width:36px; min-width:36px; }
 table.rc thead th.tot-h { font-size:0.7rem; color:#5f6368; font-weight:800; }
 
@@ -175,7 +192,28 @@ table.rc tr.gaprow .nm { color:#c5221f; }
         {# record-check-vhead-v3: 外側が帯（色）、内側が縦書きの文字。文字は帯の中央に来る #}
         <th class="cat" title="{{ c.name }}">
           <div class="vt" style="background:{{ c.color }}20;">
-            <span style="color:{{ c.color }};">{{ c.name[:6] }}</span>
+            {# vhead-fontsize-v1: 6文字で捨てていたのをやめる。
+                 「コミュニケーション」が「コミュニケー」になっていた。
+                 6文字で切っていたのは【帯に高さを付ける前】の名残で、
+                 いまは長い名前は下に伸びず左へ折り返すので切る必要が無い。
+                 実測で12文字までは欠けずに入る（どの文字サイズでも）。
+                 13文字以上のときだけ11文字＋「…」。★黙って捨てない。
+                 フルの名前は上の th の title に入れてある。 #}
+            {# vhead-kinsoku-v1: 小書きの かな と 長音符は行頭に置かない（日本語の禁則）。
+                 前の文字とひとかたまりにして、その間では折り返せないようにする。
+                 コミュニケーション → コ｜ミュ｜ニ｜ケー｜ショ｜ン
+                 ★CSS の line-break:strict は効かず、折り返し位置はブラウザごとに違った。
+                   だからブラウザに任せず、こちらで区切りを決める。 #}
+            {%- set _lbl = c.name if c.name|length <= 12 else c.name[:11] ~ '…' -%}
+            {%- set _cl = [] -%}
+            {%- for _ch in _lbl -%}
+              {%- if _cl and _ch in 'ァィゥェォャュョッヮヵヶぁぃぅぇぉゃゅょっゎー・' -%}
+                {%- set _ = _cl.append(_cl.pop() ~ _ch) -%}
+              {%- else -%}
+                {%- set _ = _cl.append(_ch) -%}
+              {%- endif -%}
+            {%- endfor -%}
+            <span style="color:{{ c.color }};">{% for _c in _cl %}<span class="nb">{{ _c }}</span>{% endfor %}</span>
           </div>
         </th>
         {% endfor %}

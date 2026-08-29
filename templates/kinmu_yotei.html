@@ -6,7 +6,8 @@
 /* kinmu-yotei-v2: 勤務予定（本人・1ヶ月入力） */
 .ky2-wrap { max-width: 640px; margin: 0 auto; padding: 12px 14px 60px; }
 /* kinmu-back-to-cal-v1: カレンダーへ戻る。calendar.html の「勤務予定を入力する」と同じ配色にして対だと分かるようにする */
-.ky2-back { display:flex; align-items:center; justify-content:center; gap:8px; margin:0 0 12px; padding:11px;
+  /* fab-overlap-tabs-v1: 右上の「?」に右端が隠れていたので、その分だけ右を空ける */
+.ky2-back { display:flex; align-items:center; justify-content:center; gap:8px; margin:0 var(--fab-safe, 0px) 12px 0; padding:11px;
   background:#e8f0fe; border:1.5px solid #aecbfa; border-radius:12px; color:#1a56c4;
   font-weight:800; text-decoration:none; font-size:.95rem; }
 .ky2-back:active { background:#d9e6fd; }

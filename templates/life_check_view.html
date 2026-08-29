@@ -5,7 +5,8 @@
 /* lc-view-page-route-v1: 閲覧専用（印刷・PDF風の清書レイアウト） */
 .lcv-wrap { max-width:760px; margin:0 auto; padding-bottom:80px; }
 /* 入力/記録一覧 共通タブ */
-.lc-tabs { display:flex; gap:0; max-width:760px; margin:0 auto 14px; border:1.5px solid #1a73e8; border-radius:12px; overflow:hidden; }
+  /* fab-overlap-tabs-v1: 右上の「?」に右端が隠れていたので、その分だけ右を空ける */
+.lc-tabs { display:flex; gap:0; max-width:760px; margin:0 auto 14px; border:1.5px solid #1a73e8; border-radius:12px; overflow:hidden; margin-right:var(--fab-safe, 0px); }
 .lc-tab { flex:1; text-align:center; padding:11px 0; font-size:0.9rem; font-weight:700; color:#1a73e8; background:#fff; text-decoration:none; cursor:pointer; }
 .lc-tab.active { background:#1a73e8; color:#fff; }
 .lc-tab + .lc-tab { border-left:1.5px solid #1a73e8; }

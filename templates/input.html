@@ -32,14 +32,18 @@
 .ai-btn-wrap { margin: 0.8rem 0; }
 
 /* ===== 音声録音カード Session 44 ===== */
+/* inp-voice-rem-v1: 音声録音カードが文字サイズの設定を無視していたのを直す。
+   px を rem にした（値は16で割り切れる数なので、100%の見た目は1pxも変わらない）。
+   文字といっしょに並ぶアイコンは em ＝ となりの文字に対する比。文字が伸びれば一緒に伸びる。
+   ★52pxの丸ボタンの中のアイコンは触っていない。丸が px なので、中身だけ伸ばすとはみ出す。 */
 .inp-voice-card { border: 1.5px solid #e0e0e0; border-radius: 12px; background: #fff; overflow: hidden; }
 .inp-v-sep { border-top: 1px solid #f0f0f0; }
 .inp-v-idle { padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
 .inp-v-idle-btn { width: 52px; height: 52px; border-radius: 50%; background: #1a73e8; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; }
 .inp-v-idle-btn::before { content: ''; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid #a8c7fa; }
 .inp-v-idle-btn .material-symbols-outlined { font-size: 24px; color: #fff; }
-.inp-v-idle-text .t1 { font-size: 13px; font-weight: 600; color: #202124; }
-.inp-v-idle-text .t2 { font-size: 11px; color: #9aa0a6; margin-top: 2px; }
+.inp-v-idle-text .t1 { font-size: 0.8125rem; font-weight: 600; color: #202124; }
+.inp-v-idle-text .t2 { font-size: 0.6875rem; color: #9aa0a6; margin-top: 2px; }
 .inp-v-rec { padding: 12px 16px 14px; }
 .inp-v-rec-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .inp-v-rec-btn { width: 52px; height: 52px; border-radius: 50%; background: #fff; border: 2.5px solid #ea4335; flex-shrink: 0; display: flex; align-items: center; justify-content: center; position: relative; cursor: pointer; }
@@ -48,9 +52,9 @@
 .inp-v-ring2 { position: absolute; inset: -15px; border-radius: 50%; border: 1px solid #ea4335; opacity: .15; animation: inpRipple 1.8s ease-out .6s infinite; }
 @keyframes inpRipple { 0%{transform:scale(.85);opacity:.4} 100%{transform:scale(1.05);opacity:0} }
 .inp-v-meta { flex: 1; }
-.inp-v-timer { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; color: #ea4335; }
+.inp-v-timer { font-size: 1.375rem; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1; color: #ea4335; }
 .inp-v-timer.paused { color: #80868b; }
-.inp-v-rec-lbl { font-size: 11px; color: #ea4335; margin-top: 3px; display: flex; align-items: center; gap: 4px; }
+.inp-v-rec-lbl { font-size: 0.6875rem; color: #ea4335; margin-top: 3px; display: flex; align-items: center; gap: 4px; }
 .inp-v-rec-lbl.paused { color: #9aa0a6; }
 .inp-v-dot { width: 6px; height: 6px; border-radius: 50%; background: #ea4335; animation: inpDot 1s ease-in-out infinite alternate; }
 @keyframes inpDot { from{opacity:1} to{opacity:.2} }
@@ -59,32 +63,32 @@
 .inp-v-wbar.flat { animation: none; height: 3px; background: #dadce0; }
 @keyframes inpWave { from{height:3px} to{height:var(--iwh)} }
 .inp-v-actions { display: flex; gap: 8px; }
-.inp-v-act { flex: 1; padding: 8px; border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
-.inp-v-act .material-symbols-outlined { font-size: 15px; }
+.inp-v-act { flex: 1; padding: 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.inp-v-act .material-symbols-outlined { font-size: 1.25em; }
 .inp-v-pause { border: 1.5px solid #dadce0; background: #fff; color: #1a73e8; }
 .inp-v-stop  { border: 1.5px solid #fcc; background: #fff5f5; color: #ea4335; }
 .inp-v-paused { padding: 10px 16px 14px; }
-.inp-v-pb { background: #e8f0fe; border-radius: 8px; padding: 7px 10px; margin-bottom: 10px; font-size: 12px; font-weight: 600; color: #1558d6; display: flex; align-items: center; gap: 5px; }
-.inp-v-pb .material-symbols-outlined { font-size: 14px; }
+.inp-v-pb { background: #e8f0fe; border-radius: 8px; padding: 7px 10px; margin-bottom: 10px; font-size: 0.75rem; font-weight: 600; color: #1558d6; display: flex; align-items: center; gap: 5px; }
+.inp-v-pb .material-symbols-outlined { font-size: 1.17em; }
 .inp-v-paused-btn { width: 52px; height: 52px; border-radius: 50%; background: #f8f9fa; border: 2.5px dashed #dadce0; flex-shrink: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .inp-v-paused-btn .material-symbols-outlined { font-size: 24px; color: #1a73e8; }
-.inp-v-spinner { display: none; align-items: center; gap: 8px; padding: 14px 16px; font-size: 13px; color: #1a73e8; font-weight: 600; }
+.inp-v-spinner { display: none; align-items: center; gap: 8px; padding: 14px 16px; font-size: 0.8125rem; color: #1a73e8; font-weight: 600; }
 .inp-v-spinner.visible { display: flex; }
-.inp-v-spinner-icon { animation: inpSpin 1s linear infinite; font-size: 18px; }
+.inp-v-spinner-icon { animation: inpSpin 1s linear infinite; font-size: 1.38em; }
 @keyframes inpSpin { to { transform: rotate(360deg); } }
 .inp-v-done { padding: 12px 16px 16px; }
 .inp-v-done-hd { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.inp-v-done-title { font-size: 13px; font-weight: 600; color: #137333; display: flex; align-items: center; gap: 5px; }
-.inp-v-done-title .material-symbols-outlined { font-size: 16px; }
-.inp-v-done-chip { font-size: 10px; padding: 2px 8px; border-radius: 99px; background: #e6f4ea; color: #137333; font-weight: 600; display: flex; align-items: center; gap: 3px; }
-.inp-v-done-chip .material-symbols-outlined { font-size: 12px; }
-.inp-v-ta { width: 100%; font-size: 13px; color: #202124; line-height: 1.7; background: #f8f9fa; border: 1.5px solid #e0e0e0; border-radius: 10px; padding: 9px 11px; resize: none; font-family: inherit; margin-bottom: 10px; }
+.inp-v-done-title { font-size: 0.8125rem; font-weight: 600; color: #137333; display: flex; align-items: center; gap: 5px; }
+.inp-v-done-title .material-symbols-outlined { font-size: 1.23em; }
+.inp-v-done-chip { font-size: 0.625rem; padding: 2px 8px; border-radius: 99px; background: #e6f4ea; color: #137333; font-weight: 600; display: flex; align-items: center; gap: 3px; }
+.inp-v-done-chip .material-symbols-outlined { font-size: 1.2em; }
+.inp-v-ta { width: 100%; font-size: 0.8125rem; color: #202124; line-height: 1.7; background: #f8f9fa; border: 1.5px solid #e0e0e0; border-radius: 10px; padding: 9px 11px; resize: none; font-family: inherit; margin-bottom: 10px; }
 .inp-v-ta:focus { outline: none; border-color: #1a73e8; }
 .inp-v-done-actions { display: flex; gap: 8px; }
-.inp-v-retry { flex: 1; padding: 9px; border: 1.5px solid #dadce0; border-radius: 10px; background: #fff; font-size: 12px; font-weight: 600; color: #5f6368; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
-.inp-v-retry .material-symbols-outlined { font-size: 15px; }
-.inp-v-ok { flex: 2; padding: 9px; border: none; border-radius: 10px; background: #1a73e8; font-size: 12px; font-weight: 600; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
-.inp-v-ok .material-symbols-outlined { font-size: 15px; }
+.inp-v-retry { flex: 1; padding: 9px; border: 1.5px solid #dadce0; border-radius: 10px; background: #fff; font-size: 0.75rem; font-weight: 600; color: #5f6368; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.inp-v-retry .material-symbols-outlined { font-size: 1.25em; }
+.inp-v-ok { flex: 2; padding: 9px; border: none; border-radius: 10px; background: #1a73e8; font-size: 0.75rem; font-weight: 600; color: #fff; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.inp-v-ok .material-symbols-outlined { font-size: 1.25em; }
 
 .search-wrapper { position: relative; }
 .search-candidates {

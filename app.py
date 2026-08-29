@@ -2925,7 +2925,10 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/fitness",        "icon": "fitness_center",         "label": "体力・体重",     "need": None},
     {"href": "/life_check",     "icon": "checklist",              "label": "生活機能CHECK",  "need": None},
     {"href": "/calendar",       "icon": "calendar_month",         "label": "カレンダー",     "need": None},
-    {"href": "/assessment",     "icon": "assignment",             "label": "評価",           "need": None},
+    # assessment-select-v1: 入口を選ぶ画面に向ける。
+    #   ★「評価」「評価（新）」と2つ並べない。職員がどちらを使うか迷い、
+    #     迷いはそのまま「使われない機能」になる。
+    {"href": "/assessment-select", "icon": "assignment",          "label": "評価",           "need": None},
     {"href": "/print_output",   "icon": "print",                  "label": "書類出力",       "need": None},
     {"href": "/admin/meetings", "icon": "groups",                 "label": "会議記録",       "need": None, "tier": "pro"},
     {"href": "/tasks",          "icon": "task_alt",               "label": "タスク",         "need": None},
@@ -3015,7 +3018,8 @@ def _plan_block_redirect(tier):  # plan-enforce-v1
 
 
 STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden",
-                      "drawer_pos", "rc_cat_order", "rc_gap_cats")   # 受け付けるキーはこれだけ
+                      "drawer_pos", "rc_cat_order", "rc_gap_cats",
+                      "assessment_pref")   # 受け付けるキーはこれだけ  assessment-select-v1
 
 
 def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
@@ -7671,6 +7675,36 @@ def assessment():
         this_month=this_month,
         current_user=my_name,
     )
+
+
+# ===== assessment-select-v1 : 評価の入口（新旧を選ぶ） =====
+#
+#   ★1回選んだら、次からは選んだ画面へ直行する。
+#     毎回選ばせると、毎日使う画面では邪魔になる。
+#   ★切り替えたいときは /assessment-select?ask=1 で、この画面に戻れる。
+#     どちらの評価画面にも、そこへのリンクを置いてある。
+_ASSESSMENT_PATHS = ("/assessment", "/assessment2")   # 行き先はこの2つだけ
+
+
+@app.route('/assessment-select')
+@login_required
+def assessment_select():
+    """評価の入口。覚えていればそこへ直行、無ければ選んでもらう。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    # ?ask=1 のときは、覚えていても必ず選び直させる
+    if not request.args.get("ask"):
+        try:
+            pref = get_staff_setting(get_supabase(), f_code, my_name, "assessment_pref")
+        except Exception as e:
+            print("[assessment-select] 設定の読み取りに失敗: %s" % e, flush=True)
+            pref = None
+        # ★★覚えている値をそのまま redirect に渡さない。
+        #   決め打ちの2つに含まれるときだけ飛ばす。
+        #   そうしないと、値が書き換えられたときに外のURLへ飛ばす入口になる。
+        if pref in _ASSESSMENT_PATHS:
+            return redirect(pref)
+    return render("assessment_select.html")
 
 
 # ===== eval-two-entrances-v1 : 担当ごとに入口を分けた評価画面（新） =====

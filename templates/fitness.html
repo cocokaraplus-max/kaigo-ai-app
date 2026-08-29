@@ -66,7 +66,8 @@
 .pick-list div { padding:10px 12px; font-size:0.85rem; cursor:pointer; border-bottom:1px solid #f1f3f4; }
 .pick-list div:hover { background:#e8f0fe; }
 /* fitness-tab-ui-v1 */
-.fit-tabs { display:flex; gap:0; margin-bottom:14px; border-bottom:2px solid #e0e0e0; }
+  /* fab-overlap-tabs-v1: 右上の「?」に右端が隠れていたので、その分だけ右を空ける */
+.fit-tabs { display:flex; gap:0; margin-bottom:14px; border-bottom:2px solid #e0e0e0; margin-right:var(--fab-safe, 0px); }
 .fit-tab { flex:1; text-align:center; padding:12px 0; font-size:0.95rem; font-weight:700; color:#5f6368; cursor:pointer; border-bottom:3px solid transparent; margin-bottom:-2px; user-select:none; }
 .fit-tab.active { color:#1a73e8; border-bottom-color:#1a73e8; }
 .fc-toolbar { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:14px; }

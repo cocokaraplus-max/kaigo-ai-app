@@ -22,6 +22,11 @@
 .a2-chosen button{border:none;background:none;color:#5f6368;font-size:1.05rem;cursor:pointer;}
 .a2-row2{display:flex;gap:10px;margin-bottom:14px;}
 .a2-row2>div{flex:1;}
+/* a2-entry-clarity-v1: 対象月と評価者の枠がずれていた。
+   対象月は input[type=month] で、ブラウザが独自の見た目を付けるぶん背が高くなる
+   （実測 対象月43px / 評価者37px）。両方に同じ高さを指定して揃える。
+   ★height ではなく min-height。height だと、文字を大きくする設定で中身がはみ出す。 */
+.a2-row2 input[type=text],.a2-row2 input[type=month]{min-height:44px;line-height:1.3;}
 .a2-hint{background:#fef7e0;border:1px solid #fdd663;border-radius:10px;padding:11px 13px;
   font-size:.84rem;color:#7a5200;}
 .a2-who{background:#f8f9fa;border:1px solid #e8eaed;border-radius:12px;padding:12px 14px;margin-bottom:14px;}
@@ -137,7 +142,14 @@
 
   {# 利用者・対象月・評価者 #}
   <div class="a2-head">
-    <h2>月次評価</h2>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+      <h2 style="margin:0;">月次評価</h2>
+      {# assessment-select-v1: 入口を選び直せるようにしておく #}
+      <a href="/assessment-select?ask=1"
+         style="font-size:.72rem;font-weight:700;color:#1a73e8;text-decoration:none;
+                border:1px solid #d2e3fc;background:#e8f0fe;border-radius:8px;
+                padding:4px 9px;white-space:nowrap;">画面を切り替える</a>
+    </div>
     <div class="a2-pick">
       <label>利用者</label>
       <input type="text" id="a2-search" placeholder="名前・ふりがな・カルテ番号で検索"
@@ -179,7 +191,8 @@
                  stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><path d="M12 18v4"/></svg>
           </div>
           <div class="tt">
-            <div class="t1">ご本人に聞いて記録する</div>
+            <!-- tkg-anchor-optin-v1: このカードの「?」をここに付ける -->
+            <div class="t1" data-tkg-anchor="a2-entEval">ご本人に聞いて記録する</div>
             <div class="t2">目標がどこまでできたか・聞き取り・満足度・ご要望・体重</div>
           </div>
           <span class="a2-chip" id="a2-chipEval">—</span>
@@ -194,7 +207,8 @@
                  stroke-linecap="round" stroke-linejoin="round"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1L12 21l7.7-7.6 1.1-1a5.5 5.5 0 0 0 0-7.8z"/></svg>
           </div>
           <div class="tt">
-            <div class="t1">体の評価を記録する</div>
+            <!-- tkg-anchor-optin-v1: このカードの「?」をここに付ける -->
+            <div class="t1" data-tkg-anchor="a2-entFt">体の評価を記録する</div>
             <div class="t2">体の状態を見て記録し、報告文を作る</div>
           </div>
           <span class="a2-chip" id="a2-chipFt">—</span>
@@ -442,6 +456,8 @@ async function a2Load(){
   var ym = $('a2-ym').value;
   $('a2-nopatient').style.display='none';
   $('a2-entries').style.display='';
+  // tkg-anchor-optin-v1: 入口カードはここで初めて出るので、「?」を付け直す
+  if(window.tkgRefreshHints) window.tkgRefreshHints();
   ['a2-whoName','a2-bName','a2-cName'].forEach(function(id){ if($(id)) $(id).textContent = A2.patient.name + ' さん'; });
   ['a2-whoYm','a2-bYm','a2-cYm'].forEach(function(id){ if($(id)) $(id).textContent = ym; });
 
@@ -520,7 +536,56 @@ var A2_SIMPLE = [
 ];
 function a2DrawGoals(){
   var rows = (A2.cls === '要介護') ? A2_AXES : A2_SIMPLE;
+  // a2-goal-axis-guide-v1: 要介護なのに、目標が【分ける前の欄】に入ったままの方がいる。
+  //   （2軸の欄に目標が入ったまま要介護になった。DEV 青木利夫さんで確認）
+  //   ★2軸を出して「そのまま評価できる」ようにしてはいけない（HIROさん指摘 2026-08-29）。
+  //     そのまま評価できてしまうと、2軸のまま運用が続き、いつまでも直らない。
+  //   ★正しくは「3軸で登録してください」と促す。
+  //     ただし、いまの目標を消すと、何を振り分ければよいか分からなくなる。
+  //     だから【参考として上に出す】。書き写す元が要る。
+  //   ★3軸に1つでも入れば、この案内は自動的に消える（出す条件がそれ）。
+  var needAxis = false;
+  if (rows === A2_AXES) {
+    var anyAxis = A2_AXES.some(function (x) { return (A2.initial[x[0]] || '').trim(); });
+    var anySimple = A2_SIMPLE.some(function (x) { return (A2.initial[x[0]] || '').trim(); });
+    needAxis = (!anyAxis && anySimple);
+  }
   var h = '', term = '';
+  if (needAxis) {
+    var oldGoals = '';
+    A2_SIMPLE.forEach(function (x) {
+      var t = (A2.initial[x[0]] || '').trim();
+      if (!t) return;
+      oldGoals += '<div style="margin-top:6px;"><span style="display:inline-block;'
+                + 'background:#fff;border:1px solid #e0c58a;border-radius:5px;'
+                + 'padding:1px 7px;font-size:.72rem;font-weight:700;margin-right:6px;">'
+                + esc(x[4]) + '</span>' + esc(t) + '</div>';
+    });
+    // ★リンク先は、その人の利用者情報。A2.patient.id は patient_profiles の id。
+    var pid = (A2.patient && A2.patient.id) ? String(A2.patient.id) : '';
+    h += '<div style="background:#fef7e0;border:1px solid #fdd663;border-radius:9px;'
+       + 'padding:11px 13px;font-size:.82rem;color:#7a5200;margin-bottom:12px;line-height:1.7;">'
+       + '<b>この方は要介護です。目標は「機能・活動・参加」の3つに分けて登録してください。</b>'
+       // ★どこに入力するのかを必ず書く（HIROさん指摘 2026-08-29）。
+       //   書かないと、目の前の3軸の欄に打ち込んでしまう。
+       //   この画面の欄は「評価のときに目標を変える」ためのもので、
+       //   目標そのものの登録場所ではない。
+       + '<div style="margin-top:8px;background:#fff;border:1px solid #e0c58a;'
+       + 'border-radius:7px;padding:8px 10px;font-size:.78rem;line-height:1.7;">'
+       + '★登録する場所は<b>利用者情報</b>です。<b>この画面では登録できません。</b><br>'
+       + 'この画面の軸ごとの入力欄は、<b>評価のときに目標を変える</b>ためのものです。'
+       + '</div>'
+       + '<div style="margin-top:10px;font-size:.78rem;">いまの目標（分ける前）</div>'
+       + oldGoals
+       + '<div style="margin-top:10px;">'
+       + '<a href="/patient_profile' + (pid ? ('?id=' + encodeURIComponent(pid)) : '') + '"'
+       + ' style="display:inline-block;background:#1a73e8;color:#fff;text-decoration:none;'
+       + 'font-weight:700;font-size:.8rem;border-radius:8px;padding:7px 13px;">'
+       + '利用者情報で目標を入れる</a></div>'
+       + '<div style="margin-top:8px;font-size:.74rem;color:#8a6400;">'
+       + '※ 3つの軸に入れて保存すると、この案内は出なくなります。</div>'
+       + '</div>';
+  }
   rows.forEach(function(x){
     if(x[3] !== term){ term = x[3];
       h += '<div class="a2-term">'+esc(term)+'目標</div>'; }
