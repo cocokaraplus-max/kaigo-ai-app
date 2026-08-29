@@ -18825,6 +18825,270 @@ def admin_timecard_device_revoke():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ===== login-device-admin-v1 : ログインに使う端末の登録と管理 =====
+#   設計_LINE承認ログイン.md の §4 / §7。
+#   打刻端末（timecard_devices）と同じ考え方にそろえる。
+#   管理者が見慣れた形にすること自体が、間違いの少なさになる。
+#
+#   ★この段階では、既存のログインに1行も触らない。
+#     表とこの画面だけ先に作る。承認ログイン本体（/shared-login）は次の回。
+#
+#   ★「確かめられなかった」は、すべて【通さない】側に倒す。
+#     端末を通すことは、そのままログインを通すこと。
+#     通信が落ちたのを「登録が無い」と読むと、
+#       申請のとき … 同じ端末をもう1件作ってしまう
+#       判定のとき … 未承認の端末を通してしまう
+#     どちらも起きてはいけない。
+
+# 端末の印の形。クライアントが作るので、こちら側で形を決めておく。
+_LOGIN_DEVICE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+# 1施設あたり、承認待ちで置いておける数。
+# ★申請の入口はログイン不要なので、上限が無いと管理画面が埋まる。
+#   埋まると本物の申請を見落とす。見落としは「通らない」ではなく「見ない」になるので危ない。
+_LOGIN_DEVICE_MAX_PENDING = 20
+_LOGIN_DEVICE_BUSY = {
+    "status": "error",
+    "message": "いま確認できませんでした。時間をおいて、もう一度お試しください。",
+}
+
+
+def _login_device_find(supabase, f_code, token):
+    """端末を1件さがす。返り値は (行, 確かめられたか)。
+
+    ★「無かった」と「聞けなかった」を必ず分ける。
+      ここを1つの返り値にまとめると、通信の失敗が「登録が無い」に化ける。
+    """
+    try:
+        res = (supabase.table("login_devices").select("*")
+               .eq("facility_code", f_code).eq("device_token", token)
+               .limit(1).execute())
+        rows = res.data or []
+        return (rows[0] if rows else None), True
+    except Exception as e:
+        print("[login-device] 端末の確認に失敗: %s" % e, flush=True)
+        return None, False
+
+
+def login_device_is_active(supabase, f_code, token):
+    """この端末は使ってよいか。
+
+    ★確かめられなかったときは False。つまり【使わせない】。
+      次の回（/shared-login）から呼ぶ。ここでは定義だけ置く。
+    """
+    row, checked = _login_device_find(supabase, f_code, token)
+    if not checked or not row:
+        return False
+    return bool(row.get("is_active")) and not row.get("revoked_at")
+
+
+@app.route("/api/shared-login/device/request", methods=["POST"])
+def shared_login_device_request():
+    """端末の登録申請。★ログインしていなくても呼べる（申請するだけ）。
+
+    実際に使えるようになるのは、管理者が許可したあと。
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        f_code = (data.get("facility_code") or "").strip()
+        label = (data.get("label") or "").strip()[:40]
+        who = (data.get("requested_by") or "").strip()[:40]
+
+        if not token or not f_code:
+            return jsonify({"status": "error",
+                            "message": "端末の印と施設コードが必要です。"}), 400
+        # ★① 印の形を決めておく。緩くすると変な文字がそのまま入る。
+        if not _LOGIN_DEVICE_TOKEN_RE.match(token):
+            return jsonify({"status": "error",
+                            "message": "端末の印の形が正しくありません。"}), 400
+
+        supabase = get_supabase()
+
+        # ★② 実在する施設コードでなければ作らない。
+        #   ここはログイン不要の入口なので、緩いと
+        #   でたらめな施設コードで行をいくらでも作られてしまう。
+        try:
+            fac = (supabase.table("facilities").select("facility_code")
+                   .eq("facility_code", f_code).limit(1).execute())
+        except Exception as e:
+            print("[login-device] 施設の確認に失敗: %s" % e, flush=True)
+            return jsonify(_LOGIN_DEVICE_BUSY), 503
+        if not (fac.data or []):
+            # ★どの施設コードが在るかを教えない。「違います」だけ返す。
+            return jsonify({"status": "error", "message": "施設コードが違います。"}), 400
+
+        row, checked = _login_device_find(supabase, f_code, token)
+        if not checked:
+            return jsonify(_LOGIN_DEVICE_BUSY), 503
+        if row:
+            if row.get("revoked_at"):
+                return jsonify({"status": "ok",
+                                "message": "この端末は取り消されています。管理者にご連絡ください。"})
+            if row.get("is_active"):
+                return jsonify({"status": "ok", "message": "この端末はすでに使えます。"})
+            return jsonify({"status": "ok",
+                            "message": "申請ずみです。管理者の承認をお待ちください。"})
+
+        # ★③ 承認待ちが多すぎるときは受け付けない。
+        try:
+            pend = (supabase.table("login_devices").select("id")
+                    .eq("facility_code", f_code).eq("is_active", False)
+                    .is_("revoked_at", "null").execute())
+        except Exception as e:
+            print("[login-device] 承認待ちの数を数えられない: %s" % e, flush=True)
+            return jsonify(_LOGIN_DEVICE_BUSY), 503
+        if len(pend.data or []) >= _LOGIN_DEVICE_MAX_PENDING:
+            return jsonify({"status": "error",
+                            "message": "承認待ちの端末が多すぎます。管理者にご連絡ください。"}), 429
+
+        try:
+            supabase.table("login_devices").insert({
+                "facility_code": f_code,
+                "device_token": token,
+                "device_label": label or "新しい端末",
+                "requested_by": who,          # ★自分で名乗った文字。裏づけは無い
+                "is_shared": True,            # ★既定は共有（安全な側）
+                "is_active": False,           # ★許可されるまで使えない
+            }).execute()
+        except Exception as e:
+            print("[login-device] 申請の登録に失敗: %s" % e, flush=True)
+            return jsonify(_LOGIN_DEVICE_BUSY), 503
+
+        return jsonify({"status": "ok",
+                        "message": "申請しました。管理者の承認をお待ちください。"})
+    except Exception as e:
+        print("shared_login_device_request error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _login_device_admin_guard():
+    """管理者かどうか。(施設コード, 自分の名前, supabase, エラー応答) を返す。
+    エラー応答が None でなければ、呼び出し側はそれをそのまま返す。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    if not is_admin_user(supabase, f_code, my_name):
+        return f_code, my_name, supabase, (
+            jsonify({"status": "error", "message": "管理者権限がありません"}), 403)
+    return f_code, my_name, supabase, None
+
+
+@app.route("/admin/login-devices", methods=["GET"])
+@login_required
+def admin_login_devices_page():
+    """ログイン端末の管理画面（管理者だけ）。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    try:
+        if not is_admin_user(get_supabase(), f_code, my_name):
+            return redirect("/admin")
+    except Exception as e:
+        # ★管理者かどうかを確かめられないときは【入れない】。
+        print("[login-device] 管理者の確認に失敗: %s" % e, flush=True)
+        return redirect("/admin")
+    return render("admin_login_devices.html")
+
+
+@app.route("/api/admin/login-devices", methods=["GET"])
+@login_required
+def api_admin_login_devices():
+    """端末の一覧（管理者だけ）。"""
+    try:
+        f_code, my_name, supabase, ng = _login_device_admin_guard()
+        if ng:
+            return ng
+        res = (supabase.table("login_devices").select("*")
+               .eq("facility_code", f_code)
+               .order("created_at", desc=True).execute())
+        return jsonify({"status": "success", "devices": res.data or []})
+    except Exception as e:
+        # ★ここで空の一覧を返さない。
+        #   空を返すと画面は「1台も無い」と見え、承認待ちを見落とす。
+        print("api_admin_login_devices error: %s" % e, flush=True)
+        return jsonify({"status": "error",
+                        "message": "いま一覧を読み込めませんでした。"}), 503
+
+
+@app.route("/api/admin/login-devices/approve", methods=["POST"])
+@login_required
+def api_admin_login_devices_approve():
+    """端末を許可する。名前だけの保存にも使う（管理者だけ）。"""
+    try:
+        f_code, my_name, supabase, ng = _login_device_admin_guard()
+        if ng:
+            return ng
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        label = (data.get("label") or "").strip()[:40]
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        upd = {"is_active": True, "approved_by": my_name,
+               "approved_at": datetime.now(timezone.utc).isoformat(),
+               "revoked_at": None}   # ★取り消し済みを許可し直せるように戻す
+        if label:
+            upd["device_label"] = label
+        (supabase.table("login_devices").update(upd)
+         .eq("id", dev_id).eq("facility_code", f_code).execute())
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_admin_login_devices_approve error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/admin/login-devices/revoke", methods=["POST"])
+@login_required
+def api_admin_login_devices_revoke():
+    """端末を取り消す（管理者だけ）。
+
+    ★行は消さない。いつ誰が取り消したかを残す。
+      消してしまうと、あとで「その端末は何だったのか」を追えなくなる。
+    """
+    try:
+        f_code, my_name, supabase, ng = _login_device_admin_guard()
+        if ng:
+            return ng
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        (supabase.table("login_devices")
+         .update({"is_active": False, "revoked_at": datetime.now(timezone.utc).isoformat()})
+         .eq("id", dev_id).eq("facility_code", f_code).execute())
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_admin_login_devices_revoke error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/admin/login-devices/kind", methods=["POST"])
+@login_required
+def api_admin_login_devices_kind():
+    """みんなで使う（共有）／自分だけ（専用）を切り替える（管理者だけ）。
+
+    ★共有 = 30分さわらなければ自動ログアウト。
+      事務所のPCが勝手に「自分だけ」になっていないかを、ここで見て戻せる。
+    """
+    try:
+        f_code, my_name, supabase, ng = _login_device_admin_guard()
+        if ng:
+            return ng
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        # ★真偽が来ていないときは共有（安全な側）にする。
+        is_shared = bool(data.get("is_shared", True))
+        (supabase.table("login_devices")
+         .update({"is_shared": is_shared, "kind_set_by": my_name,
+                  "kind_set_at": datetime.now(timezone.utc).isoformat()})
+         .eq("id", dev_id).eq("facility_code", f_code).execute())
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_admin_login_devices_kind error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ===== /login-device-admin-v1 =====
+
+
 @app.route("/admin/timecard", methods=["GET"])
 @login_required
 def admin_timecard_page():

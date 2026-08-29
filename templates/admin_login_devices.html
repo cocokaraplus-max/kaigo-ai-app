@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}ログイン端末の管理 - TASUKARU{% endblock %}
+
+{% block extra_style %}
+<style>
+/* login-device-admin-v1: ログインに使える端末の一覧。
+   打刻端末（/admin/timecard のデバイス承認）と同じ考え方でそろえてある。
+   職員が見慣れた形にすること自体が、間違いの少なさになる。 */
+.ld-lead { font-size:0.8rem; color:#5f6368; line-height:1.7; margin:0 0 14px; }
+.ld-warn { background:#fef7e0; border:1px solid #f9dc8f; border-radius:10px;
+  padding:10px 12px; font-size:0.78rem; color:#7a5c00; line-height:1.7; margin:0 0 14px; }
+.ld-sec { font-size:0.9rem; font-weight:800; color:#202124; margin:18px 0 8px;
+  display:flex; align-items:center; gap:6px; }
+.ld-count { font-size:0.75rem; font-weight:700; color:#5f6368;
+  background:#f1f3f4; border-radius:999px; padding:2px 9px; }
+.ld-card { border:1px solid #e6ebf2; border-radius:12px; background:#fff;
+  padding:12px 14px; margin-bottom:10px; }
+.ld-card.pend { border-color:#f9dc8f; background:#fffdf5; }
+.ld-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.ld-name { font-weight:800; font-size:0.92rem; color:#202124; flex:1; min-width:9rem; }
+.ld-meta { font-size:0.74rem; color:#9aa3b2; line-height:1.7; margin-top:4px; }
+.ld-pill { font-size:0.72rem; font-weight:800; border-radius:999px; padding:3px 10px; }
+.ld-pill.on { background:#e6f4ea; color:#137333; }
+.ld-pill.off { background:#f1f3f4; color:#5f6368; }
+.ld-pill.shared { background:#e8f0fe; color:#1558d6; }
+.ld-pill.own { background:#fce8e6; color:#c5221f; }
+.ld-acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.ld-btn { font-size:0.8rem; font-weight:700; border-radius:9px; padding:8px 14px;
+  cursor:pointer; border:1.5px solid #dadce0; background:#fff; color:#5f6368;
+  font-family:inherit; min-height:40px; }
+.ld-btn.go { background:#1a73e8; border-color:#1a73e8; color:#fff; }
+.ld-btn.ng { background:#fff5f5; border-color:#fcc; color:#c5221f; }
+.ld-input { border:1px solid #d6dbe3; border-radius:9px; padding:8px 10px;
+  font-size:0.85rem; font-family:inherit; min-height:40px; flex:1; min-width:8rem; }
+.ld-empty { text-align:center; color:#9aa3b2; padding:22px 0; font-size:0.85rem; }
+.ld-msg { display:none; border-radius:10px; padding:10px 12px; font-size:0.8rem;
+  font-weight:700; margin-bottom:12px; line-height:1.7; }
+.ld-msg.ok { display:block; background:#e6f4ea; color:#137333; }
+.ld-msg.ng { display:block; background:#fce8e6; color:#c5221f; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-title">
+  <span class="material-symbols-outlined">devices</span>
+  ログイン端末の管理
+</div>
+
+<div id="ld-msg" class="ld-msg"></div>
+
+<p class="ld-lead">
+  LINEの承認でログインできる端末の一覧です。<br>
+  <b>許可した端末だけ</b>が職員名の一覧を出せて、承認ログインを使えます。
+</p>
+
+<div class="ld-warn">
+  <b>承認する前に、本人に確かめてください。</b><br>
+  「頼んだ人」は申請した端末が自分で名乗った文字です。<b>裏づけはありません。</b>
+  端末を通すことは、そのままログインを通すことになります。
+  覚えのない申請は、許可せずに取り消してください。
+</div>
+
+<div class="ld-sec">承認待ち <span class="ld-count" id="ld-n-pend">0</span></div>
+<div id="ld-pending"></div>
+
+<div class="ld-sec">使える端末 <span class="ld-count" id="ld-n-active">0</span></div>
+<div id="ld-active"></div>
+
+<div class="ld-sec">取り消した端末 <span class="ld-count" id="ld-n-revoked">0</span></div>
+<div id="ld-revoked"></div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* login-device-admin-v1 */
+(function () {
+  var LD = { rows: [] };
+
+  function msg(text, ok) {
+    var el = document.getElementById('ld-msg');
+    el.textContent = text;
+    el.className = 'ld-msg ' + (ok ? 'ok' : 'ng');
+    if (ok) setTimeout(function () { el.className = 'ld-msg'; }, 4000);
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function jdate(s) {
+    if (!s) return '';
+    var d = new Date(s);
+    if (isNaN(d)) return '';
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' +
+           ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  /* 端末の印は長い文字列。全部出しても読めないので頭だけ出す。
+     ★同じ端末かどうかを目で見比べるためのものなので、短すぎても困る。 */
+  function tokenHead(t) { return esc(String(t || '').slice(0, 8)) + '…'; }
+
+  function card(d) {
+    var pending = !d.is_active && !d.revoked_at;
+    var revoked = !!d.revoked_at;
+    var h = '<div class="ld-card' + (pending ? ' pend' : '') + '">';
+    h += '<div class="ld-row">';
+    h += '<div class="ld-name">' + esc(d.device_label || '（名前なし）') + '</div>';
+    if (revoked)      h += '<span class="ld-pill off">取り消し済み</span>';
+    else if (pending) h += '<span class="ld-pill off">承認待ち</span>';
+    else              h += '<span class="ld-pill on">使えます</span>';
+    if (!revoked) {
+      h += d.is_shared ? '<span class="ld-pill shared">みんなで使う</span>'
+                       : '<span class="ld-pill own">自分だけ</span>';
+    }
+    h += '</div>';
+
+    h += '<div class="ld-meta">端末の印 ' + tokenHead(d.device_token);
+    if (d.requested_by) h += '　／　頼んだ人 <b>' + esc(d.requested_by) + '</b>';
+    h += '<br>申請 ' + esc(jdate(d.created_at));
+    if (d.approved_at) h += '　／　許可 ' + esc(jdate(d.approved_at)) + ' ' + esc(d.approved_by || '');
+    if (d.revoked_at)  h += '　／　取り消し ' + esc(jdate(d.revoked_at));
+    if (d.last_used_at) h += '　／　最後に使ったのは ' + esc(jdate(d.last_used_at));
+    h += '</div>';
+
+    h += '<div class="ld-acts">';
+    if (!revoked) {
+      h += '<input class="ld-input" id="lbl-' + d.id + '" value="' +
+           esc(d.device_label || '') + '" placeholder="事務所PC（受付） など" maxlength="40">';
+      if (pending) h += '<button class="ld-btn go" data-act="approve" data-id="' + d.id + '">許可する</button>';
+      else         h += '<button class="ld-btn" data-act="label" data-id="' + d.id + '">名前を保存</button>';
+      h += '<button class="ld-btn" data-act="kind" data-id="' + d.id + '" data-shared="' +
+           (d.is_shared ? '1' : '0') + '">' +
+           (d.is_shared ? '「自分だけ」にする' : '「みんなで使う」にする') + '</button>';
+      h += '<button class="ld-btn ng" data-act="revoke" data-id="' + d.id + '">取り消す</button>';
+    } else {
+      h += '<button class="ld-btn" data-act="approve" data-id="' + d.id + '">もう一度許可する</button>';
+    }
+    h += '</div></div>';
+    return h;
+  }
+
+  function draw() {
+    var pend = [], act = [], rev = [];
+    LD.rows.forEach(function (d) {
+      if (d.revoked_at) rev.push(d);
+      else if (d.is_active) act.push(d);
+      else pend.push(d);
+    });
+    var sets = [['ld-pending', pend, 'ld-n-pend', '承認待ちの端末はありません。'],
+                ['ld-active', act, 'ld-n-active', 'まだ使える端末がありません。'],
+                ['ld-revoked', rev, 'ld-n-revoked', '取り消した端末はありません。']];
+    sets.forEach(function (s) {
+      document.getElementById(s[2]).textContent = s[1].length;
+      document.getElementById(s[0]).innerHTML =
+        s[1].length ? s[1].map(card).join('') : '<div class="ld-empty">' + s[3] + '</div>';
+    });
+  }
+
+  function load() {
+    fetch('/api/admin/login-devices')
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        /* ★「返ってこなかった」を「1台も無い」と読まない。
+           空の一覧を出すと、承認待ちの端末を見落とす。 */
+        if (!j || j.status !== 'success' || !Array.isArray(j.devices)) {
+          msg((j && j.message) || 'いま一覧を読み込めませんでした。画面を開き直してください。', false);
+          return;
+        }
+        LD.rows = j.devices;
+        draw();
+      })
+      .catch(function () {
+        msg('いま一覧を読み込めませんでした。画面を開き直してください。', false);
+      });
+  }
+
+  function post(url, body, okText) {
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify(body) })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j || j.status !== 'success') {
+          msg((j && j.message) || 'できませんでした。', false);
+          return;
+        }
+        msg(okText, true);
+        load();
+      })
+      .catch(function () { msg('通信できませんでした。', false); });
+  }
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.ld-btn');
+    if (!b) return;
+    var id = b.getAttribute('data-id'), act = b.getAttribute('data-act');
+    var lbl = document.getElementById('lbl-' + id);
+    var label = lbl ? lbl.value.trim() : '';
+
+    if (act === 'approve') {
+      /* ★許可は取り返しがつきにくい。押し間違いで通さないよう、必ず一度聞く。 */
+      if (!confirm('この端末からログインできるようにします。\n\n'
+                 + '頼んだ人に、本人が申請したことを確かめましたか？')) return;
+      post('/api/admin/login-devices/approve', { id: id, label: label }, '許可しました。');
+    } else if (act === 'revoke') {
+      if (!confirm('この端末を使えないようにします。よろしいですか？')) return;
+      post('/api/admin/login-devices/revoke', { id: id }, '取り消しました。');
+    } else if (act === 'label') {
+      post('/api/admin/login-devices/approve', { id: id, label: label }, '名前を保存しました。');
+    } else if (act === 'kind') {
+      var toShared = b.getAttribute('data-shared') === '0';
+      post('/api/admin/login-devices/kind', { id: id, is_shared: toShared },
+           toShared ? '「みんなで使う」にしました。' : '「自分だけ」にしました。');
+    }
+  });
+
+  load();
+})();
+</script>
+{% endblock %}
