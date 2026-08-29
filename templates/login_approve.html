@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% block title %}ログイン承認 - TASUKARU{% endblock %}
+{% block bottom_nav %}{% endblock %}
+
+{% block extra_style %}
+<style>
+/* shared-login-v1: LINEから開く承認ページ。
+   ★開いただけでは承認しない。ここで「承認する」を押して初めて通る。
+     リンクのプレビュー取得や、指が当たっただけで通らないようにするため。 */
+.la-wrap { max-width:24rem; margin:0 auto; text-align:center; }
+.la-h { font-size:1.05rem; font-weight:800; color:#202124; margin:0 0 6px; }
+.la-card { border:1px solid #e6ebf2; border-radius:14px; background:#fff;
+  padding:18px 16px; margin-top:14px; }
+.la-name { font-size:1rem; font-weight:800; color:#202124; }
+.la-code { font-size:2.6rem; font-weight:800; letter-spacing:0.5rem; color:#1a73e8;
+  margin:12px 0 2px; font-variant-numeric:tabular-nums; }
+.la-code-lb { font-size:0.74rem; color:#9aa3b2; }
+.la-warn { background:#fef7e0; border:1px solid #f9dc8f; border-radius:10px;
+  padding:11px 12px; font-size:0.8rem; color:#7a5c00; line-height:1.8;
+  margin:16px 0; text-align:left; }
+.la-btn { width:100%; border:none; border-radius:10px; background:#1a73e8; color:#fff;
+  font-size:1rem; font-weight:800; padding:15px; cursor:pointer; font-family:inherit;
+  min-height:52px; margin-top:10px; }
+.la-btn.deny { background:#fff5f5; color:#c5221f; border:1.5px solid #fcc; }
+.la-btn[disabled] { opacity:.5; cursor:default; }
+.la-state { font-size:0.9rem; color:#5f6368; line-height:1.9; padding:24px 0; }
+.la-state b { color:#202124; }
+.la-done { font-size:1rem; font-weight:800; line-height:1.9; padding:24px 0; }
+.la-done.ok { color:#137333; }
+.la-done.ng { color:#c5221f; }
+.la-note { font-size:0.76rem; color:#9aa3b2; line-height:1.8; margin-top:14px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="la-wrap">
+  <div class="logo-area">
+    <img src="/static/logo.png" alt="TASUKARU"
+         onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
+    <div id="logo-text" class="logo-text" style="display:none">TASUKARU</div>
+  </div>
+
+  <div class="la-h">ログイン承認</div>
+
+  {% if state == "ask" %}
+    <div class="la-card">
+      <div class="la-name">{{ staff_name }} さん</div>
+      <div class="la-code">{{ check_code }}</div>
+      <div class="la-code-lb">確認番号</div>
+    </div>
+
+    <div class="la-warn">
+      <b>パソコンの画面に、この番号と同じ数字が出ていますか。</b><br>
+      同じなら「承認する」を押してください。<br>
+      <b>違うとき・心当たりがないときは、押さないでください。</b>
+      押さなければ3分で切れます。
+    </div>
+
+    <div id="la-ask">
+      <button class="la-btn" id="la-ok">承認する</button>
+      <button class="la-btn deny" id="la-ng">心当たりがない</button>
+    </div>
+    <div id="la-result" style="display:none;"></div>
+    <div class="la-note">
+      このページを開いただけでは、ログインは通っていません。
+    </div>
+
+  {% elif state == "already" %}
+    <div class="la-state">この要求は<b>すでに承認ずみ</b>です。<br>パソコンの画面をご覧ください。</div>
+  {% elif state == "used" %}
+    <div class="la-state">この要求は<b>もう使われました</b>。<br>心当たりがないときは管理者にご連絡ください。</div>
+  {% elif state == "denied" %}
+    <div class="la-state">この要求は<b>断られています</b>。</div>
+  {% elif state == "expired" %}
+    <div class="la-state">3分が過ぎたため<b>無効</b>になりました。<br>パソコンでもう一度お試しください。</div>
+  {% elif state == "busy" %}
+    <div class="la-state">いま確認できませんでした。<br>少し時間をおいて、もう一度開いてください。</div>
+  {% else %}
+    <div class="la-state">この承認リンクは<b>使えません</b>。<br>パソコンでもう一度お試しください。</div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_script %}
+{% if state == "ask" %}
+<script>
+/* shared-login-v1: 承認は POST でしか通らない。 */
+(function () {
+  var T = {{ t | tojson }};
+  var ask = document.getElementById('la-ask');
+  var out = document.getElementById('la-result');
+
+  function done(html, cls) {
+    ask.style.display = 'none';
+    out.style.display = 'block';
+    out.className = 'la-done ' + cls;
+    out.innerHTML = html;
+  }
+
+  function send(action) {
+    document.getElementById('la-ok').disabled = true;
+    document.getElementById('la-ng').disabled = true;
+    fetch('/login/approve', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ t: T, action: action })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j || j.status !== 'success') {
+        document.getElementById('la-ok').disabled = false;
+        document.getElementById('la-ng').disabled = false;
+        done((j && j.message) || 'できませんでした。もう一度お試しください。', 'ng');
+        return;
+      }
+      if (j.result === 'approved') {
+        done('承認しました。<br>パソコンの画面に戻ります。', 'ok');
+      } else {
+        done('断りました。<br>心当たりがないときは、管理者にご連絡ください。', 'ng');
+      }
+    }).catch(function () {
+      document.getElementById('la-ok').disabled = false;
+      document.getElementById('la-ng').disabled = false;
+      done('通信できませんでした。もう一度お試しください。', 'ng');
+    });
+  }
+
+  document.getElementById('la-ok').addEventListener('click', function () { send('approve'); });
+  document.getElementById('la-ng').addEventListener('click', function () { send('deny'); });
+})();
+</script>
+{% endif %}
+{% endblock %}

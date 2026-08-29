@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}承認ログイン - TASUKARU{% endblock %}
+{% block bottom_nav %}{% endblock %}
+
+{% block extra_style %}
+<style>
+/* shared-login-v1: 共有PC用のログイン画面。
+   ★ログインしていない人が見る画面なので、余計なものを出さない。
+   ★端末の印と施設コードは、この端末のブラウザに覚えさせる（localStorage）。
+     覚えさせるのは【印と施設コード】だけ。名前もパスワードも覚えない。 */
+.sl-wrap { max-width:26rem; margin:0 auto; }
+.sl-h { text-align:center; font-size:1.1rem; font-weight:800; color:#202124; margin:0 0 6px; }
+.sl-sub { text-align:center; font-size:0.78rem; color:#9aa3b2; margin:0 0 20px; line-height:1.7; }
+.sl-msg { display:none; border-radius:10px; padding:11px 13px; font-size:0.82rem;
+  font-weight:700; line-height:1.7; margin-bottom:14px; }
+.sl-msg.ok { display:block; background:#e6f4ea; color:#137333; }
+.sl-msg.ng { display:block; background:#fce8e6; color:#c5221f; }
+.sl-msg.info { display:block; background:#e8f0fe; color:#1558d6; }
+.sl-card { border:1px solid #e6ebf2; border-radius:14px; background:#fff; padding:16px; }
+.sl-lb { display:block; font-size:0.78rem; font-weight:700; color:#5f6368; margin:0 0 6px; }
+.sl-in { width:100%; border:1.5px solid #d6dbe3; border-radius:10px; padding:11px 12px;
+  font-size:0.95rem; font-family:inherit; min-height:46px; box-sizing:border-box; }
+.sl-btn { width:100%; border:none; border-radius:10px; background:#1a73e8; color:#fff;
+  font-size:0.95rem; font-weight:800; padding:13px; cursor:pointer; font-family:inherit;
+  min-height:48px; margin-top:12px; }
+.sl-btn[disabled] { background:#c8d6ee; cursor:default; }
+.sl-btn.sub { background:#fff; color:#5f6368; border:1.5px solid #dadce0; }
+.sl-names { display:flex; flex-direction:column; gap:8px; max-height:22rem; overflow:auto; }
+.sl-name { text-align:left; border:1.5px solid #dadce0; border-radius:10px; background:#fff;
+  padding:13px 14px; font-size:0.95rem; font-weight:700; color:#202124; cursor:pointer;
+  font-family:inherit; min-height:48px; display:flex; align-items:center; gap:8px; }
+.sl-name:active { background:#f0f4ff; }
+.sl-name .no-line { margin-left:auto; font-size:0.7rem; font-weight:700; color:#c5221f;
+  background:#fce8e6; border-radius:999px; padding:2px 8px; }
+.sl-wait { text-align:center; padding:10px 0; }
+.sl-code { font-size:2.6rem; font-weight:800; letter-spacing:0.5rem; color:#1a73e8;
+  margin:10px 0 4px; font-variant-numeric:tabular-nums; }
+.sl-code-lb { font-size:0.74rem; color:#9aa3b2; }
+.sl-timer { font-size:0.85rem; font-weight:700; color:#5f6368; margin-top:10px; }
+.sl-old { text-align:center; margin-top:18px; }
+.sl-old a { font-size:0.82rem; color:#1a73e8; font-weight:700; text-decoration:none; }
+.sl-note { font-size:0.74rem; color:#9aa3b2; line-height:1.7; margin-top:10px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="sl-wrap">
+  <div class="logo-area">
+    <img src="/static/logo.png" alt="TASUKARU"
+         onerror="this.style.display='none'; document.getElementById('logo-text').style.display='block'">
+    <div id="logo-text" class="logo-text" style="display:none">TASUKARU</div>
+  </div>
+
+  <div class="sl-h">承認ログイン</div>
+  <div class="sl-sub" id="sl-sub">名前を選ぶと、ご自分のLINEに確認が届きます。</div>
+
+  <div id="sl-msg" class="sl-msg"></div>
+
+  <!-- ① 端末の登録申請（この端末がまだ許可されていないとき） -->
+  <div id="sl-step-register" class="sl-card" style="display:none;">
+    <label class="sl-lb">施設コード</label>
+    <input class="sl-in" id="sl-fc" autocomplete="off" autocapitalize="none" placeholder="例）DEMO001">
+    <label class="sl-lb" style="margin-top:12px;">この端末の名前</label>
+    <input class="sl-in" id="sl-label" maxlength="40" placeholder="例）事務所PC（受付）">
+    <label class="sl-lb" style="margin-top:12px;">あなたのお名前</label>
+    <input class="sl-in" id="sl-who" maxlength="40" placeholder="例）山田 太郎">
+    <button class="sl-btn" id="sl-req-btn">この端末を使えるようにしてもらう</button>
+    <div class="sl-note">
+      管理者が許可すると使えるようになります。<br>
+      許可されるまでは、施設コードとパスワードでログインしてください。
+    </div>
+  </div>
+
+  <!-- ② 名前を選ぶ -->
+  <div id="sl-step-names" style="display:none;">
+    <div class="sl-names" id="sl-name-list"></div>
+  </div>
+
+  <!-- ③ 承認を待つ -->
+  <div id="sl-step-wait" class="sl-card" style="display:none;">
+    <div class="sl-wait">
+      <div style="font-size:0.9rem; font-weight:800; color:#202124;">承認をお待ちください</div>
+      <div class="sl-code" id="sl-code">----</div>
+      <div class="sl-code-lb">確認番号</div>
+      <div class="sl-note" style="text-align:center;">
+        スマホのLINEに届いた番号が<br><b>この番号と同じ</b>ことを確かめてから押してください。
+      </div>
+      <div class="sl-timer" id="sl-timer"></div>
+      <button class="sl-btn sub" id="sl-cancel">やめる</button>
+    </div>
+  </div>
+
+  <div class="sl-old">
+    <a href="/login">施設コードとパスワードでログインする</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+/* shared-login-v1 */
+(function () {
+  var K_TOKEN = 'tasukaru_login_device_token';
+  var K_FC    = 'tasukaru_login_device_fc';
+  var S = { fc: '', token: '', poll: null, tick: null };
+
+  function msg(text, kind) {
+    var el = document.getElementById('sl-msg');
+    if (!text) { el.className = 'sl-msg'; el.textContent = ''; return; }
+    el.textContent = text;
+    el.className = 'sl-msg ' + (kind || 'ng');
+  }
+  function show(id) {
+    ['sl-step-register', 'sl-step-names', 'sl-step-wait'].forEach(function (x) {
+      document.getElementById(x).style.display = (x === id ? 'block' : 'none');
+    });
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  /* 端末の印。この端末のブラウザにだけ残る。
+     ★推測されないよう、ブラウザの乱数（crypto）で作る。 */
+  function makeToken() {
+    var a = new Uint8Array(24);
+    (window.crypto || window.msCrypto).getRandomValues(a);
+    var s = '';
+    for (var i = 0; i < a.length; i++) s += ('0' + a[i].toString(16)).slice(-2);
+    return s;
+  }
+  function store(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  function load(k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } }
+
+  /* ---- ① 端末の登録申請 ---- */
+  function askRegister(pre) {
+    show('sl-step-register');
+    if (pre) msg(pre, 'info');
+    document.getElementById('sl-fc').value = S.fc || load(K_FC);
+  }
+
+  document.getElementById('sl-req-btn').addEventListener('click', function () {
+    var fc = document.getElementById('sl-fc').value.trim();
+    var label = document.getElementById('sl-label').value.trim();
+    var who = document.getElementById('sl-who').value.trim();
+    if (!fc) { msg('施設コードを入れてください。'); return; }
+    var token = load(K_TOKEN) || makeToken();
+    this.disabled = true;
+    fetch('/api/shared-login/device/request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: token, facility_code: fc, label: label, requested_by: who })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      document.getElementById('sl-req-btn').disabled = false;
+      if (!j || j.status !== 'ok') { msg((j && j.message) || '申請できませんでした。'); return; }
+      store(K_TOKEN, token); store(K_FC, fc);
+      msg(j.message, 'ok');
+    }).catch(function () {
+      document.getElementById('sl-req-btn').disabled = false;
+      msg('通信できませんでした。');
+    });
+  });
+
+  /* ---- ② 名前の一覧 ---- */
+  function loadNames() {
+    fetch('/api/shared-login/names?fc=' + encodeURIComponent(S.fc)
+          + '&token=' + encodeURIComponent(S.token))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j) { msg('いま確認できませんでした。'); return; }
+        if (j.status === 'unregistered') { askRegister('この端末はまだ登録されていません。'); return; }
+        if (j.status === 'pending')      { askRegister('管理者の承認をお待ちください。'); return; }
+        if (j.status === 'revoked')      { askRegister(j.message); return; }
+        if (j.status !== 'success' || !Array.isArray(j.names)) {
+          /* ★「返ってこなかった」を「名前が0人」と読まない。
+             空の一覧を出すと、誰も選べず理由も分からない。 */
+          msg((j && j.message) || 'いま確認できませんでした。'
+              + 'しばらくおいてからお試しください。');
+          return;
+        }
+        msg('');
+        document.getElementById('sl-sub').textContent =
+          j.device_label + '　名前を選ぶと、ご自分のLINEに確認が届きます。';
+        var h = j.names.map(function (n) {
+          return '<button class="sl-name" data-name="' + esc(n.name) + '">'
+               + esc(n.name)
+               + (n.line ? '' : '<span class="no-line">LINE未連携</span>')
+               + '</button>';
+        }).join('');
+        document.getElementById('sl-name-list').innerHTML =
+          h || '<div class="sl-note">職員が登録されていません。</div>';
+        show('sl-step-names');
+      })
+      .catch(function () { msg('通信できませんでした。'); });
+  }
+
+  document.getElementById('sl-name-list').addEventListener('click', function (e) {
+    var b = e.target.closest('.sl-name');
+    if (b) requestApproval(b.getAttribute('data-name'));
+  });
+
+  /* ---- ③ 承認を待つ ---- */
+  function requestApproval(name) {
+    msg('');
+    fetch('/api/shared-login/request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fc: S.fc, token: S.token, staff_name: name })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j) { msg('いま確認できませんでした。'); return; }
+      if (j.status === 'no_line' || j.status === 'line_failed') {
+        /* ★ここで行き止まりにしない。旧方式への入口を必ず見せる（設計 §9）。 */
+        msg(j.message, 'ng');
+        return;
+      }
+      if (j.status !== 'sent') { msg((j && j.message) || '送れませんでした。'); return; }
+      document.getElementById('sl-code').textContent = j.check_code;
+      show('sl-step-wait');
+      startWait(j.poll_token, j.ttl || 180);
+    }).catch(function () { msg('通信できませんでした。'); });
+  }
+
+  function stopWait() {
+    if (S.poll) { clearInterval(S.poll); S.poll = null; }
+    if (S.tick) { clearInterval(S.tick); S.tick = null; }
+  }
+
+  function startWait(pollToken, ttl) {
+    var left = ttl;
+    var t = document.getElementById('sl-timer');
+    t.textContent = '残り ' + left + ' 秒';
+    S.tick = setInterval(function () {
+      left -= 1;
+      t.textContent = left > 0 ? ('残り ' + left + ' 秒') : '';
+      if (left <= 0) { stopWait(); show('sl-step-names');
+                       msg('3分が過ぎました。もう一度お試しください。'); }
+    }, 1000);
+
+    S.poll = setInterval(function () {
+      fetch('/api/shared-login/poll?p=' + encodeURIComponent(pollToken))
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j) return;
+          if (j.status === 'approved') { stopWait(); location.href = j.redirect || '/'; return; }
+          if (j.status === 'denied') {
+            stopWait(); show('sl-step-names');
+            msg('「心当たりがない」が押されました。心当たりがない場合は管理者にご連絡ください。');
+            return;
+          }
+          if (j.status === 'expired' || j.status === 'used' || j.status === 'unknown') {
+            stopWait(); show('sl-step-names');
+            msg('もう一度お試しください。');
+          }
+          /* pending / error のときは、そのまま待つ。
+             ★通信が一度失敗しただけで諦めない。3分のあいだは聞き続ける。 */
+        })
+        .catch(function () { /* 待ち続ける */ });
+    }, 2500);
+  }
+
+  document.getElementById('sl-cancel').addEventListener('click', function () {
+    stopWait(); show('sl-step-names'); msg('');
+  });
+
+  /* ---- 入り口 ---- */
+  S.token = load(K_TOKEN);
+  S.fc = load(K_FC);
+  if (!S.token || !S.fc) askRegister(null);
+  else loadNames();
+})();
+</script>
+{% endblock %}
