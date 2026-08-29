@@ -55,8 +55,13 @@ table.mc thead th { background:#f8fafc; border-bottom:2px solid #e2e8f0;
 table.mc col.cat, table.mc thead th.cat { width:2.4rem; min-width:2.4rem; }
 table.mc .vt { display:flex; justify-content:center; align-items:flex-start;
   width:100%; height:6rem; border-radius:6px; padding:0.32rem 0; box-sizing:border-box; overflow:hidden; }
-table.mc .vt span { writing-mode:vertical-rl; text-orientation:upright;
+/* vhead-kinsoku-v1: 小書きの「ョ」や長音符「ー」が行頭に来ないようにする。
+   ・直接の子（.vt > span）＝縦書きの本体
+   ・その中の span.nb ＝「前の文字＋小書き文字」のひとかたまり。ここでは折り返さない。
+   ★CSS の line-break:strict は Chromium で効かなかった（実測）。ブラウザ任せにしない。 */
+table.mc .vt > span { writing-mode:vertical-rl; text-orientation:upright;
   font-size:0.72rem; font-weight:800; letter-spacing:0.08em; line-height:1.05; }
+table.mc .vt span.nb { white-space:nowrap; }
 table.mc col.tot, table.mc thead th.tot-h { width:38px; min-width:38px; }
 table.mc thead th.tot-h { font-size:0.7rem; color:#5f6368; font-weight:800; }
 table.mc .nm { position:sticky; left:0; z-index:3; font-weight:700; text-align:left;
@@ -156,7 +161,21 @@ table.mc tr.gaprow .nm { color:#c5221f; }
                  実測で12文字までは欠けずに入る（どの文字サイズでも）。
                  13文字以上のときだけ11文字＋「…」。★黙って捨てない。
                  フルの名前は上の th の title に入れてある。 #}
-            <span style="color:{{ c.color }};">{{ c.name if c.name|length <= 12 else c.name[:11] ~ '…' }}</span>
+            {# vhead-kinsoku-v1: 小書きの かな と 長音符は行頭に置かない（日本語の禁則）。
+                 前の文字とひとかたまりにして、その間では折り返せないようにする。
+                 コミュニケーション → コ｜ミュ｜ニ｜ケー｜ショ｜ン
+                 ★CSS の line-break:strict は効かず、折り返し位置はブラウザごとに違った。
+                   だからブラウザに任せず、こちらで区切りを決める。 #}
+            {%- set _lbl = c.name if c.name|length <= 12 else c.name[:11] ~ '…' -%}
+            {%- set _cl = [] -%}
+            {%- for _ch in _lbl -%}
+              {%- if _cl and _ch in 'ァィゥェォャュョッヮヵヶぁぃぅぇぉゃゅょっゎー・' -%}
+                {%- set _ = _cl.append(_cl.pop() ~ _ch) -%}
+              {%- else -%}
+                {%- set _ = _cl.append(_ch) -%}
+              {%- endif -%}
+            {%- endfor -%}
+            <span style="color:{{ c.color }};">{% for _c in _cl %}<span class="nb">{{ _c }}</span>{% endfor %}</span>
           </div>
         </th>
         {% endfor %}
