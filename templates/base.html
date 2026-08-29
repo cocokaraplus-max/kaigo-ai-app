@@ -3957,6 +3957,126 @@ document.addEventListener('click', function(e) {
 })();
 </script>
 
+{# ===== idle-logout-v1 : 共有PCの30分自動ログアウト（画面側） =====
+   設計_LINE承認ログイン.md §5。
+
+   ★見張るかどうかは【サーバに聞く】。画面の値では決めない。
+     shared でなければ、この仕掛けは何もしない。
+     本人のスマホ・いつものPCでは1行も動かない。
+
+   ★「操作した」と数えるのは【人が触ったときだけ】。
+     この base.html は30秒ごとに未読バッジを取りに行っているので、
+     通信を「操作」と数えると【誰も触っていないPCが永遠に落ちない】。
+     しかもエラーが出ないので気づけない。だから触ったときだけ知らせる。
+
+   ★実際に降ろすのはサーバ（before_request）。ここは【予告と案内】だけ。
+     画面をいじってこの仕掛けを止めても、ログアウト自体は止められない。 #}
+<div id="tk-idle-box" style="display:none;position:fixed;left:50%;bottom:calc(var(--nav-h, 64px) + 16px);
+     transform:translateX(-50%);z-index:9998;width:calc(100% - 32px);max-width:22rem;
+     background:#fff;border:2px solid #ea4335;border-radius:14px;
+     box-shadow:0 6px 20px rgba(0,0,0,.18);padding:14px 16px;">
+  <div style="font-size:0.92rem;font-weight:800;color:#c5221f;margin-bottom:6px;">
+    まもなくログアウトします
+  </div>
+  <div style="font-size:0.8rem;color:#5f6368;line-height:1.7;">
+    このパソコンは<b>みんなで使う設定</b>です。<br>
+    あと <b id="tk-idle-left">60</b> 秒でログアウトします。
+  </div>
+  <button type="button" id="tk-idle-stay"
+    style="width:100%;margin-top:10px;border:none;border-radius:10px;background:#1a73e8;
+           color:#fff;font-size:0.95rem;font-weight:800;padding:12px;min-height:46px;
+           cursor:pointer;font-family:inherit;">まだ使っています</button>
+  <div style="font-size:0.72rem;color:#9aa3b2;line-height:1.7;margin-top:8px;">
+    書きかけの記録は、ログアウトの直前に退避します。<br>入り直すと戻せます。
+  </div>
+</div>
+
+<script>
+/* idle-logout-v1 */
+(function () {
+  var S = { on: false, limit: 1800, warnAt: 1740, touchMin: 55,
+            last: Date.now(), lastPost: 0, timer: null, shown: false };
+
+  var box = document.getElementById('tk-idle-box');
+  var leftEl = document.getElementById('tk-idle-left');
+
+  function post(cb) {
+    fetch('/api/session/touch', { method: 'POST' })
+      .then(function (r) { return r.json().catch(function () { return null; }); })
+      .then(function (j) {
+        /* ★成功したときだけ時計を戻す。
+           送れていないのに戻すと、画面は元気なのにサーバ側では時間切れ、
+           という食い違いが起きる。 */
+        if (j && j.status === 'success') { S.last = Date.now(); S.lastPost = Date.now(); }
+        if (cb) cb(!!(j && j.status === 'success'));
+      })
+      .catch(function () { if (cb) cb(false); });
+  }
+
+  function onHuman() {
+    if (!S.on) return;
+    var now = Date.now();
+    if (now - S.lastPost < S.touchMin * 1000) return;   /* 送りすぎない */
+    S.lastPost = now;                                    /* 先に立てて連打を防ぐ */
+    post(null);
+  }
+
+  function tick() {
+    if (!S.on) return;
+    var idle = (Date.now() - S.last) / 1000;
+    var left = Math.ceil(S.limit - idle);
+
+    if (left <= 0) {
+      clearInterval(S.timer); S.timer = null;
+      /* ★降りる直前に、書きかけをもう一度退避する。
+         画面ごとに退避のしかたが違うので、各画面が関数を置いていく。 */
+      try {
+        if (typeof window.tkIdleBeforeLogout === 'function') window.tkIdleBeforeLogout();
+      } catch (e) {}
+      setTimeout(function () { location.href = '/shared-login?timeout=1'; }, 400);
+      return;
+    }
+    if (idle >= S.warnAt) {
+      if (!S.shown) { box.style.display = 'block'; S.shown = true; }
+      leftEl.textContent = left;
+    } else if (S.shown) {
+      box.style.display = 'none'; S.shown = false;
+    }
+  }
+
+  document.getElementById('tk-idle-stay').addEventListener('click', function () {
+    var b = this; b.disabled = true; b.textContent = '確認しています…';
+    post(function (ok) {
+      b.disabled = false; b.textContent = 'まだ使っています';
+      if (ok) { box.style.display = 'none'; S.shown = false; }
+      else { b.textContent = 'つながりません。もう一度'; }
+    });
+  });
+
+  /* ★サーバに聞いてから始める。共有端末でなければ何も動かさない。 */
+  fetch('/api/session/state')
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || j.status !== 'success' || !j.shared) return;
+      S.on = true;
+      S.limit = j.limit || 1800;
+      S.warnAt = j.warn_at || 1740;
+      S.touchMin = j.touch_min || 55;
+      S.last = Date.now() - (S.limit - (j.remaining || S.limit)) * 1000;
+      ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(function (ev) {
+        document.addEventListener(ev, onHuman, { passive: true });
+      });
+      /* スクロールは量が多いので、間引いて拾う */
+      var st = 0;
+      document.addEventListener('scroll', function () {
+        var n = Date.now(); if (n - st < 2000) return; st = n; onHuman();
+      }, { passive: true });
+      S.timer = setInterval(tick, 5000);
+    })
+    .catch(function () { /* 聞けなければ何もしない＝落とさない */ });
+})();
+</script>
+
 {% block extra_script %}{% endblock %}
 
 
