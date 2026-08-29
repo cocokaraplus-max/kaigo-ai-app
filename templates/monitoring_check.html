@@ -17,18 +17,27 @@
 .mc-chip.ng { background:#fce8e6; color:#c5221f; }
 .mc-chip.mut { background:#f1f3f4; color:#5f6368; }
 .mc-lead { font-size:0.8rem; color:#5f6368; line-height:1.6; margin:0 0 12px; }
-/* mc-scroll-fontsize-v1: 表の途中から下に動かなくなるのを直す。
-   ★overscroll-behavior:none を外した。
-     「表を触っている間はページを動かさない」つもりの指定だが、
-     表の最後の行まで来たときに動きがページへ伝わらず、そこで止まっていた。
-     実測：表の窓421px に対して中身2877px（86人）、ページ側の余地は70pxしかない。
+/* mc-scroll-fontsize-v1: 文字を大きくすると窓が画面からはみ出すのを直す。
    ★引き算する量を px から rem にした。
      引いているのは上の説明文と下の注記＝【文字でできた部分】なので、
      文字を大きくしたら一緒に伸びるのが正しい。
      300px固定のままだと、文字を大きくしたとき窓が画面からはみ出していた。
-     19rem = 100%のとき304px（元とほぼ同じ）。 */
+     19rem = 100%のとき304px（元とほぼ同じ）。
+     実測（本番86人）：100%で窓419px、130%で窓328px（どちらも画面内）。
+
+   ★overscroll-behavior:none は【外さない】。
+     一度外そうとしたが、record_check.html に
+     「record-check-bounce-v6: 強く払ったときのバウンドで、貼りついた見出し・氏名が
+       一緒に動いて見えていた。contain では自分のバウンドが止まらないので none」
+     と書かれていた。この表も同じ貼りつき方をしているので、外すと
+     iPhoneでバウンドの不具合が戻る。
+     ★CSSには「バウンドは止めるが、端まで来たらページに伝える」という指定が無い。
+       none は両方止め、auto は両方許す。だから片方は諦めるしかない。
+       ここでは【バウンドを止めるほう】を残す（そちらが先に直されていた）。
+     窓が短くなったぶんページの余白が増えるので、表の外を触れば下へ動かせる。 */
 .mc-wrap { overflow:auto; border:1px solid #e6ebf2; border-radius:10px; min-width:0;
-  background:#fff; max-height:calc(100vh - 19rem); min-height:15rem; }
+  background:#fff; max-height:calc(100vh - 19rem); min-height:15rem;
+  overscroll-behavior:none; }
 @supports (height:100dvh){ .mc-wrap{ max-height:calc(100dvh - 19rem);} }
 table.mc { border-collapse:separate; border-spacing:0; font-size:0.86rem;
   width:max-content; min-width:100%; table-layout:fixed; }
