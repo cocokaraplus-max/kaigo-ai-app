@@ -21,12 +21,26 @@
   border-radius:9px;padding:9px 11px;font-size:.88rem;font-weight:700;color:#1558d6;}
 .a2-chosen button{border:none;background:none;color:#5f6368;font-size:1.05rem;cursor:pointer;}
 .a2-row2{display:flex;gap:10px;margin-bottom:14px;}
-.a2-row2>div{flex:1;}
+/* a2-row2-stack-v1: 対象月の枠が となりの評価者に かぶさっていた。
+   input[type=month] は端末によって独自の見た目を持ち、指定より広がる。
+   flexの子は既定で【中身より狭くならない】ので、広がったぶんが はみ出す。
+   ★min-width:0 … はみ出さずに縮められるようにする。
+   ★スマホでは そもそも横に並べない。何px広がっても重なりようがない。 */
+.a2-row2>div{flex:1;min-width:0;}
+@media (max-width:480px){ .a2-row2{flex-direction:column;gap:12px;} }
 /* a2-entry-clarity-v1: 対象月と評価者の枠がずれていた。
    対象月は input[type=month] で、ブラウザが独自の見た目を付けるぶん背が高くなる
    （実測 対象月43px / 評価者37px）。両方に同じ高さを指定して揃える。
    ★height ではなく min-height。height だと、文字を大きくする設定で中身がはみ出す。 */
 .a2-row2 input[type=text],.a2-row2 input[type=month]{min-height:44px;line-height:1.3;}
+/* a2-selfeval-link-v1: セルフ評価への行き方。★remで書く（文字サイズ設定で崩さない） */
+.a2-selink{display:flex;align-items:flex-start;gap:0.65rem;margin:0 0 0.6rem;
+  padding:0.75rem 0.85rem;background:#eef3f7;border:1.5px solid #b6cbdd;border-radius:0.75rem;
+  color:#1b4965;text-decoration:none;}
+.a2-selink .ic{font-size:1.35rem;flex:0 0 auto;margin-top:0.1rem;}
+.a2-selink .tx{flex:1;min-width:0;line-height:1.55;font-size:.88rem;}
+.a2-selink .tx .sub{display:block;font-size:.78rem;color:#5f7b91;margin-top:0.15rem;}
+.a2-selink .ar{font-size:1.2rem;flex:0 0 auto;margin-top:0.15rem;}
 .a2-hint{background:#fef7e0;border:1px solid #fdd663;border-radius:10px;padding:11px 13px;
   font-size:.84rem;color:#7a5200;}
 .a2-who{background:#f8f9fa;border:1px solid #e8eaed;border-radius:12px;padding:12px 14px;margin-bottom:14px;}
@@ -236,6 +250,17 @@
 
     <div class="a2-sec"><h3>2. ご本人に聞く</h3><div class="bd">
       <div class="a2-lab">タブレットや聞き取りで答えてもらった内容を取り込みます</div>
+      {# a2-selfeval-link-v1: ここに出るのは【答え】だけ。
+         質問を作って本人に聞くのは /self-eval の画面。
+         その行き方がこの画面のどこにも無かったので、ここに置く。
+         ★一覧に出るのは、答え終わったもの(answered/confirmed)だけ。
+           「取り込める回答がありません」は、まだ誰も答えていないという意味。 #}
+      <a class="a2-selink" href="/self-eval" onclick="spaNav(event,'/self-eval')">
+        <span class="material-symbols-outlined ic">how_to_reg</span>
+        <span class="tx"><b>まだ聞いていないときは、こちらから</b>
+          <span class="sub">質問を作って、タブレットを渡すか、職員が聞き取ります</span></span>
+        <span class="material-symbols-outlined ar">chevron_right</span>
+      </a>
       <select id="a2-seList" class="a2-sel"><option value="">読み込み中…</option></select>
       <button type="button" class="a2-btn sub" onclick="a2PullSelfEval()">この回答を取り込む</button>
       <div class="a2-note">★下の欄に<b>足します</b>（いまの文章は消しません）。
