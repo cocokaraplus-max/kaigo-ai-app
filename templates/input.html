@@ -1830,11 +1830,20 @@ window._icfShowModal = function(pid, stickies, uname, label){  /* icf-suggest-3c
       .catch(function () { busy = false; });
   }
 
-  /* 自動ログアウトの直前に、もう一度退避する（base.html から呼ばれる） */
-  window.tkIdleBeforeLogout = function () { save(true); };
+  /* draft-shared-only-v1: ここから下は【共有PCで入った人だけ】動かす。
+     ★判定はサーバ（/api/session/state の shared）。画面の値では決めない。
+     ★自動ログアウトと同じ判定にしてある。
+       「30分で落ちる端末＝書きかけが消えうる端末」だけを守る。
+     ★全員に広げるときは、いちばん下の gate を外すだけ。 */
+  function start() {
+    /* 自動ログアウトの直前に、もう一度退避する（base.html から呼ばれる） */
+    window.tkIdleBeforeLogout = function () { save(true); };
 
-  /* 入力中は数秒おきに退避 */
-  setInterval(function () { save(false); }, 5000);
+    /* 入力中は数秒おきに退避 */
+    setInterval(function () { save(false); }, 5000);
+
+    loadDraft();
+  }
 
   /* ---- 戻す／捨てる ---- */
   var bar = document.getElementById('tk-draft-bar');
@@ -1882,6 +1891,7 @@ window._icfShowModal = function(pid, stickies, uname, label){  /* icf-suggest-3c
   form.addEventListener('submit', function () { clearDraft(); });
 
   /* ---- 開いたときに、書きかけがあるか見る ---- */
+  function loadDraft() {
   fetch('/api/draft/get?form_key=' + encodeURIComponent(KEY))
     .then(function (r) { return r.json(); })
     .then(function (j) {
@@ -1903,6 +1913,14 @@ window._icfShowModal = function(pid, stickies, uname, label){  /* icf-suggest-3c
       bar.style.display = 'block';
     })
     .catch(function () {});
+  }
+
+  /* ---- gate: 共有PCで入った人だけ動かす（draft-shared-only-v1） ----
+     ★全員に広げるときは、この fetch をやめて start() をそのまま呼ぶ。 */
+  fetch('/api/session/state')
+    .then(function (r) { return r.json(); })
+    .then(function (j) { if (j && j.status === 'success' && j.shared) start(); })
+    .catch(function () { /* 聞けなければ動かさない */ });
 })();
 </script>
 
