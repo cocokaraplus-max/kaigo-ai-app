@@ -463,7 +463,7 @@
       $('srTripTabs').style.display = 'none';
       $('srDriver').textContent = '';
       $('srBody').innerHTML =
-        '<div class="sr-empty">この日の送迎はありません。<br>配車画面で曜日の送迎表を保存すると、ここに出ます。</div>' + addExtra;
+        '<div class="sr-empty">この日の送迎はありません。<br>配車の画面で曜日の配車を保存すると、ここに出ます。</div>' + addExtra;
       bind();
       return;
     }
@@ -581,8 +581,15 @@
       }
     }
 
+    // soge-driver-per-trip-v1: いま開いている【便】の運転手を出す。
+    //   ★これまでは車に1人しか持っていなかったので、送り便を開いても
+    //     迎え便の人の名前が出ていた。
+    //   ★便に名前が無いときは、これまでどおり車の側の名前に落とす。
+    //     古いデータで名前が【消える】ほうが現場では困る。
+    var _drv = (selTrip && selTrip.driver_name)
+            || (selVehicle && selVehicle.driver_name) || '';
     $('srDriver').textContent = selVehicle
-      ? (selVehicle.driver_name ? ('運転手 ' + selVehicle.driver_name) : '運転手 未設定')
+      ? (_drv ? ('運転手 ' + _drv) : '運転手 未設定')
       : '';
 
     $('srBody').innerHTML = (selTrip ? tripHtml(selTrip, prevOdoEnd) : '') + addExtra;
@@ -629,7 +636,7 @@
           '<span class="sr-trip-time">車が決まっていません</span></div>' +
         '<div class="sr-trip-body">' +
           '<div class="sr-unassigned-note">この人まだ乗る車が決まっていません。' +
-            '配車画面（送迎表）で乗る車を決めてください。</div>' +
+            '配車の画面で乗る車を決めてください。</div>' +
           (un || '<div class="sr-empty">立ち寄りなし</div>') +
         '</div>' +
       '</div>';
