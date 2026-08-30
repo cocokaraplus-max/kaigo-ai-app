@@ -1,0 +1,161 @@
+{# ===== idle-logout-v1 : 記録入力の書きかけを退避する =====
+   設計_LINE承認ログイン.md §5。
+
+   ★30分で落ちるとき、書きかけの記録が消える。現場でいちばん怒られるところ。
+   ★退避先はサーバ（draft_autosaves）。必ず自分の名前で絞って読む。
+     共有PCなので、ここを間違えると【他人の書きかけが見えてしまう】。
+   ★音声の中身（audio_data）は退避しない。大きすぎて表に入らないし、
+     入れてもログインし直したあとに使えない。 #}
+<div id="tk-draft-bar" style="display:none;border:1.5px solid #f9dc8f;background:#fef7e0;
+     border-radius:12px;padding:12px 14px;margin-bottom:12px;">
+  <div style="font-size:0.86rem;font-weight:800;color:#7a5c00;">書きかけが残っています</div>
+  <div id="tk-draft-info" style="font-size:0.76rem;color:#7a5c00;line-height:1.7;margin-top:4px;"></div>
+  <div style="display:flex;gap:8px;margin-top:10px;">
+    <button type="button" id="tk-draft-restore"
+      style="flex:2;border:none;border-radius:9px;background:#1a73e8;color:#fff;
+             font-size:0.86rem;font-weight:800;padding:10px;min-height:42px;
+             cursor:pointer;font-family:inherit;">戻す</button>
+    <button type="button" id="tk-draft-drop"
+      style="flex:1;border:1.5px solid #dadce0;border-radius:9px;background:#fff;color:#5f6368;
+             font-size:0.86rem;font-weight:700;padding:10px;min-height:42px;
+             cursor:pointer;font-family:inherit;">捨てる</button>
+  </div>
+</div>
+
+<script>
+/* idle-logout-v1: 記録入力の一時退避 */
+(function () {
+  var KEY = 'input';
+  var form = document.getElementById('input-form');
+  if (!form) return;
+
+  /* 退避しないもの。
+     ★audio_data は音声そのもの（とても大きい）。photos はファイル。 */
+  var SKIP = { 'audio_data': 1, 'audio_mime': 1, 'photos': 1 };
+
+  function fields() {
+    return Array.prototype.filter.call(
+      form.querySelectorAll('input[name], textarea[name], select[name]'),
+      function (el) {
+        if (el.type === 'file' || el.type === 'submit' || el.type === 'button') return false;
+        return !SKIP[el.name];
+      });
+  }
+
+  function collect() {
+    var o = {};
+    fields().forEach(function (el) {
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        if (el.checked) o[el.name] = el.value;
+      } else if (el.value) {
+        o[el.name] = el.value;
+      }
+    });
+    /* 戻すときに「誰の・いつの記録か」を見せるための控え。
+       ★入力欄ではないので、頭に _ を付けて区別する。 */
+    var ps = document.getElementById('patient-search');
+    if (ps && ps.value) o['_patient_label'] = ps.value;
+    return o;
+  }
+
+  function meaningful(o) {
+    /* 記録の本文か、休み・追加利用の理由が書かれていれば「書きかけ」とみなす。
+       ★日付だけが入っている状態で「書きかけがあります」と出さない。
+         毎回出ると、読まずに押す癖がついて、本当に大事なときに効かなくなる。 */
+    return !!((o.content || '').trim() || (o.leave_reason || '').trim()
+              || (o.extra_reason || '').trim());
+  }
+
+  var lastSent = '';
+  var busy = false;
+
+  function save(force) {
+    var o = collect();
+    if (!meaningful(o)) return;
+    var s = JSON.stringify(o);
+    if (!force && s === lastSent) return;
+    if (busy) return;
+    busy = true;
+    fetch('/api/draft/save', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ form_key: KEY, payload: o })
+    }).then(function (r) { return r.json().catch(function () { return null; }); })
+      .then(function (j) { busy = false; if (j && j.status === 'success') lastSent = s; })
+      .catch(function () { busy = false; });
+  }
+
+  /* 自動ログアウトの直前に、もう一度退避する（base.html から呼ばれる） */
+  window.tkIdleBeforeLogout = function () { save(true); };
+
+  /* 入力中は数秒おきに退避 */
+  setInterval(function () { save(false); }, 5000);
+
+  /* ---- 戻す／捨てる ---- */
+  var bar = document.getElementById('tk-draft-bar');
+
+  function fill(o) {
+    fields().forEach(function (el) {
+      if (!(el.name in o)) return;
+      if (el.type === 'checkbox' || el.type === 'radio') {
+        el.checked = (el.value === o[el.name]);
+      } else {
+        el.value = o[el.name];
+      }
+      /* 画面側が値の変化を見ていることがあるので、変えたことを知らせる */
+      try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (e) {}
+    });
+    if (o['_patient_label']) {
+      var ps = document.getElementById('patient-search');
+      if (ps) ps.value = o['_patient_label'];
+    }
+  }
+
+  function clearDraft() {
+    return fetch('/api/draft/clear', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ form_key: KEY })
+    }).catch(function () {});
+  }
+
+  document.getElementById('tk-draft-restore').addEventListener('click', function () {
+    fill(window.__tkDraft || {});
+    bar.style.display = 'none';
+    clearDraft();
+    lastSent = '';
+  });
+  document.getElementById('tk-draft-drop').addEventListener('click', function () {
+    bar.style.display = 'none';
+    clearDraft();
+    lastSent = '';
+  });
+
+  /* ★保存を押したら退避を消す。
+     消さないと、保存できた記録の書きかけが次に出てきて、
+     同じ記録をもう一度作ってしまう。
+     （保存に失敗したときは、画面に入力がそのまま残るので消えはしない） */
+  form.addEventListener('submit', function () { clearDraft(); });
+
+  /* ---- 開いたときに、書きかけがあるか見る ---- */
+  fetch('/api/draft/get?form_key=' + encodeURIComponent(KEY))
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      /* ★読めなかったときは、何も出さない。
+         「書きかけはありません」とは言わない。読めていないだけかもしれない。 */
+      if (!j || j.status !== 'success' || !j.found) return;
+      var o = j.payload || {};
+      if (!meaningful(o)) return;
+      window.__tkDraft = o;
+      var who = o['_patient_label'] ? ('利用者：' + o['_patient_label']) : '利用者：未選択';
+      var when = '';
+      try {
+        var d = new Date(j.updated_at);
+        if (!isNaN(d)) when = (d.getMonth() + 1) + '/' + d.getDate() + ' '
+          + ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+      } catch (e) {}
+      document.getElementById('tk-draft-info').textContent =
+        who + (when ? ('　最後の入力 ' + when) : '');
+      bar.style.display = 'block';
+    })
+    .catch(function () {});
+})();
+</script>
