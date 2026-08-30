@@ -52,6 +52,10 @@
   padding:0.4rem 0.7rem;font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;
   margin:0 0.4rem 0.4rem 0;}
 .a2-mini[disabled]{opacity:.6;cursor:default;}
+/* eval-delete-v1: 消すボタン。★目立たせない。押し間違えるほうが怖い。 */
+.a2-del{border:1px solid #f3c0bb;background:#fff;color:#c5221f;border-radius:0.5rem;
+  padding:0.4rem 0.8rem;font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;}
+.a2-del[disabled]{opacity:.6;cursor:default;}
 .a2-seq-more{display:inline-block;font-size:.78rem;color:#1558d6;margin-top:0.25rem;}
 .a2-hint{background:#fef7e0;border:1px solid #fdd663;border-radius:10px;padding:11px 13px;
   font-size:.84rem;color:#7a5200;}
@@ -241,6 +245,16 @@
         </div>
         <div class="meta"><span id="a2-metaFt">読み込み中…</span></div>
       </button>
+
+      {# eval-delete-v1: この月の評価を消す。
+         ★入口の画面にだけ置く。中を開いている最中に消せると、
+           自分が書いている画面が足元から消えることになる。
+         ★評価がまだ無い月では出さない（a2Load で出し入れする）。 #}
+      <div id="a2-delWrap" style="display:none;margin-top:14px;text-align:right;">
+        <button type="button" class="a2-del" id="a2-delBtn" onclick="a2DeleteEval()">この月の評価を削除</button>
+        <div style="font-size:.72rem;color:#9aa0a6;margin-top:5px;">
+          報告文・聞き取りメモ・体の評価・目標の達成度が、まとめて消えます（元に戻せません）</div>
+      </div>
     </div>
   </div>
 
@@ -274,6 +288,8 @@
         <div id="a2-seqTools" style="display:none;">
           <button type="button" class="a2-mini" onclick="a2SeqAdd()">＋ 質問を足す</button>
           <button type="button" class="a2-mini" id="a2-seqSaveBtn" onclick="a2SeqSave()">質問を保存</button>
+          {# eval-delete-v1: 質問一式を消す。違う人・違う月で作ってしまったとき用。 #}
+          <button type="button" class="a2-del" id="a2-seqDelBtn" onclick="a2SeqDelete()">この質問を消す</button>
         </div>
         <div id="a2-seqActs"></div>
         <a class="a2-seq-more" href="/self-eval" onclick="spaNav(event,'/self-eval')">これまでのセルフ評価を見る</a>
@@ -519,6 +535,8 @@ async function a2Load(){
   a2DrawStatus();
   a2LoadSelfEvals();
   a2SeqLoad();          // a2-selfeval-make-v1
+  // eval-delete-v1: 評価がある月だけ、削除ボタンを出す
+  if($('a2-delWrap')) $('a2-delWrap').style.display = A2.evalId ? '' : 'none';
   a2LoadAuto();
 }
 
@@ -851,6 +869,46 @@ function a2PullFill(p){
   if(cf.length) msg.push('同じ欄に対する答えが分かれていたので、入れませんでした：\n・'
                        + cf.join('\n・'));
   if(msg.length) alert(msg.join('\n\n') + '\n\nご確認ください。');
+}
+
+/* ── eval-delete-v1: 一旦作ったものを消す ── */
+async function a2DeleteEval(){
+  if(!A2.patient || !A2.evalId){ alert('この月の評価はまだありません。'); return; }
+  var ym = $('a2-ym').value;
+  /* ★誰の何月かを、名前で出して確かめる。
+     「本当に削除しますか？」だけでは、どれを消すのか分からない。 */
+  if(!confirm(A2.patient.name + ' さんの【' + ym + '】の評価を削除します。\n\n'
+            + '報告文・聞き取りメモ・体の評価・目標の達成度が、まとめて消えます。\n'
+            + '★元に戻せません。\n\n削除しますか？')) return;
+  var b = $('a2-delBtn');
+  if(b){ b.disabled = true; b.textContent = '削除中…'; }
+  try{
+    var r = await fetch('/api/patient-evaluation/delete', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({user_name: A2.patient.name, year_month: ym})});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '削除できませんでした'); return; }
+    a2Toast('この月の評価を削除しました。', true);
+    await a2Load();        // 消えたあとの姿を出し直す
+  }catch(e){ alert('削除できませんでした'); }
+  finally{ if(b){ b.disabled = false; b.textContent = 'この月の評価を削除'; } }
+}
+
+async function a2SeqDelete(){
+  if(!A2.seq) return;
+  if(!confirm('ご本人に聞く質問を消します。\n\n'
+            + '★すでに答えてもらった内容があれば、それも消えます。\n\n消しますか？')) return;
+  var b = $('a2-seqDelBtn');
+  if(b){ b.disabled = true; b.textContent = '消しています…'; }
+  try{
+    var r = await fetch('/api/self-eval/delete', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({id: A2.seq.id})});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '消せませんでした'); return; }
+    a2Toast('質問を消しました。', true);
+    await a2SeqLoad();
+  }catch(e){ alert('消せませんでした'); }
+  finally{ if(b){ b.disabled = false; b.textContent = 'この質問を消す'; } }
 }
 
 /* ── a2-selfeval-make-v1: ご本人に聞く質問を、この画面で作る ── */

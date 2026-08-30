@@ -9,6 +9,7 @@ from evaluation_helper import (
     release_edit_lock,
     evaluation_status,
     upsert_patient_evaluation,
+    delete_patient_evaluation,          # eval-delete-v1
     fetch_patient_evaluations,
 )
 from datetime import datetime, timedelta, time as dt_time, timezone
@@ -7783,6 +7784,38 @@ def api_save_patient_evaluation():
                 "editing_by": result.get("editing_by", ""),
             }), status_code
     except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/patient-evaluation/delete', methods=['POST'])   # eval-delete-v1
+@login_required
+def api_patient_evaluation_delete():
+    """その月の評価を消す。作り直したいときのため。★元に戻せない。
+
+    ★施設コードはセッションのものを使う。画面から来た値は使わない。
+      （eval-lock-scope-v1 で、これが無かったために他施設の評価に手が届いた）
+    """
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        data = request.json or {}
+        user_name = (data.get("user_name") or "").strip()
+        ym = (data.get("year_month") or "").strip()
+        if not re.match(r"^\d{4}-\d{2}$", ym):
+            return jsonify({"status": "error", "message": "対象月が正しくありません。"}), 400
+
+        r = delete_patient_evaluation(get_supabase(), f_code, user_name, ym, my_name)
+        if not r.get("success"):
+            code = {"notfound": 404, "locked": 409, "bad": 400}.get(r.get("code"), 503)
+            return jsonify({"status": "error", "message": r.get("error", "消せませんでした")}), code
+
+        # ★誰が何を消したかを残す。中身は書かない（欄の名前だけ）。
+        print("[eval-delete] %s / %s / %s を %s が削除（中身のあった欄: %s）"
+              % (f_code, user_name, ym, my_name, ",".join(r.get("filled") or []) or "なし"),
+              flush=True)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_patient_evaluation_delete error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
