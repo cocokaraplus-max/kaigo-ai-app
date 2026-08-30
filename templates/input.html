@@ -390,6 +390,26 @@
     </div>
 </div>
 
+{# draft-bar-top-v1: この箱はフォームの【前】に置く。
+     最初は content の末尾に足してしまい、長いフォームの下に隠れて
+     「出ていても見えない」状態になっていた。
+     ★「出ない」と「見えない」は別のこと。 #}
+<div id="tk-draft-bar" style="display:none;border:1.5px solid #f9dc8f;background:#fef7e0;
+     border-radius:12px;padding:12px 14px;margin-bottom:12px;">
+  <div style="font-size:0.86rem;font-weight:800;color:#7a5c00;">書きかけが残っています</div>
+  <div id="tk-draft-info" style="font-size:0.76rem;color:#7a5c00;line-height:1.7;margin-top:4px;"></div>
+  <div style="display:flex;gap:8px;margin-top:10px;">
+    <button type="button" id="tk-draft-restore"
+      style="flex:2;border:none;border-radius:9px;background:#1a73e8;color:#fff;
+             font-size:0.86rem;font-weight:800;padding:10px;min-height:42px;
+             cursor:pointer;font-family:inherit;">戻す</button>
+    <button type="button" id="tk-draft-drop"
+      style="flex:1;border:1.5px solid #dadce0;border-radius:9px;background:#fff;color:#5f6368;
+             font-size:0.86rem;font-weight:700;padding:10px;min-height:42px;
+             cursor:pointer;font-family:inherit;">捨てる</button>
+  </div>
+</div>
+
 <form method="POST" action="/input" enctype="multipart/form-data" id="input-form">
 
     <div class="form-group">
@@ -1747,21 +1767,6 @@ window._icfShowModal = function(pid, stickies, uname, label){  /* icf-suggest-3c
      共有PCなので、ここを間違えると【他人の書きかけが見えてしまう】。
    ★音声の中身（audio_data）は退避しない。大きすぎて表に入らないし、
      入れてもログインし直したあとに使えない。 #}
-<div id="tk-draft-bar" style="display:none;border:1.5px solid #f9dc8f;background:#fef7e0;
-     border-radius:12px;padding:12px 14px;margin-bottom:12px;">
-  <div style="font-size:0.86rem;font-weight:800;color:#7a5c00;">書きかけが残っています</div>
-  <div id="tk-draft-info" style="font-size:0.76rem;color:#7a5c00;line-height:1.7;margin-top:4px;"></div>
-  <div style="display:flex;gap:8px;margin-top:10px;">
-    <button type="button" id="tk-draft-restore"
-      style="flex:2;border:none;border-radius:9px;background:#1a73e8;color:#fff;
-             font-size:0.86rem;font-weight:800;padding:10px;min-height:42px;
-             cursor:pointer;font-family:inherit;">戻す</button>
-    <button type="button" id="tk-draft-drop"
-      style="flex:1;border:1.5px solid #dadce0;border-radius:9px;background:#fff;color:#5f6368;
-             font-size:0.86rem;font-weight:700;padding:10px;min-height:42px;
-             cursor:pointer;font-family:inherit;">捨てる</button>
-  </div>
-</div>
 
 <script>
 /* idle-logout-v1: 記録入力の一時退避 */
