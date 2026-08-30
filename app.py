@@ -18852,8 +18852,10 @@ def admin_timecard_device_revoke():
 #     記録の途中の職員が蹴られるほうが、現場では害が大きい。
 #     判定は毎リクエスト走るので、戻れば次で落ちる。
 
-_IDLE_LIMIT_SEC = 1800      # 30分
-_IDLE_WARN_SEC = 1740       # 29分（画面に警告を出す）
+# ★★★ 試験用に短くしています。本番に出さないこと。★★★
+#     戻すには: python3 patch_idle_testmode.py off
+_IDLE_LIMIT_SEC = 120       # ★試験用（本来は1800＝30分）
+_IDLE_WARN_SEC = 90         # ★試験用（本来は1740＝29分）
 _IDLE_TOUCH_MIN_SEC = 55    # 画面から知らせるのは最大1分に1回
 
 # 自動ログアウトの判定をしない道。
@@ -18892,6 +18894,9 @@ def _idle_logout_guard():   # idle-logout-v1
         if now - last < _IDLE_LIMIT_SEC:
             return None
 
+        if _IDLE_LIMIT_SEC != 1800:
+            print("[idle-logout] ★試験用の短い時間（%d秒）で動いています。"
+                  "本番に出ていないか確かめること。" % _IDLE_LIMIT_SEC, flush=True)
         session.clear()
         if request.args.get("partial") or path.startswith("/api/"):
             return jsonify({"status": "error", "code": "idle_logout",
