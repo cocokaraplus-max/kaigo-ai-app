@@ -18934,6 +18934,8 @@ def api_session_state():
     remain = _IDLE_LIMIT_SEC - (int(_t.time()) - last)
     return jsonify({"status": "success",
                     "shared": _idle_is_shared_session(),
+                    # device-kind-ask-v1: この端末で「どちらですか」をまだ聞いていないか
+                    "ask_kind": bool(session.get("login_device_ask_kind")),
                     "limit": _IDLE_LIMIT_SEC,
                     "warn_at": _IDLE_WARN_SEC,
                     "touch_min": _IDLE_TOUCH_MIN_SEC,
@@ -19392,6 +19394,11 @@ def api_shared_login_poll():
     #   通信が一瞬詰まっただけで記録の途中の職員が蹴られるほうが害が大きい。
     session["login_device_shared"] = bool(_dev_ok and _dev_row
                                           and _dev_row.get("is_shared"))
+    # device-kind-ask-v1: この端末で「共有か専用か」をまだ聞いていなければ、1回だけ聞く。
+    #   ★聞くかどうかもログインした時点で決める。
+    #     /api/session/state は全画面で呼ばれるので、そこでDBに聞き直さない。
+    session["login_device_ask_kind"] = bool(_dev_ok and _dev_row
+                                            and not _dev_row.get("kind_set_at"))
     import time as _sl_time
     session["last_touch"] = int(_sl_time.time())
 
@@ -19405,6 +19412,50 @@ def api_shared_login_poll():
         print("[shared-login] last_used_at を書けない: %s" % e, flush=True)
 
     return jsonify({"status": "approved", "redirect": "/"})
+
+
+@app.route("/api/shared-login/device/kind", methods=["POST"])
+@login_required
+def api_shared_login_device_kind():
+    """この端末を「みんなで使う（共有）」か「自分だけ（専用）」に設定する。
+
+    ★本人が、自分がいま使っている端末についてだけ設定できる。
+      どの端末かはセッションが持っている印で決める。
+      画面から端末のidを受け取らない。受け取ると、よその端末を書き換えられる。
+    """
+    try:
+        token = session.get("login_device_token")
+        f_code = session.get("f_code")
+        if not token or not f_code:
+            # ★旧方式で入った人には端末の印が無い。ここは何もしない。
+            return jsonify({"status": "error",
+                            "message": "この画面からは設定できません。"}), 400
+
+        data = request.get_json(silent=True) or {}
+        # ★真偽が来ていないときは共有（安全な側）。
+        is_shared = bool(data.get("is_shared", True))
+
+        supabase = get_supabase()
+        now = datetime.now(timezone.utc).isoformat()
+        res = (supabase.table("login_devices")
+               .update({"is_shared": is_shared,
+                        "kind_set_by": session.get("my_name", ""),
+                        "kind_set_at": now})
+               .eq("facility_code", f_code).eq("device_token", token).execute())
+        if not (res.data or []):
+            # ★書けていないのに「できました」と返さない。
+            return jsonify({"status": "error",
+                            "message": "この端末の登録が見つかりませんでした。"}), 404
+
+        # ★その場で効かせる。こうしないと「自分だけ」にしたのに、
+        #   そのログインの間だけ30分で落ちる。
+        session["login_device_shared"] = is_shared
+        session["login_device_ask_kind"] = False
+        return jsonify({"status": "success", "is_shared": is_shared})
+    except Exception as e:
+        print("api_shared_login_device_kind error: %s" % e, flush=True)
+        return jsonify({"status": "error",
+                        "message": "いま設定できませんでした。時間をおいてお試しください。"}), 503
 
 
 @app.route("/login/approve", methods=["GET"])
