@@ -754,11 +754,20 @@ async function a2LoadAuto(){
         + '<div class="s">体重測定の画面で記録すると、ここに出ます</div>'
         + '<input type="hidden" id="a2-weight" value=""></div>';
     }
-    if(j.attendance){
+    /* a2-attend-visit-v1: 数えられなかったときは【0回と出さない】。
+       ★これまでは箱ごと黙って消えていた。職員には「記録が無い」のか
+         「調べられなかった」のか分からない。書類に載る数字なので、
+         分からないときは分からないと出す。 */
+    if(j.attendance && j.attendance.known !== false){
       h += '<div class="a2-auto"><span class="h">来所記録から自動</span>'
         + '<div class="v">'+esc(j.attendance.count)+'<span>回</span></div>'
         + '<div class="s">'+esc(j.attendance.basis)+'</div>'
         + '<input type="hidden" id="a2-att" value="'+esc(j.attendance.count)+'"></div>';
+    } else if(j.attendance){
+      h += '<div class="a2-auto"><span class="h none">出席日数を数えられませんでした</span>'
+        + '<div class="s">'+esc(j.attendance.why || '')
+        + '<br>★<b>0回ではありません。</b>必要なら手で入れてください。</div>'
+        + '<input type="hidden" id="a2-att" value=""></div>';
     } else {
       h += '<input type="hidden" id="a2-att" value="">';
     }

@@ -8128,24 +8128,44 @@ def api_evaluation_auto_values():
         except Exception as e:
             out["weight_error"] = str(e)
 
-        # ── 出席回数（バイタルのある日数） ──
+        # ── 出席回数（来所記録のある日数） ── a2-attend-visit-v1
+        #   ★画面は「来所記録から自動」と書いているのに、
+        #     これまで数えていたのは【バイタル】だった。来所記録に揃える。
+        #   ★patient_id は【patient_profiles.id】。
+        #     これまでは氏名で patients 表の id を引き当てていたが、
+        #     氏名は patient_profiles から来ているので【別の表への突合】だった。
+        #     漢字1字・全角半角スペースの違いで崩れる（他の場所にも同じ注意書きがある）。
+        #     同じ表の id を使えば、その突合そのものが要らない。
+        #   ★数えられないときは【0回と出さない】。書類に載る数字なので、
+        #     分からないときは分からないと出す。
         try:
-            pid = None
-            pr = (supabase.table("patients").select("id")
-                  .eq("facility_code", f_code).eq("user_name", uname).limit(1).execute())
-            if pr.data:
-                pid = pr.data[0].get("id")
-            if pid is not None:
-                vr = (supabase.table("vitals").select("measured_date")
-                      .eq("facility_code", f_code).eq("patient_id", pid)
-                      .gte("measured_date", f_s).lt("measured_date", n_s).execute())
+            pr = (supabase.table("patient_profiles").select("id")
+                  .eq("facility_code", f_code).eq("user_name", uname).execute())
+            prows = pr.data or []
+            if len(prows) != 1:
+                # 0件＝見つからない / 2件以上＝同姓が複数（どちらの人か決められない）
+                out["attendance"] = {
+                    "known": False,
+                    "why": ("同じ氏名の登録が複数あります" if len(prows) > 1
+                            else "利用者の登録が見つかりません"),
+                }
+            else:
+                vr = (supabase.table("visit_records").select("visit_date,status")
+                      .eq("facility_code", f_code).eq("patient_id", str(prows[0].get("id")))
+                      .gte("visit_date", f_s).lt("visit_date", n_s).execute())
                 days = set()
                 for v in (vr.data or []):
-                    d = (v.get("measured_date") or "")[:10]
+                    # present=出席 / transfer=振替。どちらも【来た日】なので数える。
+                    if (v.get("status") or "") not in ("present", "transfer"):
+                        continue
+                    d = (v.get("visit_date") or "")[:10]
                     if d:
                         days.add(d)
-                out["attendance"] = {"count": len(days), "basis": "バイタルの記録がある日数"}
+                out["attendance"] = {"known": True, "count": len(days),
+                                     "basis": "来所記録のある日数（出席・振替）"}
         except Exception as e:
+            print("[eval-auto] 来所記録を数えられませんでした: %s" % e, flush=True)
+            out["attendance"] = {"known": False, "why": "いま確かめられませんでした"}
             out["attendance_error"] = str(e)
 
         return jsonify(out)
