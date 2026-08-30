@@ -2944,6 +2944,7 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
     {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None, "tier": "standard"},
     {"href": "/soge",           "icon": "airport_shuttle",        "label": "配車",           "need": None, "tier": "standard"},   # soge-rename-haisha-v1
+    {"href": "/soge/date",      "icon": "event_repeat",           "label": "この日だけの配車", "need": None, "tier": "standard"},   # soge-date-ui-v1
     {"href": "/fitness",        "icon": "fitness_center",         "label": "体力・体重",     "need": None},
     {"href": "/life_check",     "icon": "checklist",              "label": "生活機能CHECK",  "need": None},
     {"href": "/calendar",       "icon": "calendar_month",         "label": "カレンダー",     "need": None},
@@ -26869,6 +26870,21 @@ def soge_week_page():
     if _blk:
         return _blk
     return render("soge_week.html")
+
+
+@app.route("/soge/date")  # soge-date-ui-v1
+@login_required
+def soge_date_page():
+    """この日だけの配車。
+
+    ★中身は曜日の配車と同じテンプレートを使い、sg_mode で顔を変える。
+      つまんで動かす仕組みを2つ持つと、片方だけ直したときに必ずずれる。
+      URLもメニューも名前も保存先も別なので、使う人からは別の画面。
+    """
+    _blk = _plan_block_redirect("standard")  # plan-enforce-v1
+    if _blk:
+        return _blk
+    return render("soge_week.html", sg_mode="date")
 # ===== /soge-week-ui-v1 =====
 
 
