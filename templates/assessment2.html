@@ -781,7 +781,76 @@ async function a2PullSelfEval(){
     }
     t.value = t.value.trim() ? (t.value.trim() + '\n\n' + j.text) : j.text;
     t.focus();
+    a2PullFill(j.pick || {});          // a2-pull-answers-v1
   }catch(e){ alert('取り込めませんでした'); }
+}
+
+/* a2-pull-answers-v1: ご本人の答えを、1番・3番の欄にも入れる。
+   ★同じことを2回入れさせない（HIROさん 2026-08-30）。
+   ★入れるのは【空いている所だけ】。
+     職員がすでに選んでいたら黙って変えない。食い違うときは知らせて、
+     職員に決めてもらう。勝手に書き換えるのがいちばん怖い。 */
+var A2_PULL_LBL = {
+  a2_satis:'サービスへの満足度', a2_fit:'サービス内容の適切さ', a2_req:'新しいご希望・ご要望',
+  short_goal_function_status:'短期・機能', short_goal_activity_status:'短期・活動',
+  short_goal_participation_status:'短期・参加', long_goal_function_status:'長期・機能',
+  long_goal_activity_status:'長期・活動', long_goal_participation_status:'長期・参加',
+  short_goal_status:'短期目標', long_goal_status:'長期目標'
+};
+
+function a2PullSegRefresh(){
+  /* 値だけ入れても○は動かない。押されている見た目を合わせ直す。 */
+  document.querySelectorAll('.a2-seg').forEach(function(seg){
+    var hid = $(seg.dataset.target);
+    if(!hid) return;
+    seg.querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('on', hid.value === b.dataset.v); });
+  });
+  if($('a2-req') && $('a2-reqDetail'))
+    $('a2-reqDetail').style.display = ($('a2-req').value === 'あり') ? '' : 'none';
+}
+
+function a2PullOne(id, v, label, put, kept){
+  var el = $(id); v = (v || '').trim();
+  if(!el || !v) return;                    // その欄が画面に無い（目標が無い軸など）
+  var cur = (el.value || '').trim();
+  if(!cur){ el.value = v; put.push(label); }
+  else if(cur !== v){ kept.push(label + '（画面は' + cur + ' / ご本人は' + v + '）'); }
+}
+
+function a2PullFill(p){
+  var put1 = [], put3 = [], kept = [];
+
+  // 1. 目標がどこまでできたか
+  var g = p.goals || {};
+  Object.keys(g).forEach(function(k){
+    a2PullOne(k, g[k], (A2_PULL_LBL[k] || k) + '＝' + g[k], put1, kept);
+  });
+
+  // 3. 満足度・ご要望
+  a2PullOne('a2-satis', p.satisfaction,            A2_PULL_LBL.a2_satis, put3, kept);
+  a2PullOne('a2-fit',   p.service_appropriateness, A2_PULL_LBL.a2_fit,   put3, kept);
+  a2PullOne('a2-req',   p.new_requests_exist,      A2_PULL_LBL.a2_req,   put3, kept);
+  var d = (p.new_requests_detail || '').trim();
+  if(d){
+    var td = $('a2-reqDetail');
+    if(td && !(td.value || '').trim()){ td.value = d; put3.push('ご要望の中身'); }
+    else if(td && td.value.indexOf(d) < 0){ kept.push('ご要望の中身'); }
+  }
+
+  a2PullSegRefresh();
+
+  var say = [];
+  if(put1.length) say.push('「1. 目標」に ' + put1.join('・'));
+  if(put3.length) say.push('「3. 満足度・ご要望」に ' + put3.join('・'));
+  if(say.length) a2Toast('ご本人の答えを入れました（' + say.join(' ／ ') + '）', true);
+
+  var msg = [];
+  if(kept.length) msg.push('すでに入っていたので、そのままにしました：\n・' + kept.join('\n・'));
+  var cf = (p.goals_conflict || []).map(function(k){ return A2_PULL_LBL[k] || k; });
+  if(cf.length) msg.push('同じ欄に対する答えが分かれていたので、入れませんでした：\n・'
+                       + cf.join('\n・'));
+  if(msg.length) alert(msg.join('\n\n') + '\n\nご確認ください。');
 }
 
 /* ── a2-selfeval-make-v1: ご本人に聞く質問を、この画面で作る ── */

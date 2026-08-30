@@ -495,8 +495,14 @@ def register_self_eval_routes(app):
             # AIが落ちても作業が止まらないように、目標をそのまま質問にして返す
             for k, v in (m.get("goals") or {}).items():
                 kind = "short" if k.startswith("short") else "long"
+                # a2-pull-answers-v1: 軸も持たせる。
+                #   ★この質問は【目標の欄そのもの】から作っているので、軸は分かっている。
+                #     空のままだと、答えても評価の「1番」のどの欄に入れてよいか分からない。
+                zone = ("body" if k.endswith("_function")
+                        else "activity" if k.endswith("_activity")
+                        else "participation" if k.endswith("_participation") else "")
                 qs.append({"question": f"この1か月で、{v}　これはできましたか",
-                           "goal_kind": kind, "icf_zone": "", "source_note": "目標そのまま（AI生成に失敗）"})
+                           "goal_kind": kind, "icf_zone": zone, "source_note": "目標そのまま（AI生成に失敗）"})
             qs = qs[:8]
 
         try:
@@ -1585,6 +1591,83 @@ def register_self_eval_routes(app):
             return "△"
         return "×"
 
+    # a2-pull-answers-v1: 「できた／少しできた／できなかった」の決め方。
+    #   ★ご本人が押したのは【3つのボタン】。choice を先に見る。
+    #     score(10点満点)は目安なので、choice が無いときだけ使う。
+    _PICK_CHOICE = {"ok": 2, "mid": 1, "no": 0}
+    _PICK_GOAL   = ["未達成", "一部達成", "達成"]      # 0,1,2
+    _PICK_MARK   = ["×", "△", "○"]                    # 0,1,2
+    _PICK_ZONE   = {"body": "function", "activity": "activity",
+                    "participation": "participation"}
+
+
+    def _pick_level(a):
+        """答え1つを 0(だめ) / 1(少し) / 2(できた) に直す。分からなければ None。"""
+        c = a.get("choice")
+        if c in _PICK_CHOICE:
+            return _PICK_CHOICE[c]
+        sc = a.get("score")
+        if sc is None:
+            return None
+        try:
+            sc = int(sc)
+        except (TypeError, ValueError):
+            return None
+        return 2 if sc >= 7 else (1 if sc >= 4 else 0)
+
+
+    def _pick_from_answers(answers):   # a2-pull-answers-v1
+        """ご本人の答えを、月次評価の「1番」「3番」の欄の形に直す。
+
+        ★分からないものは入れない。埋めない。
+        ★同じ欄に食い違う答えが当たったら【入れずに知らせる】。
+        """
+        out = {"satisfaction": "", "service_appropriateness": "",
+               "new_requests_exist": "", "new_requests_detail": "",
+               "goals": {}, "goals_conflict": []}
+
+        seen = {}          # 欄の名前 -> 0/1/2（食い違いを見つけるために覚える）
+        for a in (answers or []):
+            k = a.get("goal_kind") or ""
+            lv = _pick_level(a)
+
+            if k == "satisfy":
+                if lv is not None:
+                    out["satisfaction"] = _PICK_MARK[lv]
+                continue
+            if k == "fit":
+                if lv is not None:
+                    out["service_appropriateness"] = _PICK_MARK[lv]
+                continue
+            if k == "free":
+                t = (a.get("reason_text") or "").strip()
+                # ★空のときに「なし」と入れない。答えなかっただけかもしれない。
+                if t:
+                    out["new_requests_exist"] = "あり"
+                    out["new_requests_detail"] = t[:500]
+                continue
+            if k not in ("short", "long") or lv is None:
+                continue
+
+            zone = _PICK_ZONE.get(a.get("icf_zone") or "")
+            # 3軸の欄と、2軸の欄（要支援）の両方を埋める。
+            #   画面には、その施設で使うほうの欄しか無い。無い欄は画面側が読み飛ばす。
+            fields = ["%s_goal_status" % k]
+            if zone:
+                fields.append("%s_goal_%s_status" % (k, zone))
+            for f in fields:
+                if f in seen and seen[f] != lv:
+                    # ★食い違い。どちらが正しいか機械には決められないので入れない。
+                    out["goals"].pop(f, None)
+                    if f not in out["goals_conflict"]:
+                        out["goals_conflict"].append(f)
+                    continue
+                if f in out["goals_conflict"]:
+                    continue
+                seen[f] = lv
+                out["goals"][f] = _PICK_GOAL[lv]
+        return out
+
     def _build_source_block(ev, answers):
         """評価の source_data に貼るテキストを作る。職員が読んで分かる形にする。"""
         L = [_EVAL_MARK + "　" + (ev.get("answered_at") or "")[:10] + "　タブレットでご本人が回答"]
@@ -1840,6 +1923,9 @@ def register_self_eval_routes(app):
         return jsonify({
             "status": "success",
             "text": _build_source_block(ev, answers),
+            # a2-pull-answers-v1: 「1. 目標」「3. 満足度・ご要望」に入れるぶん。
+            #   ★この欄を読んでいるのは月次評価の画面だけ。増やしても他に影響しない。
+            "pick": _pick_from_answers(answers),
             "user_name": ev.get("user_name") or "",
             "target_ym": ev.get("target_ym") or "",
             "answered_at": ev.get("answered_at") or "",
