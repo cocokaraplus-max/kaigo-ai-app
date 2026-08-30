@@ -2943,7 +2943,7 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/patient-info",  "icon": "person_book",            "label": "利用者情報",     "need": None},  # patient-hub-v1
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
     {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None, "tier": "standard"},
-    {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None, "tier": "standard"},
+    {"href": "/soge",           "icon": "airport_shuttle",        "label": "配車",           "need": None, "tier": "standard"},   # soge-rename-haisha-v1
     {"href": "/fitness",        "icon": "fitness_center",         "label": "体力・体重",     "need": None},
     {"href": "/life_check",     "icon": "checklist",              "label": "生活機能CHECK",  "need": None},
     {"href": "/calendar",       "icon": "calendar_month",         "label": "カレンダー",     "need": None},
@@ -27006,6 +27006,10 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
             "unassigned": _un,                                   # soge-unassigned-v1
             "trip_key": d.get("trip_key"),
             "trip_name": d.get("trip_name") or "",
+            # soge-driver-per-trip-v1: 運転手は【便ごと】に決まる。
+            #   ★車ごとに1人しか渡していなかったので、その車の最初の便の
+            #     運転手が、あとの便にも出ていた（迎えと送りで人を分ける施設で化ける）。
+            "driver_name": d.get("driver_name") or "",
             "is_extra": bool(d.get("is_extra")),                 # soge-extra-v1
             "extra_reason": d.get("extra_reason") or "",         # soge-extra-v1
             "depart": (str(d.get("depart_at") or ""))[:5],       # 予定の出発
