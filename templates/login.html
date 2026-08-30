@@ -17,6 +17,24 @@
 </div>
 {% endif %}
 
+{# sl-flow-v1: 承認ログインへの入口。
+     ★これが無く、URLを直接打つしかなかった。
+       「動線が分かりにくい」の大半はこれだった。
+     ★共有パソコン向けの入口なので、パスワードの上に置く。
+       事務所のPCで毎回パスワードを打つのをやめてもらうのが狙い。 #}
+<a href="/shared-login" style="display:flex;align-items:center;gap:10px;
+   border:1.5px solid #1a73e8;background:#f0f4ff;border-radius:12px;
+   padding:13px 14px;margin-bottom:16px;text-decoration:none;">
+  <span class="material-symbols-outlined" style="color:#1a73e8;">smartphone</span>
+  <span style="flex:1;">
+    <span style="display:block;font-size:0.92rem;font-weight:800;color:#1a73e8;">
+      LINEで承認してログイン</span>
+    <span style="display:block;font-size:0.74rem;color:#5f6368;line-height:1.6;margin-top:2px;">
+      共有のパソコン向け。パスワードを打たずに入れます。</span>
+  </span>
+  <span class="material-symbols-outlined" style="color:#1a73e8;">chevron_right</span>
+</a>
+
 <form method="POST" action="/login">
     <div class="form-group">
         <label class="form-label">
