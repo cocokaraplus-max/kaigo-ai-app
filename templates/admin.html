@@ -145,6 +145,7 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 .staff-card {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;   /* staff-card-wrap-v1: 入らないぶんは下の行へ落とす */
   padding: 12px 14px;
   border: 1px solid #e0e0e0;
   border-radius: 10px;
@@ -152,6 +153,12 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
   gap: 10px;
 }
 .staff-card .material-symbols-outlined { font-size: 18px; }
+/* staff-card-wrap-v1: 名前が1文字ずつ縦に潰れるのを止める。
+   ★flex:1 だけだと「足りないときはいくらでも細くなる」。
+     日本語はどこでも改行できるので、細くした先が【1文字】になる。
+   ★9remは、生年月日の行（例 昭和59年11月28日）が1行に収まる幅。
+   ★remで書く。文字サイズを大きくしても入る文字数が変わらない。 */
+.staff-card .sc-name { flex: 1 1 9rem; min-width: 9rem; }
 
 /* ボタン */
 .edit-btn {
@@ -832,7 +839,7 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
         <span class="material-symbols-outlined" style="color:{% if s.blocked %}#ea4335{% else %}#1a73e8{% endif %};">
           {% if s.blocked %}block{% else %}person{% endif %}
         </span>
-        <div style="flex:1;">
+        <div class="sc-name" style="flex:1;">
           <div style="font-weight:600;font-size:0.9rem;">{{ s.name }}</div>
           <div id="sjt-{{ loop.index }}" style="font-size:0.75rem;color:#1a73e8;margin-top:2px;{% if not s.job_title %}display:none;{% endif %}">{{ s.job_title }}{% if s.job_title2 %}／{{ s.job_title2 }}{% endif %}</div>
           <div id="sbt-{{ loop.index }}" style="font-size:0.75rem;color:#80868b;margin-top:2px;{% if not s.birth_text %}display:none;{% endif %}">{{ s.birth_text }}</div>
@@ -942,7 +949,7 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
       {% for b in blocked %}
       <div class="staff-card">
         <span class="material-symbols-outlined" style="color:#ea4335;">block</span>
-        <div style="flex:1;font-weight:600;">{{ b.staff_name or b.device_id }}</div>
+        <div class="sc-name" style="flex:1;font-weight:600;">{{ b.staff_name or b.device_id }}</div>
         <button class="btn btn-sm edit-btn" onclick="unblockDevice('{{ b.id }}')">
           <span class="material-symbols-outlined" style="font-size:15px;">lock_open</span>復帰
         </button>
