@@ -19503,10 +19503,22 @@ def api_shared_login_names():
         print("[shared-login] 職員名の取得に失敗: %s" % e, flush=True)
         return jsonify(_SL_BUSY), 503
 
+    # block-sharedlogin-v1: ブロックされている人を一覧から外す。
+    #   ★ここを見ないと、退職した人の名前が共有PCの画面に並ぶ。
+    #   ★確かめられなかったときは【一覧を返さない】。
+    #     「ブロックされていない」と読んで名前を並べるほうが危ない。
+    try:
+        _blk = (supabase.table("blocked_devices").select("staff_name")
+                .eq("facility_code", f_code).eq("is_active", True).execute())
+        _blocked_names = set((b.get("staff_name") or "").strip() for b in (_blk.data or []))
+    except Exception as e:
+        print("[shared-login] ブロックの確認に失敗: %s" % e, flush=True)
+        return jsonify(_SL_BUSY), 503
+
     names = []
     for s in (res.data or []):
         nm = (s.get("staff_name") or "").strip()
-        if not nm:
+        if not nm or nm in _blocked_names:
             continue
         # ★LINEが繋がっていない人も名前は出す。
         #   出さないと「自分の名前が無い」で止まってしまう。
@@ -19549,6 +19561,20 @@ def api_shared_login_request():
     rows = st.data or []
     if not rows:
         return jsonify({"status": "error", "message": "その名前は登録されていません。"}), 400
+    # block-sharedlogin-v1: 一覧に出さないだけでは足りない。
+    #   画面を通さず直接この入口を叩けば、名前は指定できてしまう。
+    #   ★出さないのは【親切】、弾くのは【守り】。両方要る。
+    #   ★確かめられなかったときは【通さない】。ログインを通す判断なので。
+    _ok, _ok_checked = staff_can_use(supabase, f_code, staff_name)
+    if not _ok_checked:
+        return jsonify(_SL_BUSY), 503
+    if not _ok:
+        print("[shared-login] 使えない職員 %s / %s の要求を弾きました"
+              % (f_code, staff_name), flush=True)
+        return jsonify({"status": "error",
+                        "message": "このアカウントは使えなくなっています。"
+                                   "施設の管理者にお問い合わせください。"}), 403
+
     line_uid = (rows[0].get("line_user_id") or "").strip()
     if not line_uid:
         return jsonify({"status": "no_line",
