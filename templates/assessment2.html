@@ -21,12 +21,42 @@
   border-radius:9px;padding:9px 11px;font-size:.88rem;font-weight:700;color:#1558d6;}
 .a2-chosen button{border:none;background:none;color:#5f6368;font-size:1.05rem;cursor:pointer;}
 .a2-row2{display:flex;gap:10px;margin-bottom:14px;}
-.a2-row2>div{flex:1;}
+/* a2-row2-stack-v1: 対象月の枠が となりの評価者に かぶさっていた。
+   input[type=month] は端末によって独自の見た目を持ち、指定より広がる。
+   flexの子は既定で【中身より狭くならない】ので、広がったぶんが はみ出す。
+   ★min-width:0 … はみ出さずに縮められるようにする。
+   ★スマホでは そもそも横に並べない。何px広がっても重なりようがない。 */
+.a2-row2>div{flex:1;min-width:0;}
+@media (max-width:480px){ .a2-row2{flex-direction:column;gap:12px;} }
 /* a2-entry-clarity-v1: 対象月と評価者の枠がずれていた。
    対象月は input[type=month] で、ブラウザが独自の見た目を付けるぶん背が高くなる
    （実測 対象月43px / 評価者37px）。両方に同じ高さを指定して揃える。
    ★height ではなく min-height。height だと、文字を大きくする設定で中身がはみ出す。 */
 .a2-row2 input[type=text],.a2-row2 input[type=month]{min-height:44px;line-height:1.3;}
+/* a2-selfeval-make-v1: ご本人に聞く質問を、この画面で作って直す。
+   ★remで書く（文字サイズ設定80〜130%で崩さない）。 */
+.a2-seq{border:1.5px solid #b6cbdd;background:#f5f9fc;border-radius:0.75rem;
+  padding:0.8rem 0.85rem;margin:0 0 0.7rem;}
+.a2-seq-hd{display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;
+  font-size:.9rem;font-weight:800;color:#1b4965;margin-bottom:0.35rem;}
+.a2-seq-hd .st{font-size:.75rem;font-weight:700;background:#e3ebf2;color:#41637d;
+  border-radius:999px;padding:0.15rem 0.6rem;}
+.a2-seq-hd .st.ok{background:#e6f4ea;color:#0b6b3a;}
+.a2-qrow{display:flex;align-items:flex-start;gap:0.4rem;margin-bottom:0.4rem;}
+.a2-qrow .n{flex:0 0 1.5rem;width:1.5rem;text-align:right;padding-top:0.6rem;
+  font-size:.78rem;font-weight:800;color:#5f7b91;}
+.a2-qrow textarea{flex:1;min-width:0;min-height:2.8rem;font-size:.86rem;}
+.a2-qrow .x{flex:0 0 auto;border:none;background:none;color:#9aa0a6;font-size:1.05rem;
+  cursor:pointer;padding:0.45rem 0.15rem;font-family:inherit;}
+.a2-mini{border:1px solid #b6cbdd;background:#fff;color:#1558d6;border-radius:0.5rem;
+  padding:0.4rem 0.7rem;font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;
+  margin:0 0.4rem 0.4rem 0;}
+.a2-mini[disabled]{opacity:.6;cursor:default;}
+/* eval-delete-v1: 消すボタン。★目立たせない。押し間違えるほうが怖い。 */
+.a2-del{border:1px solid #f3c0bb;background:#fff;color:#c5221f;border-radius:0.5rem;
+  padding:0.4rem 0.8rem;font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;}
+.a2-del[disabled]{opacity:.6;cursor:default;}
+.a2-seq-more{display:inline-block;font-size:.78rem;color:#1558d6;margin-top:0.25rem;}
 .a2-hint{background:#fef7e0;border:1px solid #fdd663;border-radius:10px;padding:11px 13px;
   font-size:.84rem;color:#7a5200;}
 .a2-who{background:#f8f9fa;border:1px solid #e8eaed;border-radius:12px;padding:12px 14px;margin-bottom:14px;}
@@ -215,12 +245,22 @@
         </div>
         <div class="meta"><span id="a2-metaFt">読み込み中…</span></div>
       </button>
+
+      {# eval-delete-v1: この月の評価を消す。
+         ★入口の画面にだけ置く。中を開いている最中に消せると、
+           自分が書いている画面が足元から消えることになる。
+         ★評価がまだ無い月では出さない（a2Load で出し入れする）。 #}
+      <div id="a2-delWrap" style="display:none;margin-top:14px;text-align:right;">
+        <button type="button" class="a2-del" id="a2-delBtn" onclick="a2DeleteEval()">この月の評価を削除</button>
+        <div style="font-size:.72rem;color:#9aa0a6;margin-top:5px;">
+          報告文・聞き取りメモ・体の評価・目標の達成度が、まとめて消えます（元に戻せません）</div>
+      </div>
     </div>
   </div>
 
   {# ── 画面B：ご本人に聞いて記録する ── #}
   <div id="a2-scB" style="display:none;">
-    <div class="a2-bar"><button type="button" onclick="a2Back()">← 入口へ</button><b>ご本人に聞いて記録する</b></div>
+    <div class="a2-bar"><button type="button" onclick="a2Back()">← 戻る</button>{# a2-back-label-v1 #}<b>ご本人に聞いて記録する</b></div>
 
     <div class="a2-who small">
       <div class="nm" id="a2-bName"></div>
@@ -236,6 +276,24 @@
 
     <div class="a2-sec"><h3>2. ご本人に聞く</h3><div class="bd">
       <div class="a2-lab">タブレットや聞き取りで答えてもらった内容を取り込みます</div>
+      {# a2-selfeval-make-v1: 質問を作る所。
+         ★リンクを置くだけでは「新しい画面だけで評価を終える」ことにならない。
+           作る → 直す → 渡す まで、ここで終わるようにした。
+         ★下の一覧に出るのは【答え終わったもの】だけ。
+           「取り込める回答がありません」は、まだ誰も答えていないという意味。 #}
+      <div class="a2-seq">
+        <div class="a2-seq-hd">ご本人に聞く質問<span class="st" id="a2-seqSt">—</span></div>
+        <div class="a2-note" id="a2-seqMsg">利用者を選んでください。</div>
+        <div id="a2-seqList"></div>
+        <div id="a2-seqTools" style="display:none;">
+          <button type="button" class="a2-mini" onclick="a2SeqAdd()">＋ 質問を足す</button>
+          <button type="button" class="a2-mini" id="a2-seqSaveBtn" onclick="a2SeqSave()">質問を保存</button>
+          {# eval-delete-v1: 質問一式を消す。違う人・違う月で作ってしまったとき用。 #}
+          <button type="button" class="a2-del" id="a2-seqDelBtn" onclick="a2SeqDelete()">この質問を消す</button>
+        </div>
+        <div id="a2-seqActs"></div>
+        <a class="a2-seq-more" href="/self-eval" onclick="spaNav(event,'/self-eval')">これまでのセルフ評価を見る</a>
+      </div>
       <select id="a2-seList" class="a2-sel"><option value="">読み込み中…</option></select>
       <button type="button" class="a2-btn sub" onclick="a2PullSelfEval()">この回答を取り込む</button>
       <div class="a2-note">★下の欄に<b>足します</b>（いまの文章は消しません）。
@@ -281,7 +339,7 @@
 
   {# ── 画面C：体の評価を記録する ── #}
   <div id="a2-scC" style="display:none;">
-    <div class="a2-bar"><button type="button" onclick="a2Back()">← 入口へ</button><b>体の評価を記録する</b></div>
+    <div class="a2-bar"><button type="button" onclick="a2Back()">← 戻る</button>{# a2-back-label-v1 #}<b>体の評価を記録する</b></div>
 
     <div class="a2-who small">
       <div class="nm" id="a2-cName"></div>
@@ -476,6 +534,9 @@ async function a2Load(){
   a2FillForms();
   a2DrawStatus();
   a2LoadSelfEvals();
+  a2SeqLoad();          // a2-selfeval-make-v1
+  // eval-delete-v1: 評価がある月だけ、削除ボタンを出す
+  if($('a2-delWrap')) $('a2-delWrap').style.display = A2.evalId ? '' : 'none';
   a2LoadAuto();
 }
 
@@ -619,11 +680,20 @@ function a2BindSegs(root){
     seg.querySelectorAll('button').forEach(function(b){
       if(hid && hid.value === b.dataset.v) b.classList.add('on');
       b.onclick = function(){
+        /* a2-seg-toggle-v1: すでに選ばれているものをもう一度押したら【取り消す】。
+           ★これまでは一度押すと外せず、3つのうちどれかが必ず選ばれた状態になった。
+             押し間違えたときの逃げ道が無い。
+           ★「まだ決めていない」と「できなかった」は別のこと。
+             間違えたまま保存すると、決めていないものが
+             「できなかった」として記録に残る。 */
+        var off = b.classList.contains('on');
         seg.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
-        b.classList.add('on');
-        if(hid) hid.value = b.dataset.v;
+        if(!off) b.classList.add('on');
+        if(hid) hid.value = off ? '' : b.dataset.v;
         if(seg.dataset.target === 'a2-req')
-          $('a2-reqDetail').style.display = (b.dataset.v === 'あり') ? '' : 'none';
+          /* ★取り消したら詳しい欄は隠す。ただし【書いた文字は消さない】。
+               もう一度「あり」を押せば、そのまま出てくる。 */
+          $('a2-reqDetail').style.display = (hid && hid.value === 'あり') ? '' : 'none';
       };
     });
   });
@@ -738,7 +808,287 @@ async function a2PullSelfEval(){
     }
     t.value = t.value.trim() ? (t.value.trim() + '\n\n' + j.text) : j.text;
     t.focus();
+    a2PullFill(j.pick || {});          // a2-pull-answers-v1
   }catch(e){ alert('取り込めませんでした'); }
+}
+
+/* a2-pull-answers-v1: ご本人の答えを、1番・3番の欄にも入れる。
+   ★同じことを2回入れさせない（HIROさん 2026-08-30）。
+   ★入れるのは【空いている所だけ】。
+     職員がすでに選んでいたら黙って変えない。食い違うときは知らせて、
+     職員に決めてもらう。勝手に書き換えるのがいちばん怖い。 */
+var A2_PULL_LBL = {
+  a2_satis:'サービスへの満足度', a2_fit:'サービス内容の適切さ', a2_req:'新しいご希望・ご要望',
+  short_goal_function_status:'短期・機能', short_goal_activity_status:'短期・活動',
+  short_goal_participation_status:'短期・参加', long_goal_function_status:'長期・機能',
+  long_goal_activity_status:'長期・活動', long_goal_participation_status:'長期・参加',
+  short_goal_status:'短期目標', long_goal_status:'長期目標'
+};
+
+function a2PullSegRefresh(){
+  /* 値だけ入れても○は動かない。押されている見た目を合わせ直す。 */
+  document.querySelectorAll('.a2-seg').forEach(function(seg){
+    var hid = $(seg.dataset.target);
+    if(!hid) return;
+    seg.querySelectorAll('button').forEach(function(b){
+      b.classList.toggle('on', hid.value === b.dataset.v); });
+  });
+  if($('a2-req') && $('a2-reqDetail'))
+    $('a2-reqDetail').style.display = ($('a2-req').value === 'あり') ? '' : 'none';
+}
+
+function a2PullOne(id, v, label, put, kept){
+  var el = $(id); v = (v || '').trim();
+  if(!el || !v) return;                    // その欄が画面に無い（目標が無い軸など）
+  var cur = (el.value || '').trim();
+  if(!cur){ el.value = v; put.push(label); }
+  else if(cur !== v){ kept.push(label + '（画面は' + cur + ' / ご本人は' + v + '）'); }
+}
+
+function a2PullFill(p){
+  var put1 = [], put3 = [], kept = [];
+
+  // 1. 目標がどこまでできたか
+  var g = p.goals || {};
+  Object.keys(g).forEach(function(k){
+    a2PullOne(k, g[k], (A2_PULL_LBL[k] || k) + '＝' + g[k], put1, kept);
+  });
+
+  // 3. 満足度・ご要望
+  a2PullOne('a2-satis', p.satisfaction,            A2_PULL_LBL.a2_satis, put3, kept);
+  a2PullOne('a2-fit',   p.service_appropriateness, A2_PULL_LBL.a2_fit,   put3, kept);
+  a2PullOne('a2-req',   p.new_requests_exist,      A2_PULL_LBL.a2_req,   put3, kept);
+  var d = (p.new_requests_detail || '').trim();
+  if(d){
+    var td = $('a2-reqDetail');
+    if(td && !(td.value || '').trim()){ td.value = d; put3.push('ご要望の中身'); }
+    else if(td && td.value.indexOf(d) < 0){ kept.push('ご要望の中身'); }
+  }
+
+  a2PullSegRefresh();
+
+  var say = [];
+  if(put1.length) say.push('「1. 目標」に ' + put1.join('・'));
+  if(put3.length) say.push('「3. 満足度・ご要望」に ' + put3.join('・'));
+  if(say.length) a2Toast('ご本人の答えを入れました（' + say.join(' ／ ') + '）', true);
+
+  var msg = [];
+  if(kept.length) msg.push('すでに入っていたので、そのままにしました：\n・' + kept.join('\n・'));
+  var cf = (p.goals_conflict || []).map(function(k){ return A2_PULL_LBL[k] || k; });
+  if(cf.length) msg.push('同じ欄に対する答えが分かれていたので、入れませんでした：\n・'
+                       + cf.join('\n・'));
+  if(msg.length) alert(msg.join('\n\n') + '\n\nご確認ください。');
+}
+
+/* ── eval-delete-v1: 一旦作ったものを消す ── */
+async function a2DeleteEval(){
+  if(!A2.patient || !A2.evalId){ alert('この月の評価はまだありません。'); return; }
+  var ym = $('a2-ym').value;
+  /* ★誰の何月かを、名前で出して確かめる。
+     「本当に削除しますか？」だけでは、どれを消すのか分からない。 */
+  if(!confirm(A2.patient.name + ' さんの【' + ym + '】の評価を削除します。\n\n'
+            + '報告文・聞き取りメモ・体の評価・目標の達成度が、まとめて消えます。\n'
+            + '★元に戻せません。\n\n削除しますか？')) return;
+  var b = $('a2-delBtn');
+  if(b){ b.disabled = true; b.textContent = '削除中…'; }
+  try{
+    var r = await fetch('/api/patient-evaluation/delete', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({user_name: A2.patient.name, year_month: ym})});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '削除できませんでした'); return; }
+    a2Toast('この月の評価を削除しました。', true);
+    await a2Load();        // 消えたあとの姿を出し直す
+  }catch(e){ alert('削除できませんでした'); }
+  finally{ if(b){ b.disabled = false; b.textContent = 'この月の評価を削除'; } }
+}
+
+async function a2SeqDelete(){
+  if(!A2.seq) return;
+  if(!confirm('ご本人に聞く質問を消します。\n\n'
+            + '★すでに答えてもらった内容があれば、それも消えます。\n\n消しますか？')) return;
+  var b = $('a2-seqDelBtn');
+  if(b){ b.disabled = true; b.textContent = '消しています…'; }
+  try{
+    var r = await fetch('/api/self-eval/delete', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({id: A2.seq.id})});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '消せませんでした'); return; }
+    a2Toast('質問を消しました。', true);
+    await a2SeqLoad();
+  }catch(e){ alert('消せませんでした'); }
+  finally{ if(b){ b.disabled = false; b.textContent = 'この質問を消す'; } }
+}
+
+/* ── a2-selfeval-make-v1: ご本人に聞く質問を、この画面で作る ── */
+A2.seq = null;      // {id, questions:[{id,question,goal_kind,icf_zone,source_note}]}
+
+function a2SeqSay(msg, label, ok){
+  $('a2-seqMsg').innerHTML = msg;
+  var st = $('a2-seqSt');
+  st.textContent = label;
+  st.className = 'st' + (ok ? ' ok' : '');
+}
+
+function a2SeqDraw(){
+  var qs = (A2.seq && A2.seq.questions) || [];
+  $('a2-seqList').innerHTML = qs.map(function(q, i){
+    return '<div class="a2-qrow" data-qid="' + esc(q.id || '') + '">'
+         + '<span class="n">' + (i + 1) + '</span>'
+         + '<textarea rows="2">' + esc(q.question || '') + '</textarea>'
+         + '<button type="button" class="x" title="この質問を消す" onclick="a2SeqDel(' + i + ')">×</button>'
+         + '</div>';
+  }).join('');
+  $('a2-seqTools').style.display = qs.length ? '' : 'none';
+  /* ★答えてもらう道は2つ。どちらも【質問を保存してから】進む。
+     直したまま渡すと、直す前の質問が読み上げられる。 */
+  $('a2-seqActs').innerHTML = qs.length
+    ? '<button type="button" class="a2-mini" onclick="a2SeqInterview()">職員が聞き取る</button>'
+      + '<button type="button" class="a2-mini" onclick="a2SeqTablet()">タブレットを渡す</button>'
+    : '';
+}
+
+function a2SeqPick(){
+  /* 画面に出ている文章を、そのまま拾う。
+     ★A2.seq.questions を書き換えながら持ち歩かない。
+       打っている途中の文字が抜ける（打つたびに保存する作りではないため）。 */
+  var out = [];
+  Array.prototype.forEach.call(document.querySelectorAll('#a2-seqList .a2-qrow'), function(row, i){
+    var t = (row.querySelector('textarea').value || '').trim();
+    if(!t) return;
+    var old = (A2.seq.questions || [])[i] || {};
+    out.push({id: row.dataset.qid || '', question: t,
+              goal_kind: old.goal_kind || '', icf_zone: old.icf_zone || '',
+              source_note: old.source_note || ''});
+  });
+  return out;
+}
+
+function a2SeqAdd(){
+  if(!A2.seq) return;
+  A2.seq.questions = a2SeqPick();          // 打ちかけを拾ってから足す
+  A2.seq.questions.push({id:'', question:'', goal_kind:'', icf_zone:'', source_note:''});
+  a2SeqDraw();
+}
+
+function a2SeqDel(i){
+  if(!A2.seq) return;
+  A2.seq.questions = a2SeqPick();
+  A2.seq.questions.splice(i, 1);
+  a2SeqDraw();
+}
+
+async function a2SeqLoad(){
+  A2.seq = null;
+  $('a2-seqList').innerHTML = '';
+  $('a2-seqTools').style.display = 'none';
+  $('a2-seqActs').innerHTML = '';
+  if(!A2.patient){ a2SeqSay('利用者を選んでください。', '—', false); return; }
+  var ym = $('a2-ym').value;
+  a2SeqSay('確かめています…', '—', false);
+
+  var items;
+  try{
+    var r = await fetch('/api/self-eval/list', {credentials:'same-origin'});
+    var j = await r.json();
+    if(j.status !== 'success') throw new Error('ng');
+    items = (j.items || []).filter(function(x){
+      return String(x.patient_profile_id) === String(A2.patient.id) && x.target_ym === ym; });
+  }catch(e){
+    /* ★確かめられなかったときに「まだ作っていません」と出してはいけない。
+         すでにある質問の上に、もう1組できてしまう。 */
+    a2SeqSay('いま確かめられませんでした。少しおいてから開き直してください。', '—', false);
+    return;
+  }
+
+  var done = items.filter(function(x){ return x.status === 'answered' || x.status === 'confirmed'; })[0];
+  if(done){
+    a2SeqSay('この月の答えは届いています。下の一覧から取り込めます。', '答え済み', true);
+    return;
+  }
+  var draft = items.filter(function(x){ return x.status === 'draft'; })[0];
+  if(!draft){
+    a2SeqSay('この月の質問は、まだ作っていません。', 'まだ', false);
+    $('a2-seqActs').innerHTML =
+      '<button type="button" class="a2-mini" id="a2-seqMake" onclick="a2SeqMake()">質問を作る（AIが考えます）</button>';
+    return;
+  }
+
+  A2.seq = {id: draft.id, questions: []};
+  try{
+    var r2 = await fetch('/api/self-eval/get?id=' + encodeURIComponent(draft.id), {credentials:'same-origin'});
+    var j2 = await r2.json();
+    A2.seq.questions = (j2.answers || []).map(function(q){
+      return {id: q.id, question: q.question || '', goal_kind: q.goal_kind || '',
+              icf_zone: q.icf_zone || '', source_note: q.source_note || ''}; });
+  }catch(e){}
+  a2SeqSay('質問ができています。直したいところは直して「質問を保存」を押してください。', '作成ずみ', true);
+  a2SeqDraw();
+}
+
+async function a2SeqMake(){
+  if(!A2.patient){ alert('利用者を選んでください。'); return; }
+  var ym = $('a2-ym').value;
+  var b = document.getElementById('a2-seqMake');
+  if(b){ b.disabled = true; b.textContent = 'AIが作っています…'; }
+  try{
+    /* ★対象月は【いま開いている月】を送る。
+         送らないとサーバの既定（今月）になり、
+         先月の評価を開いているのに今月の質問ができてしまう。 */
+    var r = await fetch('/api/self-eval/create', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({pid: String(A2.patient.id), target_ym: ym})});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '作れませんでした'); return; }
+    await a2SeqLoad();
+    a2Toast('質問を' + (j.count || 0) + '問つくりました。確かめてください。', true);
+  }catch(e){ alert('作れませんでした'); }
+  finally{ if(b){ b.disabled = false; b.textContent = '質問を作る（AIが考えます）'; } }
+}
+
+async function a2SeqSave(){
+  if(!A2.seq) return false;
+  var qs = a2SeqPick();
+  if(!qs.length){ alert('質問が1つもありません。'); return false; }
+  var b = document.getElementById('a2-seqSaveBtn');
+  if(b){ b.disabled = true; b.textContent = '保存中…'; }
+  try{
+    var r = await fetch('/api/self-eval/questions/save', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({id: A2.seq.id, questions: qs})});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '保存できませんでした'); return false; }
+    a2Toast('質問を保存しました。', true);
+    await a2SeqLoad();
+    return true;
+  }catch(e){ alert('保存できませんでした'); return false; }
+  finally{ if(b){ b.disabled = false; b.textContent = '質問を保存'; } }
+}
+
+async function a2SeqInterview(){
+  if(!A2.seq) return;
+  var id = A2.seq.id;
+  if(!await a2SeqSave()) return;        // ★直したまま進まない
+  location.href = '/self-eval/interview?id=' + encodeURIComponent(id);
+}
+
+async function a2SeqTablet(){
+  if(!A2.seq) return;
+  /* ★ここから【画面ぜんぶが利用者モード】になる。
+     職員は4桁の解除コードを入れるまで戻れない。押す前に必ず言う。 */
+  if(!confirm('タブレットをご本人に渡す形に切り替えます。\n\n'
+            + '★この端末は利用者モードになり、\n'
+            + '　4桁の解除コードを入れるまで職員の画面に戻れません。\n\n'
+            + '続けますか？')) return;
+  var id = A2.seq.id;
+  if(!await a2SeqSave()) return;
+  try{
+    var r = await fetch('/api/self-eval/start', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({id: id})});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '渡せませんでした'); return; }
+    location.href = j.redirect || '/self-eval/run';
+  }catch(e){ alert('渡せませんでした'); }
 }
 
 /* ── AI生成（両方の欄を読ませる） ── */

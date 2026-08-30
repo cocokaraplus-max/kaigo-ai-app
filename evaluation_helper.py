@@ -676,6 +676,81 @@ ALLOWED_UPSERT_KEYS = (
 )
 
 
+def eval_lock_holder(row: dict, current_user: str):   # eval-delete-v1
+    """その評価を【いま誰かが開いているか】。開いていればその人の名前を返す。
+
+    ★見るのは3つとも。分ける前の1枚の画面(editing_by)と、
+      入口ごとの2つ(editing_by_eval / editing_by_ft)。
+      どれか1つでも他の人が持っていれば、開かれている。
+    ★保存の競合判定（upsert_patient_evaluation）と同じ規則にすること。
+      別々に書くと、保存はできるのに消せない（またはその逆）が起きる。
+    """
+    for _b, _a in (("editing_by", "editing_started_at"),
+                   ("editing_by_eval", "editing_started_at_eval"),
+                   ("editing_by_ft", "editing_started_at_ft")):
+        holder = row.get(_b)
+        started = row.get(_a)
+        if not (holder and holder != current_user and started):
+            continue
+        try:
+            age = (datetime.now(timezone.utc) - _parse_iso_datetime(started)).total_seconds()
+            if age < LOCK_TIMEOUT_MINUTES * 60:
+                return holder
+        except Exception:
+            pass          # 時刻が読めないときは開いていない扱い（保存側と同じ）
+    return None
+
+
+def delete_patient_evaluation(supabase, facility_code: str, user_name: str,
+                              year_month: str, current_user: str) -> dict:   # eval-delete-v1
+    """その月の評価を1件消す。★元に戻せない。
+
+    返り値:
+        {"success": True, "id": ..., "filled": [中身があった欄の名前]}
+        {"success": False, "error": ..., "code": "notfound"/"locked"/"busy"}
+
+    ★施設コードは【呼び出し側がセッションから渡す】こと。
+      画面から受け取った値を使ってはいけない（他施設の評価が消せてしまう）。
+    """
+    if not (facility_code and user_name and year_month):
+        return {"success": False, "error": "利用者と対象月が必要です", "code": "bad"}
+    try:
+        res = (supabase.table("patient_evaluations").select("*")
+               .eq("facility_code", facility_code)
+               .eq("user_name", user_name)
+               .eq("year_month", year_month)
+               .limit(1).execute())
+        rows = res.data or []
+    except Exception as e:
+        # ★確かめられないときは消さない。消すのは元に戻せないので、迷ったら止める。
+        return {"success": False, "error": f"いま確認できませんでした: {e}", "code": "busy"}
+    if not rows:
+        return {"success": False, "error": "この月の評価はまだありません", "code": "notfound"}
+
+    row = rows[0]
+    holder = eval_lock_holder(row, current_user)
+    if holder:
+        # ★開いている人がいる間は消さない。
+        #   相手が保存しようとした瞬間に消えていると、原因が分からない事故になる。
+        return {"success": False, "error": f"いま {holder} さんが開いています", "code": "locked"}
+
+    # ★中身そのものは残さない。どの欄に中身があったかだけ控える。
+    skip = ("id", "facility_code", "user_name", "year_month",
+            "created_at", "updated_at",
+            "editing_by", "editing_started_at",
+            "editing_by_eval", "editing_started_at_eval",
+            "editing_by_ft", "editing_started_at_ft")
+    filled = sorted(k for k, v in row.items()
+                    if k not in skip and v not in (None, "", 0))
+
+    try:
+        (supabase.table("patient_evaluations").delete()
+         .eq("facility_code", facility_code).eq("id", row["id"]).execute())
+    except Exception as e:
+        return {"success": False, "error": f"消せませんでした: {e}", "code": "busy"}
+    return {"success": True, "id": row["id"], "filled": filled}
+
+
 def upsert_patient_evaluation(supabase, payload: dict, current_user: str,
                               section: str = None) -> dict:
     """評価データを UPSERT する。
