@@ -136,6 +136,9 @@
       h += '<button class="ld-btn ng" data-act="revoke" data-id="' + d.id + '">取り消す</button>';
     } else {
       h += '<button class="ld-btn" data-act="approve" data-id="' + d.id + '">もう一度許可する</button>';
+      /* login-device-delete-v1: 取り消し済みのときだけ出す。
+         ★使える端末には出さない。押し間違いで消すと申請からやり直しになる。 */
+      h += '<button class="ld-btn ng" data-act="delete" data-id="' + d.id + '">一覧から削除</button>';
     }
     h += '</div></div>';
     return h;
@@ -208,6 +211,16 @@
       post('/api/admin/login-devices/revoke', { id: id }, '取り消しました。');
     } else if (act === 'label') {
       post('/api/admin/login-devices/approve', { id: id, label: label }, '名前を保存しました。');
+    } else if (act === 'delete') {
+      /* ★消すと戻せない。何が失われるかを書いてから聞く。 */
+      if (!confirm('この端末の記録を一覧から削除します。\n\n'
+                 + '・元に戻せません\n'
+                 + '・端末の名前（' + (LD.rows.filter(function (x) {
+                     return String(x.id) === String(id); })[0] || {}).device_label
+                 + '）は分からなくなります\n'
+                 + '・いつ誰がログインしたかの記録は残ります\n\n'
+                 + '削除しますか？')) return;
+      post('/api/admin/login-devices/delete', { id: id }, '削除しました。');
     } else if (act === 'kind') {
       var toShared = b.getAttribute('data-shared') === '0';
       post('/api/admin/login-devices/kind', { id: id, is_shared: toShared },

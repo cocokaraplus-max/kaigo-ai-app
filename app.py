@@ -19122,6 +19122,62 @@ def _sl_find_request(supabase, field, value):
         return None, False
 
 
+def _sl_line_push(user_id, messages, label):
+    """LINEへ送る。★送れなかったとき、LINEが何と言ったかをログに残す。
+
+    ★既存の line_send_message は触らない。あれは連絡帳・管理者2FAなど
+      あちこちから呼ばれているので、ここでの都合で変えない。
+    ★ここで残すログが、次に何かあったときの唯一の手がかりになる。
+      いままでは中身を捨てていたので、原因が分からなかった。
+    """
+    import urllib.request
+    import urllib.error
+    try:
+        # ★ファイル先頭で読み込んである json を使う。
+        #   この付近には _json という別名もあるが、定義がずっと後ろにあって
+        #   読む人が「これはどこの？」と迷う。迷わせない名前を使う。
+        payload = json.dumps({"to": user_id, "messages": messages}).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.line.me/v2/bot/message/push",
+            data=payload, headers=get_line_headers(), method="POST")
+        with urllib.request.urlopen(req, timeout=10) as res:
+            ok = (res.status == 200)
+            if not ok:
+                print("[shared-login] LINE(%s) 応答が200ではない: %s" % (label, res.status),
+                      flush=True)
+            return ok
+    except urllib.error.HTTPError as e:
+        # ★ここが肝。LINEは本文に「何が悪いか」を書いて返してくる。
+        try:
+            body = e.read().decode("utf-8", "replace")[:800]
+        except Exception:
+            body = "(本文を読めませんでした)"
+        print("[shared-login] LINE(%s) が拒否: %s %s" % (label, e.code, body), flush=True)
+        return False
+    except Exception as e:
+        print("[shared-login] LINE(%s) 送信に失敗: %s" % (label, e), flush=True)
+        return False
+
+
+def _sl_text_approve(staff_name, device_label, check_code, approve_url, when_text):
+    """文字だけの承認メッセージ。★ボタン付きが送れなかったときの受け皿。
+
+    ★ボタンが無くても、リンクを開けば同じ承認ページに行ける。
+      承認は開いた先の「承認する」を押して初めて通る（そこは変わらない）。
+    """
+    return {"type": "text", "text":
+            "【TASUKARU】ログイン承認\n"
+            "%s さん\n\n"
+            "端末: %s\n"
+            "日時: %s\n\n"
+            "確認番号  %s\n\n"
+            "パソコンの画面に出ている番号と同じことを確かめてから、\n"
+            "下を開いて「承認する」を押してください。\n"
+            "%s\n\n"
+            "心当たりがないときは開かないでください。3分で切れます。"
+            % (staff_name, device_label, when_text, check_code, approve_url)}
+
+
 def _sl_flex_approve(staff_name, device_label, check_code, approve_url, when_text):
     """LINEに送るボタン付きメッセージ（Flex Message）を組み立てる。
 
@@ -19321,11 +19377,20 @@ def api_shared_login_request():
                             code, approve_url,
                             "%d月%d日 %02d:%02d" % (jst_now.month, jst_now.day,
                                                     jst_now.hour, jst_now.minute))
-    sent = False
-    try:
-        sent = line_send_message(line_uid, [flex])
-    except Exception as e:
-        print("[shared-login] LINE送信に失敗: %s" % e, flush=True)
+    # sl-line-fallback-v1: まずボタン付きで送る。駄目なら文字だけで送り直す。
+    #   ★ボタン付きが送れないことを理由に、ログインできない状態にしない。
+    #     本番でボタン付きが届かない件があり、原因が分かる前に使えるようにする。
+    #   ★どちらで送れたかをログに残す。あとで様子を見て、どちらを既定にするか決める。
+    sent = _sl_line_push(line_uid, [flex], "ボタン付き")
+    if not sent:
+        text_msg = _sl_text_approve(staff_name, dev.get("device_label") or "この端末",
+                                    code, approve_url,
+                                    "%d月%d日 %02d:%02d" % (jst_now.month, jst_now.day,
+                                                            jst_now.hour, jst_now.minute))
+        sent = _sl_line_push(line_uid, [text_msg], "文字だけ")
+        if sent:
+            print("[shared-login] ★ボタン付きが駄目だったので文字だけで送った。"
+                  "上の拒否理由を見て、原因を直すこと。", flush=True)
     if not sent:
         # ★作った要求は残しておく。3分で切れる。
         #   消すと「送れなかったのか、作れなかったのか」が分からなくなる。
@@ -19758,6 +19823,51 @@ def api_admin_login_devices_revoke():
     except Exception as e:
         print("api_admin_login_devices_revoke error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/admin/login-devices/delete", methods=["POST"])
+@login_required
+def api_admin_login_devices_delete():
+    """取り消した端末を一覧から削除する（管理者だけ）。login-device-delete-v1
+
+    ★消せるのは【取り消し済み】だけ。
+      使える端末を消すと、その端末は次に開いたとき「未登録」に戻り、
+      申請からやり直しになる。押し間違いの被害が大きいので受け付けない。
+
+    ★画面が送ってきたidだけで消さない。サーバ側でもう一度、
+      本当に取り消し済みかを確かめる。
+    ★確かめられなかったときは【消さない】。
+      通信が詰まったのを「取り消し済みだった」と読んで消すと取り返しがつかない。
+    """
+    try:
+        f_code, my_name, supabase, ng = _login_device_admin_guard()
+        if ng:
+            return ng
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+
+        try:
+            res = (supabase.table("login_devices").select("id,is_active,revoked_at")
+                   .eq("id", dev_id).eq("facility_code", f_code).limit(1).execute())
+        except Exception as e:
+            print("[login-device] 削除前の確認に失敗: %s" % e, flush=True)
+            return jsonify(_LOGIN_DEVICE_BUSY), 503
+        rows = res.data or []
+        if not rows:
+            return jsonify({"status": "error", "message": "その端末は見つかりませんでした。"}), 404
+        if not rows[0].get("revoked_at"):
+            return jsonify({"status": "error",
+                            "message": "使える端末は削除できません。先に「取り消す」を押してください。"}), 409
+
+        (supabase.table("login_devices").delete()
+         .eq("id", dev_id).eq("facility_code", f_code).execute())
+        print("[login-device] %s が端末 id=%s を削除しました" % (my_name, dev_id), flush=True)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_admin_login_devices_delete error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": "削除できませんでした。"}), 503
 
 
 @app.route("/api/admin/login-devices/kind", methods=["POST"])
