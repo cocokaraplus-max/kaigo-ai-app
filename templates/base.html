@@ -3957,6 +3957,236 @@ document.addEventListener('click', function(e) {
 })();
 </script>
 
+{# ===== idle-logout-v1 : 共有PCの30分自動ログアウト（画面側） =====
+   設計_LINE承認ログイン.md §5。
+
+   ★見張るかどうかは【サーバに聞く】。画面の値では決めない。
+     shared でなければ、この仕掛けは何もしない。
+     本人のスマホ・いつものPCでは1行も動かない。
+
+   ★「操作した」と数えるのは【人が触ったときだけ】。
+     この base.html は30秒ごとに未読バッジを取りに行っているので、
+     通信を「操作」と数えると【誰も触っていないPCが永遠に落ちない】。
+     しかもエラーが出ないので気づけない。だから触ったときだけ知らせる。
+
+   ★実際に降ろすのはサーバ（before_request）。ここは【予告と案内】だけ。
+     画面をいじってこの仕掛けを止めても、ログアウト自体は止められない。 #}
+<div id="tk-idle-box" style="display:none;position:fixed;left:50%;bottom:calc(var(--nav-h, 64px) + 16px);
+     transform:translateX(-50%);z-index:9998;width:calc(100% - 32px);max-width:22rem;
+     background:#fff;border:2px solid #ea4335;border-radius:14px;
+     box-shadow:0 6px 20px rgba(0,0,0,.18);padding:14px 16px;">
+  <div style="font-size:0.92rem;font-weight:800;color:#c5221f;margin-bottom:6px;">
+    まもなくログアウトします
+  </div>
+  <div style="font-size:0.8rem;color:#5f6368;line-height:1.7;">
+    このパソコンは<b>みんなで使う設定</b>です。<br>
+    あと <b id="tk-idle-left">60</b> 秒でログアウトします。
+  </div>
+  <button type="button" id="tk-idle-stay"
+    style="width:100%;margin-top:10px;border:none;border-radius:10px;background:#1a73e8;
+           color:#fff;font-size:0.95rem;font-weight:800;padding:12px;min-height:46px;
+           cursor:pointer;font-family:inherit;">まだ使っています</button>
+  <div style="font-size:0.72rem;color:#9aa3b2;line-height:1.7;margin-top:8px;">
+    書きかけの記録は、ログアウトの直前に退避します。<br>入り直すと戻せます。
+  </div>
+</div>
+
+<script>
+/* idle-logout-v1 */
+(function () {
+  var S = { on: false, limit: 1800, warnAt: 1740, touchMin: 55,
+            last: Date.now(), lastPost: 0, timer: null, shown: false };
+
+  var box = document.getElementById('tk-idle-box');
+  var leftEl = document.getElementById('tk-idle-left');
+
+  function post(cb) {
+    fetch('/api/session/touch', { method: 'POST' })
+      .then(function (r) { return r.json().catch(function () { return null; }); })
+      .then(function (j) {
+        /* ★成功したときだけ時計を戻す。
+           送れていないのに戻すと、画面は元気なのにサーバ側では時間切れ、
+           という食い違いが起きる。 */
+        if (j && j.status === 'success') { S.last = Date.now(); S.lastPost = Date.now(); }
+        if (cb) cb(!!(j && j.status === 'success'));
+      })
+      .catch(function () { if (cb) cb(false); });
+  }
+
+  function onHuman() {
+    if (!S.on) return;
+    var now = Date.now();
+    if (now - S.lastPost < S.touchMin * 1000) return;   /* 送りすぎない */
+    S.lastPost = now;                                    /* 先に立てて連打を防ぐ */
+    post(null);
+  }
+
+  function tick() {
+    if (!S.on) return;
+    var idle = (Date.now() - S.last) / 1000;
+    var left = Math.ceil(S.limit - idle);
+
+    if (left <= 0) {
+      clearInterval(S.timer); S.timer = null;
+      /* ★降りる直前に、書きかけをもう一度退避する。
+         画面ごとに退避のしかたが違うので、各画面が関数を置いていく。 */
+      try {
+        if (typeof window.tkIdleBeforeLogout === 'function') window.tkIdleBeforeLogout();
+      } catch (e) {}
+      setTimeout(function () { location.href = '/shared-login?timeout=1'; }, 400);
+      return;
+    }
+    if (idle >= S.warnAt) {
+      if (!S.shown) { box.style.display = 'block'; S.shown = true; }
+      leftEl.textContent = left;
+    } else if (S.shown) {
+      box.style.display = 'none'; S.shown = false;
+    }
+  }
+
+  document.getElementById('tk-idle-stay').addEventListener('click', function () {
+    var b = this; b.disabled = true; b.textContent = '確認しています…';
+    post(function (ok) {
+      b.disabled = false; b.textContent = 'まだ使っています';
+      if (ok) { box.style.display = 'none'; S.shown = false; }
+      else { b.textContent = 'つながりません。もう一度'; }
+    });
+  });
+
+  /* ★サーバに聞いてから始める。共有端末でなければ何も動かさない。 */
+  fetch('/api/session/state')
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || j.status !== 'success' || !j.shared) return;
+      S.on = true;
+      S.limit = j.limit || 1800;
+      S.warnAt = j.warn_at || 1740;
+      S.touchMin = j.touch_min || 55;
+      S.last = Date.now() - (S.limit - (j.remaining || S.limit)) * 1000;
+      ['pointerdown', 'keydown', 'touchstart', 'wheel'].forEach(function (ev) {
+        document.addEventListener(ev, onHuman, { passive: true });
+      });
+      /* スクロールは量が多いので、間引いて拾う */
+      var st = 0;
+      document.addEventListener('scroll', function () {
+        var n = Date.now(); if (n - st < 2000) return; st = n; onHuman();
+      }, { passive: true });
+      S.timer = setInterval(tick, 5000);
+    })
+    .catch(function () { /* 聞けなければ何もしない＝落とさない */ });
+})();
+</script>
+
+{# ===== device-kind-ask-v1 : この端末は「みんなで使う」か「自分だけ」か =====
+   設計_LINE承認ログイン.md §4。
+
+   ★承認ログインで初めて入った端末に、1回だけ聞く。
+     答えるまで何度でも出る（答えないと共有のまま＝30分で落ちる）。
+
+   ★既定は「みんなで使う」。
+     閉じても・後回しにしても共有のまま。
+     ★逆にすると、設定し忘れた端末が入りっぱなしになる。安全な側を既定にする。
+
+   ★聞くかどうかはサーバが決める（/api/session/state の ask_kind）。
+     画面の値では決めない。 #}
+<div id="tk-kind-ask" style="display:none;position:fixed;inset:0;z-index:9999;
+     background:rgba(0,0,0,.45);align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:16px;max-width:23rem;width:100%;
+              padding:20px 18px;box-shadow:0 10px 30px rgba(0,0,0,.25);">
+    <div style="font-size:1rem;font-weight:800;color:#202124;margin-bottom:4px;">
+      このパソコンはどちらですか？
+    </div>
+    <div style="font-size:0.78rem;color:#9aa3b2;line-height:1.7;margin-bottom:14px;">
+      あとから変えられます。
+    </div>
+
+    <label style="display:block;border:2px solid #1a73e8;background:#f0f4ff;border-radius:12px;
+                  padding:12px 14px;margin-bottom:10px;cursor:pointer;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="radio" name="tk-kind" value="shared" checked style="width:18px;height:18px;">
+        <span style="font-size:0.95rem;font-weight:800;color:#202124;">みんなで使う</span>
+      </div>
+      <div style="font-size:0.78rem;color:#5f6368;line-height:1.7;margin-top:5px;padding-left:26px;">
+        30分さわらないと自動でログアウトします。<br>次の人が安心して使えます。
+      </div>
+    </label>
+
+    <label style="display:block;border:2px solid #dadce0;border-radius:12px;
+                  padding:12px 14px;margin-bottom:14px;cursor:pointer;">
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="radio" name="tk-kind" value="own" style="width:18px;height:18px;">
+        <span style="font-size:0.95rem;font-weight:800;color:#202124;">自分だけが使う</span>
+      </div>
+      <div style="font-size:0.78rem;color:#5f6368;line-height:1.7;margin-top:5px;padding-left:26px;">
+        自動ログアウトしません。<br>そのまま使い続けられます。
+      </div>
+    </label>
+
+    <button type="button" id="tk-kind-ok"
+      style="width:100%;border:none;border-radius:10px;background:#1a73e8;color:#fff;
+             font-size:1rem;font-weight:800;padding:14px;min-height:50px;cursor:pointer;
+             font-family:inherit;">決定</button>
+    <div id="tk-kind-msg" style="display:none;font-size:0.8rem;font-weight:700;
+         color:#c5221f;line-height:1.7;margin-top:10px;"></div>
+    <div style="font-size:0.72rem;color:#9aa3b2;line-height:1.7;margin-top:10px;">
+      決めないままにすると「みんなで使う」のままです。<br>
+      設定は管理者MENUの「ログイン端末の管理」からも変えられます。
+    </div>
+  </div>
+</div>
+
+<script>
+/* device-kind-ask-v1 */
+(function () {
+  var box = document.getElementById('tk-kind-ask');
+  var msg = document.getElementById('tk-kind-msg');
+
+  function show() { box.style.display = 'flex'; }
+
+  /* 枠の色で、いま選んでいるほうを分かりやすくする */
+  function paint() {
+    Array.prototype.forEach.call(box.querySelectorAll('label'), function (l) {
+      var r = l.querySelector('input');
+      l.style.borderColor = r.checked ? '#1a73e8' : '#dadce0';
+      l.style.background = r.checked ? '#f0f4ff' : '#fff';
+    });
+  }
+  box.addEventListener('change', paint);
+
+  document.getElementById('tk-kind-ok').addEventListener('click', function () {
+    var v = box.querySelector('input[name="tk-kind"]:checked');
+    var shared = !v || v.value === 'shared';   /* ★選べていなければ共有（安全な側） */
+    var b = this; b.disabled = true; b.textContent = '設定しています…';
+    msg.style.display = 'none';
+    fetch('/api/shared-login/device/kind', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_shared: shared })
+    }).then(function (r) { return r.json().catch(function () { return null; }); })
+      .then(function (j) {
+        b.disabled = false; b.textContent = '決定';
+        if (!j || j.status !== 'success') {
+          /* ★閉じない。閉じると「設定できたつもり」になる。 */
+          msg.textContent = (j && j.message) || '設定できませんでした。もう一度お試しください。';
+          msg.style.display = 'block';
+          return;
+        }
+        box.style.display = 'none';
+      })
+      .catch(function () {
+        b.disabled = false; b.textContent = '決定';
+        msg.textContent = '通信できませんでした。もう一度お試しください。';
+        msg.style.display = 'block';
+      });
+  });
+
+  /* ★聞くかどうかはサーバが決める */
+  fetch('/api/session/state')
+    .then(function (r) { return r.json(); })
+    .then(function (j) { if (j && j.status === 'success' && j.ask_kind) { paint(); show(); } })
+    .catch(function () { /* 聞けなければ出さない */ });
+})();
+</script>
+
 {% block extra_script %}{% endblock %}
 
 

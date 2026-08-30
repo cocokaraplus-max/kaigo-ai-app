@@ -9,7 +9,15 @@
     justify-content: space-between; margin-bottom: 1rem;
     /* fab-overlap-v1: 右上の「?」と、設定・新規トークのボタンが重なるのを防ぐ */
     padding-right: var(--fab-safe, 0px);
+    /* fab-align-more-v1: 右上の「?」と真横にそろえる。
+       「?」は画面の上から16px（px固定）。本文は 枠線3px + 余白1.5rem から始まる。
+       1.5rem は文字と一緒に伸びるので、その差も文字サイズで変わる。
+       ★数字を並べただけにしない。どこから来た数字かが読めば分かるように書く。 */
+    margin-top: calc(16px - 3px - 1.5rem);
 }
+/* fab-align-more-v1: ボタン2つが入っている箱を、行の中央ではなく上に寄せる。
+   ボタン1つずつに当てると、2つの間で高さがずれる余地が残るので箱に当てる。 */
+.chat-rooms-header > div:last-child { align-self: flex-start; }
 .page-title { margin-bottom: 0; }
 .new-room-btn {
     width: 40px; height: 40px; border-radius: 50%;

@@ -18825,6 +18825,970 @@ def admin_timecard_device_revoke():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ===== idle-logout-v1 : 共有PCの30分自動ログアウト＋書きかけの一時退避 =====
+#   設計_LINE承認ログイン.md の §5。
+#
+#   ★落とし穴（設計書に書いてある、調べて分かったこと）
+#     base.html は全画面で30秒ごとに /api/board/unread_count を叩いている。
+#     「通信が来た＝操作中」と作ると、誰も触っていないPCが【永遠に落ちない】。
+#     しかもエラーが出ないので、動いているつもりで放置される。
+#     だから【既定は「操作していない」】。人が触ったときだけ画面から知らせる。
+#     こうしておけば、あとから定期通信が増えても壊れない。
+#
+#   ★落とすのは「共有」と設定された端末だけ（HIROさん判断 2026-08-29）。
+#       ・承認ログインで入った
+#       ・その端末が login_devices にあり、サーバ側で is_shared
+#     この両方がそろったときだけ。
+#     本人のスマホ・いつものPC（施設コード＋パスワードで入った人）は落とさない。
+#
+#   ★判定は【ログインした時点でセッションに封じ込める】。
+#     セッションは署名付きなので、ブラウザから書き換えられない。
+#     毎回DBに聞くと、全画面・全リクエストで問い合わせが増える。
+#     ただし、管理者が途中で「共有」に変えても、いま入っている人には効かない。
+#     次のログインから効く。ここは承知のうえで選んでいる。
+#
+#   ★分からないときは【落とさない】。
+#     ここだけは「安全側＝止める」ではない。通信が一瞬詰まっただけで
+#     記録の途中の職員が蹴られるほうが、現場では害が大きい。
+#     判定は毎リクエスト走るので、戻れば次で落ちる。
+
+_IDLE_LIMIT_SEC = 1800      # 30分
+_IDLE_WARN_SEC = 1740       # 29分（画面に警告を出す）
+_IDLE_TOUCH_MIN_SEC = 55    # 画面から知らせるのは最大1分に1回
+
+# 自動ログアウトの判定をしない道。
+# ★ここに「操作したことを知らせる道」と「ログインの道」を必ず入れる。
+#   入れ忘れると、落ちたあと入り直せなくなる。
+_IDLE_SKIP_PREFIX = (
+    "/static/", "/api/session/touch", "/api/session/state",
+    "/login", "/logout", "/shared-login", "/api/shared-login/",
+    "/favicon", "/healthz",
+)
+
+
+def _idle_is_shared_session():
+    """いま入っている人は、共有端末から入ったか。"""
+    return bool(session.get("login_device_shared"))
+
+
+@app.before_request
+def _idle_logout_guard():   # idle-logout-v1
+    """共有端末で30分さわっていなければ、ここで降ろす。"""
+    try:
+        if not session.get("f_code") or not _idle_is_shared_session():
+            return None
+        path = request.path or ""
+        for p in _IDLE_SKIP_PREFIX:
+            if path.startswith(p):
+                return None
+
+        import time as _idle_time
+        now = int(_idle_time.time())
+        last = session.get("last_touch")
+        if not isinstance(last, int):
+            # ★分からないときは落とさない。いまを起点にして様子を見る。
+            session["last_touch"] = now
+            return None
+        if now - last < _IDLE_LIMIT_SEC:
+            return None
+
+        session.clear()
+        if request.args.get("partial") or path.startswith("/api/"):
+            return jsonify({"status": "error", "code": "idle_logout",
+                            "message": "30分さわらなかったため、ログアウトしました。",
+                            "redirect": "/shared-login?timeout=1"}), 401
+        return redirect("/shared-login?timeout=1")
+    except Exception as e:
+        # ★ここで落ちてもアプリを止めない。判定できなければ通す。
+        print("[idle-logout] 判定に失敗: %s" % e, flush=True)
+        return None
+
+
+@app.route("/api/session/touch", methods=["POST"])
+def api_session_touch():
+    """人が触ったことを知らせる。★画面から明示的に呼ぶときだけ動く。
+
+    ★定期通信からは呼ばないこと。呼ぶと自動ログアウトが1度も働かなくなる。
+    """
+    if not session.get("f_code"):
+        return jsonify({"status": "error", "message": "ログインしていません。"}), 401
+    import time as _t
+    session["last_touch"] = int(_t.time())
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/session/state", methods=["GET"])
+def api_session_state():
+    """この画面で自動ログアウトの見張りをするかどうかを返す。
+
+    ★見張るかどうかは【サーバが決める】。画面の値では決めない。
+      実際に降ろすのも上の before_request なので、
+      画面をいじって見張りを外しても、ログアウト自体は止められない。
+    """
+    if not session.get("f_code"):
+        return jsonify({"status": "success", "shared": False})
+    import time as _t
+    last = session.get("last_touch")
+    if not isinstance(last, int):
+        last = int(_t.time())
+    remain = _IDLE_LIMIT_SEC - (int(_t.time()) - last)
+    return jsonify({"status": "success",
+                    "shared": _idle_is_shared_session(),
+                    # device-kind-ask-v1: この端末で「どちらですか」をまだ聞いていないか
+                    "ask_kind": bool(session.get("login_device_ask_kind")),
+                    "limit": _IDLE_LIMIT_SEC,
+                    "warn_at": _IDLE_WARN_SEC,
+                    "touch_min": _IDLE_TOUCH_MIN_SEC,
+                    "remaining": max(0, remain)})
+
+
+# ---------------------------------------------------------------------------
+# 書きかけの一時退避（draft_autosaves）
+#
+#   ★30分で落ちるとき、書きかけの記録が消える。現場でいちばん怒られるところ。
+#   ★共有PCなので、必ず staff_name で絞る。ここを間違えると
+#     【他人の書きかけが見えてしまう】。中身は利用者の記録そのもの。
+#   ★7日たっても戻されなければ捨てる。書きかけを溜めっぱなしにしない。
+# ---------------------------------------------------------------------------
+
+_DRAFT_MAX_BYTES = 100 * 1024   # 1件の上限。音声などの大きい中身は入れない
+_DRAFT_KEEP_DAYS = 7
+
+
+def _draft_key_ok(k):
+    """退避の鍵の形。★英数字と _ : - だけ。
+
+    ★. と / を外した。ファイルの道として使ってはいないので穴ではないが、
+      「../」のような文字列が通ると、読む人が道だと勘違いする。
+      通す形は、いま使うぶんだけにしておく（form_key は "input" だけ）。
+      （試験で ../etc が通ることに気づいて狭めた 2026-08-30）
+    """
+    return bool(k) and len(k) <= 120 and re.match(r"^[A-Za-z0-9_:\-]+$", k)
+
+
+@app.route("/api/draft/save", methods=["POST"])
+@login_required
+def api_draft_save():
+    """書きかけを退避する。"""
+    try:
+        data = request.get_json(silent=True) or {}
+        key = (data.get("form_key") or "").strip()
+        payload = data.get("payload")
+        if not _draft_key_ok(key) or not isinstance(payload, dict):
+            return jsonify({"status": "error", "message": "入力が正しくありません。"}), 400
+        if len(json.dumps(payload, ensure_ascii=False).encode("utf-8")) > _DRAFT_MAX_BYTES:
+            # ★黙って切り詰めない。切り詰めた書きかけを戻すほうが混乱する。
+            return jsonify({"status": "error", "code": "too_large",
+                            "message": "書きかけが大きすぎるため退避できませんでした。"}), 413
+
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        now = datetime.now(timezone.utc).isoformat()
+        supabase.table("draft_autosaves").upsert({
+            "facility_code": f_code, "staff_name": my_name, "form_key": key,
+            "payload": payload, "device_token": session.get("login_device_token"),
+            "updated_at": now,
+        }, on_conflict="facility_code,staff_name,form_key").execute()
+
+        # 古い退避を捨てる。★失敗しても保存は成功として扱う（掃除はおまけ）。
+        try:
+            old = (datetime.now(timezone.utc) - timedelta(days=_DRAFT_KEEP_DAYS)).isoformat()
+            (supabase.table("draft_autosaves").delete()
+             .eq("facility_code", f_code).lt("updated_at", old).execute())
+        except Exception as e:
+            print("[draft] 古い退避の掃除に失敗: %s" % e, flush=True)
+
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_draft_save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": "退避できませんでした。"}), 503
+
+
+@app.route("/api/draft/get", methods=["GET"])
+@login_required
+def api_draft_get():
+    """自分の書きかけを1件返す。★必ず staff_name で絞る。"""
+    try:
+        key = (request.args.get("form_key") or "").strip()
+        if not _draft_key_ok(key):
+            return jsonify({"status": "error", "message": "入力が正しくありません。"}), 400
+        supabase = get_supabase()
+        res = (supabase.table("draft_autosaves").select("payload,updated_at")
+               .eq("facility_code", session["f_code"])
+               .eq("staff_name", session.get("my_name", ""))   # ★他人のものは返さない
+               .eq("form_key", key).limit(1).execute())
+        rows = res.data or []
+        if not rows:
+            return jsonify({"status": "success", "found": False})
+        return jsonify({"status": "success", "found": True,
+                        "payload": rows[0].get("payload") or {},
+                        "updated_at": rows[0].get("updated_at")})
+    except Exception as e:
+        # ★「無い」と答えない。読めなかったのか、無いのかを分ける。
+        #   「無い」と答えると、書きかけが在るのに黙って捨てたように見える。
+        print("api_draft_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": "いま確認できませんでした。"}), 503
+
+
+@app.route("/api/draft/clear", methods=["POST"])
+@login_required
+def api_draft_clear():
+    """書きかけを消す（戻したあと・保存し終えたあと）。"""
+    try:
+        data = request.get_json(silent=True) or {}
+        key = (data.get("form_key") or "").strip()
+        if not _draft_key_ok(key):
+            return jsonify({"status": "error", "message": "入力が正しくありません。"}), 400
+        supabase = get_supabase()
+        (supabase.table("draft_autosaves").delete()
+         .eq("facility_code", session["f_code"])
+         .eq("staff_name", session.get("my_name", ""))
+         .eq("form_key", key).execute())
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_draft_clear error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": "消せませんでした。"}), 503
+# ===== /idle-logout-v1 =====
+
+
+# ===== shared-login-v1 : LINE承認ログインの本体 =====
+#   設計_LINE承認ログイン.md の §2 / §3 / §7 / §8。
+#
+#   ★既存の /login には1行も触らない。ここは新しいURLだけ。
+#     旧方式は残す（設計 §12・案C）。閉じるのは最後の回。
+#
+#   ★鍵を2本に分けるのが肝。
+#       poll_token    … PCだけが持つ。これでしかセッションを作れない
+#       approve_token … LINEに送る。これでは【ログインできない】
+#     LINEのメッセージを人に転送されても、転送先はログインできない。
+#
+#   ★「開いただけ」では通さない。
+#     GET /login/approve は画面を出すだけ。承認は POST。
+#     リンクのプレビュー取得や、指が当たっただけでは通らない。
+#
+#   ★確認番号（4桁）を画面とLINEの両方に出す。
+#     番号が同じことを見てから押してもらう。これが無いと、
+#     別人が自分の名前で入ろうとしたのを、うっかり承認してしまう。
+#
+#   ★ここでも「確かめられなかった」は全部【通さない】側に倒す。
+
+_SL_TTL_SEC = 180          # 承認は3分で切れる（設計 §3）
+_SL_RATE_SEC = 30          # 同じ人への要求は30秒に1回まで
+_SL_RATE_HOUR_MAX = 10     # 同じ人へ1時間に10回まで
+_SL_BUSY = {"status": "error",
+            "message": "いま確認できませんでした。時間をおいて、もう一度お試しください。"}
+
+
+def _sl_now():
+    return datetime.now(timezone.utc)
+
+
+def _sl_token():
+    """推測できない鍵。★乱数は secrets を使う（random は予測できてしまう）。"""
+    import secrets
+    return secrets.token_urlsafe(32)
+
+
+def _sl_check_code():
+    """画面とLINEの両方に出す4桁。★秘密ではない。見比べるためのもの。"""
+    import secrets
+    return "%04d" % secrets.randbelow(10000)
+
+
+def _sl_expired(row):
+    """期限切れか。★読めない値は【切れている】とみなす（安全側）。"""
+    raw = row.get("expires_at")
+    if not raw:
+        return True
+    try:
+        return datetime.fromisoformat(str(raw).replace("Z", "+00:00")) <= _sl_now()
+    except (ValueError, TypeError):
+        print("[shared-login] expires_at が読めない: %r" % raw, flush=True)
+        return True
+
+
+def _sl_find_request(supabase, field, value):
+    """承認要求を1件さがす。返り値は (行, 確かめられたか)。
+    ★「無かった」と「聞けなかった」を分ける。ここを混ぜると、
+      通信の失敗が「そんな要求は無い」に化けて、原因が分からなくなる。"""
+    try:
+        res = (supabase.table("login_requests").select("*")
+               .eq(field, value).limit(1).execute())
+        rows = res.data or []
+        return (rows[0] if rows else None), True
+    except Exception as e:
+        print("[shared-login] 承認要求の確認に失敗: %s" % e, flush=True)
+        return None, False
+
+
+def _sl_flex_approve(staff_name, device_label, check_code, approve_url, when_text):
+    """LINEに送るボタン付きメッセージ（Flex Message）を組み立てる。
+
+    ★既存の送信（line_send_message）は触らない。ここは【中身を作るだけ】。
+      送るのは既存の関数に渡す。
+    """
+    return {
+        "type": "flex",
+        "altText": "【TASUKARU】ログイン承認 確認番号 %s" % check_code,
+        "contents": {
+            "type": "bubble",
+            "header": {
+                "type": "box", "layout": "vertical", "backgroundColor": "#1a73e8",
+                "paddingAll": "14px",
+                "contents": [{"type": "text", "text": "TASUKARU ログイン承認",
+                              "color": "#ffffff", "weight": "bold", "size": "md"}],
+            },
+            "body": {
+                "type": "box", "layout": "vertical", "spacing": "sm", "paddingAll": "16px",
+                "contents": [
+                    {"type": "box", "layout": "baseline", "contents": [
+                        {"type": "text", "text": "名前", "size": "sm", "color": "#9aa0a6", "flex": 2},
+                        {"type": "text", "text": staff_name, "size": "sm",
+                         "color": "#202124", "weight": "bold", "flex": 5, "wrap": True}]},
+                    {"type": "box", "layout": "baseline", "contents": [
+                        {"type": "text", "text": "端末", "size": "sm", "color": "#9aa0a6", "flex": 2},
+                        {"type": "text", "text": device_label, "size": "sm",
+                         "color": "#202124", "flex": 5, "wrap": True}]},
+                    {"type": "box", "layout": "baseline", "contents": [
+                        {"type": "text", "text": "日時", "size": "sm", "color": "#9aa0a6", "flex": 2},
+                        {"type": "text", "text": when_text, "size": "sm",
+                         "color": "#202124", "flex": 5}]},
+                    {"type": "separator", "margin": "lg"},
+                    {"type": "text", "text": "確認番号", "size": "xs", "color": "#9aa0a6",
+                     "align": "center", "margin": "lg"},
+                    {"type": "text", "text": check_code, "size": "3xl", "weight": "bold",
+                     "color": "#1a73e8", "align": "center"},
+                    {"type": "text",
+                     "text": "画面に出ている番号と同じことを確かめてから押してください。",
+                     "size": "xs", "color": "#5f6368", "wrap": True, "align": "center",
+                     "margin": "md"},
+                ],
+            },
+            "footer": {
+                "type": "box", "layout": "vertical", "spacing": "sm", "paddingAll": "12px",
+                "contents": [
+                    {"type": "button", "style": "primary", "color": "#1a73e8",
+                     "action": {"type": "uri", "label": "承認する", "uri": approve_url}},
+                    {"type": "text",
+                     "text": "心当たりがないときは、押さずにこのまま置いてください。3分で切れます。",
+                     "size": "xxs", "color": "#9aa0a6", "wrap": True, "align": "center"},
+                ],
+            },
+        },
+    }
+
+
+@app.route("/shared-login", methods=["GET"])
+def shared_login_page():
+    """共有PCのログイン画面。★ログインしていなくても開ける。
+
+    許可された端末かどうかは、画面が開いたあとに /api/shared-login/names で確かめる。
+    未登録の端末には、そこで登録の申請フォームを出す。
+    """
+    return render_template("shared_login.html")
+
+
+@app.route("/api/shared-login/names", methods=["GET"])
+def api_shared_login_names():
+    """職員名の一覧。★許可された端末にだけ返す（設計 §3）。
+
+    ここを誰にでも返すと、URLを知っている人が職員名を並べられてしまう。
+    """
+    f_code = (request.args.get("fc") or "").strip()
+    token = (request.args.get("token") or "").strip()
+    if not f_code or not token:
+        return jsonify({"status": "error", "message": "施設コードと端末の印が必要です。"}), 400
+
+    supabase = get_supabase()
+    dev, checked = _login_device_find(supabase, f_code, token)
+    if not checked:
+        return jsonify(_SL_BUSY), 503
+    if not dev:
+        return jsonify({"status": "unregistered",
+                        "message": "この端末はまだ登録されていません。"}), 200
+    if dev.get("revoked_at"):
+        return jsonify({"status": "revoked",
+                        "message": "この端末は使えなくなっています。管理者にご連絡ください。"}), 200
+    if not dev.get("is_active"):
+        return jsonify({"status": "pending",
+                        "message": "管理者の承認をお待ちください。"}), 200
+
+    try:
+        res = (supabase.table("staffs").select("staff_name,line_user_id")
+               .eq("facility_code", f_code).eq("is_active", True).execute())
+    except Exception as e:
+        print("[shared-login] 職員名の取得に失敗: %s" % e, flush=True)
+        return jsonify(_SL_BUSY), 503
+
+    names = []
+    for s in (res.data or []):
+        nm = (s.get("staff_name") or "").strip()
+        if not nm:
+            continue
+        # ★LINEが繋がっていない人も名前は出す。
+        #   出さないと「自分の名前が無い」で止まってしまう。
+        #   選んだときに「旧方式で入ってください」と案内する。
+        names.append({"name": nm, "line": bool((s.get("line_user_id") or "").strip())})
+    names.sort(key=lambda x: x["name"])
+    return jsonify({"status": "success",
+                    "device_label": dev.get("device_label") or "この端末",
+                    "names": names})
+
+
+@app.route("/api/shared-login/request", methods=["POST"])
+def api_shared_login_request():
+    """承認要求を作り、本人のLINEへボタン付きで送る。"""
+    data = request.get_json(silent=True) or {}
+    f_code = (data.get("fc") or "").strip()
+    token = (data.get("token") or "").strip()
+    staff_name = (data.get("staff_name") or "").strip()
+    if not f_code or not token or not staff_name:
+        return jsonify({"status": "error", "message": "入力が足りません。"}), 400
+
+    supabase = get_supabase()
+
+    # ★許可された端末からしか要求を作らせない。
+    dev, checked = _login_device_find(supabase, f_code, token)
+    if not checked:
+        return jsonify(_SL_BUSY), 503
+    if not dev or dev.get("revoked_at") or not dev.get("is_active"):
+        return jsonify({"status": "error",
+                        "message": "この端末は使えません。管理者にご連絡ください。"}), 403
+
+    # 本人を探す。★LINEが繋がっていなければ、ここで正直にそう言う。
+    try:
+        st = (supabase.table("staffs").select("staff_name,line_user_id")
+              .eq("facility_code", f_code).eq("staff_name", staff_name)
+              .eq("is_active", True).limit(1).execute())
+    except Exception as e:
+        print("[shared-login] 職員の確認に失敗: %s" % e, flush=True)
+        return jsonify(_SL_BUSY), 503
+    rows = st.data or []
+    if not rows:
+        return jsonify({"status": "error", "message": "その名前は登録されていません。"}), 400
+    line_uid = (rows[0].get("line_user_id") or "").strip()
+    if not line_uid:
+        return jsonify({"status": "no_line",
+                        "message": "この方はLINEがつながっていないため、この方法では入れません。"
+                                   "施設コードとパスワードでログインしてください。"}), 200
+
+    # ★連投を止める（設計 §3）。LINEを埋め尽くす嫌がらせを防ぐ。
+    now = _sl_now()
+    try:
+        recent = (supabase.table("login_requests").select("created_at")
+                  .eq("facility_code", f_code).eq("staff_name", staff_name)
+                  .gte("created_at", (now - timedelta(hours=1)).isoformat()).execute())
+    except Exception as e:
+        print("[shared-login] 連投の確認に失敗: %s" % e, flush=True)
+        # ★数えられないときは作らない。ここを通すと制限が意味を失う。
+        return jsonify(_SL_BUSY), 503
+    rec = recent.data or []
+    if len(rec) >= _SL_RATE_HOUR_MAX:
+        return jsonify({"status": "error",
+                        "message": "この1時間に何度も送っています。しばらくおいてからお試しください。"}), 429
+    for r in rec:
+        try:
+            t = datetime.fromisoformat(str(r.get("created_at")).replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            continue
+        if (now - t).total_seconds() < _SL_RATE_SEC:
+            return jsonify({"status": "error",
+                            "message": "少し前に送っています。30秒ほどおいてからお試しください。"}), 429
+
+    poll_token = _sl_token()
+    approve_token = _sl_token()
+    code = _sl_check_code()
+    row = {
+        "facility_code": f_code, "staff_name": staff_name, "device_token": token,
+        "poll_token": poll_token, "approve_token": approve_token, "check_code": code,
+        "status": "pending",
+        "requested_ip": _login_client_ip(),
+        "user_agent": (request.headers.get("User-Agent") or "")[:300],
+        "expires_at": (now + timedelta(seconds=_SL_TTL_SEC)).isoformat(),
+        "created_at": now.isoformat(),
+    }
+    try:
+        supabase.table("login_requests").insert(row).execute()
+    except Exception as e:
+        print("[shared-login] 承認要求の登録に失敗: %s" % e, flush=True)
+        return jsonify(_SL_BUSY), 503
+
+    # LINEへ送る。★送れなかったら、そう言って旧方式へ逃がす（設計 §9）。
+    approve_url = request.host_url.rstrip("/") + "/login/approve?t=" + approve_token
+    jst_now = now + timedelta(hours=9)
+    flex = _sl_flex_approve(staff_name, dev.get("device_label") or "この端末",
+                            code, approve_url,
+                            "%d月%d日 %02d:%02d" % (jst_now.month, jst_now.day,
+                                                    jst_now.hour, jst_now.minute))
+    sent = False
+    try:
+        sent = line_send_message(line_uid, [flex])
+    except Exception as e:
+        print("[shared-login] LINE送信に失敗: %s" % e, flush=True)
+    if not sent:
+        # ★作った要求は残しておく。3分で切れる。
+        #   消すと「送れなかったのか、作れなかったのか」が分からなくなる。
+        return jsonify({"status": "line_failed",
+                        "message": "LINEに送れませんでした。"
+                                   "施設コードとパスワードでログインしてください。"}), 200
+
+    return jsonify({"status": "sent", "poll_token": poll_token,
+                    "check_code": code, "ttl": _SL_TTL_SEC})
+
+
+@app.route("/api/shared-login/poll", methods=["GET"])
+def api_shared_login_poll():
+    """承認されたかを確かめる。承認されていればここでログインさせる。
+
+    ★セッションを作れるのは poll_token を持っているPCだけ。
+      LINEに送った鍵（approve_token）では、ここへ来てもログインできない。
+    """
+    poll_token = (request.args.get("p") or "").strip()
+    if not poll_token:
+        return jsonify({"status": "error", "message": "鍵がありません。"}), 400
+
+    supabase = get_supabase()
+    row, checked = _sl_find_request(supabase, "poll_token", poll_token)
+    if not checked:
+        return jsonify(_SL_BUSY), 503
+    if not row:
+        return jsonify({"status": "unknown"}), 200
+
+    st = row.get("status")
+    if st == "denied":
+        return jsonify({"status": "denied"}), 200
+    if st == "used":
+        return jsonify({"status": "used"}), 200
+    if _sl_expired(row):
+        return jsonify({"status": "expired"}), 200
+    if st != "approved":
+        return jsonify({"status": "pending"}), 200
+
+    # ★ここで初めてログインさせる。先に「使った」印を付けてから通す。
+    #   逆にすると、印を付ける前に落ちたとき、同じ鍵で二度ログインできてしまう。
+    try:
+        (supabase.table("login_requests")
+         .update({"status": "used", "decided_at": _sl_now().isoformat()})
+         .eq("id", row["id"]).eq("status", "approved").execute())
+    except Exception as e:
+        print("[shared-login] 使用済みにできない: %s" % e, flush=True)
+        return jsonify(_SL_BUSY), 503
+
+    session["f_code"] = row["facility_code"]
+    session["my_name"] = row["staff_name"]
+    session["saved_f_code"] = row["facility_code"]
+    # ★前の人の管理者権限を引き継がせない（既存の /login と同じ）。
+    session["admin_authenticated"] = False
+    session["dev_authenticated"] = False
+    # shared-login-v1: この端末は共有か専用か。
+    session["login_device_token"] = row.get("device_token")
+    # idle-logout-v1: 共有端末かどうかを【ログインした時点で】セッションに封じ込める。
+    #   ★毎回DBに聞かない（全リクエストで問い合わせが増えるため）。
+    #   ★セッションは署名付きなので、ブラウザから書き換えられない。
+    #   ★管理者が途中で「共有」に変えても、いま入っている人には効かない。
+    #     次のログインから効く。承知のうえで選んでいる。
+    _dev_row, _dev_ok = _login_device_find(supabase, row["facility_code"],
+                                           row.get("device_token"))
+    # ★分からないときは False ＝【落とさない】。
+    #   通信が一瞬詰まっただけで記録の途中の職員が蹴られるほうが害が大きい。
+    session["login_device_shared"] = bool(_dev_ok and _dev_row
+                                          and _dev_row.get("is_shared"))
+    # device-kind-ask-v1: この端末で「共有か専用か」をまだ聞いていなければ、1回だけ聞く。
+    #   ★聞くかどうかもログインした時点で決める。
+    #     /api/session/state は全画面で呼ばれるので、そこでDBに聞き直さない。
+    session["login_device_ask_kind"] = bool(_dev_ok and _dev_row
+                                            and not _dev_row.get("kind_set_at"))
+    import time as _sl_time
+    session["last_touch"] = int(_sl_time.time())
+
+    try:
+        (supabase.table("login_devices")
+         .update({"last_used_at": _sl_now().isoformat()})
+         .eq("facility_code", row["facility_code"])
+         .eq("device_token", row.get("device_token")).execute())
+    except Exception as e:
+        # ★ここは記録だけ。失敗してもログインは通す。
+        print("[shared-login] last_used_at を書けない: %s" % e, flush=True)
+
+    return jsonify({"status": "approved", "redirect": "/"})
+
+
+@app.route("/api/shared-login/device/kind", methods=["POST"])
+@login_required
+def api_shared_login_device_kind():
+    """この端末を「みんなで使う（共有）」か「自分だけ（専用）」に設定する。
+
+    ★本人が、自分がいま使っている端末についてだけ設定できる。
+      どの端末かはセッションが持っている印で決める。
+      画面から端末のidを受け取らない。受け取ると、よその端末を書き換えられる。
+    """
+    try:
+        token = session.get("login_device_token")
+        f_code = session.get("f_code")
+        if not token or not f_code:
+            # ★旧方式で入った人には端末の印が無い。ここは何もしない。
+            return jsonify({"status": "error",
+                            "message": "この画面からは設定できません。"}), 400
+
+        data = request.get_json(silent=True) or {}
+        # ★真偽が来ていないときは共有（安全な側）。
+        is_shared = bool(data.get("is_shared", True))
+
+        supabase = get_supabase()
+        now = datetime.now(timezone.utc).isoformat()
+        res = (supabase.table("login_devices")
+               .update({"is_shared": is_shared,
+                        "kind_set_by": session.get("my_name", ""),
+                        "kind_set_at": now})
+               .eq("facility_code", f_code).eq("device_token", token).execute())
+        if not (res.data or []):
+            # ★書けていないのに「できました」と返さない。
+            return jsonify({"status": "error",
+                            "message": "この端末の登録が見つかりませんでした。"}), 404
+
+        # ★その場で効かせる。こうしないと「自分だけ」にしたのに、
+        #   そのログインの間だけ30分で落ちる。
+        session["login_device_shared"] = is_shared
+        session["login_device_ask_kind"] = False
+        return jsonify({"status": "success", "is_shared": is_shared})
+    except Exception as e:
+        print("api_shared_login_device_kind error: %s" % e, flush=True)
+        return jsonify({"status": "error",
+                        "message": "いま設定できませんでした。時間をおいてお試しください。"}), 503
+
+
+@app.route("/login/approve", methods=["GET"])
+def login_approve_page():
+    """LINEから開く承認ページ。★開いただけでは承認しない（設計 §3）。
+
+    ここは画面を出すだけ。承認は下の POST で。
+    リンクのプレビュー取得や、誤タップでは通らない。
+    """
+    t = (request.args.get("t") or "").strip()
+    if not t:
+        return render_template("login_approve.html", state="invalid")
+
+    supabase = get_supabase()
+    row, checked = _sl_find_request(supabase, "approve_token", t)
+    if not checked:
+        return render_template("login_approve.html", state="busy")
+    if not row:
+        return render_template("login_approve.html", state="invalid")
+    if row.get("status") == "denied":
+        return render_template("login_approve.html", state="denied")
+    if row.get("status") == "used":
+        return render_template("login_approve.html", state="used")
+    if _sl_expired(row):
+        return render_template("login_approve.html", state="expired")
+    if row.get("status") == "approved":
+        return render_template("login_approve.html", state="already")
+
+    return render_template("login_approve.html", state="ask", t=t,
+                           staff_name=row.get("staff_name"),
+                           check_code=row.get("check_code"))
+
+
+@app.route("/login/approve", methods=["POST"])
+def login_approve_do():
+    """ここで初めて承認する／拒否する。"""
+    data = request.get_json(silent=True) or {}
+    t = (data.get("t") or "").strip()
+    action = (data.get("action") or "").strip()
+    if not t or action not in ("approve", "deny"):
+        return jsonify({"status": "error", "message": "入力が正しくありません。"}), 400
+
+    supabase = get_supabase()
+    row, checked = _sl_find_request(supabase, "approve_token", t)
+    if not checked:
+        return jsonify(_SL_BUSY), 503
+    if not row:
+        return jsonify({"status": "error", "message": "この要求は見つかりません。"}), 404
+    if row.get("status") != "pending":
+        return jsonify({"status": "error", "message": "この要求はもう使えません。"}), 409
+    if _sl_expired(row):
+        return jsonify({"status": "error",
+                        "message": "3分が過ぎたため無効になりました。もう一度やり直してください。"}), 410
+
+    new_status = "approved" if action == "approve" else "denied"
+    try:
+        # ★status が pending のままのときだけ書き換える。
+        #   二重に押されても、あとから来たほうは何も起きない。
+        (supabase.table("login_requests")
+         .update({"status": new_status, "decided_at": _sl_now().isoformat()})
+         .eq("id", row["id"]).eq("status", "pending").execute())
+    except Exception as e:
+        print("[shared-login] 承認の書き込みに失敗: %s" % e, flush=True)
+        return jsonify(_SL_BUSY), 503
+
+    return jsonify({"status": "success", "result": new_status})
+# ===== /shared-login-v1 =====
+
+
+# ===== login-device-admin-v1 : ログインに使う端末の登録と管理 =====
+#   設計_LINE承認ログイン.md の §4 / §7。
+#   打刻端末（timecard_devices）と同じ考え方にそろえる。
+#   管理者が見慣れた形にすること自体が、間違いの少なさになる。
+#
+#   ★この段階では、既存のログインに1行も触らない。
+#     表とこの画面だけ先に作る。承認ログイン本体（/shared-login）は次の回。
+#
+#   ★「確かめられなかった」は、すべて【通さない】側に倒す。
+#     端末を通すことは、そのままログインを通すこと。
+#     通信が落ちたのを「登録が無い」と読むと、
+#       申請のとき … 同じ端末をもう1件作ってしまう
+#       判定のとき … 未承認の端末を通してしまう
+#     どちらも起きてはいけない。
+
+# 端末の印の形。クライアントが作るので、こちら側で形を決めておく。
+_LOGIN_DEVICE_TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+# 1施設あたり、承認待ちで置いておける数。
+# ★申請の入口はログイン不要なので、上限が無いと管理画面が埋まる。
+#   埋まると本物の申請を見落とす。見落としは「通らない」ではなく「見ない」になるので危ない。
+_LOGIN_DEVICE_MAX_PENDING = 20
+_LOGIN_DEVICE_BUSY = {
+    "status": "error",
+    "message": "いま確認できませんでした。時間をおいて、もう一度お試しください。",
+}
+
+
+def _login_device_find(supabase, f_code, token):
+    """端末を1件さがす。返り値は (行, 確かめられたか)。
+
+    ★「無かった」と「聞けなかった」を必ず分ける。
+      ここを1つの返り値にまとめると、通信の失敗が「登録が無い」に化ける。
+    """
+    try:
+        res = (supabase.table("login_devices").select("*")
+               .eq("facility_code", f_code).eq("device_token", token)
+               .limit(1).execute())
+        rows = res.data or []
+        return (rows[0] if rows else None), True
+    except Exception as e:
+        print("[login-device] 端末の確認に失敗: %s" % e, flush=True)
+        return None, False
+
+
+def login_device_is_active(supabase, f_code, token):
+    """この端末は使ってよいか。
+
+    ★確かめられなかったときは False。つまり【使わせない】。
+      次の回（/shared-login）から呼ぶ。ここでは定義だけ置く。
+    """
+    row, checked = _login_device_find(supabase, f_code, token)
+    if not checked or not row:
+        return False
+    return bool(row.get("is_active")) and not row.get("revoked_at")
+
+
+@app.route("/api/shared-login/device/request", methods=["POST"])
+def shared_login_device_request():
+    """端末の登録申請。★ログインしていなくても呼べる（申請するだけ）。
+
+    実際に使えるようになるのは、管理者が許可したあと。
+    """
+    try:
+        data = request.get_json(silent=True) or {}
+        token = (data.get("token") or "").strip()
+        f_code = (data.get("facility_code") or "").strip()
+        label = (data.get("label") or "").strip()[:40]
+        who = (data.get("requested_by") or "").strip()[:40]
+
+        if not token or not f_code:
+            return jsonify({"status": "error",
+                            "message": "端末の印と施設コードが必要です。"}), 400
+        # ★① 印の形を決めておく。緩くすると変な文字がそのまま入る。
+        if not _LOGIN_DEVICE_TOKEN_RE.match(token):
+            return jsonify({"status": "error",
+                            "message": "端末の印の形が正しくありません。"}), 400
+
+        supabase = get_supabase()
+
+        # ★② 実在する施設コードでなければ作らない。
+        #   ここはログイン不要の入口なので、緩いと
+        #   でたらめな施設コードで行をいくらでも作られてしまう。
+        try:
+            fac = (supabase.table("facilities").select("facility_code")
+                   .eq("facility_code", f_code).limit(1).execute())
+        except Exception as e:
+            print("[login-device] 施設の確認に失敗: %s" % e, flush=True)
+            return jsonify(_LOGIN_DEVICE_BUSY), 503
+        if not (fac.data or []):
+            # ★どの施設コードが在るかを教えない。「違います」だけ返す。
+            return jsonify({"status": "error", "message": "施設コードが違います。"}), 400
+
+        row, checked = _login_device_find(supabase, f_code, token)
+        if not checked:
+            return jsonify(_LOGIN_DEVICE_BUSY), 503
+        if row:
+            if row.get("revoked_at"):
+                return jsonify({"status": "ok",
+                                "message": "この端末は取り消されています。管理者にご連絡ください。"})
+            if row.get("is_active"):
+                return jsonify({"status": "ok", "message": "この端末はすでに使えます。"})
+            return jsonify({"status": "ok",
+                            "message": "申請ずみです。管理者の承認をお待ちください。"})
+
+        # ★③ 承認待ちが多すぎるときは受け付けない。
+        try:
+            pend = (supabase.table("login_devices").select("id")
+                    .eq("facility_code", f_code).eq("is_active", False)
+                    .is_("revoked_at", "null").execute())
+        except Exception as e:
+            print("[login-device] 承認待ちの数を数えられない: %s" % e, flush=True)
+            return jsonify(_LOGIN_DEVICE_BUSY), 503
+        if len(pend.data or []) >= _LOGIN_DEVICE_MAX_PENDING:
+            return jsonify({"status": "error",
+                            "message": "承認待ちの端末が多すぎます。管理者にご連絡ください。"}), 429
+
+        try:
+            supabase.table("login_devices").insert({
+                "facility_code": f_code,
+                "device_token": token,
+                "device_label": label or "新しい端末",
+                "requested_by": who,          # ★自分で名乗った文字。裏づけは無い
+                "is_shared": True,            # ★既定は共有（安全な側）
+                "is_active": False,           # ★許可されるまで使えない
+            }).execute()
+        except Exception as e:
+            print("[login-device] 申請の登録に失敗: %s" % e, flush=True)
+            return jsonify(_LOGIN_DEVICE_BUSY), 503
+
+        return jsonify({"status": "ok",
+                        "message": "申請しました。管理者の承認をお待ちください。"})
+    except Exception as e:
+        print("shared_login_device_request error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _login_device_admin_guard():
+    """管理者かどうか。(施設コード, 自分の名前, supabase, エラー応答) を返す。
+    エラー応答が None でなければ、呼び出し側はそれをそのまま返す。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    if not is_admin_user(supabase, f_code, my_name):
+        return f_code, my_name, supabase, (
+            jsonify({"status": "error", "message": "管理者権限がありません"}), 403)
+    return f_code, my_name, supabase, None
+
+
+@app.route("/admin/login-devices", methods=["GET"])
+@login_required
+def admin_login_devices_page():
+    """ログイン端末の管理画面（管理者だけ）。"""
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    try:
+        if not is_admin_user(get_supabase(), f_code, my_name):
+            return redirect("/admin")
+    except Exception as e:
+        # ★管理者かどうかを確かめられないときは【入れない】。
+        print("[login-device] 管理者の確認に失敗: %s" % e, flush=True)
+        return redirect("/admin")
+    return render("admin_login_devices.html")
+
+
+@app.route("/api/admin/login-devices", methods=["GET"])
+@login_required
+def api_admin_login_devices():
+    """端末の一覧（管理者だけ）。"""
+    try:
+        f_code, my_name, supabase, ng = _login_device_admin_guard()
+        if ng:
+            return ng
+        res = (supabase.table("login_devices").select("*")
+               .eq("facility_code", f_code)
+               .order("created_at", desc=True).execute())
+        return jsonify({"status": "success", "devices": res.data or []})
+    except Exception as e:
+        # ★ここで空の一覧を返さない。
+        #   空を返すと画面は「1台も無い」と見え、承認待ちを見落とす。
+        print("api_admin_login_devices error: %s" % e, flush=True)
+        return jsonify({"status": "error",
+                        "message": "いま一覧を読み込めませんでした。"}), 503
+
+
+@app.route("/api/admin/login-devices/approve", methods=["POST"])
+@login_required
+def api_admin_login_devices_approve():
+    """端末を許可する。名前だけの保存にも使う（管理者だけ）。"""
+    try:
+        f_code, my_name, supabase, ng = _login_device_admin_guard()
+        if ng:
+            return ng
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        label = (data.get("label") or "").strip()[:40]
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        upd = {"is_active": True, "approved_by": my_name,
+               "approved_at": datetime.now(timezone.utc).isoformat(),
+               "revoked_at": None}   # ★取り消し済みを許可し直せるように戻す
+        if label:
+            upd["device_label"] = label
+        (supabase.table("login_devices").update(upd)
+         .eq("id", dev_id).eq("facility_code", f_code).execute())
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_admin_login_devices_approve error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/admin/login-devices/revoke", methods=["POST"])
+@login_required
+def api_admin_login_devices_revoke():
+    """端末を取り消す（管理者だけ）。
+
+    ★行は消さない。いつ誰が取り消したかを残す。
+      消してしまうと、あとで「その端末は何だったのか」を追えなくなる。
+    """
+    try:
+        f_code, my_name, supabase, ng = _login_device_admin_guard()
+        if ng:
+            return ng
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        (supabase.table("login_devices")
+         .update({"is_active": False, "revoked_at": datetime.now(timezone.utc).isoformat()})
+         .eq("id", dev_id).eq("facility_code", f_code).execute())
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_admin_login_devices_revoke error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/admin/login-devices/kind", methods=["POST"])
+@login_required
+def api_admin_login_devices_kind():
+    """みんなで使う（共有）／自分だけ（専用）を切り替える（管理者だけ）。
+
+    ★共有 = 30分さわらなければ自動ログアウト。
+      事務所のPCが勝手に「自分だけ」になっていないかを、ここで見て戻せる。
+    """
+    try:
+        f_code, my_name, supabase, ng = _login_device_admin_guard()
+        if ng:
+            return ng
+        data = request.get_json(silent=True) or {}
+        dev_id = data.get("id")
+        if not dev_id:
+            return jsonify({"status": "error", "message": "id が必要です。"}), 400
+        # ★真偽が来ていないときは共有（安全な側）にする。
+        is_shared = bool(data.get("is_shared", True))
+        (supabase.table("login_devices")
+         .update({"is_shared": is_shared, "kind_set_by": my_name,
+                  "kind_set_at": datetime.now(timezone.utc).isoformat()})
+         .eq("id", dev_id).eq("facility_code", f_code).execute())
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_admin_login_devices_kind error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ===== /login-device-admin-v1 =====
+
+
 @app.route("/admin/timecard", methods=["GET"])
 @login_required
 def admin_timecard_page():

@@ -615,14 +615,20 @@
 }
 .ev-wbar.flat { animation: none; height: 3px; background: #dadce0; }
 @keyframes ev-wave { from { height: 4px; } to { height: var(--evh); } }
+/* eval-voice-rem-v1: 録音・文字起こしまわりが文字サイズ設定を無視していたのを直す。
+   文字起こしの本文（.ev-tx-mono / .ev-spk-text）は元から rem で効いていた。
+   効いていなかったのは、そのまわりの見出し・札・時間。本文だけ伸びると釣り合いが崩れる。
+   値は16で割り切れる数なので、100%の見た目は1pxも変わらない。
+   文字と並ぶアイコンは em（となりの文字に対する比）。
+   ★丸ボタンの中のアイコンは触っていない。丸が px なので中身だけ伸ばすとはみ出す。 */
 /* タイマー・ヒント */
 .ev-timer {
-    font-size: 20px; font-weight: 700; color: #202124;
+    font-size: 1.25rem; font-weight: 700; color: #202124;
     font-variant-numeric: tabular-nums; letter-spacing: .02em;
 }
 .ev-timer.recording { color: #ea4335; }
 .ev-timer.paused    { color: #80868b; }
-.ev-hint { font-size: 11px; color: #80868b; }
+.ev-hint { font-size: 0.6875rem; color: #80868b; }
 /* サブボタン（一時停止・完了） */
 .ev-sub-btns { display: flex; align-items: center; gap: 16px; }
 .ev-sub-col  { display: flex; flex-direction: column; align-items: center; gap: 3px; }
@@ -634,26 +640,26 @@
 .ev-sub-btn .material-symbols-outlined { font-size: 18px; color: #80868b; }
 .ev-sub-btn.pause .material-symbols-outlined { color: #1a73e8; }
 .ev-sub-btn.stop  .material-symbols-outlined { color: #ea4335; }
-.ev-sub-label { font-size: 10px; color: #80868b; }
+.ev-sub-label { font-size: 0.625rem; color: #80868b; }
 /* 一時停止バナー */
 .ev-pause-banner {
     display: none; align-items: center; gap: 6px;
     padding: 7px 10px; background: #e8f0fe; border-radius: 8px;
-    margin-bottom: 8px; font-size: 12px; font-weight: 700; color: #1a73e8;
+    margin-bottom: 8px; font-size: 0.75rem; font-weight: 700; color: #1a73e8;
 }
 .ev-pause-banner.visible { display: flex; }
-.ev-pause-banner .material-symbols-outlined { font-size: 15px; }
+.ev-pause-banner .material-symbols-outlined { font-size: 1.25em; }
 /* 文字起こしボックス */
 .ev-tx-box {
     background: #f8f9fa; border-radius: 10px;
     padding: 10px 12px; min-height: 60px; margin-top: 4px;
 }
-.ev-tx-label { font-size: 10px; color: #9aa0a6; margin-bottom: 5px; }
+.ev-tx-label { font-size: 0.625rem; color: #9aa0a6; margin-bottom: 5px; }
 .ev-tx-mono  { font-size: 0.82rem; color: #202124; line-height: 1.75; white-space: pre-wrap; }
 /* 話者バッジ（対面会話モード） */
 .ev-spk-row  { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 7px; }
 .ev-spk-badge {
-    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 99px;
+    font-size: 0.625rem; font-weight: 700; padding: 2px 7px; border-radius: 99px;
     white-space: nowrap; flex-shrink: 0; margin-top: 2px;
 }
 .ev-spk-staff { background: #e8f0fe; color: #1558d6; }
@@ -667,21 +673,21 @@
     margin-bottom: 8px;
 }
 .ev-edit-title {
-    font-size: 13px; font-weight: 700; color: #202124;
+    font-size: 0.8125rem; font-weight: 700; color: #202124;
     display: flex; align-items: center; gap: 5px;
 }
-.ev-edit-title .material-symbols-outlined { font-size: 16px; color: #137333; }
+.ev-edit-title .material-symbols-outlined { font-size: 1.23em; color: #137333; }
 .ev-edit-done-badge {
-    font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px;
+    font-size: 0.625rem; font-weight: 700; padding: 2px 8px; border-radius: 99px;
     background: #e6f4ea; color: #137333;
 }
 .ev-edit-meta { display: flex; gap: 6px; margin-bottom: 10px; }
 .ev-edit-chip {
     display: flex; align-items: center; gap: 4px;
-    font-size: 11px; color: #5f6368;
+    font-size: 0.6875rem; color: #5f6368;
     background: #f1f3f4; border-radius: 99px; padding: 3px 9px;
 }
-.ev-edit-chip .material-symbols-outlined { font-size: 13px; }
+.ev-edit-chip .material-symbols-outlined { font-size: 1.18em; }
 .ev-edit-row  { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
 .ev-edit-field {
     flex: 1; font-size: 0.82rem; color: #202124; line-height: 1.65;

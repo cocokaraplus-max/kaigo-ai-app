@@ -7,7 +7,11 @@
 .fmb-wrap { max-width: 680px; margin: 0 auto; padding: 12px 14px 40px; position:relative; }
 /* fmb-gear-v1: 右上の歯車→BCP設定 */
 /* fab-overlap-v1: 右上の「?」と歯車が重なるので、そのぶん左へ寄せる */
-.fmb-gear { position:absolute; top:6px; right:calc(10px + var(--fab-safe, 0px)); z-index:20; width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#f1f3f4; color:#5f6368; text-decoration:none; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+/* fmb-gear-align-v1: 右上の「?」と真横にそろえる。
+   16px＝「?」の上端、20px＝「?」の半分、21px＝この歯車の半分（42px）、
+   3px＝本文の枠線、1.5rem＝本文の上余白（文字と一緒に伸びる）。
+   ★実測 直す前は 100%で18px、130%で25px 下にいた。 */
+.fmb-gear { position:absolute; top:calc(16px + 20px - 21px - 3px - 1.5rem); right:calc(10px + var(--fab-safe, 0px)); z-index:20; width:42px; height:42px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#f1f3f4; color:#5f6368; text-decoration:none; box-shadow:0 1px 3px rgba(0,0,0,.08); }
 .fmb-gear:active { transform:scale(.94); }
 .fmb-gear .material-symbols-outlined { font-size:23px; }
 .fmb-screen { display: none; }
