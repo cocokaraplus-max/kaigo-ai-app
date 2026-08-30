@@ -680,11 +680,20 @@ function a2BindSegs(root){
     seg.querySelectorAll('button').forEach(function(b){
       if(hid && hid.value === b.dataset.v) b.classList.add('on');
       b.onclick = function(){
+        /* a2-seg-toggle-v1: すでに選ばれているものをもう一度押したら【取り消す】。
+           ★これまでは一度押すと外せず、3つのうちどれかが必ず選ばれた状態になった。
+             押し間違えたときの逃げ道が無い。
+           ★「まだ決めていない」と「できなかった」は別のこと。
+             間違えたまま保存すると、決めていないものが
+             「できなかった」として記録に残る。 */
+        var off = b.classList.contains('on');
         seg.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
-        b.classList.add('on');
-        if(hid) hid.value = b.dataset.v;
+        if(!off) b.classList.add('on');
+        if(hid) hid.value = off ? '' : b.dataset.v;
         if(seg.dataset.target === 'a2-req')
-          $('a2-reqDetail').style.display = (b.dataset.v === 'あり') ? '' : 'none';
+          /* ★取り消したら詳しい欄は隠す。ただし【書いた文字は消さない】。
+               もう一度「あり」を押せば、そのまま出てくる。 */
+          $('a2-reqDetail').style.display = (hid && hid.value === 'あり') ? '' : 'none';
       };
     });
   });
