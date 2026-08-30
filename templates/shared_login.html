@@ -155,11 +155,33 @@
       if (!j || j.status !== 'ok') { msg((j && j.message) || '申請できませんでした。'); return; }
       store(K_TOKEN, token); store(K_FC, fc);
       msg(j.message, 'ok');
+      S.token = token; S.fc = fc;
+      /* sl-flow-v1: 許可されたら自動で名前一覧に切り替える。
+         ★手で再読み込みが要るのは、待っている人には分からない。
+         ★10秒に1回。許可は人が押すものなので、これで十分。 */
+      waitForApproval();
     }).catch(function () {
       document.getElementById('sl-req-btn').disabled = false;
       msg('通信できませんでした。');
     });
   });
+
+  /* sl-flow-v1: 承認待ちのあいだ、許可されたかを見に行く。
+     ★止め時を決めておく。10分たっても許可されなければやめる。
+       いつまでも聞き続けると、開きっぱなしのPCが無駄に通信する。 */
+  function waitForApproval() {
+    var until = Date.now() + 10 * 60 * 1000;
+    var t = setInterval(function () {
+      if (Date.now() > until) { clearInterval(t); return; }
+      fetch('/api/shared-login/names?fc=' + encodeURIComponent(S.fc)
+            + '&token=' + encodeURIComponent(S.token))
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (j && j.status === 'success') { clearInterval(t); msg(''); loadNames(); }
+        })
+        .catch(function () { /* 聞けなければ、次の回に持ち越す */ });
+    }, 10000);
+  }
 
   /* ---- ② 名前の一覧 ---- */
   function loadNames() {
