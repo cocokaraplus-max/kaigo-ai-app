@@ -1068,8 +1068,16 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 .rep-editable:hover { background: #f1f6ff; }
 .rep-editable:focus { background: #fffbe6; outline: 1px solid #1a73e8; }
 
+/* print-extra-page-margin-v1: 2枚目以降の間隔は【画面だけ】。
+   ★以前は JS の直接指定(p2.style.marginTop='10mm')だった。
+     直接指定は印刷用の margin:0 より強く、印刷で 10mm ずれて
+     3枚目ができていた（Chromiumで測って確認）。 */
+.report-page.lx-extra-page { margin-top: 10mm; }
+
 @media print {
     @page { size: A4; margin: 0; }
+    /* ★印刷では間隔を消す。ここが本体の直し。 */
+    .report-page.lx-extra-page { margin-top: 0 !important; }
     body { background: #fff; }
     .screen-bar { display: none !important; }
     .no-print { display: none !important; }
@@ -3859,7 +3867,12 @@ table.lx-cmp td.chg.flat{ color:#8a94a0; }
     p2.classList.add('lx-rich','lx-extra-page');
     p2.classList.remove('compact');
     p2.setAttribute('data-user', src.getAttribute('data-user'));
-    p2.style.marginTop='10mm';
+    /* print-extra-page-margin-v1: ここで直接 marginTop を指定しない。
+       ★直接指定は `.report-page { margin: 0 }`（印刷用）より強く、
+         印刷でも 10mm 下にずれる。297mmの箱がずれるので、
+         【下端10mmが次の紙に落ちる】＝3枚目ができる。
+       ★画面の間隔はクラス側(.lx-extra-page)で付ける。
+         そうすれば @media print で 0 に戻せる。 */
     var wrap=document.createElement('div'); wrap.className='rep-scale-wrap';
     // 継続ヘッダー
     var h=document.createElement('div'); h.className='lx-page2-header';
