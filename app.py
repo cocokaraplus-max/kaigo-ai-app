@@ -2943,8 +2943,7 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/patient-info",  "icon": "person_book",            "label": "利用者情報",     "need": None},  # patient-hub-v1
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
     {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None, "tier": "standard"},
-    {"href": "/soge",           "icon": "airport_shuttle",        "label": "配車",           "need": None, "tier": "standard"},   # soge-rename-haisha-v1
-    {"href": "/soge/date",      "icon": "event_repeat",           "label": "この日だけの配車", "need": None, "tier": "standard"},   # soge-date-ui-v1
+    {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None, "tier": "standard"},   # soge-menu-name-v2
     {"href": "/fitness",        "icon": "fitness_center",         "label": "体力・体重",     "need": None},
     {"href": "/life_check",     "icon": "checklist",              "label": "生活機能CHECK",  "need": None},
     {"href": "/calendar",       "icon": "calendar_month",         "label": "カレンダー",     "need": None},
