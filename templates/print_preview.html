@@ -1711,11 +1711,13 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     <div class="rep-satisfaction-row">
         <div class="rep-satisfaction-box">
             利用者・家族の満足度
-            <span style="margin-left:6px;font-weight:700;">{{ ev.get('satisfaction', '未記入') if ev else '未記入' }}</span>
+            {# print-satisfy-none-v1: .get(キー,既定値) は【キーが無いとき】しか効かない。
+               欄が空(None)だと None がそのまま紙に出る。or で倒す。 #}
+            <span style="margin-left:6px;font-weight:700;">{{ ev.get('satisfaction') or '未記入' if ev else '未記入' }}</span>
         </div>
         <div class="rep-satisfaction-box">
             サービス提供内容が適切か
-            <span style="margin-left:6px;font-weight:700;">{{ ev.get('service_appropriateness', '未記入') if ev else '未記入' }}</span>
+            <span style="margin-left:6px;font-weight:700;">{{ ev.get('service_appropriateness') or '未記入' if ev else '未記入' }}</span>{# print-satisfy-none-v1 #}
         </div>
     </div>
     <!-- 評価基準の凡例 -->
