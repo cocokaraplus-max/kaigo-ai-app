@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}配車 - TASUKARU{% endblock %}{# soge-rename-haisha-v1 #}
+{% block title %}{% if sg_mode == 'date' %}この日だけの配車{% else %}配車{% endif %} - TASUKARU{% endblock %}{# soge-date-ui-v1 #}
 {% block nav_soge %}active{% endblock %}
 
 {% block extra_style %}
@@ -27,6 +27,22 @@
 .sg-day { flex:1; text-align:center; padding:8px 0; border-radius:10px; border:1.5px solid #dadce0;
   background:#fff; color:#5f6368; font-weight:800; font-size:0.9rem; cursor:pointer; }
 .sg-day.on { background:#1a73e8; border-color:#1a73e8; color:#fff; }
+/* soge-date-ui-v1: 日付のえらび方。★remで書く（文字サイズ設定で崩さない） */
+.sg-datebar { display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap; margin-bottom:0.6rem; }
+.sg-dlabel { font-size:0.82rem; color:#5f6368; font-weight:700; }
+.sg-dinput { border:1.5px solid #dadce0; border-radius:0.5rem; padding:0.44rem 0.6rem;
+  font-size:0.95rem; font-family:inherit; }
+.sg-dwd { font-size:0.9rem; font-weight:800; color:#1a73e8; }
+.sg-dstate { font-size:0.78rem; font-weight:700; color:#5f6368; background:#f1f3f4;
+  border-radius:999px; padding:0.25rem 0.62rem; }
+.sg-dstate.on { color:#0b6b3a; background:#e6f4ea; }
+/* ★.sg-days は display:flex（曜日タブを横に7つ並べるため）。
+   そのままだと日付バーと注意書きが【横に並んで】しまうので、
+   日付の画面のときだけ縦に積む。 */
+.sg-days.sg-days-date { display:block; }
+/* ★ボタンの文字が「曜日の／配車」のように途中で折れるのを止める。
+   入らないぶんは、ボタンごと下の行へ落とす（sg-head 側で折り返す）。 */
+.sg-btn { white-space:nowrap; }
 
 /* soge-week-tab-v1: 便のタブ。
    迎え便・中間便・送り便を縦に全部出すと、画面が非常に長くなって
@@ -164,8 +180,14 @@
   <div id="sgToast" class="sg-toast"></div>
 
   <div class="sg-head">
-    <div class="sg-title">配車 <span id="sgState"></span></div>{# soge-rename-haisha-v1 #}
-    <div style="display:flex;gap:8px;">
+    <div class="sg-title">{% if sg_mode == 'date' %}この日だけの配車{% else %}配車{% endif %} <span id="sgState"></span></div>{# soge-date-ui-v1 #}
+    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">{# soge-date-ui-v1: 入らないぶんは下の行へ #}
+      {# soge-date-ui-v1: もう一方の画面へ行き来できるようにする #}
+      {% if sg_mode == 'date' %}
+      <a class="sg-btn" href="/soge" onclick="spaNav(event,'/soge')">曜日の配車</a>
+      {% else %}
+      <a class="sg-btn" href="/soge/date" onclick="spaNav(event,'/soge/date')">この日だけの配車</a>
+      {% endif %}
       <a class="sg-btn" href="/soge/run" onclick="spaNav(event,'/soge/run')">運行画面</a>
       <!-- soge-keep-build-v1: 組み直しは2種類。ふだん使うのは「いつもの並びで」。
            「ゼロから」は手で直した割り振りが全部消えるので、色も分けて警告も強くする。 -->
@@ -198,6 +220,32 @@
   var state = { weekday: 1, data: null, staff: [], vehicles: [], patients: [], dirty: false,
                 tripTab: 0 };   // soge-week-tab-v1: 表示中の便（d.trips の本当の位置）
 
+  /* ===== soge-date-ui-v1 : この画面は顔が2つある =====
+       'week' … 曜日ごとの【いつもの配車】（これまでどおり）
+       'date' … その日だけの配車
+     ★つまんで動かす仕組みは【1つのまま】。2つ書くと、
+       片方だけ直したときに必ずずれる。ずれても画面は動くので、
+       気づくのは現場で困ってからになる。 */
+  var IS_DATE = ('{{ sg_mode|default("week") }}' === 'date');
+  state.date = '';         // 'YYYY-MM-DD'（日付の画面のときだけ使う）
+  state.hasPlan = false;   // その日だけの配車が、もう作られているか
+  state.day = null;        // その日の運行表の状態（打刻が始まっているか等）
+
+  function ymd(dt) {
+    return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0')
+         + '-' + String(dt.getDate()).padStart(2, '0');
+  }
+  function wdOf(s) {                      // 'YYYY-MM-DD' → 0=日
+    var a = String(s || '').split('-');
+    return new Date(Number(a[0]), Number(a[1]) - 1, Number(a[2])).getDay();
+  }
+  function curWeekday() {
+    /* 組み直しに渡す曜日。日付の画面では【その日付の曜日】。
+       ★state.weekday を渡してはいけない。日付の画面では使っていない値なので、
+         いつまでも今日の曜日のまま組まれてしまう。 */
+    return IS_DATE ? wdOf(state.date) : state.weekday;
+  }
+
   function $(id) { return document.getElementById(id); }
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
 
@@ -212,6 +260,7 @@
 
   // ---------- 曜日タブ ----------
   function renderDays() {
+    if (IS_DATE) { renderDateBar(); return; }   // soge-date-ui-v1
     $('sgDays').innerHTML = WD.map(function (d) {
       return '<div class="sg-day' + (d.n === state.weekday ? ' on' : '') + '" data-wd="' + d.n + '">' + d.label + '</div>';
     }).join('');
@@ -226,15 +275,81 @@
     });
   }
 
+  /* ===== soge-date-ui-v1 : 日付のえらび方 ===== */
+  function renderDateBar() {
+    var d = state.day || {};
+    /* ★確定済み・過ぎた日・打刻が始まった日は、保存はできるが
+         【当日の運行表は作り直されない】。それを日付を選んだ時点で出す。
+       ★押したあとに言われても遅い。 */
+    var why = d.locked ? 'この日は確定済みです。'
+            : d.past ? 'これは過ぎた日です。'
+            : d.touched ? 'この日はもう打刻が始まっています。'
+            : '';
+    $('sgDays').className = 'sg-days sg-days-date';   // ★横並びをやめる
+    $('sgDays').innerHTML =
+      '<div class="sg-datebar">' +
+        '<label class="sg-dlabel" for="sgDate">日付</label>' +
+        '<input type="date" id="sgDate" class="sg-dinput" value="' + esc(state.date) + '">' +
+        '<span class="sg-dwd">' + ['日','月','火','水','木','金','土'][wdOf(state.date)] + '曜</span>' +
+        '<span class="sg-dstate' + (state.hasPlan ? ' on' : '') + '">' +
+          (state.hasPlan ? 'この日だけの配車あり' : 'いまはいつもの曜日の配車') + '</span>' +
+        (state.hasPlan
+          ? '<button type="button" class="sg-btn sg-btn-sm sg-btn-zero" id="sgDrop">この日だけの配車をやめる</button>'
+          : '') +
+      '</div>' +
+      (why ? '<div class="sg-warn">' + esc(why) +
+             '保存はできますが、当日の運行表は作り直されません。</div>' : '');
+
+    var inp = document.getElementById('sgDate');
+    if (inp) inp.onchange = function () {
+      if (state.dirty && !confirm('保存していない変更があります。破棄して切り替えますか？')) {
+        inp.value = state.date; return;     // ★戻す。選び直した日付のまま残さない
+      }
+      state.date = inp.value || state.date;
+      state.dirty = false;
+      renderDateBar();
+      load();
+    };
+    var drop = document.getElementById('sgDrop');
+    if (drop) drop.onclick = sgDropPlan;
+  }
+
+  async function sgDropPlan() {
+    if (!confirm('この日だけの配車をやめて、いつもの曜日の配車に戻します。\n\nよろしいですか？')) return;
+    var b = document.getElementById('sgDrop');
+    if (b) { b.disabled = true; b.textContent = '戻しています…'; }
+    try {
+      var r = await fetch('/api/soge/date?date=' + encodeURIComponent(state.date), { method: 'DELETE' });
+      var j = await r.json();
+      if (j.status !== 'success') { toast(j.message || '戻せませんでした', 'err'); return; }
+      state.dirty = false;
+      toast(j.message);
+      await load();
+    } catch (e) { toast('戻せませんでした', 'err'); }
+    finally { if (b) { b.disabled = false; b.textContent = 'この日だけの配車をやめる'; } }
+  }
+
   // ---------- 読み込み ----------
   async function load() {
     $('sgInfo').textContent = '読み込み中…';
     $('sgTrips').innerHTML = '';
     $('sgTripTabs').innerHTML = '';
-    var r = await fetch('/api/soge/week?weekday=' + state.weekday);
+    /* soge-date-ui-v1: 読み先が変わるだけ。返ってくる形は同じ。
+       ★日付の画面で、その日だけの配車がまだ無いときは、
+         サーバが【その曜日のいつもの配車】をそのまま返す。
+         これが「いつもの配車をコピーして直す」の正体で、
+         画面側にコピー専用の処理は要らない。 */
+    var r = await fetch(IS_DATE
+      ? ('/api/soge/date?date=' + encodeURIComponent(state.date))
+      : ('/api/soge/week?weekday=' + state.weekday));
     var j = await r.json();
     if (j.status !== 'success') { $('sgInfo').textContent = j.message; return; }
     state.data = j;
+    if (IS_DATE) {
+      state.hasPlan = !!j.has_plan;
+      state.day = j.day || null;
+      renderDateBar();
+    }
     render();
   }
 
@@ -247,7 +362,7 @@
     try {
       var r = await fetch('/api/soge/week/keep', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ weekday: state.weekday })
+        body: JSON.stringify({ weekday: curWeekday() })   // soge-date-ui-v1
       });
       var j = await r.json();
       if (j.status !== 'success') { toast(j.message, 'err'); return; }
@@ -274,7 +389,7 @@
     try {
       var r = await fetch('/api/soge/week/auto', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ weekday: state.weekday })
+        body: JSON.stringify({ weekday: curWeekday() })   // soge-date-ui-v1
       });
       var j = await r.json();
       if (j.status !== 'success') { toast(j.message, 'err'); return; }
@@ -415,7 +530,9 @@
     $('sgInfo').innerHTML =
       '対象 ' + (d.target_count != null ? d.target_count + '名' : '—') +
       (d.wheelchair_count ? '（うち車いす ' + d.wheelchair_count + '名）' : '') +
-      '<br>名前の左の⠿をつまむと、順番の入れ替えも、車から車への移動もできます。直した内容は保存すると次週に引き継がれます。';
+      '<br>名前の左の⠿をつまむと、順番の入れ替えも、車から車への移動もできます。' +
+      (IS_DATE ? '直した内容は【この日だけ】に使われ、いつもの曜日の配車は変わりません。'
+               : '直した内容は保存すると次週に引き継がれます。');   // soge-date-ui-v1
 
     bind();
   }
@@ -1060,10 +1177,11 @@
     var btn = $('sgSave');
     btn.disabled = true; btn.textContent = '保存中…';
     try {
-      var r = await fetch('/api/soge/week', {
+      /* soge-date-ui-v1: 送る中身（trips）は同じ。宛先と、日付か曜日かだけが違う。 */
+      var r = await fetch(IS_DATE ? '/api/soge/date' : '/api/soge/week', {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          weekday: state.weekday,
+        body: JSON.stringify(Object.assign(
+          IS_DATE ? { date: state.date } : { weekday: state.weekday }, {
           trips: (state.data.trips || []).map(function (t) {
             return {
               trip_key: t.trip_key,
@@ -1083,12 +1201,16 @@
               })
             };
           })
-        })
+        }))
       });
       var j = await r.json();
       if (j.status !== 'success') { toast(j.message || '保存に失敗しました', 'err'); return; }
       state.dirty = false;
-      toast('保存しました。この順番が次週にも引き継がれます。');
+      /* soge-date-ui-v1: 日付のほうは、当日の運行表を作り直せたかどうかも一緒に言う。
+         ★「保存しました」だけ言って当日の表が変わっていないと、
+           現場は変わったつもりで走ってしまう。 */
+      toast(IS_DATE ? (j.message || 'この日だけの配車を保存しました。')
+                    : '保存しました。この順番が次週にも引き継がれます。');
       await load();
     } finally {
       btn.disabled = false; btn.textContent = '保存';
@@ -1099,6 +1221,7 @@
   (async function init() {
     var today = new Date().getDay();
     state.weekday = today;
+    if (IS_DATE) state.date = ymd(new Date());   // soge-date-ui-v1: はじめは今日
     renderDays();
 
     var s = await fetch('/api/soge/staff').then(function (r) { return r.json(); }).catch(function () { return {}; });
