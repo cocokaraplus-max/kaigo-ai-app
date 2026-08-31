@@ -2147,23 +2147,16 @@ async function loadVehicles() {
   /* soge-car-color-v1: 色は押した瞬間に保存する。
      ★「保存」を押し忘れて色が変わらない、をなくす。ほかの欄とは性格が違う
        （見た目だけの設定で、打ち間違いも起きない）ので、その場で確定させる。 */
-  box.querySelectorAll('[data-vcol]').forEach(function (b) {
-    b.onclick = async function () {
-      const i = Number(b.dataset.vcol);
-      const v = vehiclesCache[i];
-      const body = vehicleFormFrom(i);
-      body.color = b.dataset.key || '';
-      const r = await fetch('/api/vehicles/' + v.id, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const j = await r.json();
-      if (j.status !== 'success') { alert(j.message || '色を変えられませんでした'); return; }
-      /* soge-car-color-v1: 色の置き場（列）がまだ無いとき。
-         ★黙って戻ると「押したのに変わらない」になる。理由を出す。 */
-      if (j.color_ng) { alert('色を保存する準備がまだできていません。開発元にご連絡ください。'); }
-      await loadVehicles();
+  /* soge-car-color-v2: 好きな色。★change で保存する（input だと押している間ずっと鳴る）。 */
+  box.querySelectorAll('[data-vfree]').forEach(function (el) {
+    el.onchange = async function () {
+      const i = Number(el.dataset.vfree);
+      await saveVehicleColor(i, el.value);
     };
+  });
+
+  box.querySelectorAll('[data-vcol]').forEach(function (b) {
+    b.onclick = function () { return saveVehicleColor(Number(b.dataset.vcol), b.dataset.key || ''); };
   });
 
   box.querySelectorAll('[data-vsave]').forEach(function (b) {
@@ -2179,16 +2172,33 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = (
 /* soge-car-color-v1: 色を選ぶ並び。★色の一覧はサーバから来たものを使う。
    画面に色の名前を書き写すと、あとで色味を直したときに食い違う。 */
 let sogeColors = [];
+
+/* soge-car-color-v2: いま選ばれている色を #rrggbb で返す。
+   ★v1 で名前（blue など）を保存した施設がある。名前も色に直せるようにしておく。 */
+function sogeHexOf(cur) {
+  const v = (cur || '').trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v.toLowerCase();
+  const hit = sogeColors.filter(function (c) { return c.key === v; })[0];
+  return hit ? hit.hex : '';
+}
+
 function colorPickerHtml(i, cur) {
   if (!sogeColors.length) return '';
+  const curHex = sogeHexOf(cur);
+  /* 8色は【近道】。ここを押すと、その色そのものが保存される。 */
   const sw = sogeColors.map(function (c) {
-    const on = (c.key === cur);
-    return '<button type="button" data-vcol="' + i + '" data-key="' + c.key + '" title="' + c.name + '"'
+    const on = (c.hex === curHex);
+    return '<button type="button" data-vcol="' + i + '" data-key="' + c.hex + '" title="' + c.name + '"'
       + ' style="width:30px;height:30px;border-radius:50%;cursor:pointer;background:' + c.hex + ';'
       + 'border:' + (on ? '3px solid #202124' : '2px solid #fff')
       + ';box-shadow:0 0 0 1px #dadce0;"></button>';
   }).join('');
-  const autoOn = !cur;
+  const autoOn = !curHex;
+  /* soge-car-color-v2: 好きな色を選ぶところ。
+     ★端末そのものの色えらび（<input type="color">）を出す。
+       実際の車の色（白・銀・ベージュ・濃紺…）は8色では表せない。
+     ★input ではなく change で保存する。input は色を動かしている間ずっと
+       鳴り続けるので、指を動かすだけで何十回も保存してしまう。 */
   return '<div class="form-group" style="margin-bottom:6px;">'
     + '<label style="font-size:0.78rem;color:#5f6368;font-weight:700;">送迎画面での色'
     + '<span style="font-weight:400;"> — 実際の車の色に合わせると分かりやすいです</span></label>'
@@ -2197,7 +2207,35 @@ function colorPickerHtml(i, cur) {
     + ' style="height:30px;padding:0 10px;border-radius:15px;cursor:pointer;background:#fff;'
     + 'font-size:0.75rem;font-weight:700;color:#5f6368;'
     + 'border:' + (autoOn ? '3px solid #202124' : '1px solid #dadce0') + ';">自動</button>'
+    + '<label style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 10px;'
+    + 'border-radius:15px;border:1px solid #dadce0;background:#fff;cursor:pointer;'
+    + 'font-size:0.75rem;font-weight:700;color:#5f6368;">'
+    + '<input type="color" data-vfree="' + i + '" value="' + (curHex || '#1a73e8') + '"'
+    + ' style="width:24px;height:24px;padding:0;border:none;background:none;cursor:pointer;">'
+    + '好きな色</label>'
+    + (curHex ? '<span style="font-size:0.72rem;color:#9aa0a6;font-family:monospace;">'
+                + curHex + '</span>' : '')
     + '</div></div>';
+}
+
+/* soge-car-color-v2: 色の保存は【1か所】にまとめる。
+   8色のボタンからも、好きな色からも、同じ道を通す。
+   ★2か所に書くと、片方だけ直したときに食い違う。 */
+async function saveVehicleColor(i, colorValue) {
+  const v = vehiclesCache[i];
+  if (!v) return;
+  const body = vehicleFormFrom(i);
+  body.color = colorValue || '';
+  const r = await fetch('/api/vehicles/' + v.id, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  const j = await r.json();
+  if (j.status !== 'success') { alert(j.message || '色を変えられませんでした'); return; }
+  /* soge-car-color-v1: 色の置き場（列）がまだ無いとき。
+     ★黙って戻ると「押したのに変わらない」になる。理由を出す。 */
+  if (j.color_ng) { alert('色を保存する準備がまだできていません。開発元にご連絡ください。'); }
+  await loadVehicles();
 }
 
 function vehicleFormFrom(i) {

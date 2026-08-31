@@ -183,6 +183,17 @@
 <div class="sg-wrap">
   <div id="sgToast" class="sg-toast"></div>
 
+  {# soge-nav-v1: 3画面を行き来するタブ。
+     ★配車の画面は2つ（曜日の配車／この日だけの配車）あるが、タブは「配車編集」の
+       1つにまとめる。どちらの画面でもここが選択状態になり、2つの行き来は
+       下の切り替えボタンで行う。タブを4つにすると、よく使う3つが埋もれる。
+     ★「運行画面」「記録表」は、いま見ている日・月へ飛ばす（JSが入れ直す）。 #}
+  <div class="sgnav">
+    <a id="sgNavRun" href="/soge/run" onclick="spaNav(event,this.getAttribute('href'))">運行画面</a>
+    <a class="on" href="{% if sg_mode == 'date' %}/soge/date{% else %}/soge{% endif %}">配車編集</a>
+    <a id="sgNavPrint" href="/soge/print">記録表</a>
+  </div>
+
   <div class="sg-head">
     <div class="sg-title">{% if sg_mode == 'date' %}この日だけの配車{% else %}配車{% endif %} <span id="sgState"></span></div>{# soge-date-ui-v1 #}
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">{# soge-date-ui-v1: 入らないぶんは下の行へ #}
@@ -192,7 +203,6 @@
       {% else %}
       <a class="sg-btn" href="/soge/date" onclick="spaNav(event,'/soge/date')">この日だけの配車</a>
       {% endif %}
-      <a class="sg-btn" href="/soge/run" onclick="spaNav(event,'/soge/run')">運行画面</a>
       <!-- soge-keep-build-v1: 組み直しは2種類。ふだん使うのは「いつもの並びで」。
            「ゼロから」は手で直した割り振りが全部消えるので、色も分けて警告も強くする。 -->
       <button class="sg-btn sg-btn-keep" id="sgKeep" onclick="sgKeepBuild()">いつもの並びで組み直す</button>
@@ -263,6 +273,18 @@
   }
 
   // ---------- 曜日タブ ----------
+  /* soge-nav-v1: タブの行き先に、いま見ている日・月を入れる。
+     ★入れないと、8月20日を見ていても運行画面は「今日」で開く。
+       日をまたいで見ているときに、毎回そこで日付を選び直すことになる。
+     ★日付を持たない画面（曜日の配車）では付けない。何日か決まっていないので、
+       むしろ今日で開くのが正しい。 */
+  function sgNavSync() {
+    var d = (IS_DATE && state.date) ? String(state.date) : '';
+    var run = $('sgNavRun'), prt = $('sgNavPrint');
+    if (run) run.href = '/soge/run' + (d ? ('?date=' + d) : '');
+    if (prt) prt.href = '/soge/print' + (d ? ('?month=' + d.slice(0, 7)) : '');
+  }
+
   function renderDays() {
     if (IS_DATE) { renderDateBar(); return; }   // soge-date-ui-v1
     $('sgDays').innerHTML = WD.map(function (d) {
@@ -312,6 +334,7 @@
       state.date = inp.value || state.date;
       state.dirty = false;
       renderDateBar();
+      sgNavSync();                  // soge-nav-v1: 日を変えたらタブの行き先も変える
       load();
     };
     var drop = document.getElementById('sgDrop');
@@ -601,7 +624,10 @@
     return '<div class="sg-car' + (_ch ? ' sg-col' : '') + '"'
       + (_ch ? ' style="border-left-color:' + _ch + '"' : '') + '>' +
       '<div class="sg-car-head">' +
-        '<span class="sg-car-badge"' + (_ch ? ' style="background:' + _ch + '"' : '') + '>車 '
+        /* soge-car-color-v2: 白い車も選べるので、文字色はサーバが決めた色を使う。 */
+        '<span class="sg-car-badge"' + (_ch ? ' style="background:' + _ch
+          + ';color:' + ((_cv && _cv.color_fg) || '#fff')
+          + ';box-shadow:0 0 0 1px rgba(0,0,0,.25)"' : '') + '>車 '
           + (realCars(t).indexOf(v) + 1) + '</span>' +
         '<select class="sg-sel" data-veh="' + ti + '_' + vi + '"><option value="">車両…</option>' + vopts + '</select>' +
         '<select class="sg-sel" data-drv="' + ti + '_' + vi + '"><option value="">運転手…</option>' + sopts + '</select>' +
@@ -1232,6 +1258,7 @@
     state.weekday = today;
     if (IS_DATE) state.date = ymd(new Date());   // soge-date-ui-v1: はじめは今日
     renderDays();
+    sgNavSync();                    // soge-nav-v1
 
     var s = await fetch('/api/soge/staff').then(function (r) { return r.json(); }).catch(function () { return {}; });
     state.staff = (s && s.staff) ? s.staff : [];

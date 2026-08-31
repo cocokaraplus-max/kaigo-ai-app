@@ -172,11 +172,74 @@
 .sr-dv-fin .s { font-size:0.82rem; color:#5f6368; margin-top:6px; line-height:1.6; }
 .sr-dv-note { font-size:0.8rem; color:#5f6368; line-height:1.6; margin-top:8px; }
 
+/* ===== soge-drive-v2: カーナビのような縦の帯 =====
+   高速道路の案内表示にならって、行き先を上から順に並べる。
+   ★道の線には【車の色】を使う。配車・記録表で見た色と、運転席の線がつながる。 */
+.sr-nv { position:relative; padding-left:34px; }
+/* 道。うっすら敷いて、点（立ち寄り先）を目立たせる */
+/* soge-car-color-v2: 薄い色でも道が見えるように、細い縁を添える。
+   ★色そのものは変えない。白い車の道は白いまま。 */
+.sr-nv::before { content:''; position:absolute; left:13px; top:10px; bottom:10px; width:6px;
+  border-radius:3px; background:var(--sr-road, #1a73e8); opacity:.45;
+  box-shadow:0 0 0 1px rgba(0,0,0,.14); }
+.sr-nd { position:relative; margin-bottom:12px; }
+.sr-nd:last-child { margin-bottom:0; }
+.sr-nd::before { content:''; position:absolute; left:-27px; top:13px;
+  width:12px; height:12px; border-radius:50%; background:#fff;
+  border:3px solid var(--sr-road, #1a73e8);
+  box-shadow:0 0 0 1px rgba(0,0,0,.18); }   /* soge-car-color-v2: 薄い色でも見えるように */
+/* いま向かっている先。ここだけ塗って、目が最初に行くようにする */
+/* soge-car-color-v2: ★ここにも細い縁が要る。塗りつぶしの丸なので、
+   白い車だと「白地に白い丸」で完全に消える（実際に測って消えていた）。
+   下の box-shadow は【後ろに書いたほうが勝つ】ので、縁を先に足しておく。 */
+.sr-nd.now::before { left:-31px; top:9px; width:20px; height:20px; border-width:4px;
+  background:var(--sr-road, #1a73e8);
+  box-shadow:0 0 0 1px rgba(0,0,0,.30), 0 0 0 6px rgba(0,0,0,.06); }
+/* もう済んだところ（出発の打刻など）。灰色にして、押すものではないと分かるように */
+.sr-nd.past::before { border-color:#bdc1c6; }
+/* 事業所（終点）。丸ではなく四角にして、人の家と見分ける */
+.sr-nd.goal::before { border-radius:3px; }
+
+/* 案内板。高速道路の標識と同じ緑地・白抜き。
+   ★名前は絶対に割らない（実測で「佐藤／花」と縦に割れたことがある）。
+     入り切らないときは、時刻のほうが下の行へ落ちる。 */
+.sr-pl { background:#146C43; color:#fff; border-radius:10px; padding:9px 12px;
+  display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; }
+.sr-pl .nm { font-weight:800; font-size:1.05rem; white-space:nowrap; line-height:1.3; }
+.sr-pl .tm { margin-left:auto; font-weight:800; font-size:0.95rem; white-space:nowrap;
+  font-variant-numeric:tabular-nums; }
+.sr-pl .tag { font-size:0.68rem; font-weight:800; border-radius:6px; padding:2px 6px;
+  background:rgba(255,255,255,.22); white-space:nowrap; }
+/* 次の人の板。大きくして、下の白い箱と1枚につなげる */
+.sr-pl.big { padding:13px 14px; border-radius:12px 12px 0 0; }
+.sr-pl.big .nm { font-size:1.5rem; }
+.sr-pl.big .tm { font-size:1.1rem; }
+/* 事業所の出発・帰着の帯。人の家（緑）とは別の色にして取り違えを防ぐ */
+.sr-pl.dep { background:#33404D; }
+.sr-pl.dep.done { background:#EEF2F7; color:#5f6368; }
+.sr-pl.dep.wait { background:#EEF2F7; color:#9aa0a6; }
+
+/* 次の人の中身（住所と押すところ）。板の下に、白い箱として続ける */
+.sr-nvb { background:#fff; border:1px solid #E3E8EF; border-top:none;
+  border-radius:0 0 12px 12px; padding:12px; }
+/* ★住所は切らない。マンション名が長いと、いちばん要る号室がちょうど切れる。 */
+.sr-nva { font-size:1.05rem; line-height:1.5; color:#3c4043; overflow-wrap:anywhere; }
+.sr-nva.none { color:#c5221f; }
+/* 先の人の住所。ここは下見なので詰めてよい（その人が次になれば上に大きく出る） */
+.sr-nvs { font-size:0.78rem; color:#5f6368; margin:5px 2px 0;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-nv-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:0.8rem; color:#5f6368; margin-bottom:10px; }
+.sr-nv-head .cnt { margin-left:auto; font-weight:800; color:#1f2933; }
+
 /* soge-car-color-v1: 車の色。タブと運転手の行に出す。
    ★色は付けるだけ。文字と背景の組み合わせは変えない（読みにくくしない）。 */
 .sr-tab { border-left: 5px solid transparent; }
+/* soge-car-color-v2: 薄い色（白・銀・ベージュ）も選べるので、
+   丸には必ず細い縁を付ける。★白い車は【白いまま】出す。灰色に置き換えると
+   実際の車と見比べられなくなる。縁があれば白でも位置が分かる。 */
 .sr-dot { display:inline-block; width:11px; height:11px; border-radius:50%;
-  margin-right:6px; vertical-align:-1px; }
+  margin-right:6px; vertical-align:-1px; box-shadow:0 0 0 1px rgba(0,0,0,.30); }
 
 /* soge-past-admin-v1: 直せない日の見た目。押せないことが見て分かるようにする。 */
 .sr-ro { opacity: .45 !important; cursor: not-allowed !important; }
@@ -241,14 +304,21 @@
 <div class="sr-wrap">
   <div id="srToast" class="sr-toast"></div>
 
+  <!-- soge-nav-v1: 3画面を行き来するタブ。3つとも同じ形・同じ位置に出す。
+       ★「記録表」の行き先は、見ている日の【月】に合わせて JS が入れ直す
+         （id="srPrint" のまま。ボタンからタブに変えただけ）。
+       ★target=_blank にしない。ホーム画面から起動したアプリでは外部ブラウザが
+         開いてログインが切れる（soge-print-v3 で踏んだ）。 -->
+  <div class="sgnav">
+    <a class="on" href="/soge/run">運行画面</a>
+    <a href="/soge" onclick="spaNav(event,'/soge')">配車編集</a>
+    <a id="srPrint" href="/soge/print">記録表</a>
+  </div>
+
   <div class="sr-head">
     <div class="sr-title">運行</div>
     <div style="display:flex;gap:8px;align-items:center;">
       <input type="date" class="sr-date" id="srDate">
-      <!-- soge-print-v3: target=_blank にすると、ホーム画面から起動したアプリでは
-           外部ブラウザが開いてログインが切れる。同じタブで開く。 -->
-      <a class="sr-btn" id="srPrint" href="/soge/print">記録表</a>
-      <a class="sr-btn" href="/soge" onclick="spaNav(event,'/soge')">配車</a>
     </div>
   </div>
 
@@ -402,8 +472,11 @@
       if (el.classList.contains('on')) {
         el.style.background = c;
         el.style.borderColor = c;
+        /* soge-car-color-v2: 塗った上の文字色はサーバが決めた色を使う。
+           ★白い車を選べるので「白地に白文字」が起きる。決め打ちにできない。 */
+        el.style.color = (list[i].color_fg || '#fff');
         var d = el.querySelector('.sr-dot');
-        if (d) d.style.background = '#fff';   /* 塗った上の丸は白で抜く */
+        if (d) d.style.background = (list[i].color_fg || '#fff');
       }
     });
   }
@@ -590,7 +663,7 @@
     $('srModeHint').textContent = (state.mode === 'trip')
       ? '便 → 車両 の順に選びます'
       : (state.mode === 'drive'
-          ? '次の1人だけを大きく出します'      // soge-drive-v1
+          ? '行き先を上から順に出します'      // soge-drive-v2
           : '車両 → 便 の順に選びます');
   }
 
@@ -769,7 +842,9 @@
        タブの選び方は「車両から」とまったく同じ道を通す（別に持たない）。
        ★「＋ 臨時便」は運転中には出さない。運転席で押すものではない。 */
     $('srBody').innerHTML = (state.mode === 'drive')
-      ? (selTrip ? driveHtml(selTrip) : '<div class="sr-empty">この車の便がありません</div>')
+      /* soge-drive-v2: 道の線に使う色を渡す（soge-car-color-v1 で決めた車の色）。 */
+      ? (selTrip ? driveHtml(selTrip, (selVehicle && selVehicle.color_hex) || '')
+                 : '<div class="sr-empty">この車の便がありません</div>')
       : ((selTrip ? tripHtml(selTrip, prevOdoEnd) : '') + addExtra);
     bind();
   }
@@ -779,20 +854,27 @@
        data-tap / data-abs / data-pen / data-mv を拾って動かしている。
        ここでも【同じ属性】を使う。配線は1行も書かない。
        別に書くと、片方だけ直したときに食い違う。 */
-  function driveHtml(t) {
+  function driveHtml(t, roadHex) {
     if (t.unassigned) {
       return '<div class="sr-dv"><div class="sr-dv-name">車が決まっていません</div>'
         + '<div class="sr-dv-note">この便に乗る車が決まっていないため、'
         + '運転中の画面には出せません。「車両から」に切り替えて、'
         + '⇄ で車に移してください。</div></div>';
     }
+    /* soge-drive-v2: 道の線の色。車の色が引けないときは、これまでの青のまま。 */
+    var road = roadHex || '#1a73e8';
+
     var all = (t.stops || []);
     /* お休みの人は「次の人」から外す。★ただし黙って消さない（下に名前を出す）。
        居ないことと、見落としたことは、別のこと。 */
     var off = all.filter(function (s) { return s.is_absent || s.is_leave; });
     var live = all.filter(function (s) { return !s.is_absent && !s.is_leave; });
-    var left = live.filter(function (s) { return !s.arrived_at; });
-    var doneN = live.length - left.length;
+    var leftAll = live.filter(function (s) { return !s.arrived_at; });
+    var doneN = live.length - leftAll.length;
+    /* 一度に出すのは4人まで。全部並べると、下の「事業所に戻る」まで遠くなる。
+       ★残りの人数は必ず文字で出す（黙って隠さない）。 */
+    var left = leftAll.slice(0, 4);
+    var hidden = leftAll.length - left.length;
 
     var offHtml = off.length
       ? '<div class="sr-dv-off">お休み：' + off.map(function (s) {
@@ -800,61 +882,91 @@
         }).join('、') + '</div>'
       : '';
 
-    /* 事業所をまだ出ていないなら、いちばん上に大きく出す。
-       ★記録表の「出発時刻」はこれが入る。押し忘れると紙が埋まらない。 */
-    var dep = t.departed_at
-      ? ''
-      : '<div class="sr-dv"><div class="sr-dv-top">' + esc(tripLabel(t))
-        + (t.depart ? '<span>' + esc(t.depart) + ' 出発予定</span>' : '') + '</div>'
-        + '<button class="sr-dv-tap" data-dep="' + t.day_id + '">事業所を出発</button></div>';
-
-    if (!left.length) {
-      /* この便は終わり。★勝手に次の便へ動かさない（別の人に打刻が付く事故のもと）。
-         代わりに、次にすることを文字で出す。 */
-      var ret = t.returned_at
-        ? '<button class="sr-dv-tap done" disabled>帰着 ' + esc(t.returned_at) + '</button>'
-        : '<button class="sr-dv-tap" data-ret="' + t.day_id + '">事業所に戻った</button>';
-      return dep + '<div class="sr-dv"><div class="sr-dv-fin">'
-        + '<div class="t">' + (live.length ? 'この便は全員おわりました' : 'この便に立ち寄りはありません') + '</div>'
-        + '<div class="s">' + (live.length ? ('到着 ' + doneN + ' 人') : '')
-        + '<br>次の便に行くときは、上の便のタブを押してください。</div>'
-        + '</div>' + ret + offHtml + '</div>';
-    }
-
-    var s = left[0];
-    var rest = left.slice(1, 4);
-    var card = '<div class="sr-dv">'
-      + '<div class="sr-dv-top">'
-        + '<span class="sr-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>'
-        + '<span>' + esc(tripLabel(t)) + '</span>'
-        + '<span class="sr-dv-cnt">残り ' + left.length + ' 人／到着 ' + doneN + ' 人</span>'
-      + '</div>'
-      + '<div class="sr-dv-name">' + esc(s.user_name)
-        + (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') + '</div>'
-      /* ★住所は切らない。号室まで全部出す。 */
-      + (s.address ? '<div class="sr-dv-addr">' + esc(s.address) + '</div>'
-                   : '<div class="sr-dv-addr" style="color:#c5221f;">住所が登録されていません</div>')
-      + (s.planned_at ? '<div class="sr-dv-plan">予定 ' + esc(s.planned_at) + '</div>' : '')
-      + mvHtml(s)
-      + '<button class="sr-dv-tap" data-tap="' + s.id + '">到着</button>'
-      + '<div class="sr-dv-sub">'
-        + '<button data-abs="' + s.id + '">お休みだった</button>'
-        + '<button data-pen="' + s.id + '" data-init="' + esc(s.planned_at || '') + '">時刻を手で</button>'
-        + '<button data-mv="' + s.id + '">別の車へ</button>'
-      + '</div>'
+    /* --- 見出し（この便と、残り／到着の人数） --- */
+    var head = '<div class="sr-nv-head">'
+      + '<span class="sr-type ' + ((t.stops || [])[0] || {}).type + '">'
+        + (((t.stops || [])[0] || {}).type === 'dropoff' ? '送' : '迎') + '</span>'
+      + '<span>' + esc(tripLabel(t)) + '</span>'
+      + '<span class="cnt">残り ' + leftAll.length + ' 人／到着 ' + doneN + ' 人</span>'
       + '</div>';
 
-    var next = rest.length
-      ? '<div class="sr-dv"><div class="sr-dv-next"><div class="h">このあと</div>'
-        + rest.map(function (x) {
-            return '<div class="r"><b>' + esc(x.user_name) + '</b>'
-              + '<span class="a">' + esc(x.address || '') + '</span></div>';
-          }).join('')
-        + (left.length > 4 ? '<div class="r"><span class="a">ほか ' + (left.length - 4) + ' 人</span></div>' : '')
-        + '</div>' + offHtml + '</div>'
-      : (offHtml ? '<div class="sr-dv">' + offHtml + '</div>' : '');
+    /* --- 出発（いちばん上の地点） ---
+       ★記録表の「出発時刻」はこれが入る。押し忘れると紙が埋まらないので、
+         まだなら押すところを大きく出す。押したあとは灰色の帯で残す
+         （消すと「押したか分からない」になる）。 */
+    var depNode = t.departed_at
+      ? '<div class="sr-nd past"><div class="sr-pl dep done">'
+          + '<span class="nm">事業所を出発</span>'
+          + '<span class="tm">' + esc(t.departed_at) + '</span></div></div>'
+      : '<div class="sr-nd now"><div class="sr-pl dep">'
+          + '<span class="nm">事業所を出発</span>'
+          + (t.depart ? '<span class="tm">予定 ' + esc(t.depart) + '</span>' : '')
+        + '</div><div class="sr-nvb">'
+          + '<button class="sr-dv-tap" data-dep="' + t.day_id + '">事業所を出発</button>'
+        + '</div></div>';
 
-    return dep + card + next;
+    /* --- 立ち寄り先を、上から順に並べる --- */
+    var stopsHtml = left.map(function (s, i) {
+      var tag = (s.is_wheelchair ? '<span class="tag">車いす</span>' : '');
+      var tm  = (s.planned_at ? '<span class="tm">' + esc(s.planned_at) + '</span>' : '');
+      if (i > 0) {
+        /* 先の人。板だけ。★名前は割らない。住所は詰める（下見なので全部は要らない）。 */
+        return '<div class="sr-nd">'
+          + '<div class="sr-pl"><span class="nm">' + esc(s.user_name) + '</span>'
+            + tag + tm + '</div>'
+          + (s.address ? '<div class="sr-nvs">' + esc(s.address) + '</div>' : '')
+          + '</div>';
+      }
+      /* いま向かう人。ここだけ大きく、住所は切らずに号室まで出す。 */
+      return '<div class="sr-nd now">'
+        + '<div class="sr-pl big"><span class="nm">' + esc(s.user_name) + '</span>'
+          + tag + (s.planned_at ? '<span class="tm">予定 ' + esc(s.planned_at) + '</span>' : '')
+        + '</div>'
+        + '<div class="sr-nvb">'
+          + (s.address ? '<div class="sr-nva">' + esc(s.address) + '</div>'
+                       : '<div class="sr-nva none">住所が登録されていません</div>')
+          + mvHtml(s)
+          + '<button class="sr-dv-tap" data-tap="' + s.id + '">到着</button>'
+          + '<div class="sr-dv-sub">'
+            + '<button data-abs="' + s.id + '">お休みだった</button>'
+            + '<button data-pen="' + s.id + '" data-init="' + esc(s.planned_at || '') + '">時刻を手で</button>'
+            + '<button data-mv="' + s.id + '">別の車へ</button>'
+          + '</div>'
+        + '</div></div>';
+    }).join('');
+
+    if (hidden > 0) {
+      stopsHtml += '<div class="sr-nd"><div class="sr-pl">'
+        + '<span class="nm">ほか ' + hidden + ' 人</span></div></div>';
+    }
+
+    /* --- 事業所へ戻る（終点） ---
+       ★勝手に次の便へ動かさない。別の人に打刻が付く事故のもとになる。
+         全員おわるまでは押せるものを出さず、何をすればよいかを文字で出す。 */
+    var goal;
+    if (t.returned_at) {
+      goal = '<div class="sr-nd goal past"><div class="sr-pl dep done">'
+        + '<span class="nm">事業所に帰着</span>'
+        + '<span class="tm">' + esc(t.returned_at) + '</span></div></div>';
+    } else if (leftAll.length) {
+      goal = '<div class="sr-nd goal"><div class="sr-pl dep wait">'
+        + '<span class="nm">事業所に戻る</span></div></div>';
+    } else {
+      goal = '<div class="sr-nd goal now"><div class="sr-pl dep">'
+        + '<span class="nm">事業所に戻る</span></div>'
+        + '<div class="sr-nvb">'
+          + '<div class="sr-dv-note">'
+            + (live.length ? ('この便は全員おわりました（到着 ' + doneN + ' 人）。')
+                           : 'この便に立ち寄りはありません。')
+            + '<br>次の便に行くときは、上の便のタブを押してください。</div>'
+          + '<button class="sr-dv-tap" data-ret="' + t.day_id + '">事業所に戻った</button>'
+        + '</div></div>';
+    }
+
+    return '<div class="sr-dv">' + head
+      + '<div class="sr-nv" style="--sr-road:' + road + '">'
+        + depNode + stopsHtml + goal
+      + '</div>' + offHtml + '</div>';
   }
 
   // soge-odo-v1: メーター入力。odo_enabled の施設だけ出す。

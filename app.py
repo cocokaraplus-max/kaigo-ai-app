@@ -23989,6 +23989,83 @@ SOGE_COLOR_KEYS = [k for k, _h, _n in SOGE_COLORS]
 SOGE_COLOR_HEX = dict((k, h) for k, h, _n in SOGE_COLORS)
 
 
+# ===== soge-car-color-v2: 自由な色を扱う道具 =====
+#   ★白い車も選べるようにした以上、「白い丸」「白地に白文字」が必ず起きる。
+#     色そのものは変えず、読める組み合わせをサーバ側で一緒に渡す。
+import re as _soge_re
+
+SOGE_HEX_RE = _soge_re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def soge_hex_ok(v):  # soge-car-color-v2
+    """画面に流してよい色か。★「#」＋16進6桁に完全一致するものだけ。
+
+    ★ここをゆるめてはいけない。この値は style="" にそのまま入る。
+      rgb(...)、色名、calc()、url() などは1つも通らない形にしてある。
+    """
+    return bool(v) and bool(SOGE_HEX_RE.match(str(v).strip()))
+
+
+def _soge_lin(c):  # soge-car-color-v2
+    c = c / 255.0
+    return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+
+def soge_lum(hexv):  # soge-car-color-v2
+    """明るさ（0=黒 〜 1=白）。文字が読めるかの判定に使う。"""
+    try:
+        r = int(hexv[1:3], 16)
+        g = int(hexv[3:5], 16)
+        b = int(hexv[5:7], 16)
+    except (TypeError, ValueError, IndexError):
+        return 0.5
+    return 0.2126 * _soge_lin(r) + 0.7152 * _soge_lin(g) + 0.0722 * _soge_lin(b)
+
+
+def soge_color_fg(hexv):  # soge-car-color-v2
+    """その色で塗った【上に置く文字】の色。白と黒の、読みやすいほうを返す。
+
+    ★「明るければ黒、暗ければ白」と明るさの境目で切ってはいけない。
+      境目のあたりの色（中くらいの青・緑など）で、どちらを選んでも
+      読みにくい組み合わせが出る。実際に測ったら最悪 2.15:1 だった。
+      白との比・黒との比を両方出して、大きいほうを採る。これで最低 4.5:1 は出る。
+    """
+    if not soge_hex_ok(hexv):
+        return "#ffffff"
+    lum = soge_lum(hexv)
+    on_white = 1.05 / (lum + 0.05)      # 白い文字を置いたときの読みやすさ
+    on_black = (lum + 0.05) / 0.05      # 黒い文字を置いたときの読みやすさ
+    return "#ffffff" if on_white >= on_black else "#000000"
+
+
+def soge_color_ink(hexv):  # soge-car-color-v2
+    """白地に【文字・細い線】として置ける色。明るすぎるときだけ暗くする。
+
+    ★色味は変えない（暗くするだけ）。赤い車は暗い赤になる。
+    ★白い車はここでは灰色になるが、帯や丸は本当の白のまま出す。
+      文字だけの都合で、車の色そのものを置き換えてはいけない。
+    """
+    if not soge_hex_ok(hexv):
+        return ""
+    r = int(hexv[1:3], 16)
+    g = int(hexv[3:5], 16)
+    b = int(hexv[5:7], 16)
+    # 白との明暗の差が3:1になるまで暗くする（白地で読める目安）
+    for _ in range(40):
+        if soge_lum("#%02x%02x%02x" % (r, g, b)) <= 0.30:
+            break
+        r, g, b = int(r * 0.88), int(g * 0.88), int(b * 0.88)
+    return "#%02x%02x%02x" % (r, g, b)
+
+
+def soge_color_pack(hexv):  # soge-car-color-v2
+    """画面に渡す3つ組。空なら空で返す（色を付けないだけ）。"""
+    if not soge_hex_ok(hexv):
+        return {"color_hex": "", "color_ink": "", "color_fg": ""}
+    h = str(hexv).strip().lower()
+    return {"color_hex": h, "color_ink": soge_color_ink(h), "color_fg": soge_color_fg(h)}
+
+
 def soge_colors_for(rows):  # soge-car-color-v1
     """車の並び（並び順どおり）を渡すと、同じ数だけ色を返す。
 
@@ -24008,16 +24085,25 @@ def soge_colors_for(rows):  # soge-car-color-v1
         except AttributeError:
             return ""
 
-    taken = set(k for k in (_key(c) for c in rows) if k in SOGE_COLOR_HEX)
-    pool = [h for k, h, _n in SOGE_COLORS if k not in taken]
-    if not pool:                       # 8色すべて選ばれている（まれ）
+    def _chosen(k):
+        """自分で選んだ色。#rrggbb そのものか、v1 の8色の名前。
+        ★v1 で名前を入れた施設がある。名前も読めるままにしておく。"""
+        if soge_hex_ok(k):
+            return k.lower()
+        return SOGE_COLOR_HEX.get(k)
+
+    # 自動に回す色から、すでに使われている色を外す。
+    #   ★「1号車を赤にしたら5号車も自動で赤」を防ぐ。自由な色でも同じ。
+    taken = set(h for h in (_chosen(_key(c)) for c in rows) if h)
+    pool = [h for _k, h, _n in SOGE_COLORS if h not in taken]
+    if not pool:                       # 8色すべて使われている（まれ）
         pool = [h for _k, h, _n in SOGE_COLORS]
 
     out, i = [], 0
     for c in rows:
-        k = _key(c)
-        if k in SOGE_COLOR_HEX:
-            out.append(SOGE_COLOR_HEX[k])
+        h = _chosen(_key(c))
+        if h:
+            out.append(h)
         else:
             out.append(pool[i % len(pool)])
             i += 1
@@ -24101,10 +24187,18 @@ def _vehicle_payload(data):  # vehicles-admin-v1
     #   ★色そのもの(#xxxxxx)は受け取らない。画面にそのまま流す値なので、
     #     知らない文字が入る道を作らない。空なら自動（並び順）。
     if "color" in data:
+        # soge-car-color-v2: 自由な色（#rrggbb）と、v1 の8色の名前を受け取る。
+        #   ★この値は画面の style にそのまま入る。ゆるく受け取ってはいけない。
+        #     「#」＋16進6桁に【完全一致】するものだけ通す。
         _col = (data.get("color") or "").strip()
-        if _col and _col not in SOGE_COLOR_KEYS:
-            return None, "知らない色です"
-        payload["color"] = _col or None
+        if not _col:
+            payload["color"] = None
+        elif soge_hex_ok(_col):
+            payload["color"] = _col.lower()
+        elif _col in SOGE_COLOR_KEYS:
+            payload["color"] = SOGE_COLOR_HEX[_col]   # 近道のボタン → 色そのものへ
+        else:
+            return None, "色の指定が正しくありません"
 
     fuel = data.get("fuel_km_per_l")
     if fuel in (None, ""):
@@ -24175,7 +24269,8 @@ def api_vehicles_list():
         _vs = [_vehicle_out(c) for c in _rows]
         _hex = soge_colors_for(_rows)
         for _i, _v in enumerate(_vs):
-            _v["color_hex"] = _hex[_i]
+            # soge-car-color-v2: 塗った上に置く文字の色・白地で使える色も渡す
+            _v.update(soge_color_pack(_hex[_i]))
         return jsonify({"status": "success", "vehicles": _vs,
                         "colors": [{"key": k, "hex": h, "name": n}
                                    for k, h, n in SOGE_COLORS]})
@@ -27549,12 +27644,15 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
             "driver_name": ("" if _un else (d.get("driver_name") or "")),
             # soge-car-color-v1: 車の色。IDで引けなければ、そのときの車名で引く。
             #   ★車両マスタから消された車でも、記録には名前が残っている。
-            "color_hex": ("" if _un else (
-                cmap["byid"].get(str(d.get("vehicle_id") or ""))
-                or cmap["byname"].get((d.get("vehicle_name") or "").strip())
-                or "")),
             "trips": [],
         })
+        # soge-car-color-v2: 色と、その色の上に置く文字の色を入れる。
+        #   ★白い車も選べるので、文字色を決め打ちにできない。
+        if "color_hex" not in v:
+            v.update(soge_color_pack("" if _un else (
+                cmap["byid"].get(str(d.get("vehicle_id") or ""))
+                or cmap["byname"].get((d.get("vehicle_name") or "").strip())
+                or "")))
         ss = sorted(by_day.get(d["id"], []), key=lambda x: x.get("seq") or 0)
         v["trips"].append({
             "day_id": d["id"],
@@ -28481,10 +28579,12 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
             cur = {"key": key,
                    "vehicle_name": d.get("vehicle_name") or ("車 %s" % (d.get("vehicle_no") or 1)),
                    "plate_no": d.get("plate_no") or "",
-                   "color_hex": (cmap["byid"].get(str(d.get("vehicle_id") or ""))
-                                 or cmap["byname"].get((d.get("vehicle_name") or "").strip())
-                                 or ""),
                    "rows": []}
+            # soge-car-color-v2: 紙に出す色。車名は白地の文字なので ink を使う。
+            cur.update(soge_color_pack(
+                cmap["byid"].get(str(d.get("vehicle_id") or ""))
+                or cmap["byname"].get((d.get("vehicle_name") or "").strip())
+                or ""))
             out.append(cur)
             last_date = None
 

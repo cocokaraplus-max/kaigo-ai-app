@@ -26,6 +26,22 @@
   .sp-month { border: 1px solid #d6dbe3; border-radius: 8px; padding: 8px 10px; font-size: 0.9rem; }
   .sp-hint { font-size: 0.78rem; color: #5f6368; }
 
+/* ===== soge-nav-v1: 送迎の3画面を行き来するタブ =====
+   運行画面・配車編集・記録表。3つとも【同じ形・同じ位置】に出す。
+   ★指で押すものなので、高さは十分にとる（44px 目安）。
+   ★選んでいるタブは色を塗るだけでなく、下線も引く。
+     色だけで示すと、色の見分けがつきにくい方には伝わらない。 */
+.sgnav { display:flex; gap:0; margin:0 0 12px; border-bottom:2px solid #e3e8ef;
+  overflow-x:auto; -webkit-overflow-scrolling:touch; }
+.sgnav a { flex:1 1 0; min-width:96px; text-align:center; text-decoration:none;
+  padding:12px 10px 10px; font-size:0.92rem; font-weight:800; color:#5f6368;
+  border-bottom:3px solid transparent; margin-bottom:-2px; white-space:nowrap; }
+.sgnav a.on { color:#1a73e8; border-bottom-color:#1a73e8; }
+.sgnav a:active { background:#f1f3f4; }
+  /* soge-nav-v1: 紙には出さない。画面を行き来するためのものなので、
+     印刷すると意味の無い行が1行増えるだけ。 */
+  @media print { .sgnav { display: none; } }
+
   .sp-pages { margin: 16px auto; padding: 0 16px; }
   .sp-page { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 18px 20px; margin-bottom: 16px; }
 
@@ -138,10 +154,21 @@
 
 <div id="spToast" class="sp-toast"></div>
 
+<!-- soge-nav-v1: 3画面を行き来するタブ。ほかの2画面と同じ形・同じ位置に出す。
+     ★この画面は base.html を使っていないので、見た目のCSSはこのファイルにも要る。
+     ★左右の余白は .sp-pages と同じ 16px にする。ほかの画面とpx単位で同じ幅には
+       ならない（この画面だけアプリの見出しが無い独立したHTMLなので、外側の
+       余白が違う）。合わせるべきは【その画面の中身との左端】。
+     ★spaNav は base.html の関数で、ここには無い。ふつうのリンクにする。 -->
+<div class="sgnav" style="max-width:1100px;margin:0 auto;padding:0 16px;">
+  <a href="/soge/run">運行画面</a>
+  <a href="/soge">配車編集</a>
+  <a class="on" href="/soge/print?month={{ month }}">記録表</a>
+</div>
+
 <div class="sp-toolbar">
   <input type="month" class="sp-month" id="spMonth" value="{{ month }}">
   <button class="sp-btn" onclick="window.print()">印刷 / PDF保存</button>
-  <a class="sp-btn sub" href="/soge/run">運行画面へ戻る</a>
   <span class="sp-hint">時刻と備考はこの画面で直せます／印刷ダイアログで「PDFとして保存」</span>
 </div>
 
@@ -155,7 +182,10 @@
     <div class="sp-head">
       <span class="sp-title">運行記録表</span>
       {# soge-car-color-v1: 車の色。紙にも出す（白黒印刷でも左の帯で位置が分かる）。 #}
-      <span class="sp-car"{% if v.color_hex %} style="border-left:6px solid {{ v.color_hex }};padding-left:8px;color:{{ v.color_hex }};"{% endif %}>{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
+      {# soge-car-color-v2: 帯は【本当の色】、文字は【白地で読める色】。
+         白い車を選べるようにしたので、文字まで本当の色にすると読めなくなる。
+         帯のほうは本当の色のまま出す（車と見比べられるように）。 #}
+      <span class="sp-car"{% if v.color_hex %} style="border-left:6px solid {{ v.color_hex }};box-shadow:inset 1px 0 0 rgba(0,0,0,.25);padding-left:8px;color:{{ v.color_ink }};"{% endif %}>{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
       <span class="sp-title" style="font-weight:600;font-size:0.9rem;">{{ month_label }}</span>
       <span class="sp-fac">{{ facility_name }}</span>
     </div>
