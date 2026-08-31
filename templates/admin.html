@@ -2147,12 +2147,45 @@ async function loadVehicles() {
   /* soge-car-color-v1: 色は押した瞬間に保存する。
      ★「保存」を押し忘れて色が変わらない、をなくす。ほかの欄とは性格が違う
        （見た目だけの設定で、打ち間違いも起きない）ので、その場で確定させる。 */
-  /* soge-car-color-v2: 好きな色。★change で保存する（input だと押している間ずっと鳴る）。 */
+  /* soge-car-color-v3: 好きな色。
+     ★動かしている間は【見た目だけ】変えて、保存しない。
+       色えらびは指を動かしている間ずっと鳴るので、そのたびに保存して一覧を
+       作り直していた。作り直すと入力欄が差し替わり、色えらびが閉じてしまう。
+       「軽く触れた瞬間に決まって微調整できない」のはこれが原因だった。
+     ★指を止めて 700ms たってから、1回だけ保存する。
+     ★閉じられて時間切れを待てないこともあるので、離れたとき(blur)にも保存する。 */
   box.querySelectorAll('[data-vfree]').forEach(function (el) {
-    el.onchange = async function () {
-      const i = Number(el.dataset.vfree);
-      await saveVehicleColor(i, el.value);
+    const i = Number(el.dataset.vfree);
+
+    /* いまの色を、その場の見た目に反映する（保存はしない） */
+    const paint = function () {
+      const v = (el.value || '').toLowerCase();
+      if (vehiclesCache[i]) vehiclesCache[i].color = v;   // ほかの欄を保存しても消えないように
+      const lbl = box.querySelector('[data-vhex="' + i + '"]');
+      if (lbl) lbl.textContent = v;
+      /* 8色のボタンと「自動」の選択の印も、その場で付け替える */
+      box.querySelectorAll('[data-vcol="' + i + '"]').forEach(function (b) {
+        const key = b.dataset.key;
+        if (key) b.style.border = (key === v) ? '3px solid #202124' : '2px solid #fff';
+        else b.style.border = v ? '1px solid #dadce0' : '3px solid #202124';
+      });
     };
+
+    /* いま出ている色を、まだ保存していなければ保存する */
+    const commit = function () {
+      clearTimeout(sogeColorTimer);
+      const v = (el.value || '').toLowerCase();
+      if (sogeColorSaved[i] === v) return;      // 同じ色を二度書きに行かない
+      saveVehicleColor(i, v, true);
+    };
+
+    el.oninput = paint;                         // ★ここでは保存しない
+    el.onchange = function () {
+      paint();
+      clearTimeout(sogeColorTimer);
+      sogeColorTimer = setTimeout(commit, 700);
+    };
+    el.onblur = commit;                         // 閉じたら待たずに保存
   });
 
   box.querySelectorAll('[data-vcol]').forEach(function (b) {
@@ -2172,6 +2205,12 @@ function escHtml(s) { const d = document.createElement('div'); d.textContent = (
 /* soge-car-color-v1: 色を選ぶ並び。★色の一覧はサーバから来たものを使う。
    画面に色の名前を書き写すと、あとで色味を直したときに食い違う。 */
 let sogeColors = [];
+/* soge-car-color-v3: 色を選んでいる途中の状態。
+   ★sogeColorTimer … 指が止まってから保存するための待ち時間
+   ★sogeColorSaved … 最後に保存した色。同じ色を二度書きに行かないために持つ
+     （時間切れと「離れたとき」の両方が鳴っても、保存は1回で済む） */
+let sogeColorTimer = null;
+let sogeColorSaved = {};
 
 /* soge-car-color-v2: いま選ばれている色を #rrggbb で返す。
    ★v1 で名前（blue など）を保存した施設がある。名前も色に直せるようにしておく。 */
@@ -2213,15 +2252,18 @@ function colorPickerHtml(i, cur) {
     + '<input type="color" data-vfree="' + i + '" value="' + (curHex || '#1a73e8') + '"'
     + ' style="width:24px;height:24px;padding:0;border:none;background:none;cursor:pointer;">'
     + '好きな色</label>'
-    + (curHex ? '<span style="font-size:0.72rem;color:#9aa0a6;font-family:monospace;">'
-                + curHex + '</span>' : '')
+    + '<span data-vhex="' + i + '" style="font-size:0.72rem;color:#9aa0a6;'
+    + 'font-family:monospace;">' + curHex + '</span>'
     + '</div></div>';
 }
 
 /* soge-car-color-v2: 色の保存は【1か所】にまとめる。
    8色のボタンからも、好きな色からも、同じ道を通す。
    ★2か所に書くと、片方だけ直したときに食い違う。 */
-async function saveVehicleColor(i, colorValue) {
+async function saveVehicleColor(i, colorValue, keepOpen) {
+  /* soge-car-color-v3: keepOpen = true のときは、保存しても一覧を作り直さない。
+     ★色えらびを開いたまま微調整できるようにするため。作り直すと、いま触って
+       いる入力欄そのものが差し替わり、色えらびが閉じてしまう（実機で起きた）。 */
   const v = vehiclesCache[i];
   if (!v) return;
   const body = vehicleFormFrom(i);
@@ -2235,6 +2277,8 @@ async function saveVehicleColor(i, colorValue) {
   /* soge-car-color-v1: 色の置き場（列）がまだ無いとき。
      ★黙って戻ると「押したのに変わらない」になる。理由を出す。 */
   if (j.color_ng) { alert('色を保存する準備がまだできていません。開発元にご連絡ください。'); }
+  sogeColorSaved[i] = (colorValue || '');      // soge-car-color-v3: 同じ色を二度書かない
+  if (keepOpen) return;                        // soge-car-color-v3: 色えらびを開いたまま
   await loadVehicles();
 }
 
