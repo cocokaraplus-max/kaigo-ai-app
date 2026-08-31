@@ -27753,6 +27753,61 @@ def api_soge_run_get():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def _soge_vno_of(d):  # soge-lock-unassigned-v1
+    """その枠の車番号。読めない値は「車が未定(0)」に倒す。
+
+    ★`int(x or 1)` と書いてはいけない。0 は「車が未定」の意味を持つ値なのに
+      偽なので、`0 or 1` が 1 になって守りが素通りする（別の直しで実際に踏んだ）。
+    """
+    v = d.get("vehicle_no")
+    if v is None:
+        return SOGE_VNO_UNASSIGNED
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return SOGE_VNO_UNASSIGNED
+
+
+def _soge_unassigned_names(supabase, f_code, date_str):  # soge-lock-unassigned-v1
+    """その日、まだ乗る車が決まっていない方の名前（重複なし・並び順のまま）。
+
+    ★数えない人
+      ・「送迎なし」の枠にいる方（家族送迎など。決めたうえでそうしている）
+      ・当日欠席の方、休み連絡が入っている方（乗らないと決まっている）
+
+    ★読めなかったら【例外を上げる】。空で返してはいけない。
+      空で返すと「誰も居ない」ことになり、黙って確定できてしまう。
+      「無かった」と「聞けなかった」は別のこと。
+    """
+    dr = (supabase.table("soge_days").select("id,vehicle_no")
+          .eq("facility_code", f_code).eq("service_date", date_str).execute())
+
+    ids = set()
+    for d in (dr.data or []):
+        vno = _soge_vno_of(d)
+        # 車が決まっていない枠だけ。「送迎なし」は決めた結果なので外す。
+        if vno <= SOGE_VNO_UNASSIGNED and vno != SOGE_VNO_NORIDE:
+            ids.add(d["id"])
+    if not ids:
+        return []
+
+    sr = (supabase.table("soge_stops").select("day_id,user_name,is_absent")
+          .eq("facility_code", f_code).eq("service_date", date_str).execute())
+
+    leave = _soge_leave_names(supabase, f_code, date_str)
+    out = []
+    for s in (sr.data or []):
+        if s.get("day_id") not in ids:
+            continue
+        if s.get("is_absent"):
+            continue
+        nm = (s.get("user_name") or "").strip()
+        if not nm or nm in leave or nm in out:
+            continue
+        out.append(nm)
+    return out
+
+
 @app.route("/api/soge/run/lock", methods=["POST"])  # soge-lock-v1
 @login_required
 def api_soge_run_lock():
@@ -27770,6 +27825,22 @@ def api_soge_run_lock():
             return jsonify({"status": "error", "message": "日付が必要です"}), 400
         want = bool(d.get("locked"))
         if want:
+            # soge-lock-unassigned-v1: 乗る車が決まっていない方が残っていたら、
+            #   一度止めて名前を出す。★確定そのものを禁止はしない。
+            #   車が足りない日もあるので、禁止にすると「確定しないまま走る」
+            #   というもっと危ないほうへ倒れる。承知して進んだ人は
+            #   locked_by に残るので、あとから誰が通したか分かる。
+            _un = _soge_unassigned_names(supabase, f_code, date_str)
+            if _un and not bool(d.get("ack_unassigned")):
+                return jsonify({
+                    "status": "confirm",          # ★"success" ではない。画面は必ず止まる
+                    "reason": "unassigned",
+                    "names": _un,
+                    "message": "乗る車が決まっていない方がいます",
+                }), 409
+            if _un:
+                print("[soge-lock] 車が未定のまま確定: %s / %s / %s"
+                      % (date_str, session.get("my_name", ""), "、".join(_un)), flush=True)
             supabase.table("soge_day_locks").upsert({
                 "facility_code": f_code, "service_date": date_str,
                 "locked_by": session.get("my_name", ""),

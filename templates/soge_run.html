@@ -654,13 +654,31 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     finally { if (b) { b.disabled = false; b.textContent = '予定時刻を計算し直す'; } }
   }
 
-  async function setLock(want) {
+  async function setLock(want, ackUnassigned) {
     try {
       var r = await fetch('/api/soge/run/lock', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: state.date, locked: want })
+        body: JSON.stringify({ date: state.date, locked: want,
+                               ack_unassigned: !!ackUnassigned })   // soge-lock-unassigned-v1
       });
       var j = await r.json();
+      /* soge-lock-unassigned-v1: 乗る車が決まっていない方が残っている。
+         ★名前を必ず出す。人数だけだと、誰を直せばよいのか分からない。
+         ★止めるだけにはしない。車が足りない日もあるので、承知したうえで
+           進めるようにしておく（進めた人は確定の記録に残る）。 */
+      if (j.status === 'confirm' && j.reason === 'unassigned') {
+        var nm = (j.names || []);
+        if (!confirm(
+              'まだ乗る車が決まっていない方がいます。\n\n'
+            + '　' + nm.join('、') + '（' + nm.length + '名）\n\n'
+            + 'このまま確定すると、この方たちは送迎されません。\n'
+            + '「配車編集」で車に移してから確定するのがおすすめです。\n\n'
+            + 'それでもこのまま確定しますか。')) {
+          toast('確定していません。配車編集で車に移してください', 'err');
+          return;
+        }
+        return setLock(want, true);        // 承知したうえでもう一度
+      }
       if (j.status !== 'success') { toast(j.message || '変えられませんでした', 'err'); return; }
       toast(want ? 'この日を確定しました' : '確定を解除しました');
       await load();
