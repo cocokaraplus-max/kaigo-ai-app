@@ -32249,7 +32249,16 @@ def print_preview():
     except Exception:
         pass
 
+    # print-mobile-pdf-v1: 並べ方をURLでも受け取る（?layout=compact|richA|richB）。
+    #   ★スマホからPDFを作るときに使う。保存は少し遅れて飛ぶ作りなので、
+    #     待って開くと不確かになる。URLに載せれば待つ必要が無い。
+    #   ★知らない値は無視して、これまでどおり保存済みの並べ方で描く。
+    _layout_override = (request.args.get("layout") or "").strip()
+    if _layout_override not in ("compact", "richA", "richB"):
+        _layout_override = ""
+
     _pp_kwargs = dict(
+        layout_override=_layout_override,      # print-mobile-pdf-v1
         report_data_list=report_data_list,
         facility=facility,
         year_month=year_month,
