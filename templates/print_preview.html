@@ -1118,8 +1118,28 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     .report-page:last-child { page-break-after: avoid; }
     [contenteditable] { outline: none !important; background: transparent !important; }
 }
+/* ===== print-a4-view-v1: 狭い画面でも【A4のまま】見せる =====
+   ★これまでは `width: 100%; padding: 4mm;` で、A4をやめて画面幅に
+     流し込んでいた。表の列が指1本ぶんまで細くなり、文字が1文字ずつ
+     縦に並ぶ。紙とは別の形になるので、プレビューとして用をなさない。
+   ★A4のまま transform で縮める。形は紙とまったく同じ。
+     ピンチで拡大すればブラウザが描き直すのでくっきり読め、
+     そのまま編集もできる。
+   ★transform は【見た目だけ】縮めて場所は794pxのまま取るので、
+     縮んだ分の負のマージンをJSから当てて、横にはみ出さないようにする。
+   ★`@media screen` なので、印刷では読まれない。紙は 1:1 のまま。 */
 @media screen and (max-width: 230mm) {
-    .report-page { width: 100%; padding: 4mm; }
+    .report-page {
+        transform: scale(var(--page-scale, 1));
+        transform-origin: top left;
+        /* ★縮んだ分の詰めは【この中】で当てる。
+           JSから直接 style.margin を当ててはいけない。直接指定は
+           @media print の `margin: 0` より強く、狭いウィンドウのPCから
+           印刷したときに紙がずれる（今日すでに1度やった間違い）。
+           ★JSが入れるのは【変数だけ】。使うのはここ＝画面のときだけ。 */
+        margin-right: var(--pg-mr, 0);
+        margin-bottom: var(--pg-mb, 0);
+    }
 }
 </style>
 </head>
@@ -3838,25 +3858,40 @@ function ovConfirmPrint() {
 // ===== モバイル: A4ページを画面幅に合わせてスケーリング =====
 (function applyPageScale() {
     function calcScale() {
-        var vw = window.innerWidth;
         var pageW = 794; // 210mm at 96dpi
-        var padding = 16; // 左右余白合計(両側8px)
-        var available = vw - padding;
-        if (available < pageW) {
+        /* print-a4-view-v1: 幅は【測る】。見積もらない。
+           ★これまでは window.innerWidth - 16 だったが、実際の左右の余白は
+             16px ずつの計32px。16px 足りず、縮めても画面からはみ出していた。 */
+        var wrap = document.querySelector('.pages-wrap');
+        var available;
+        if (wrap) {
+            var cs = getComputedStyle(wrap);
+            available = wrap.clientWidth
+                      - (parseFloat(cs.paddingLeft) || 0)
+                      - (parseFloat(cs.paddingRight) || 0);
+        } else {
+            available = window.innerWidth - 32;
+        }
+        if (available > 0 && available < pageW) {
             var scale = available / pageW;
             document.documentElement.style.setProperty('--page-scale', scale.toFixed(4));
-            // transform:scale はレイアウトサイズを変えないので
-            // 縮んだ分(pageH * (1-scale))をmarginBottomで相殺
-            var pages = document.querySelectorAll('.report-page');
-            var pageH = 1122; // 297mm at 96dpi
-            var shrink = pageH * (1 - scale);
-            pages.forEach(function(p) {
-                p.style.marginBottom = (-shrink + 48) + 'px';
+            /* transform:scale は【見た目だけ】縮めて、場所は元の大きさのまま取る。
+               縮んだ分を負のマージンで打ち消して、場所も縮んだ大きさに合わせる。
+               ★これをしないと横スクロールが出て、下にも大きな余白が空く。
+               ★高さは決め打ちにしない。2枚目のページは高さが違うことがある。 */
+            document.querySelectorAll('.report-page').forEach(function(p) {
+                var h = p.offsetHeight || 1122;      // transform の影響を受けない実寸
+                /* ★変数に入れるだけ。style.margin を直接当てない。
+                     直接指定は @media print の `margin: 0` より強く、
+                     狭いウィンドウのPCから印刷すると紙がずれる。 */
+                p.style.setProperty('--pg-mb', (-(h * (1 - scale)) + 24) + 'px');
+                p.style.setProperty('--pg-mr', (-(pageW * (1 - scale))) + 'px');
             });
         } else {
             document.documentElement.style.setProperty('--page-scale', '1');
             document.querySelectorAll('.report-page').forEach(function(p) {
-                p.style.marginBottom = '';
+                p.style.removeProperty('--pg-mb');
+                p.style.removeProperty('--pg-mr');
             });
         }
     }
@@ -4124,6 +4159,14 @@ table.lx-cmp td.chg.flat{ color:#8a94a0; }
       setTimeout(function(){ resizeCharts(page); st.extraPages.forEach(resizeCharts); }, 120);
     }
     st.mode=mode;
+    /* print-a4-view-v1: ページを作り直したので、縮小の打ち消しを当て直す。
+       ★これをしないと、新しく作った2枚目に負のマージンが付かず、
+         下に大きな空きが出て、横にもはみ出す。
+       ★グラフの描き直し(120ms)より後に測る。先に測ると高さが変わってずれる。 */
+    if (typeof window.__calcScale === 'function') {
+      try { window.__calcScale(); } catch(e){}
+      setTimeout(function(){ try { window.__calcScale(); } catch(e){} }, 200);
+    }
     // セレクタUIの状態更新
     updateSeg(user, mode);
     if(persist) saveMode(user, mode);
