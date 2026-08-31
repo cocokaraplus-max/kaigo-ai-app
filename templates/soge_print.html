@@ -178,7 +178,9 @@
         </thead>
         <tbody>
         {% for row in v.rows %}
-          <tr {% if row.day_first %}class="sp-day-first"{% endif %}>
+          {# soge-past-admin-v1: 過ぎた日の行は、管理者以外は触れない。
+             ★印を付けるだけ。止めるのは下のJSで1か所にまとめる。 #}
+          <tr class="{% if row.day_first %}sp-day-first {% endif %}{% if row.past and not can_edit_past %}sp-ro{% endif %}">
             <td class="fix1">{% if row.day_first %}{{ row.day_label }}{% endif %}</td>
             <td class="fix2">{{ row.trip_short }}</td>
             <td class="tm">
@@ -229,6 +231,51 @@
 {% endfor %}
 </div>
 
+<style>
+/* soge-past-admin-v1: 直せない行の見た目 */
+.sp-ro input, .sp-ro .sp-tap { opacity: .5; cursor: not-allowed; }
+.sp-ro .sp-time { color: #9aa0a6; }
+.sp-ro-note { margin: 8px 0 12px; border: 1px solid #f5c6c2; background: #fce8e6;
+  color: #a50e0e; border-radius: 8px; padding: 8px 11px; font-size: 0.78rem; line-height: 1.6; }
+@media print { .sp-ro-note { display: none !important; } }
+</style>
+<script>
+/* soge-past-admin-v1: 過ぎた日の行を触れなくする。
+   ★行に付けた印(.sp-ro)を見て、ここ1か所で止める。
+     テンプレートの各所に条件を散らすと、足し忘れが必ず出る。
+   ★消さずに【止める】。消すと「機能が無い」と思われる。
+   ★守りはAPI側にもある。ここは親切のため。 */
+(function lockPastRows(){
+  function run(){
+    var rows = document.querySelectorAll('tr.sp-ro');
+    if (!rows.length) return;
+    rows.forEach(function (tr) {
+      tr.querySelectorAll('input').forEach(function (i) {
+        i.readOnly = true; i.disabled = true;
+        i.title = '過ぎた日の記録は管理者だけが直せます';
+      });
+      tr.querySelectorAll('[data-day],[data-note],[data-odo]').forEach(function (el) {
+        el.removeAttribute('data-day');
+        el.removeAttribute('data-note');
+        el.removeAttribute('data-odo');
+        el.removeAttribute('data-fld');
+        if (el.tagName === 'BUTTON') { el.disabled = true; }
+        el.title = '過ぎた日の記録は管理者だけが直せます';
+      });
+    });
+    var wrap = document.querySelector('.sp-wrap') || document.body;
+    if (!document.querySelector('.sp-ro-note')) {
+      var n = document.createElement('div');
+      n.className = 'sp-ro-note no-print';
+      n.innerHTML = '過ぎた日の行は、<b>管理者だけ</b>が直せます。'
+                  + '直したいときは管理者に依頼してください。';
+      wrap.insertBefore(n, wrap.firstChild);
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run);
+  else run();
+})();
+</script>
 <script>
 // soge-print-v3
 (function () {
