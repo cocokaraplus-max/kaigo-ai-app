@@ -172,6 +172,12 @@
 .sr-dv-fin .s { font-size:0.82rem; color:#5f6368; margin-top:6px; line-height:1.6; }
 .sr-dv-note { font-size:0.8rem; color:#5f6368; line-height:1.6; margin-top:8px; }
 
+/* soge-car-color-v1: 車の色。タブと運転手の行に出す。
+   ★色は付けるだけ。文字と背景の組み合わせは変えない（読みにくくしない）。 */
+.sr-tab { border-left: 5px solid transparent; }
+.sr-dot { display:inline-block; width:11px; height:11px; border-radius:50%;
+  margin-right:6px; vertical-align:-1px; }
+
 /* soge-past-admin-v1: 直せない日の見た目。押せないことが見て分かるようにする。 */
 .sr-ro { opacity: .45 !important; cursor: not-allowed !important; }
 .sr-ro-note { border: 1px solid #f5c6c2; background: #fce8e6; color: #a50e0e;
@@ -382,6 +388,26 @@
   }
 
   // タブ1行分のHTML。中身が便でも車両でも同じ形なので共通にする
+  /* soge-car-color-v1: 車のタブに色を塗る。
+     ★選んでいるタブは【その車の色そのもの】で塗る。
+       ここを青のままにすると「1号車は赤なのにタブは青」になり、
+       色で見分けるという狙いが逆に濁る。
+     ★選んでいないタブは左端の帯と丸だけ。全部を塗ると、
+       どれを選んでいるのかが分からなくなる。 */
+  function paintCarTabs(row, list) {
+    row.querySelectorAll('[data-tab]').forEach(function (el, i) {
+      var c = (list[i] && list[i].color_hex) || '';
+      if (!c) return;
+      el.style.borderLeftColor = c;
+      if (el.classList.contains('on')) {
+        el.style.background = c;
+        el.style.borderColor = c;
+        var d = el.querySelector('.sr-dot');
+        if (d) d.style.background = '#fff';   /* 塗った上の丸は白で抜く */
+      }
+    });
+  }
+
   function tabsHtml(labels, active, cls, attr) {
     return labels.map(function (lb, i) {
       return '<div class="' + cls + (i === active ? ' on' : '') + '" ' + attr + '="' + i + '">' + lb + '</div>';
@@ -653,7 +679,13 @@
           state.tabKey = ''; state.autoTab = true; render();
         };
       });
-      row2.innerHTML = tabsHtml(cars.map(function (c) { return esc(c.v.vehicle_name); }), state.tab, 'sr-tab', 'data-tab');
+      /* soge-car-color-v1: 「便から見る」ときの車タブにも同じ色を出す。
+         ★片方だけ色が付いていると、見比べたときに別の意味だと思われる。 */
+      row2.innerHTML = tabsHtml(cars.map(function (c) {
+        return ((c.v && c.v.color_hex) ? '<span class="sr-dot" style="background:' + c.v.color_hex + '"></span>' : '')
+             + esc(c.v.vehicle_name);
+      }), state.tab, 'sr-tab', 'data-tab');
+      paintCarTabs(row2, cars.map(function (c) { return c.v; }));
       row2.style.display = cars.length ? 'flex' : 'none';
       row2.querySelectorAll('[data-tab]').forEach(function (el) {
         // 自分で選んだのだから、以後は勝手に動かさない
@@ -684,7 +716,13 @@
       if (state.tab >= vs.length) state.tab = 0;
       skipUnassigned(vs, function (v) { return !!v.unassigned; });
       state.tabKey = vs[state.tab] ? String(vs[state.tab].key) : '';
-      row1.innerHTML = tabsHtml(vs.map(function (v) { return esc(v.vehicle_name); }), state.tab, 'sr-tab', 'data-tab');
+      /* soge-car-color-v1: 車のタブに色。★名前の前に丸を置き、左端に帯を引く。
+         色だけに頼らない（色の見分けがつきにくい方でも、名前は名前のまま）。 */
+      row1.innerHTML = tabsHtml(vs.map(function (v) {
+        return (v.color_hex ? '<span class="sr-dot" style="background:' + v.color_hex + '"></span>' : '')
+             + esc(v.vehicle_name);
+      }), state.tab, 'sr-tab', 'data-tab');
+      paintCarTabs(row1, vs);
       row1.querySelectorAll('[data-tab]').forEach(function (el) {
         // soge-trip-tab-v1: 車両タブを変えたら便タブも先頭に戻す
         el.onclick = function () {
@@ -719,8 +757,12 @@
     //     古いデータで名前が【消える】ほうが現場では困る。
     var _drv = (selTrip && selTrip.driver_name)
             || (selVehicle && selVehicle.driver_name) || '';
-    $('srDriver').textContent = selVehicle
-      ? (_drv ? ('運転手 ' + _drv) : '運転手 未設定')
+    /* soge-car-color-v1: 運転手の行にも、いま開いている車の色を出す。 */
+    var _dv = $('srDriver');
+    _dv.innerHTML = selVehicle
+      ? ((selVehicle.color_hex
+            ? '<span class="sr-dot" style="background:' + selVehicle.color_hex + '"></span>' : '')
+         + esc(_drv ? ('運転手 ' + _drv) : '運転手 未設定'))
       : '';
 
     /* soge-drive-v1: 運転中は本文だけ差し替える。
