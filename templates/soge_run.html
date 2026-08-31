@@ -304,14 +304,21 @@
 <div class="sr-wrap">
   <div id="srToast" class="sr-toast"></div>
 
+  <!-- soge-nav-v1: 3画面を行き来するタブ。3つとも同じ形・同じ位置に出す。
+       ★「記録表」の行き先は、見ている日の【月】に合わせて JS が入れ直す
+         （id="srPrint" のまま。ボタンからタブに変えただけ）。
+       ★target=_blank にしない。ホーム画面から起動したアプリでは外部ブラウザが
+         開いてログインが切れる（soge-print-v3 で踏んだ）。 -->
+  <div class="sgnav">
+    <a class="on" href="/soge/run">運行画面</a>
+    <a href="/soge" onclick="spaNav(event,'/soge')">配車編集</a>
+    <a id="srPrint" href="/soge/print">記録表</a>
+  </div>
+
   <div class="sr-head">
     <div class="sr-title">運行</div>
     <div style="display:flex;gap:8px;align-items:center;">
       <input type="date" class="sr-date" id="srDate">
-      <!-- soge-print-v3: target=_blank にすると、ホーム画面から起動したアプリでは
-           外部ブラウザが開いてログインが切れる。同じタブで開く。 -->
-      <a class="sr-btn" id="srPrint" href="/soge/print">記録表</a>
-      <a class="sr-btn" href="/soge" onclick="spaNav(event,'/soge')">配車</a>
     </div>
   </div>
 
