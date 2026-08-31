@@ -209,10 +209,11 @@
   font-variant-numeric:tabular-nums; }
 .sr-pl .tag { font-size:0.68rem; font-weight:800; border-radius:6px; padding:2px 6px;
   background:rgba(255,255,255,.22); white-space:nowrap; }
-/* 次の人の板。大きくして、下の白い箱と1枚につなげる */
-.sr-pl.big { padding:13px 14px; border-radius:12px 12px 0 0; }
-.sr-pl.big .nm { font-size:1.5rem; }
-.sr-pl.big .tm { font-size:1.1rem; }
+/* 次の人の板。下の白い箱と1枚につなげる（角を上だけ丸める） */
+/* soge-drive-v5: ★名前を大きくするのはやめた。
+     大きくしても探す助けにはならず、1人ぶん場所を取って
+     そのあとの人が画面の外へ押し出される。見分けは色で付ける。 */
+.sr-pl.big { border-radius:12px 12px 0 0; }
 /* 事業所の出発・帰着の帯。人の家（緑）とは別の色にして取り違えを防ぐ */
 .sr-pl.dep { background:#33404D; }
 .sr-pl.dep.done { background:#EEF2F7; color:#5f6368; }
@@ -247,6 +248,22 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
 /* 先の人の住所。ここは下見なので詰めてよい（その人が次になれば上に大きく出る） */
 .sr-nvs { font-size:0.78rem; color:#5f6368; margin:5px 2px 0;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* soge-drive-v5: そのあとの人。緑をやめて薄い灰色にする。
+   ★これで緑は「いま向かっているところ」だけの色になる。
+     全部が緑だと、どこまでが「次」か毎回目で追うことになる。
+   ★消してはいけない。名前・時刻・車いすはそのまま読める濃さで残す。
+     運転席から「次の次は誰か」は見えている必要がある。 */
+.sr-pl.later { background:#EEF0F2; color:#5f6368; }
+/* ★札の地は白のままだと薄い灰に溶ける（実際に重ねて消えた）。暗いほうに替える。 */
+.sr-pl.later .tag { background:rgba(0,0,0,.08); color:#3c4043; }
+/* 道の丸も灰色に。板だけ灰色だと丸が浮いて見える。 */
+.sr-nd.later::before { border-color:#bdc1c6; }
+/* ★住所は薄くしない（モックからここだけ変えた）。
+     モックの薄い灰(#9aa0a6)を白地で測ったら 2.64:1 しかなかった。
+     住所は 0.78rem と小さい。小さい字ほど濃さが要る。
+     走っている車の中で読むものを、そこまで薄くしてはいけない。
+     板が灰色になっている時点で「そのあと」だとは分かる。 */
 .sr-nv-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
   font-size:0.8rem; color:#5f6368; margin-bottom:10px; }
 .sr-nv-head .cnt { margin-left:auto; font-weight:800; color:#1f2933; }
@@ -974,8 +991,9 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       var tm  = (s.planned_at ? '<span class="tm">' + esc(s.planned_at) + '</span>' : '');
       if (i > 0) {
         /* 先の人。板だけ。★名前は割らない。住所は詰める（下見なので全部は要らない）。 */
-        return '<div class="sr-nd">'
-          + '<div class="sr-pl"><span class="nm">' + esc(s.user_name) + '</span>'
+        /* soge-drive-v5: 先の人は灰色。緑は「いま向かう人」だけにする。 */
+        return '<div class="sr-nd later">'
+          + '<div class="sr-pl later"><span class="nm">' + esc(s.user_name) + '</span>'
             + tag + tm + '</div>'
           + (s.address ? '<div class="sr-nvs">' + esc(s.address) + '</div>' : '')
           + '</div>';
@@ -999,7 +1017,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     }).join('');
 
     if (hidden > 0) {
-      stopsHtml += '<div class="sr-nd"><div class="sr-pl">'
+      stopsHtml += '<div class="sr-nd later"><div class="sr-pl later">'
         + '<span class="nm">ほか ' + hidden + ' 人</span></div></div>';
     }
 
