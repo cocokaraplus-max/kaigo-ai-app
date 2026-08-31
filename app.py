@@ -14110,6 +14110,81 @@ def api_delete_record():
     except Exception as e:
         return jsonify({"status": "error"}), 500
 
+# ===== mon-no-greeting-v1: 前置き・結びの挨拶を外す =====
+# ★外すのは【中身の無い1文】だけ。緩めると記録そのものが消える。
+#   ここは「消しすぎない」ことが最優先。挨拶が1つ残るのは困らないが、
+#   記録が1文消えるのは、ケアマネジャーに渡す書類が事実と食い違うということ。
+
+# 先頭の1文に出てくる言い回し
+_MON_LEAD = ("お伝えします", "お伝えいたします", "ご報告します", "ご報告いたします",
+             "報告いたします", "報告します", "ご報告申し上げます", "お知らせします",
+             "報告させていただきます", "お伝えさせていただきます")
+# 末尾の1文の「終わりかた」
+_MON_TAIL_END = ("ご報告いたします。", "ご報告します。", "報告いたします。", "報告します。",
+                 "お伝えしました。", "お伝えいたしました。", "まいります。", "参ります。",
+                 "お願いいたします。", "お願いします。", "お願い申し上げます。")
+# 末尾の1文が挨拶だと分かる言葉（終わりかたと【両方】そろって初めて外す）
+_MON_TAIL_WORD = ("以上", "引き続き", "今後とも", "今後も", "よろしくお願い",
+                  "ご報告", "お伝え")
+# ★この語が入っている文は外さない。挨拶ではなく記録だから。
+#   「ご家族へ電話でご報告いたします」「主治医へ連絡し受診いたします」など。
+_MON_KEEP = ("家族", "ケアマネ", "医師", "看護", "連絡", "受診", "病院", "主治医")
+
+
+def _mon_sentences(t):  # mon-no-greeting-v1
+    """「。」で切る。区切りの「。」は文のほうに残す（つなぎ直しても元に戻る）。"""
+    out, buf = [], ""
+    for ch in t:
+        buf += ch
+        if ch == "。":
+            out.append(buf)
+            buf = ""
+    if buf.strip():
+        out.append(buf)
+    return out
+
+
+def _mon_is_lead(s):  # mon-no-greeting-v1
+    s = s.strip()
+    if len(s) > 60 or any(k in s for k in _MON_KEEP):
+        return False
+    return any(k in s for k in _MON_LEAD)
+
+
+def _mon_is_tail(s):  # mon-no-greeting-v1
+    s = s.strip()
+    if len(s) > 60 or any(k in s for k in _MON_KEEP):
+        return False
+    # ★数字が入っている文は外さない。数字は中身（回数・体重・血圧など）。
+    if any(c.isdigit() for c in s):
+        return False
+    if not any(s.endswith(e) for e in _MON_TAIL_END):
+        return False
+    return any(w in s for w in _MON_TAIL_WORD)
+
+
+def _mon_strip_greeting(text):  # mon-no-greeting-v1
+    """前置きと結びを、それぞれ最大1文だけ外す。
+
+    ★短い文には触らない（40文字未満）。
+      「今月このカテゴリの報告はありませんでした」「（生成エラー: …）」を
+      外してしまうと、記録が無いことと生成が失敗したことが画面から消えて、
+      職員が気づけなくなる。それは前の不具合に戻すのと同じ。
+    ★全部消えるときは元をそのまま返す。空を返すくらいなら挨拶を残す。
+    """
+    t0 = (text or "").strip()
+    if len(t0) < 40:
+        return t0
+    ss = _mon_sentences(t0)
+    if len(ss) < 2:
+        return t0
+    if _mon_is_lead(ss[0]):
+        ss = ss[1:]
+    if ss and _mon_is_tail(ss[-1]):
+        ss = ss[:-1]
+    return "".join(ss).strip() or t0
+
+
 @app.route('/api/generate_monitoring', methods=['POST'])
 @login_required
 def api_generate_monitoring():
@@ -14224,6 +14299,10 @@ def api_generate_monitoring():
             "・記録の中に他のご利用者の名前が出てきた場合は、その名前を書かず必ず「他の利用者様」と表現する\n"
             "・箇条書きは使わず、ひとつながりの文章で書く\n"
             "・口調は報告文書として読みやすい丁寧語(です・ます)。二重敬語や過剰な敬語(「お〜になられる」「ございました」等)は避け、硬すぎず砕けすぎない自然な丁寧さにとどめる\n"
+            # mon-no-greeting-v1: 前置き・結びの挨拶を書かせない。
+            #   ★指示だけでは止まりきらないので、あとで外す処理も入れてある。
+            "・前置きの挨拶を書かない。「今月の◯◯をお伝えします」「◯◯についてご報告いたします」のような書き出しは禁止。1文目から記録の中身を書き始める\n"
+            "・結びの挨拶を書かない。「以上、ご報告いたします」「引き続き見守ってまいります」「今後ともよろしくお願いいたします」のような、記録に無いことを述べる締めの文は書かない\n"
         )
 
         if mode == "full":
@@ -14238,7 +14317,9 @@ def api_generate_monitoring():
                 + leave_section
                 + f"『記録』\n{all_recs}"
             )
-            result_text = model.generate_content([prompt]).text.strip()
+            # mon-no-greeting-v1: 付いてきた前置き・結びを外す
+            result_text = _mon_strip_greeting(
+                model.generate_content([prompt]).text.strip())
             return jsonify({
                 "mode": "full",
                 "full_text": result_text,
@@ -14271,7 +14352,9 @@ def api_generate_monitoring():
                     f"【{cat}の記録】\n{cat_text}"
                 )
                 try:
-                    results[cat] = model.generate_content([prompt]).text.strip()
+                    # mon-no-greeting-v1: 付いてきた前置き・結びを外す
+                    results[cat] = _mon_strip_greeting(
+                        model.generate_content([prompt]).text.strip())
                 except Exception as e:
                     results[cat] = f"（生成エラー: {str(e)[:50]}）"
 # 評価データ取得
