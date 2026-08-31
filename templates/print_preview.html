@@ -28,7 +28,14 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 }
 .btn-print-now { background: #fff; color: #1a73e8; border: none; border-radius: 8px; padding: 7px 16px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .btn-close { background: rgba(255,255,255,0.2); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
-.pages-wrap { padding: 60px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
+/* print-barpad-fix-v1: 上の余白は【変数】で受け取る。
+   ★JSから直接 style.paddingTop を当ててはいけない。直接指定は
+     @media print の `padding: 0` より強く、印刷でも下にずれて
+     白紙が1枚できる（実際に作ってしまった）。
+   ★変数ならこの指定の中で使われるだけなので、
+     後に書かれている @media print の指定がちゃんと勝つ。
+   ★変数が無いときは、これまでどおり 60px。 */
+.pages-wrap { padding: var(--lx-barpad, 60px) 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
 
 /* ===== あふれ検知バッジ（第1段階・画面のみ／印刷には出さない） ===== */
 .rep-overflow-badge {
@@ -3291,7 +3298,11 @@ function _lxBuildPrintHtml(){
         var w = document.getElementById('lxPagesWrap');
         if (!b || !w) return;
         var h = b.getBoundingClientRect().height;
-        if (h > 0) w.style.paddingTop = (h + 12) + 'px';
+        /* print-barpad-fix-v1: ★直接指定（w.style.paddingTop）にしないこと。
+           直接指定は @media print の `padding: 0` より強く、
+           印刷でも下にずれて白紙が1枚できる（実際に作ってしまった）。
+           変数に入れれば、印刷のときは指定ごと 0 に戻る。 */
+        if (h > 0) document.documentElement.style.setProperty('--lx-barpad', (h + 12) + 'px');
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fit);
     else fit();
