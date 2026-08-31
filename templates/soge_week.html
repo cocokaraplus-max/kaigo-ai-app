@@ -601,7 +601,10 @@
     return '<div class="sg-car' + (_ch ? ' sg-col' : '') + '"'
       + (_ch ? ' style="border-left-color:' + _ch + '"' : '') + '>' +
       '<div class="sg-car-head">' +
-        '<span class="sg-car-badge"' + (_ch ? ' style="background:' + _ch + '"' : '') + '>車 '
+        /* soge-car-color-v2: 白い車も選べるので、文字色はサーバが決めた色を使う。 */
+        '<span class="sg-car-badge"' + (_ch ? ' style="background:' + _ch
+          + ';color:' + ((_cv && _cv.color_fg) || '#fff')
+          + ';box-shadow:0 0 0 1px rgba(0,0,0,.25)"' : '') + '>車 '
           + (realCars(t).indexOf(v) + 1) + '</span>' +
         '<select class="sg-sel" data-veh="' + ti + '_' + vi + '"><option value="">車両…</option>' + vopts + '</select>' +
         '<select class="sg-sel" data-drv="' + ti + '_' + vi + '"><option value="">運転手…</option>' + sopts + '</select>' +
