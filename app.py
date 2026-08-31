@@ -27026,6 +27026,37 @@ def _soge_day_touched(days, stops):
     return False
 
 
+_SOGE_PAST_NG = ("過ぎた日の記録は、管理者だけが直せます。"
+                 "管理者に依頼してください。")      # soge-past-admin-v1
+
+
+def _soge_past_admin_ok(supabase, f_code, date_str, my_name):  # soge-past-admin-v1
+    """その日の記録を直してよいか。今日より前の日は【管理者だけ】。
+
+    ★HIROさんの決め（2026-08-31）：線引きは「今日より前の日」。
+      その日のうちは、これまでどおり誰でも整える（現場の流れを変えない）。
+      変わるのは【あとから書き換えるとき】だけ。
+    ★確かめられないときは【断る】（fail closed）。
+      読めないことを理由に通すと、権限の確認が事実上なくなる。
+    """
+    try:
+        today = datetime.now(_soge_jst()).strftime("%Y-%m-%d")
+    except Exception as e:
+        print("[soge-past-admin] 今日が分かりませんでした: %s" % e, flush=True)
+        return False
+    d = str(date_str or "")[:10]
+    if len(d) != 10:
+        # 日付が分からないものは触らせない
+        return False
+    if d >= today:
+        return True
+    try:
+        return bool(is_admin_user(supabase, f_code, my_name))
+    except Exception as e:
+        print("[soge-past-admin] 権限を確かめられませんでした: %s" % e, flush=True)
+        return False
+
+
 def _soge_day_state(supabase, f_code, date_str):
     """確定しているか／動き出しているかをまとめて返す。"""
     days, stops = [], []
@@ -27421,8 +27452,12 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
     # soge-odo-v1: 走行距離を記録する施設かどうか。画面はこれを見て入力欄を出す。
     # soge-lock-v1: 確定しているか／もう動き出しているかを画面に伝える
     st = _soge_day_state(supabase, f_code, date_str)
+    # soge-past-admin-v1: 過ぎた日を直せる人かどうか。画面はこれを見てボタンを出し分ける。
+    #   ★画面の出し分けは【親切のため】。守りはAPI側にある。
+    _can = _soge_past_admin_ok(supabase, f_code, date_str, session.get("my_name", ""))
     return {"date": date_str, "vehicles": list(vehicles.values()),
             "odo_enabled": bool(settings.get("odo_enabled")),
+            "can_edit": bool(_can),                      # soge-past-admin-v1
             "locked": st["locked"], "touched": st["touched"], "past": st["past"]}
 
 
@@ -27612,11 +27647,18 @@ def api_soge_run_arrive():
         if not stop_id:
             return jsonify({"status": "error", "message": "対象がありません"}), 400
 
-        r = (supabase.table("soge_stops").select("id,arrived_at,is_absent")
+        # soge-past-admin-v1: 日付も引く（過ぎた日かどうかを見るため）
+        r = (supabase.table("soge_stops").select("id,arrived_at,is_absent,service_date")
              .eq("facility_code", f_code).eq("id", stop_id).execute())
         if not r.data:
             return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
         cur = r.data[0]
+        # soge-past-admin-v1: 過ぎた日への打刻は管理者だけ。
+        #   ★そもそも打刻は「いま」を書くので、過ぎた日に押すと
+        #     昨日の記録に今日の時刻が入る。止めるほうが正しい。
+        if not _soge_past_admin_ok(supabase, f_code, cur.get("service_date"), my_name):
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
         if cur.get("arrived_at"):
             # 2度押し。最初の時刻を正とする。
             return jsonify({"status": "success", "already": True,
@@ -27651,6 +27693,9 @@ def api_soge_run_stop_edit():
         if not r.data:
             return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
         date_str = str(r.data[0]["service_date"])[:10]
+        if not _soge_past_admin_ok(supabase, f_code, date_str, my_name):   # soge-past-admin-v1
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
 
         upd = {"edited_at": datetime.now(timezone.utc).isoformat(), "edited_by": my_name}
 
@@ -27679,6 +27724,63 @@ def api_soge_run_stop_edit():
         return jsonify({"status": "success"})
     except Exception as e:
         print("api_soge_run_stop_edit error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/order", methods=["PUT"])  # soge-print-admin-v1
+@login_required
+def api_soge_run_order():
+    """その便の【周る順番】を並べ替える。
+
+    body: {"day_id": "...", "stop_ids": ["...", "..."]}  並べたい順に
+
+    ★その便の【全員】を受け取る。一部だけは受け取らない。
+      一部だと、抜けた人の seq が宙に浮いて重複や飛びが出る。
+      受け取った顔ぶれがその便の顔ぶれとぴったり同じでなければ断る。
+    ★予定時刻(planned_at)は触らない。順番と予定は別のもので、
+      勝手に引き直すと「何時に着いたか」を直したい場面で隣の予定まで動く。
+      引き直したいときは「予定時刻を計算し直す」を使う。
+    """
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        data = request.json or {}
+        day_id = str(data.get("day_id") or "").strip()
+        ids = [str(x).strip() for x in (data.get("stop_ids") or []) if str(x).strip()]
+        if not day_id or not ids:
+            return jsonify({"status": "error", "message": "対象がありません"}), 400
+
+        dr = (supabase.table("soge_days").select("id,service_date")
+              .eq("facility_code", f_code).eq("id", day_id).execute())
+        if not dr.data:
+            return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+        date_str = str(dr.data[0]["service_date"])[:10]
+        if not _soge_past_admin_ok(supabase, f_code, date_str, my_name):
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
+
+        sr = (supabase.table("soge_stops").select("id")
+              .eq("facility_code", f_code).eq("day_id", day_id).execute())
+        have = set(str(x["id"]) for x in (sr.data or []))
+        want = set(ids)
+        # ★ぴったり同じでなければ断る。数が同じでも中身が違えば断る。
+        if len(ids) != len(want):
+            return jsonify({"status": "error", "message": "同じ方が2回入っています"}), 400
+        if have != want:
+            return jsonify({"status": "error",
+                            "message": "この便の顔ぶれと合いません。画面を開き直してください"}), 409
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        for i, sid in enumerate(ids):
+            (supabase.table("soge_stops")
+             .update({"seq": i, "edited_at": now_iso, "edited_by": my_name})
+             .eq("facility_code", f_code).eq("id", sid).execute())
+
+        print("[soge-order] %s day=%s %d人 (%s)" % (date_str, day_id, len(ids), my_name), flush=True)
+        return jsonify({"status": "success", "n": len(ids)})
+    except Exception as e:
+        print("api_soge_run_order error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -27750,6 +27852,13 @@ def api_soge_run_move():
         if ex.data:
             return jsonify({"status": "error",
                             "message": "その便には %s さんがすでに入っています" % who}), 409
+
+        # soge-past-admin-v1: 過ぎた日は管理者だけ。
+        #   ★下の confirm は「本当にいいですか」を聞くだけで、誰かは見ていない。
+        #     誰が直してよいかは、こちらで見る。
+        if not _soge_past_admin_ok(supabase, f_code, date_str, my_name):
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
 
         st = _soge_day_state(supabase, f_code, date_str)
         if (st["locked"] or st["past"]) and not data.get("confirm"):
@@ -27846,6 +27955,7 @@ def api_soge_run_day_edit():
     """出発 / 帰着 / 備考 を直す。時刻は "HH:MM"、空文字で消える。"""
     try:
         f_code = session["f_code"]
+        my_name = session.get("my_name", "")            # soge-past-admin-v1
         supabase = get_supabase()
         data = request.json or {}
         day_id = str(data.get("day_id") or "").strip()
@@ -27857,6 +27967,9 @@ def api_soge_run_day_edit():
         if not r.data:
             return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
         date_str = str(r.data[0]["service_date"])[:10]
+        if not _soge_past_admin_ok(supabase, f_code, date_str, my_name):   # soge-past-admin-v1
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
 
         upd = {"updated_at": datetime.now(timezone.utc).isoformat()}
 
@@ -27931,7 +28044,12 @@ def api_soge_run_extra_create():
         supabase = get_supabase()
         data = request.json or {}
 
+        my_name = session.get("my_name", "")            # soge-past-admin-v1
         date_str = (data.get("date") or "").strip()
+        if len(date_str) == 10 and not _soge_past_admin_ok(
+                supabase, f_code, date_str, my_name):   # soge-past-admin-v1
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
         if len(date_str) != 10:
             return jsonify({"status": "error", "message": "日付が不正です"}), 400
         reason = (data.get("reason") or "その他").strip()[:20]
@@ -28038,6 +28156,10 @@ def api_soge_run_extra_add_stop():
         if not dr.data or not dr.data[0].get("is_extra"):
             return jsonify({"status": "error", "message": "臨時便が見つかりません"}), 404
         date_str = str(dr.data[0]["service_date"])[:10]
+        if not _soge_past_admin_ok(supabase, f_code, date_str,
+                                   session.get("my_name", "")):   # soge-past-admin-v1
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
 
         sr = (supabase.table("soge_stops").select("seq")
               .eq("day_id", day_id).execute())
@@ -28072,10 +28194,15 @@ def api_soge_run_extra_delete():
         if not day_id:
             return jsonify({"status": "error", "message": "対象がありません"}), 400
 
-        dr = (supabase.table("soge_days").select("id,is_extra")
+        # soge-past-admin-v1: 日付も引く（過ぎた日かどうかを見るため）
+        dr = (supabase.table("soge_days").select("id,is_extra,service_date")
               .eq("facility_code", f_code).eq("id", day_id).execute())
         if not dr.data:
             return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+        if not _soge_past_admin_ok(supabase, f_code, dr.data[0].get("service_date"),
+                                   session.get("my_name", "")):   # soge-past-admin-v1
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
         if not dr.data[0].get("is_extra"):
             return jsonify({"status": "error", "message": "定期便は取り消せません"}), 400
 
@@ -28220,6 +28347,20 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
         stops = sorted(by_day.get(d["id"], []), key=lambda x: x.get("seq") or 0)
         cur["rows"].append({
             "day_id": d["id"],                                   # soge-note-v1
+            # soge-print-admin-v1: 同じ日の【他の便】。車を移す先に使う。
+            #   ★「車が未定」(vehicle_no<=0)は走らない枠なので入れない。
+            "targets": [{
+                "day_id": x["id"],
+                "name": x.get("vehicle_name") or ("車 %s" % (x.get("vehicle_no") or 1)),
+                "trip": x.get("trip_name") or "",
+                "extra": bool(x.get("is_extra")),
+            } for x in days
+                if str(x.get("service_date"))[:10] == ds
+                and str(x["id"]) != str(d["id"])
+                and _is_real_car(x)],
+            # soge-past-admin-v1: 行ごとに「過ぎた日か」。記録表は1か月ぶんが
+            #   1つの表に並ぶので、日ごとに分かれていないと出し分けられない。
+            "past": (ds < datetime.now(_soge_jst()).strftime("%Y-%m-%d")),
             "day_label": day_label,
             "day_first": (ds != last_date),
             "trip_name": d.get("trip_name") or "",
@@ -28235,6 +28376,8 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
                       if (d.get("odo_start") is not None and d.get("odo_end") is not None
                           and d.get("odo_end") >= d.get("odo_start")) else None,
             "stops": [{
+                # soge-print-edit-v1: どれを直すか指すのに要る
+                "id": s.get("id"),
                 "user_name": s.get("user_name") or "",
                 "type": s.get("stop_type") or "pickup",
                 "arrived_at": _soge_hhmm(s.get("arrived_at")),
@@ -28268,7 +28411,15 @@ def soge_print_page():
 
     odo_on = bool(get_soge_settings(supabase, f_code).get("odo_enabled"))   # soge-odo-v1
 
+    # soge-past-admin-v1: 過ぎた日を直せる人か（画面の出し分けに使う。守りはAPI側）
+    _can_past = False
+    try:
+        _can_past = bool(is_admin_user(supabase, f_code, session.get("my_name", "")))
+    except Exception as e:
+        print("[soge-past-admin] 記録表の権限を確かめられませんでした: %s" % e, flush=True)
+
     return render_template("soge_print.html",
+                           can_edit_past=_can_past,      # soge-past-admin-v1
                            vehicles=vehicles,
                            facility_name=fname,
                            month=ym,

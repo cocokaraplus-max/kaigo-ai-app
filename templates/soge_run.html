@@ -172,6 +172,12 @@
 .sr-dv-fin .s { font-size:0.82rem; color:#5f6368; margin-top:6px; line-height:1.6; }
 .sr-dv-note { font-size:0.8rem; color:#5f6368; line-height:1.6; margin-top:8px; }
 
+/* soge-past-admin-v1: 直せない日の見た目。押せないことが見て分かるようにする。 */
+.sr-ro { opacity: .45 !important; cursor: not-allowed !important; }
+.sr-ro-note { border: 1px solid #f5c6c2; background: #fce8e6; color: #a50e0e;
+  border-radius: 10px; padding: 9px 11px; margin-bottom: 10px;
+  font-size: 0.82rem; line-height: 1.6; }
+
 /* soge-move-v1: ボタンが1つ増えるので、名前が縦に割れないようにする。
    ★実測で踏んだ：⇄ を足すと [到着][✎][⇄][✕] の4つになり、
      390px幅では名前の場所が足りず「青木 利／夫」と縦に割れ、住所も切れた。
@@ -391,6 +397,36 @@
        確定した日は、配車表を直しても変わらない。走り出したあとの事故はこれで防ぐ。
      ★打刻が始まった日は、確定していなくても自動では作り直さない。
        確定の押し忘れに備えた保険。作り直しは下のボタンから明示的に行う。 */
+  /* soge-past-admin-v1: この日を直してよいか。
+     ★サーバが can_edit を返す。分からないときは【直せない扱い】にする。
+       古い画面が新しいサーバに当たったときに、押せてしまうより押せないほうが安全。
+     ★これは【親切のため】の出し分け。守りはAPI側にある。 */
+  function canEditDay() {
+    var d = state.data || {};
+    if (!d.past) return true;              // 今日・これからの日はこれまでどおり
+    return d.can_edit === true;
+  }
+
+  /* 直せない日は、押せるものを全部止めて、理由を出す。
+     ★消さずに【止める】。消すと「機能が無い」と思われる。
+       止めて理由を出せば、管理者に頼めばよいと分かる。 */
+  function lockEdits(root) {
+    if (canEditDay()) return;
+    var sel = '[data-tap],[data-pen],[data-abs],[data-mv],[data-dep],[data-ret],'
+            + '[data-edit],[data-odo],[data-exadd],[data-exdel],#srAddExtra';
+    root.querySelectorAll(sel).forEach(function (el) {
+      el.disabled = true;
+      el.classList.add('sr-ro');
+      el.title = '過ぎた日の記録は管理者だけが直せます';
+      el.onclick = null;
+    });
+    var note = document.createElement('div');
+    note.className = 'sr-ro-note';
+    note.innerHTML = '過ぎた日の記録です。<b>直せるのは管理者だけ</b>です。'
+                   + '直したいときは管理者に依頼してください。';
+    root.insertBefore(note, root.firstChild);
+  }
+
   function renderLock() {
     var box = $('srLock');
     if (!box) return;
@@ -415,10 +451,16 @@
 
     var h;
     if (past) {
-      // ★過ぎた日は作り直さない。実際に走った記録で、月の記録表の元にもなるため。
+      /* ★過ぎた日は作り直さない。実際に走った記録で、月の記録表の元にもなるため。
+         soge-past-admin-v1: さらに、直せるのは管理者だけ。
+         ★「直せません」で終わらせない。誰に頼めばいいかまで書く。 */
       h = '<span class="st">過ぎた日</span>'
         + '<span class="ex">この日は<b>実際に走った記録</b>です。'
-        + '配車表を直しても書き換わりません。打刻の修正は各行の時刻から行えます。</span>';
+        + '配車表を直しても書き換わりません。'
+        + (canEditDay()
+            ? '打刻の修正は各行の時刻から行えます。'
+            : '<b>直せるのは管理者だけです。</b>直したいときは管理者に依頼してください。')
+        + '</span>';
       box.innerHTML = h;
       return;
     }
@@ -998,6 +1040,9 @@
 
   function bind() {
     var root = $('srBody');
+    /* soge-past-admin-v1: 先に止める。あとから onclick を付け直されないよう、
+       ここで止めてから、下の配線を通す（下の配線は disabled を見ない）。 */
+    lockEdits(root);
 
     // soge-odo-v1: メーター。打ち終わって離れたら保存。走行距離の表示だけ描き直す。
     root.querySelectorAll('[data-odo]').forEach(function (inp) {
