@@ -268,6 +268,57 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
   font-size:0.8rem; color:#5f6368; margin-bottom:10px; }
 .sr-nv-head .cnt { margin-left:auto; font-weight:800; color:#1f2933; }
 
+/* ===== soge-undo-v1: 押し間違いを戻す =====
+   ★直後の帯。運転席で「あ、間違えた」と思った瞬間に押せる場所に置く。
+     時間で消さない。走っている最中に消えたら、戻す手立てが無くなる。
+   ★黄色にする。緑（行き先）・青（押すところ）・灰（済んだところ）と
+     どれとも違う色にして、記録そのものと取り違えないようにする。 */
+.sr-undo { display:flex; align-items:center; gap:8px; margin:0 0 10px;
+  background:#FEF7E0; border:1px solid #F0C36D; border-radius:10px; padding:8px 10px; }
+.sr-undo-t { flex:1; min-width:0; font-size:0.82rem; color:#5F4300;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sr-undo-go { border:1px solid #9A6400; background:#fff; color:#8A5A00;
+  font-family:inherit; font-size:0.85rem; font-weight:800; border-radius:8px;
+  padding:8px 15px; cursor:pointer; white-space:nowrap; }
+.sr-undo-go:active { background:#FBE8B8; }
+.sr-undo-x { border:none; background:none; color:#8A5A00; font-family:inherit;
+  font-size:0.9rem; padding:7px 5px; cursor:pointer; }
+
+/* 済んだ人。ふだんは閉じておく（運転席で要るのは「次どこか」だけ）。
+   ★人数は閉じていても出す。黙って隠さない。 */
+.sr-done { margin:0 0 10px; }
+.sr-done-h { width:100%; display:flex; align-items:center; cursor:pointer;
+  border:1px solid #E3E8EF; background:#fff; border-radius:10px; padding:9px 12px;
+  font-family:inherit; font-size:0.82rem; font-weight:700; color:#3c4043; text-align:left; }
+.sr-done.open .sr-done-h { border-radius:10px 10px 0 0; }
+.sr-done-i { margin-left:auto; color:#5f6368; }
+.sr-done-b { border:1px solid #E3E8EF; border-top:none; border-radius:0 0 10px 10px;
+  background:#fff; padding:2px 8px 6px; }
+.sr-done-r { display:flex; align-items:center; gap:8px; padding:7px 2px;
+  border-top:1px solid #F1F3F4; }
+.sr-done-r:first-child { border-top:none; }
+.sr-done-r .n { min-width:0; font-weight:700; font-size:0.92rem; color:#202124;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sr-done-r .t { margin-left:auto; font-size:0.9rem; font-weight:800; color:#3c4043;
+  font-variant-numeric:tabular-nums; white-space:nowrap; }
+/* ★戻すは赤の文字にするが、地は白のまま。地まで赤くすると、
+     となりの「到着」より目立ってしまう。 */
+.sr-done-r button, .sr-off-u { border:1px solid #dadce0; background:#fff; color:#C5221F;
+  font-family:inherit; font-size:0.78rem; font-weight:700; border-radius:8px;
+  padding:6px 11px; cursor:pointer; white-space:nowrap; }
+.sr-done-r button:active, .sr-off-u:active { background:#FCE8E6; }
+
+/* 出発・帰着の板の中の「戻す」 */
+.sr-pl-u { align-self:center; border:1px solid #C4CAD2; background:#fff; color:#5f6368;
+  font-family:inherit; font-size:0.72rem; font-weight:700; border-radius:7px;
+  padding:5px 10px; cursor:pointer; white-space:nowrap; }
+.sr-pl-u:active { background:#E4EAF2; }
+
+/* お休みの人。運転手が休みにした人だけ「戻す」を出す。 */
+.sr-off-i { display:inline-flex; align-items:center; gap:6px; margin:0 10px 4px 0; }
+.sr-off-u { font-size:0.72rem; padding:4px 9px; }
+.sr-off-n { font-size:0.7rem; color:#9aa0a6; }
+
 /* soge-car-color-v1: 車の色。タブと運転手の行に出す。
    ★色は付けるだけ。文字と背景の組み合わせは変えない（読みにくくしない）。 */
 .sr-tab { border-left: 5px solid transparent; }
@@ -386,6 +437,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
 // ===== soge-run-v1 =====
 (function () {
   var state = { date: '', data: null, tab: 0, tripTab: 0, autoTab: true, tabKey: '', busy: {}, staff: [], vehicles: [], patients: [],
+                undo: null, doneOpen: false,   // soge-undo-v1: 直後の帯 / 済んだ人を開いているか
                 mode: 'vehicle' };   // soge-view-v1: 'vehicle'=車両から / 'trip'=便から
 
   /* soge-view-v1: 選んだ見せ方は端末ごとに覚える。
@@ -427,6 +479,9 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
        どのタブを開いていたかは state.tabKey（車のkey）で覚えて、
        render() の中で位置を引き直す。 */
     if (state.tab >= (j.vehicles || []).length) state.tab = 0;
+    /* soge-undo-v1: 読み込み直したら帯は捨てる。
+       ★中身が入れ替わったあとも残っていると、もう無いものを指して押せてしまう。 */
+    state.undo = null;
     render();
   }
 
@@ -474,6 +529,70 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       }
     }
     return null;
+  }
+
+  /* ===== soge-undo-v1: 押し間違いを戻す =====
+     ★新しいAPIは作らない。すでにある PUT を、値を空にして呼ぶだけ。
+       別の道を作ると、片方だけ直したときに食い違う。 */
+
+  /* 属性に入れる文字。★esc() は " を逃がさない。
+     名前に " が入っていると属性が途中で切れて画面が壊れる。 */
+  function escA(s) { return esc(s).replace(/"/g, '&quot;'); }
+
+  /* その立ち寄りが、どの便のものか。帯を「その便を見ているとき」だけ出すため。
+     ★別の車のタブに切り替えたとき、前の車の帯が残っていると、
+       関係ない人の記録を戻してしまう。 */
+  function dayIdOfStop(id) {
+    var vs = (state.data && state.data.vehicles) || [];
+    for (var i = 0; i < vs.length; i++) {
+      for (var k = 0; k < (vs[i].trips || []).length; k++) {
+        var ss = vs[i].trips[k].stops || [];
+        for (var m = 0; m < ss.length; m++) {
+          if (ss[m].id === id) return vs[i].trips[k].day_id;
+        }
+      }
+    }
+    return '';
+  }
+
+  async function undoStop(id, kind) {
+    /* kind: 'arrive' / 'time' … 到着時刻を消す
+             'absent'          … 休みを取り消す
+       ★休みを取り消しても、休みにする前の到着時刻は戻らない。
+         休みにした時点でサーバが消しているため。時刻は入れ直しになる。 */
+    var body = (kind === 'absent') ? { stop_id: id, absent: false }
+                                   : { stop_id: id, time: '' };
+    var r = await fetch('/api/soge/run/stop', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { toast(j.message || '戻せませんでした', 'err'); return false; }
+    var s = findStop(id);
+    if (s) { if (kind === 'absent') s.is_absent = false; else s.arrived_at = ''; }
+    return true;
+  }
+
+  async function undoDay(id, kind) {
+    var body = (kind === 'return') ? { day_id: id, returned: '' }
+                                   : { day_id: id, departed: '' };
+    var r = await fetch('/api/soge/run/day', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { toast(j.message || '戻せませんでした', 'err'); return false; }
+    var t = findTrip(id);
+    if (t) { if (kind === 'return') t.returned_at = ''; else t.departed_at = ''; }
+    return true;
+  }
+
+  /* 直後の帯に出す一言を覚える。★次の記録をすると、こちらに置き換わる
+     （2つ前まで戻せるようにはしない。運転席で選ばせるものではない）。
+     ★文は短くする。長いと帯の幅に入りきらず「…」で切れる。
+       実際に「○○さん 09:07 で記…」と切れた。名前と時刻を先に置く。 */
+  function setUndo(kind, id, isDay, dayId, text) {
+    state.undo = { kind: kind, id: id, isDay: !!isDay, day: dayId, text: text };
   }
 
   // soge-trip-tab-v1: 便の種別から表示名を決める
@@ -569,7 +688,10 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
   function lockEdits(root) {
     if (canEditDay()) return;
     var sel = '[data-tap],[data-pen],[data-abs],[data-mv],[data-dep],[data-ret],'
-            + '[data-edit],[data-exadd],[data-exdel],#srAddExtra';   // soge-odo-off-v1
+            + '[data-edit],[data-exadd],[data-exdel],#srAddExtra'    // soge-odo-off-v1
+            /* soge-undo-v1: 戻すも「直す」なので、同じように止める。
+               ★開け閉め([data-doneopen])は見るだけなので止めない。 */
+            + ',[data-udbar],[data-uds],[data-udd]';
     root.querySelectorAll(sel).forEach(function (el) {
       el.disabled = true;
       el.classList.add('sr-ro');
@@ -954,10 +1076,51 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     var left = leftAll.slice(0, 4);
     var hidden = leftAll.length - left.length;
 
+    /* soge-undo-v1: お休みの人に「戻す」を付ける。
+       ★「休み連絡」(is_leave) には付けない。運転手が付けたものではないので、
+         ここで消せてしまうと、連絡した側の記録を運転席から書き換えることになる。 */
     var offHtml = off.length
       ? '<div class="sr-dv-off">お休み：' + off.map(function (s) {
-          return esc(s.user_name);
-        }).join('、') + '</div>'
+          return '<span class="sr-off-i">' + esc(s.user_name)
+            + (s.is_absent && !s.is_leave
+                ? '<button type="button" class="sr-off-u" data-uds="' + escA(s.id) + '"'
+                  + ' data-udk="absent" data-udn="' + escA(s.user_name) + '" data-udt="">戻す</button>'
+                : '<span class="sr-off-n">休み連絡</span>')
+            + '</span>';
+        }).join('') + '</div>'
+      : '';
+
+    /* soge-undo-v1: 済んだ人。ふだんは閉じておき、開くと時刻と「戻す」が並ぶ。 */
+    var doneList = live.filter(function (s) { return s.arrived_at; });
+    var doneHtml = doneList.length
+      ? '<div class="sr-done' + (state.doneOpen ? ' open' : '') + '">'
+          + '<button type="button" class="sr-done-h" data-doneopen="1">'
+            + '済んだ人 ' + doneList.length + ' 人'
+            + '<span class="sr-done-i">' + (state.doneOpen ? '▲ 閉じる' : '▼ 開く') + '</span>'
+          + '</button>'
+          + (state.doneOpen
+              ? '<div class="sr-done-b">' + doneList.map(function (s) {
+                  return '<div class="sr-done-r">'
+                    + '<span class="n">' + esc(s.user_name) + '</span>'
+                    + '<span class="t">' + esc(s.arrived_at) + '</span>'
+                    + '<button type="button" data-uds="' + escA(s.id) + '" data-udk="arrive"'
+                      + ' data-udn="' + escA(s.user_name) + '"'
+                      + ' data-udt="' + escA(s.arrived_at) + '">戻す</button>'
+                    + '</div>';
+                }).join('') + '</div>'
+              : '')
+        + '</div>'
+      : '';
+
+    /* soge-undo-v1: 押した直後の帯。★その便を見ているときだけ出す。
+       別の車のタブに切り替えたら出さない（関係ない人の記録を戻さないため）。 */
+    var _u = state.undo;
+    var undoHtml = (_u && _u.day === t.day_id)
+      ? '<div class="sr-undo">'
+          + '<span class="sr-undo-t">' + esc(_u.text) + '</span>'
+          + '<button type="button" class="sr-undo-go" data-udbar="go">戻す</button>'
+          + '<button type="button" class="sr-undo-x" data-udbar="x" title="閉じる">✕</button>'
+        + '</div>'
       : '';
 
     /* --- 見出し（この便と、残り／到着の人数） --- */
@@ -973,9 +1136,13 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
          まだなら押すところを大きく出す。押したあとは灰色の帯で残す
          （消すと「押したか分からない」になる）。 */
     var depNode = t.departed_at
+      /* soge-undo-v1: 押し間違えた出発を消せるようにする。★確認を出してから消す。 */
       ? '<div class="sr-nd past"><div class="sr-pl dep done">'
           + '<span class="nm">事業所を出発</span>'
-          + '<span class="tm">' + esc(t.departed_at) + '</span></div></div>'
+          + '<span class="tm">' + esc(t.departed_at) + '</span>'
+          + '<button type="button" class="sr-pl-u" data-udd="' + escA(t.day_id) + '"'
+            + ' data-udk="depart" data-udt="' + escA(t.departed_at) + '">戻す</button>'
+          + '</div></div>'
       /* soge-drive-v3: 板そのものを押す。★data-dep は変えない
          （押したときの動きは、すでにある bind() がそのまま拾う）。 */
       : '<div class="sr-nd now">'
@@ -1028,7 +1195,11 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     if (t.returned_at) {
       goal = '<div class="sr-nd goal past"><div class="sr-pl dep done">'
         + '<span class="nm">事業所に帰着</span>'
-        + '<span class="tm">' + esc(t.returned_at) + '</span></div></div>';
+        + '<span class="tm">' + esc(t.returned_at) + '</span>'
+        /* soge-undo-v1: 押し間違えた帰着を消せるようにする。 */
+        + '<button type="button" class="sr-pl-u" data-udd="' + escA(t.day_id) + '"'
+          + ' data-udk="return" data-udt="' + escA(t.returned_at) + '">戻す</button>'
+        + '</div></div>';
     } else if (leftAll.length) {
       goal = '<div class="sr-nd goal"><div class="sr-pl dep wait">'
         + '<span class="nm">事業所に戻る</span></div></div>';
@@ -1047,7 +1218,10 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
         + '</div></div>';
     }
 
-    return '<div class="sr-dv">' + head
+    /* soge-undo-v1: 帯と「済んだ人」は帯の上（見出しのすぐ下）に置く。
+       ★道の帯の中には入れない。中に入れると立ち寄り先と同じ並びに見えて、
+         行き先だと読み違える。 */
+    return '<div class="sr-dv">' + head + undoHtml + doneHtml
       /* soge-car-color-v4: 道と地点の縁の色も一緒に渡す。
          ★白い車だと、うっすらの縁では道そのものが見えない。 */
       + '<div class="sr-nv" style="--sr-road:' + road
@@ -1286,10 +1460,17 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
             el.disabled = false; el.textContent = '到着';
             return;
           }
-          if (j.already) toast('すでに ' + j.arrived_at + ' で記録済みです');
-          else toast(j.arrived_at + ' で記録しました');
           // 全部読み直すと画面が先頭に飛ぶので、その行だけ直す
           var s = findStop(id);
+          if (j.already) {
+            toast('すでに ' + j.arrived_at + ' で記録済みです');
+          } else {
+            toast(j.arrived_at + ' で記録しました');
+            /* soge-undo-v1: 押し間違いはここで気づくことが多い。すぐ戻せるように帯を出す。
+               ★2度押し(already)のときは出さない。何も新しく起きていない。 */
+            setUndo('arrive', id, false, dayIdOfStop(id),
+                    ((s && s.user_name) || '') + ' ' + j.arrived_at + ' を記録');
+          }
           if (s) { s.arrived_at = j.arrived_at; s.is_absent = false; }
           keepScroll(render);
         } finally {
@@ -1322,6 +1503,9 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
         } else {
           toast(t + ' で記録しました');
           var s = findStop(id);
+          /* soge-undo-v1: 手で入れた時刻も戻せるようにする。 */
+          setUndo('time', id, false, dayIdOfStop(id),
+                  ((s && s.user_name) || '') + ' ' + t + ' を記録');
           if (s) { s.arrived_at = t; s.is_absent = false; }
         }
         keepScroll(render);
@@ -1367,6 +1551,13 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
           if (j.status !== 'success') { toast(j.message || '変更できませんでした', 'err'); return; }
           toast(on ? '休みを取り消しました' : '休みにしました');
           var s = findStop(id);
+          /* soge-undo-v1: 休みにしたときだけ帯を出す（取り消しは戻す対象ではない）。 */
+          if (!on) {
+            setUndo('absent', id, false, dayIdOfStop(id),
+                    ((s && s.user_name) || '') + ' を休みに');
+          } else if (state.undo && state.undo.id === id) {
+            state.undo = null;
+          }
           if (s) { s.is_absent = !on; if (!on) s.arrived_at = ''; }
           keepScroll(render);
         } finally {
@@ -1394,6 +1585,8 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
             return;
           }
           toast('出発 ' + j.departed_at);
+          /* soge-undo-v1: 2度押し(already)のときは出さない。何も新しく起きていない。 */
+          if (!j.already) setUndo('depart', id, true, id, '出発 ' + j.departed_at + ' を記録');
           var t = findTrip(id);
           if (t) t.departed_at = j.departed_at;
           keepScroll(render);
@@ -1422,6 +1615,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
             return;
           }
           toast('帰着 ' + j.returned_at);
+          if (!j.already) setUndo('return', id, true, id, '帰着 ' + j.returned_at + ' を記録');
           var t = findTrip(id);
           if (t) t.returned_at = j.returned_at;
           keepScroll(render);
@@ -1432,7 +1626,79 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     });
 
     // ---- soge-extra-v1: 臨時便 ----
-    var addBtn = document.getElementById('srAddExtra');
+    var addBtn = document.getElementById('srAddExtra');    // ---- soge-undo-v1: 戻す ----
+    /* 済んだ人の開け閉め。開いているかは state に持つ（描き直しても閉じない）。 */
+    root.querySelectorAll('[data-doneopen]').forEach(function (el) {
+      el.onclick = function () { state.doneOpen = !state.doneOpen; keepScroll(render); };
+    });
+
+    /* 直後の帯。★ここだけ確認を出さない。
+       押し間違いに気づいた瞬間の操作なので、もう一手間かけさせるのは邪魔。 */
+    root.querySelectorAll('[data-udbar]').forEach(function (el) {
+      el.onclick = async function () {
+        if (el.dataset.udbar === 'x') { state.undo = null; keepScroll(render); return; }
+        var u = state.undo;
+        if (!u) return;
+        var key = 'u' + u.id;
+        if (state.busy[key]) return;
+        state.busy[key] = true;
+        el.disabled = true;
+        try {
+          var ok = u.isDay ? await undoDay(u.id, u.kind) : await undoStop(u.id, u.kind);
+          if (!ok) { el.disabled = false; return; }
+          toast('戻しました');
+          state.undo = null;
+          keepScroll(render);
+        } finally { state.busy[key] = false; }
+      };
+    });
+
+    /* 一覧の中の「戻す」（済んだ人・お休みの人）。
+       ★いつでも押せる場所にあるので、名前と時刻を出して確認する。 */
+    root.querySelectorAll('[data-uds]').forEach(function (el) {
+      el.onclick = async function () {
+        var id = el.dataset.uds, kind = el.dataset.udk;
+        var nm = el.dataset.udn || '', tm = el.dataset.udt || '';
+        var q = (kind === 'absent')
+          ? (nm + 'さんの「休み」を取り消しますか？')
+          : (nm + 'さん ' + tm + ' の到着を消しますか？');
+        if (!confirm(q)) return;
+        var key = 'u' + id;
+        if (state.busy[key]) return;
+        state.busy[key] = true;
+        el.disabled = true;
+        try {
+          if (!await undoStop(id, kind)) { el.disabled = false; return; }
+          toast('戻しました');
+          if (state.undo && state.undo.id === id) state.undo = null;
+          keepScroll(render);
+        } finally { state.busy[key] = false; }
+      };
+    });
+
+    /* 出発・帰着の板の中の「戻す」。
+       ★消したあと押し直すと【そのときの時刻】が入る。元の時刻には戻らない。
+         なので、消す前に必ず元の時刻を見せて聞く。 */
+    root.querySelectorAll('[data-udd]').forEach(function (el) {
+      el.onclick = async function () {
+        var id = el.dataset.udd, kind = el.dataset.udk, tm = el.dataset.udt || '';
+        var q = (kind === 'return' ? '帰着 ' : '出発 ') + tm + ' の記録を消しますか？'
+              + '\n（消したあと押し直すと、そのときの時刻が入ります）';
+        if (!confirm(q)) return;
+        var key = 'u' + id + kind;
+        if (state.busy[key]) return;
+        state.busy[key] = true;
+        el.disabled = true;
+        try {
+          if (!await undoDay(id, kind)) { el.disabled = false; return; }
+          toast('戻しました');
+          if (state.undo && state.undo.id === id) state.undo = null;
+          keepScroll(render);
+        } finally { state.busy[key] = false; }
+      };
+    });
+
+
     if (addBtn) addBtn.onclick = function () { openExtraPanel(addBtn); };
 
     root.querySelectorAll('[data-exdel]').forEach(function (el) {
