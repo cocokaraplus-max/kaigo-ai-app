@@ -128,6 +128,50 @@
 .sr-extra-add { display:flex; justify-content:center; margin:14px 0 4px; }
 
 /* 臨時便の入力パネル */
+/* ===== soge-drive-v1: 運転中の画面 =====
+   運転席で片手で使う。出すものを絞り、押すところを大きくする。 */
+.sr-dv { background:#fff; border:1px solid #e3e8ef; border-radius:14px;
+  box-shadow:0 1px 3px rgba(16,24,40,.08); padding:14px; margin-bottom:10px; }
+.sr-dv-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  font-size:0.8rem; color:#5f6368; margin-bottom:8px; }
+.sr-dv-cnt { margin-left:auto; font-weight:800; color:#1f2933; }
+.sr-dv-name { font-size:1.5rem; font-weight:800; line-height:1.25; color:#1a1a1a;
+  overflow-wrap:anywhere; }
+/* ★住所は切らない。マンション名が長いと、いちばん要る号室がちょうど切れる。 */
+.sr-dv-addr { font-size:1.05rem; line-height:1.5; color:#3c4043; margin-top:6px;
+  overflow-wrap:anywhere; white-space:normal; }
+.sr-dv-plan { font-size:0.85rem; color:#5f6368; margin-top:6px; }
+/* 到着ボタン。運転席で押すので、指1本ぶんより十分に大きく。 */
+.sr-dv-tap { display:block; width:100%; margin-top:12px; border:none; border-radius:12px;
+  background:#1a73e8; color:#fff; font-size:1.25rem; font-weight:800; padding:18px 10px;
+  cursor:pointer; }
+.sr-dv-tap:active { background:#1558b0; }
+.sr-dv-tap:disabled { opacity:0.6; }
+.sr-dv-tap.done { background:#137333; }
+.sr-dv-tap.gray { background:#5f6368; }
+/* 小さいほうのボタン（お休み・時刻・車の移動） */
+.sr-dv-sub { display:flex; gap:6px; margin-top:10px; flex-wrap:wrap; }
+.sr-dv-sub button { flex:1 1 30%; min-width:96px; border:1px solid #dadce0; background:#fff;
+  border-radius:10px; padding:10px 6px; font-size:0.82rem; font-weight:700; color:#3c4043;
+  cursor:pointer; }
+.sr-dv-sub button:active { background:#eef2f7; }
+.sr-dv-next { margin-top:10px; }
+.sr-dv-next .h { font-size:0.78rem; font-weight:800; color:#5f6368; margin-bottom:5px; }
+.sr-dv-next .r { display:flex; gap:8px; align-items:baseline; padding:6px 8px;
+  border-bottom:1px dashed #e3e8ef; font-size:0.86rem; }
+.sr-dv-next .r:last-child { border-bottom:none; }
+/* ★名前は絶対に割らない。実測で「佐藤／花」と縦に割れた。
+   住所のほうを詰める（この一覧は下見なので、全部は要らない。
+   その人が「次」になったとき、上の大きい欄に号室まで出る）。 */
+.sr-dv-next .r b { font-weight:800; flex:0 0 auto; white-space:nowrap; }
+.sr-dv-next .r .a { flex:1 1 auto; min-width:0; color:#9aa0a6; font-size:0.74rem;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-dv-off { margin-top:10px; font-size:0.8rem; color:#b26a00; line-height:1.6; }
+.sr-dv-fin { text-align:center; padding:10px 4px 4px; }
+.sr-dv-fin .t { font-size:1.15rem; font-weight:800; color:#137333; }
+.sr-dv-fin .s { font-size:0.82rem; color:#5f6368; margin-top:6px; line-height:1.6; }
+.sr-dv-note { font-size:0.8rem; color:#5f6368; line-height:1.6; margin-top:8px; }
+
 /* soge-move-v1: ボタンが1つ増えるので、名前が縦に割れないようにする。
    ★実測で踏んだ：⇄ を足すと [到着][✎][⇄][✕] の4つになり、
      390px幅では名前の場所が足りず「青木 利／夫」と縦に割れ、住所も切れた。
@@ -203,6 +247,8 @@
     <div class="sr-mode" id="srMode">
       <button type="button" data-mode="vehicle">車両から</button>
       <button type="button" data-mode="trip">便から</button>
+      <!-- soge-drive-v1: 運転席で片手で使う見せ方 -->
+      <button type="button" data-mode="drive">運転中</button>
     </div>
     <span class="sr-mode-hint" id="srModeHint"></span>
   </div>
@@ -226,7 +272,9 @@
      開くたびに選び直すのは手間になる。 */
   try {
     var _m = localStorage.getItem('soge_run_mode');
-    if (_m === 'trip' || _m === 'vehicle') state.mode = _m;
+    // soge-drive-v1: 'drive' も許す。★ここに足し忘れると、運転手が
+    //   「運転中」を選んでも、画面を開くたびに元に戻る（覚えたことにならない）。
+    if (_m === 'trip' || _m === 'vehicle' || _m === 'drive') state.mode = _m;
   } catch (e) {}
 
   function $(id) { return document.getElementById(id); }
@@ -349,6 +397,20 @@
     var d = state.data || {};
     var locked = !!d.locked, touched = !!d.touched, past = !!d.past;
     box.style.display = 'flex';
+
+    /* soge-drive-v1: 運転中は【状態だけ】出し、押せるボタンは出さない。
+       ★「配車表から作り直す」は、打刻と臨時便がすべて消えるボタン。
+         走っている最中に親指の近くへ置いてよいものではない。
+       ★かといって状態を隠さない。隠すと、確定済みなのに配車を直して
+         「反映されない」と悩むことになる。出す。ただし読むだけ。
+       確定や作り直しをしたいときは「車両から」に切り替えてもらう。 */
+    if (state.mode === 'drive') {
+      box.className = 'sr-lock' + (locked || past ? ' on' : '');
+      box.innerHTML = '<span class="st">'
+        + (past ? '過ぎた日' : (locked ? '確定済み' : '未確定')) + '</span>'
+        + '<span class="ex">確定や作り直しは「車両から」に切り替えてください。</span>';
+      return;
+    }
     box.className = 'sr-lock' + (locked || past ? ' on' : '');
 
     var h;
@@ -459,7 +521,9 @@
     });
     $('srModeHint').textContent = (state.mode === 'trip')
       ? '便 → 車両 の順に選びます'
-      : '車両 → 便 の順に選びます';
+      : (state.mode === 'drive'
+          ? '次の1人だけを大きく出します'      // soge-drive-v1
+          : '車両 → 便 の順に選びます');
   }
 
   /* soge-unassigned-v1: 「⚠ 車が未定」を最初に開かせない。
@@ -617,8 +681,96 @@
       ? (_drv ? ('運転手 ' + _drv) : '運転手 未設定')
       : '';
 
-    $('srBody').innerHTML = (selTrip ? tripHtml(selTrip, prevOdoEnd) : '') + addExtra;
+    /* soge-drive-v1: 運転中は本文だけ差し替える。
+       タブの選び方は「車両から」とまったく同じ道を通す（別に持たない）。
+       ★「＋ 臨時便」は運転中には出さない。運転席で押すものではない。 */
+    $('srBody').innerHTML = (state.mode === 'drive')
+      ? (selTrip ? driveHtml(selTrip) : '<div class="sr-empty">この車の便がありません</div>')
+      : ((selTrip ? tripHtml(selTrip, prevOdoEnd) : '') + addExtra);
     bind();
+  }
+
+  /* ===== soge-drive-v1: 運転中の本文 =====
+     ★到着・休み・時刻直し・車の移動は、すでにある bind() が
+       data-tap / data-abs / data-pen / data-mv を拾って動かしている。
+       ここでも【同じ属性】を使う。配線は1行も書かない。
+       別に書くと、片方だけ直したときに食い違う。 */
+  function driveHtml(t) {
+    if (t.unassigned) {
+      return '<div class="sr-dv"><div class="sr-dv-name">車が決まっていません</div>'
+        + '<div class="sr-dv-note">この便に乗る車が決まっていないため、'
+        + '運転中の画面には出せません。「車両から」に切り替えて、'
+        + '⇄ で車に移してください。</div></div>';
+    }
+    var all = (t.stops || []);
+    /* お休みの人は「次の人」から外す。★ただし黙って消さない（下に名前を出す）。
+       居ないことと、見落としたことは、別のこと。 */
+    var off = all.filter(function (s) { return s.is_absent || s.is_leave; });
+    var live = all.filter(function (s) { return !s.is_absent && !s.is_leave; });
+    var left = live.filter(function (s) { return !s.arrived_at; });
+    var doneN = live.length - left.length;
+
+    var offHtml = off.length
+      ? '<div class="sr-dv-off">お休み：' + off.map(function (s) {
+          return esc(s.user_name);
+        }).join('、') + '</div>'
+      : '';
+
+    /* 事業所をまだ出ていないなら、いちばん上に大きく出す。
+       ★記録表の「出発時刻」はこれが入る。押し忘れると紙が埋まらない。 */
+    var dep = t.departed_at
+      ? ''
+      : '<div class="sr-dv"><div class="sr-dv-top">' + esc(tripLabel(t))
+        + (t.depart ? '<span>' + esc(t.depart) + ' 出発予定</span>' : '') + '</div>'
+        + '<button class="sr-dv-tap" data-dep="' + t.day_id + '">事業所を出発</button></div>';
+
+    if (!left.length) {
+      /* この便は終わり。★勝手に次の便へ動かさない（別の人に打刻が付く事故のもと）。
+         代わりに、次にすることを文字で出す。 */
+      var ret = t.returned_at
+        ? '<button class="sr-dv-tap done" disabled>帰着 ' + esc(t.returned_at) + '</button>'
+        : '<button class="sr-dv-tap" data-ret="' + t.day_id + '">事業所に戻った</button>';
+      return dep + '<div class="sr-dv"><div class="sr-dv-fin">'
+        + '<div class="t">' + (live.length ? 'この便は全員おわりました' : 'この便に立ち寄りはありません') + '</div>'
+        + '<div class="s">' + (live.length ? ('到着 ' + doneN + ' 人') : '')
+        + '<br>次の便に行くときは、上の便のタブを押してください。</div>'
+        + '</div>' + ret + offHtml + '</div>';
+    }
+
+    var s = left[0];
+    var rest = left.slice(1, 4);
+    var card = '<div class="sr-dv">'
+      + '<div class="sr-dv-top">'
+        + '<span class="sr-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>'
+        + '<span>' + esc(tripLabel(t)) + '</span>'
+        + '<span class="sr-dv-cnt">残り ' + left.length + ' 人／到着 ' + doneN + ' 人</span>'
+      + '</div>'
+      + '<div class="sr-dv-name">' + esc(s.user_name)
+        + (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') + '</div>'
+      /* ★住所は切らない。号室まで全部出す。 */
+      + (s.address ? '<div class="sr-dv-addr">' + esc(s.address) + '</div>'
+                   : '<div class="sr-dv-addr" style="color:#c5221f;">住所が登録されていません</div>')
+      + (s.planned_at ? '<div class="sr-dv-plan">予定 ' + esc(s.planned_at) + '</div>' : '')
+      + mvHtml(s)
+      + '<button class="sr-dv-tap" data-tap="' + s.id + '">到着</button>'
+      + '<div class="sr-dv-sub">'
+        + '<button data-abs="' + s.id + '">お休みだった</button>'
+        + '<button data-pen="' + s.id + '" data-init="' + esc(s.planned_at || '') + '">時刻を手で</button>'
+        + '<button data-mv="' + s.id + '">別の車へ</button>'
+      + '</div>'
+      + '</div>';
+
+    var next = rest.length
+      ? '<div class="sr-dv"><div class="sr-dv-next"><div class="h">このあと</div>'
+        + rest.map(function (x) {
+            return '<div class="r"><b>' + esc(x.user_name) + '</b>'
+              + '<span class="a">' + esc(x.address || '') + '</span></div>';
+          }).join('')
+        + (left.length > 4 ? '<div class="r"><span class="a">ほか ' + (left.length - 4) + ' 人</span></div>' : '')
+        + '</div>' + offHtml + '</div>'
+      : (offHtml ? '<div class="sr-dv">' + offHtml + '</div>' : '');
+
+    return dep + card + next;
   }
 
   // soge-odo-v1: メーター入力。odo_enabled の施設だけ出す。
