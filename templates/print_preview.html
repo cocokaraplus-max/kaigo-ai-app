@@ -10,9 +10,32 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .screen-bar { background: #1a73e8; color: #fff; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; left: 0; right: 0; z-index: 100; }
 .screen-bar-title { font-size: 0.95rem; font-weight: 700; }
 .screen-bar-btns { display: flex; gap: 8px; }
+/* ===== print-mobile-pdf-v2: 上のバーが画面からはみ出す =====
+   ★実機で「2枚B」が画面の外に出て押せなかった。
+     長いタイトル＋2つのボタン＋「全員のレイアウト」を1行に詰めていたため。
+   ★折り返せるようにする。狭い画面ではタイトルを小さくし、
+     レイアウトの選択は【1行まるごと】使わせる（3つとも指で押せる幅を残す）。 */
+@media (max-width: 793px) {
+    .screen-bar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+    .screen-bar-title { font-size: 0.82rem; flex: 1 1 auto; min-width: 0; }
+    .screen-bar-btns { flex: 0 0 auto; }
+    .screen-bar .btn-print-now,
+    .screen-bar .btn-close { padding: 8px 12px !important; font-size: 0.8rem !important;
+        white-space: nowrap; }
+    .screen-bar .lx-bulk { flex: 1 1 100%; margin-left: 0; justify-content: flex-start;
+        flex-wrap: wrap; }
+    .screen-bar .lx-bulk .lx-seg button { padding: 7px 12px; font-size: 12px; }
+}
 .btn-print-now { background: #fff; color: #1a73e8; border: none; border-radius: 8px; padding: 7px 16px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .btn-close { background: rgba(255,255,255,0.2); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
-.pages-wrap { padding: 60px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
+/* print-barpad-fix-v1: 上の余白は【変数】で受け取る。
+   ★JSから直接 style.paddingTop を当ててはいけない。直接指定は
+     @media print の `padding: 0` より強く、印刷でも下にずれて
+     白紙が1枚できる（実際に作ってしまった）。
+   ★変数ならこの指定の中で使われるだけなので、
+     後に書かれている @media print の指定がちゃんと勝つ。
+   ★変数が無いときは、これまでどおり 60px。 */
+.pages-wrap { padding: var(--lx-barpad, 60px) 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
 
 /* ===== あふれ検知バッジ（第1段階・画面のみ／印刷には出さない） ===== */
 .rep-overflow-badge {
@@ -38,6 +61,9 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .mobile-opt-title { display: block; font-size: 0.9rem; font-weight: 700; color: #1a1a1a; margin-bottom: 2px; }
 .mobile-opt-active .mobile-opt-title { color: #1a73e8; }
 .mobile-opt-sub { display: block; font-size: 0.68rem; color: #777; line-height: 1.3; }
+/* print-mobile-pdf-v1: 選択が2つ→3つになるので、狭い画面でも潰れないようにする。
+   ★min-width:0 が無いと、flexの箱は中身の幅より小さくならず、はみ出す。 */
+.mobile-opt { min-width: 0; }
 .mobile-editor-hint { font-size: 0.72rem; color: #999; text-align: center; margin-bottom: 12px; }
 .mobile-editor-print { width: 100%; padding: 14px; background: #1a73e8; color: #fff; border: none; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; }
 @media print { .mobile-editor-overlay { display: none !important; } }
@@ -1053,7 +1079,13 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 .rep-image-grid-item-comment { font-size: 7.5pt; color: #333; margin-top: 1mm; }
 
 /* 編集機能(変化・課題・特記事項) */
-.rep-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2mm; padding: 4px 8px; background: #f1f6ff; border: 1px dashed #1a73e8; border-radius: 6px; }
+/* print-mobile-pdf-v2: 折り返せるようにする。
+   ★実測：この行だけ紙の右端から外へ出ていた（「文章を短くして1枚に収める」が切れる）。
+     説明文＋文字サイズ＋長いボタン2つを、折り返さない1行に詰めていたため。
+   ★この行は no-print なので、紙には出ない。画面だけの話。
+   ★入りきるときは今までどおり1行のまま。入らないときだけ折り返る。 */
+.rep-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2mm; padding: 4px 8px; background: #f1f6ff; border: 1px dashed #1a73e8; border-radius: 6px; flex-wrap: wrap; }
+.rep-edit-bar .rep-edit-hint { min-width: 0; }
 .rep-edit-hint { font-size: 7.5pt; color: #1a73e8; }
 .rep-edit-save-btn { font-size: 7.5pt; padding: 4px 12px; background: #1a73e8; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: 700; white-space: nowrap; }
 .rep-edit-save-btn:hover { background: #1557b0; }
@@ -1086,8 +1118,28 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     .report-page:last-child { page-break-after: avoid; }
     [contenteditable] { outline: none !important; background: transparent !important; }
 }
+/* ===== print-a4-view-v1: 狭い画面でも【A4のまま】見せる =====
+   ★これまでは `width: 100%; padding: 4mm;` で、A4をやめて画面幅に
+     流し込んでいた。表の列が指1本ぶんまで細くなり、文字が1文字ずつ
+     縦に並ぶ。紙とは別の形になるので、プレビューとして用をなさない。
+   ★A4のまま transform で縮める。形は紙とまったく同じ。
+     ピンチで拡大すればブラウザが描き直すのでくっきり読め、
+     そのまま編集もできる。
+   ★transform は【見た目だけ】縮めて場所は794pxのまま取るので、
+     縮んだ分の負のマージンをJSから当てて、横にはみ出さないようにする。
+   ★`@media screen` なので、印刷では読まれない。紙は 1:1 のまま。 */
 @media screen and (max-width: 230mm) {
-    .report-page { width: 100%; padding: 4mm; }
+    .report-page {
+        transform: scale(var(--page-scale, 1));
+        transform-origin: top left;
+        /* ★縮んだ分の詰めは【この中】で当てる。
+           JSから直接 style.margin を当ててはいけない。直接指定は
+           @media print の `margin: 0` より強く、狭いウィンドウのPCから
+           印刷したときに紙がずれる（今日すでに1度やった間違い）。
+           ★JSが入れるのは【変数だけ】。使うのはここ＝画面のときだけ。 */
+        margin-right: var(--pg-mr, 0);
+        margin-bottom: var(--pg-mb, 0);
+    }
 }
 </style>
 </head>
@@ -1170,7 +1222,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% endif %}
 {% endmacro %}
 
-<div class="pages-wrap">
+{# print-mobile-pdf-v2: バーが折り返して高くなるので、上の余白を測って合わせる。
+   60px 決め打ちのままだと、1枚目の上がバーに隠れる。 #}
+<div class="pages-wrap" id="lxPagesWrap">
 {% for rd in report_data_list %}
 {% set p = rd.patient %}
 {% set cm = rd.caremanager %}
@@ -1190,7 +1244,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 <div class="report-page" id="page-{{ loop.index }}"
      data-user="{{ p.user_name }}"
      data-font-scale="{{ ev.get('font_scale', 1.0) if ev and ev.get('font_scale') else 1.0 }}"
-     data-layout-mode="{{ ev.get('layout_mode','compact') if ev and ev.get('layout_mode') else 'compact' }}">
+     {# print-mobile-pdf-v1: URLで指定があればそれを使う（スマホからのPDF用）。
+        無ければこれまでどおり、保存されている並べ方。 #}
+     data-layout-mode="{{ layout_override if layout_override|default('') else (ev.get('layout_mode','compact') if ev and ev.get('layout_mode') else 'compact') }}">
     {% if tmpl == 4 %}
     <!-- テンプレート4: 分割レイアウト 上部フル幅 / 下部グラフ左＋テキスト右 -->
     <div class="tmpl4-top">
@@ -3253,14 +3309,98 @@ function _lxBuildPrintHtml(){
     return '<!doctype html>\n' + clone.outerHTML;
 }
 
+/* print-mobile-pdf-v2: 上のバーの高さを測って、本文の余白に反映する。
+   ★決め打ちの 60px では、バーが2段になったときに1枚目の上が隠れる。
+     測れば、何段になっても隠れない。 */
+(function lxBarPad(){
+    function fit(){
+        var b = document.querySelector('.screen-bar');
+        var w = document.getElementById('lxPagesWrap');
+        if (!b || !w) return;
+        var h = b.getBoundingClientRect().height;
+        /* print-barpad-fix-v1: ★直接指定（w.style.paddingTop）にしないこと。
+           直接指定は @media print の `padding: 0` より強く、
+           印刷でも下にずれて白紙が1枚できる（実際に作ってしまった）。
+           変数に入れれば、印刷のときは指定ごと 0 に戻る。 */
+        if (h > 0) document.documentElement.style.setProperty('--lx-barpad', (h + 12) + 'px');
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fit);
+    else fit();
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', function(){ setTimeout(fit, 1400); });  // 選択バーが出来たあと
+})();
+
 // server-pdf-btn-v1: サーバー(Chromium)で確実なA4・グラフ入りPDFを新規タブで生成
+/* print-mobile-pdf-v2: いま選ばれている並べ方（1枚 / 2枚A / 2枚B）を返す。
+   ★「全員のレイアウト」が押されていればそれ。
+   ★押されていなければ一人ひとりの選択を見て、全員同じならその並べ方。
+     人によって違うなら null。勝手に揃えない（保存済みのまま描かせる）。 */
+function _lxPickedLayout(){
+    function norm(m){ return (m === 'richA' || m === 'richB') ? m : (m === 'compact' ? m : null); }
+    var on = document.querySelector('.lx-seg[data-bulk="1"] button.on');
+    if (on && norm(on.getAttribute('data-mode'))) return norm(on.getAttribute('data-mode'));
+    var segs = document.querySelectorAll('.lx-seg[data-user]');
+    if (!segs.length) return null;
+    var first = null;
+    for (var i = 0; i < segs.length; i++) {
+        var b = segs[i].querySelector('button.on');
+        if (!b) return null;
+        var m = norm(b.getAttribute('data-mode'));
+        if (!m) return null;
+        if (first === null) first = m;
+        else if (first !== m) return null;      // 人によって違う
+    }
+    return first;
+}
+
 function serverPdfOutput(btn){
     var o = btn ? btn.textContent : '';
     var u;
-    try{ var _u = new URL(window.location.href); _u.searchParams.set('pdf','1'); u = _u.toString(); }
+    try{ var _u = new URL(window.location.href); _u.searchParams.set('pdf','1');
+         var _lm = _lxPickedLayout();                       // print-mobile-pdf-v2
+         if(_lm){ _u.searchParams.set('layout', _lm); } else { _u.searchParams.delete('layout'); }
+         u = _u.toString(); }
     catch(e){ u = location.href + (location.search ? '&' : '?') + 'pdf=1'; }
     // ユーザー操作の文脈で先にタブを開く(ポップアップブロック回避)。生成中メッセージを表示。
     var w = window.open('', '_blank');
+
+    /* ===== print-mobile-pdf-v2: スマホは【画面を送らない】 =====
+       ★この下の道（_lxBuildPrintHtml）は「見たまま主義」で、
+         いまの画面のDOMをそのままサーバへ送る。PCでは正しい。
+         スマホでは画面が 390px 幅なので、【見たままが間違っている】。
+         グラフは toDataURL() でスマホ用の小さい絵として画像化され、
+         それをA4まで引き伸ばすのでラベルが重なって潰れる（実機で確認）。
+       ★スマホでは ?pdf=1&layout=… へ行く。サーバのChromiumが 1200px で
+         一から描き直すので、機種にも画面幅にも左右されない。
+       ★この u は、これまで組み立てておきながら一度も使われていなかった
+         （昔の作りの残骸）。ここで使う。 */
+    if (typeof ovIsMobile === 'function' && ovIsMobile()) {
+        /* ★一から描き直すので、画面でいじって【まだ保存していない】直しは入らない。
+             黙って落とさない。待っている画面にそう書く。
+           ★先に文字を書いてから移動する。移動が終わるまでこの文字が残るので、
+             数秒のあいだ真っ白にならない（真っ白だと壊れたと思って戻られる）。 */
+        if (w) {
+            try {
+                w.document.write('<!doctype html><meta charset="utf-8">'
+                  + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+                  + '<title>PDF作成中</title>'
+                  + '<body style="font-family:sans-serif;color:#333;padding:32px 20px;'
+                  + 'line-height:1.8;text-align:center">'
+                  + '<h2 style="color:#0b8043;font-size:1.1rem">\uD83D\uDCC4 PDFを作成しています…</h2>'
+                  /* print-pdf-msg-v1: 「パソコンと同じ」は作る側の事情。
+                     待っている職員に要るのは【いま何が起きているか】。 */
+                  + '<p style="font-size:0.9rem">A4サイズで再生成しています。<br>'
+                  + '数秒〜十数秒お待ちください。</p>'
+                  + '<p style="font-size:0.8rem;color:#777">'
+                  + '※ <b>保存済みの内容</b>でPDFになります。<br>'
+                  + '画面で直したところは、先に保存してください。</p></body>');
+            } catch (e) {}
+            w.location.href = u;
+        } else {
+            location.href = u;                  // 新しいタブが止められたとき
+        }
+        return;
+    }
     if(w){ try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF生成中</title><body style="font-family:sans-serif;color:#333;padding:40px;line-height:1.7;text-align:center"><h2 style="color:#0b8043">\uD83D\uDCC4 PDFを作成しています…</h2><p>プレビューの見たままをPDFにしています。<br>数秒〜十数秒お待ちください。<br>(このタブが自動でPDFに切り替わります)</p></body>'); }catch(e){} }
     if(btn){ btn.disabled=true; btn.textContent='PDF生成中…'; }
     function _restore(){ if(btn){ btn.disabled=false; btn.textContent=o||'\uD83D\uDDA8 PDF保存 / 印刷'; } }
@@ -3299,11 +3439,41 @@ function handlePrintClick() {
 var __mobileEditMode = null; // 'compact' | 'split' | null
 
 function openMobileEditor() {
-    // まず一旦リセット（縮小・分割を解除した素の状態に）
-    mobileResetLayout();
     document.getElementById('mobile-editor').classList.add('show');
-    // 既定は「1枚に縮小」を適用した状態で開く
+    /* print-mobile-pdf-v1: 開いただけで並べ方を変えない。
+       ★これまでは開くと必ず「1枚」にしていた。画面をいじるだけだったので害は無かった。
+         これからは選択が【保存される】ので、開いただけで
+         その日の全員の設定を1枚に書き換えてしまう。それは事故。
+       ★いまの状態に、スマホ側の表示を合わせるだけにする。 */
+    if (mpBulkBtn('compact')) { mpSyncFromPc(); return; }
+    // つながらないとき（部品がまだ無い）は、これまでどおり
+    mobileResetLayout();
     mobileChoose('compact');
+}
+/* いまの並べ方を返す。決められないときは null。
+   ★「全員のレイアウト」が押されていればそれ。
+   ★押されていなければ、一人ひとりの選択を見る。全員同じならその並べ方。
+     人によって違うなら【決められない】。勝手に揃えない。 */
+function mpCurrentMode() {
+    var on = document.querySelector('.lx-seg[data-bulk="1"] button.on');
+    if (on && on.getAttribute('data-mode')) return mpNormMode(on.getAttribute('data-mode'));
+    var segs = document.querySelectorAll('.lx-seg[data-user]');
+    if (!segs.length) return null;
+    var first = null;
+    for (var i = 0; i < segs.length; i++) {
+        var b = segs[i].querySelector('button.on');
+        if (!b) return null;
+        var m = mpNormMode(b.getAttribute('data-mode'));
+        if (first === null) first = m;
+        else if (first !== m) return null;     // 人によって違う
+    }
+    return first;
+}
+/* いまの状態に、スマホ側の選択表示を合わせる（並べ方は変えない・保存もしない） */
+function mpSyncFromPc() {
+    var m = mpCurrentMode();
+    __mobileEditMode = m;
+    mpMarkChoice(m);
 }
 function closeMobileEditor() {
     document.getElementById('mobile-editor').classList.remove('show');
@@ -3321,30 +3491,50 @@ function mobileResetLayout() {
     __mobileEditMode = null;
 }
 // 選択: 'compact'（縮小して1枚） / 'split'（グラフ・写真を2枚目）
+/* print-mobile-pdf-v1: 受け取る名前をPCと同じ3つにする。
+   ★'split' は古い呼び名。まだ呼ぶ所が残っていても壊れないよう 'richA' に読み替える。 */
+function mpNormMode(mode) {
+    if (mode === 'split') return 'richA';
+    return (mode === 'richA' || mode === 'richB') ? mode : 'compact';
+}
+/* スマホ側の選択表示。null を渡すと、どれも選ばれていない見た目にする。 */
+function mpMarkChoice(mode) {
+    var ids = { 'compact': 'mobile-btn-compact', 'richA': 'mobile-btn-split', 'richB': 'mobile-btn-richb' };
+    Object.keys(ids).forEach(function(k){
+        var el = document.getElementById(ids[k]);
+        if (el) el.classList.toggle('mobile-opt-active', k === mode);
+    });
+}
+/* PCの「全員のレイアウト」の、指定した並べ方のボタンを返す（無ければ null）。
+   ★スマホの選択は画面ぜんぶに効くので、1人分ではなく【全員】のほうにつなぐ。
+   ★このボタンはページ読み込みの少しあとに作られる。まだ無いこともある。 */
+function mpBulkBtn(mode) {
+    var seg = document.querySelector('.lx-seg[data-bulk="1"]');
+    return seg ? seg.querySelector('button[data-mode="' + mode + '"]') : null;
+}
 function mobileChoose(mode) {
+    mode = mpNormMode(mode);
     mobileResetLayout();
     __mobileEditMode = mode;
-    // ボタンのアクティブ表示切替
-    var bc = document.getElementById('mobile-btn-compact');
-    var bs = document.getElementById('mobile-btn-split');
-    if (bc && bs) {
-        bc.classList.toggle('mobile-opt-active', mode === 'compact');
-        bs.classList.toggle('mobile-opt-active', mode === 'split');
-    }
+    mpMarkChoice(mode);
+
+    /* print-mobile-pdf-v1: PCと同じ【保存される選択】につなぐ。
+       ★これまでスマホ側は、その場で画面をいじるだけで保存されなかった。
+         同じ選択の道を2つ持つと、片方だけ直したときに食い違う。
+       ★押すのはPCの切り替えボタンそのもの。同じ道を通す。 */
+    var b = mpBulkBtn(mode);
+    if (b) { b.click(); return; }   // つながったら、以下の画面いじりは要らない
+
+    /* ここから下は【つなげなかったとき】だけ。
+       ★レイアウトの部品はページ読み込みの少しあとに作られる。
+         それより早く押されたら、これまでどおりの動きで受け止める。
+       ★2枚A/2枚Bの作り分けはPC側の仕組みなので、ここでは区別できない。
+         これまでどおり「あふれていれば2枚に分ける」で代用する。 */
     if (mode === 'compact') {
         mobileCompactToFit();
-    } else if (mode === 'split') {
-        // 内容が1ページに収まっているなら分割不要 → 収まっている旨を伝える
+    } else {
         var ov = (typeof detectOverflowPages === 'function') ? detectOverflowPages() : [];
-        if (!ov || ov.length === 0) {
-            mobileShowFitNotice();
-            __mobileEditMode = 'compact';
-            var bc2 = document.getElementById('mobile-btn-compact');
-            var bs2 = document.getElementById('mobile-btn-split');
-            if (bc2 && bs2) { bc2.classList.add('mobile-opt-active'); bs2.classList.remove('mobile-opt-active'); }
-            return;
-        }
-        // あふれている場合のみ分割
+        if (!ov || ov.length === 0) { mobileShowFitNotice(); return; }
         window.__ovTargetPage = ov[0];
         if (typeof ovDoSplit === 'function') ovDoSplit('flow');
         var bar = document.getElementById('ov-confirm-bar');
@@ -3368,7 +3558,37 @@ function mobileEditorPrint() {
     closeMobileEditor();
     var bar = document.getElementById('ov-confirm-bar');
     if (bar) bar.classList.remove('show');
-    window.print();
+    /* print-mobile-pdf-v1: スマホでは window.print() を呼ばない。
+       ★iPhoneのSafariは印刷のとき【自前で描き直す】。@page はほとんど効かず、
+         画面の幅で組み直したうえに独自の余白と見出しを足す。だから崩れる。
+         CSSをどう直しても届かない（Safariの中の話なので）。
+       ★サーバのChromiumに一からA4で描かせる。機種にも画面幅にも左右されない。
+         PDFはSafariの標準ビューアで開き、そこから印刷・保存・共有ができる。 */
+    var m = mpCurrentMode();
+    if (m === null && __mobileEditMode) m = mpNormMode(__mobileEditMode);
+    /* ★m が null＝並べ方を決めていない（人によって違う）。
+         そのときは URL に載せない。一人ひとりの保存済みのまま作る。
+         ここで勝手に揃えると、PCで決めた並べ方を黙って上書きすることになる。 */
+    var u;
+    try {
+        var _u = new URL(window.location.href);
+        _u.searchParams.set('pdf', '1');
+        if (m) _u.searchParams.set('layout', m);
+        else _u.searchParams.delete('layout');
+        u = _u.toString();
+    } catch (e) {
+        /* ★古い端末で URL が使えないとき用。すでに付いている pdf/layout は消してから足す。 */
+        var qs = location.search.replace(/^\?/, '')
+                 .split('&').filter(function(kv){
+                     return kv && kv.indexOf('pdf=') !== 0 && kv.indexOf('layout=') !== 0;
+                 });
+        qs.push('pdf=1');
+        if (m) qs.push('layout=' + m);
+        u = location.pathname + '?' + qs.join('&');
+    }
+    /* ★押した流れの中で開く。あとから開くとiPhoneに止められる。 */
+    var w = window.open(u, '_blank');
+    if (!w) location.href = u;           // 止められたら、この画面のまま開く
 }
 
 // スマホ「1枚に収める」: 収まるまで段階的に縮小（内容を切らない）
@@ -3640,25 +3860,40 @@ function ovConfirmPrint() {
 // ===== モバイル: A4ページを画面幅に合わせてスケーリング =====
 (function applyPageScale() {
     function calcScale() {
-        var vw = window.innerWidth;
         var pageW = 794; // 210mm at 96dpi
-        var padding = 16; // 左右余白合計(両側8px)
-        var available = vw - padding;
-        if (available < pageW) {
+        /* print-a4-view-v1: 幅は【測る】。見積もらない。
+           ★これまでは window.innerWidth - 16 だったが、実際の左右の余白は
+             16px ずつの計32px。16px 足りず、縮めても画面からはみ出していた。 */
+        var wrap = document.querySelector('.pages-wrap');
+        var available;
+        if (wrap) {
+            var cs = getComputedStyle(wrap);
+            available = wrap.clientWidth
+                      - (parseFloat(cs.paddingLeft) || 0)
+                      - (parseFloat(cs.paddingRight) || 0);
+        } else {
+            available = window.innerWidth - 32;
+        }
+        if (available > 0 && available < pageW) {
             var scale = available / pageW;
             document.documentElement.style.setProperty('--page-scale', scale.toFixed(4));
-            // transform:scale はレイアウトサイズを変えないので
-            // 縮んだ分(pageH * (1-scale))をmarginBottomで相殺
-            var pages = document.querySelectorAll('.report-page');
-            var pageH = 1122; // 297mm at 96dpi
-            var shrink = pageH * (1 - scale);
-            pages.forEach(function(p) {
-                p.style.marginBottom = (-shrink + 48) + 'px';
+            /* transform:scale は【見た目だけ】縮めて、場所は元の大きさのまま取る。
+               縮んだ分を負のマージンで打ち消して、場所も縮んだ大きさに合わせる。
+               ★これをしないと横スクロールが出て、下にも大きな余白が空く。
+               ★高さは決め打ちにしない。2枚目のページは高さが違うことがある。 */
+            document.querySelectorAll('.report-page').forEach(function(p) {
+                var h = p.offsetHeight || 1122;      // transform の影響を受けない実寸
+                /* ★変数に入れるだけ。style.margin を直接当てない。
+                     直接指定は @media print の `margin: 0` より強く、
+                     狭いウィンドウのPCから印刷すると紙がずれる。 */
+                p.style.setProperty('--pg-mb', (-(h * (1 - scale)) + 24) + 'px');
+                p.style.setProperty('--pg-mr', (-(pageW * (1 - scale))) + 'px');
             });
         } else {
             document.documentElement.style.setProperty('--page-scale', '1');
             document.querySelectorAll('.report-page').forEach(function(p) {
-                p.style.marginBottom = '';
+                p.style.removeProperty('--pg-mb');
+                p.style.removeProperty('--pg-mr');
             });
         }
     }
@@ -3694,19 +3929,24 @@ function ovConfirmPrint() {
             <span class="mobile-editor-title">印刷レイアウトの調整</span>
             <button class="mobile-editor-close" onclick="closeMobileEditor()" aria-label="閉じる">×</button>
         </div>
-        <div class="mobile-editor-desc">A4でどう印刷するかを選んでください。選ぶと下のプレビューに反映されます。</div>
+        {# print-mobile-pdf-v1: 選択をPCと同じ3つにする。名前もPCと同じにする。 #}
+        <div class="mobile-editor-desc">A4でどう並べるかを選んでください。選ぶと下のプレビューに反映されます。<br>「PDFを作る」を押すと、パソコンと同じ仕上がりのPDFが開きます。そこから印刷・保存・共有ができます。</div>
         <div class="mobile-editor-opts">
             <button class="mobile-opt" id="mobile-btn-compact" onclick="mobileChoose('compact')">
-                <span class="mobile-opt-title">1枚に収める</span>
-                <span class="mobile-opt-sub">縮小して1ページに収めます</span>
+                <span class="mobile-opt-title">1枚</span>
+                <span class="mobile-opt-sub">縮小して1枚</span>
             </button>
-            <button class="mobile-opt" id="mobile-btn-split" onclick="mobileChoose('split')">
-                <span class="mobile-opt-title">2枚に分ける</span>
-                <span class="mobile-opt-sub">グラフと写真を2枚目に送ります</span>
+            <button class="mobile-opt" id="mobile-btn-split" onclick="mobileChoose('richA')">
+                <span class="mobile-opt-title">2枚A</span>
+                <span class="mobile-opt-sub">グラフ大判・写真</span>
+            </button>
+            <button class="mobile-opt" id="mobile-btn-richb" onclick="mobileChoose('richB')">
+                <span class="mobile-opt-title">2枚B</span>
+                <span class="mobile-opt-sub">要約＋詳細</span>
             </button>
         </div>
         <div class="mobile-editor-hint">下の書類プレビューで仕上がりを確認できます。</div>
-        <button class="mobile-editor-print" onclick="mobileEditorPrint()">この内容で印刷する</button>
+        <button class="mobile-editor-print" onclick="mobileEditorPrint()">この内容でPDFを作る</button>
     </div>
 </div>
 <div class="ov-modal-overlay no-print" id="ov-modal-check">
@@ -3921,6 +4161,14 @@ table.lx-cmp td.chg.flat{ color:#8a94a0; }
       setTimeout(function(){ resizeCharts(page); st.extraPages.forEach(resizeCharts); }, 120);
     }
     st.mode=mode;
+    /* print-a4-view-v1: ページを作り直したので、縮小の打ち消しを当て直す。
+       ★これをしないと、新しく作った2枚目に負のマージンが付かず、
+         下に大きな空きが出て、横にもはみ出す。
+       ★グラフの描き直し(120ms)より後に測る。先に測ると高さが変わってずれる。 */
+    if (typeof window.__calcScale === 'function') {
+      try { window.__calcScale(); } catch(e){}
+      setTimeout(function(){ try { window.__calcScale(); } catch(e){} }, 200);
+    }
     // セレクタUIの状態更新
     updateSeg(user, mode);
     if(persist) saveMode(user, mode);
