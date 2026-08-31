@@ -48,7 +48,12 @@
   .sp-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
              border-bottom: 2px solid #185FA5; padding-bottom: 8px; margin-bottom: 10px; }
   .sp-title { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.1em; }
-  .sp-car { font-size: 1rem; font-weight: 800; color: #185FA5; }
+  /* soge-car-icon-v1: 車名は黒。色は車のアイコンが持つ。
+     ★白黒で刷っても、形（軽・ワゴン・バン）で見分けられる。 */
+  .sp-car { font-size: 1rem; font-weight: 800; color: #202124;
+            display: inline-flex; align-items: center; }
+  .soge-cari { display: inline-block; width: 34px; height: 20px; margin-right: 7px;
+               flex: 0 0 auto; }
   .sp-fac { font-size: 0.82rem; color: #5f6368; margin-left: auto; }
 
   /* 横スクロール。日付・出発・帰着は左に固定して、立ち寄りだけ流す。 */
@@ -186,7 +191,11 @@
          白い車を選べるようにしたので、文字まで本当の色にすると読めなくなる。
          帯のほうは本当の色のまま出す（車と見比べられるように）。 #}
       {# soge-car-color-v4: 明るい色の帯は、白い紙で消える。帯の両側に線を引いて囲む。 #}
-      <span class="sp-car"{% if v.color_hex %} style="border-left:6px solid {{ v.color_hex }};box-shadow:{% if v.color_edge %}inset 1px 0 0 {{ v.color_edge }},inset 6px 0 0 -5px {{ v.color_edge }}{% else %}inset 1px 0 0 rgba(0,0,0,.25){% endif %};padding-left:8px;color:{{ v.color_ink }};"{% endif %}>{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
+      {# soge-car-icon-v1: 車名は黒にして、前に車のアイコンを置く。
+         ★色の帯はやめた。アイコンと帯で同じことを2回言うことになるため。
+         ★アイコンはサーバが組み立てたもの。中身は決まった形と、
+           確かめ済みの #rrggbb だけ。 #}
+      <span class="sp-car">{{ v.icon_svg|safe }}{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
       <span class="sp-title" style="font-weight:600;font-size:0.9rem;">{{ month_label }}</span>
       <span class="sp-fac">{{ facility_name }}</span>
     </div>
@@ -272,9 +281,19 @@
 
 <style>
 /* ===== soge-print-admin-v1: 順番ボタンと、並べ替えの一覧 ===== */
-.sp-ord { float: right; margin: 0 0 2px 6px; border: 1px solid #dadce0; background: #fff;
+/* soge-print-ord-fix-v1: フロートをやめ、マスの右上に置く。
+   ★float:right のままだと、下の立ち寄り一覧（display:grid）がボタンを避けず、
+     4列目の氏名がボタンの下に潜り込んで文字が重なる（実測で確認）。
+     文章はフロートを避けるが、グリッドは避けない。
+   ★マスの側に右の余白を確保して、一覧がそこへ入り込めないようにする。
+     余白は実測したボタンの幅から決めている（幅52 + 位置6 + 隙間8 = 66 → 68px）。 */
+td.sp-stops { position: relative; padding-right: 68px; }
+.sp-ord { position: absolute; top: 4px; right: 6px; float: none; margin: 0;
+  border: 1px solid #dadce0; background: #fff;
   border-radius: 7px; padding: 3px 8px; font-size: 0.68rem; font-weight: 700;
   color: #5f6368; cursor: pointer; }
+/* 紙にはボタンを出していないので、余白も戻す（残すと名前が詰まる） */
+@media print { td.sp-stops { padding-right: 4px; } }
 .sp-ord:hover { border-color: #1a73e8; color: #1a73e8; }
 .sp-ord:disabled { opacity: .5; cursor: not-allowed; }
 @media print { .sp-ord { display: none !important; } }

@@ -16,7 +16,15 @@
 .sr-tabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; margin-bottom:8px; }
 .sr-tab { flex:0 0 auto; padding:9px 14px; border-radius:10px; border:1.5px solid #dadce0; background:#fff;
   color:#5f6368; font-weight:800; font-size:0.9rem; cursor:pointer; white-space:nowrap; }
-.sr-tab.on { background:#1a73e8; border-color:#1a73e8; color:#fff; }
+/* soge-car-icon-v1: 選んでいるタブは【薄い青の地＋青い枠】。
+   ★車の色で塗るのはやめた。塗ると、その上の名前を黒にできない。
+     色は車のアイコンだけが持つ。名前はどこでも黒。 */
+.sr-tab.on { background:#E8F0FE; border-color:#1a73e8; color:#202124; }
+.sr-tab { color:#202124; }
+/* 車のアイコン。置く場所ごとに大きさを決める。 */
+.soge-cari { display:inline-block; vertical-align:-4px; width:30px; height:18px;
+  flex:0 0 auto; margin-right:6px; }
+.sr-driver .soge-cari { width:26px; height:15px; vertical-align:-3px; }
 
 /* soge-view-v1: 見せ方の切り替え（車両から／便から）
    現場の要望。運転手は「自分の車」から見たいが、送迎の全体を組む人は
@@ -236,7 +244,11 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
 .sr-pl.go.hasnote { border-radius:12px 12px 0 0; }
 
 /* 次の人の中身（住所と押すところ）。板の下に、白い箱として続ける */
-.sr-nvb { background:#fff; border:1px solid #E3E8EF; border-top:none;
+/* soge-drive-v4: いま向かう人の箱に、車の色をうっすら敷く。
+   ★名前・住所・押すところが、まとめて1つの箱に見えるようにする。
+   ★opacity で薄くしてはいけない。上に載る文字まで薄くなる。
+     地の色そのものを薄くしたもの(--sr-soft)を敷く。 */
+.sr-nvb { background: var(--sr-soft, #fff); border:1px solid #E3E8EF; border-top:none;
   border-radius:0 0 12px 12px; padding:12px; }
 /* ★住所は切らない。マンション名が長いと、いちばん要る号室がちょうど切れる。 */
 .sr-nva { font-size:1.05rem; line-height:1.5; color:#3c4043; overflow-wrap:anywhere; }
@@ -810,10 +822,8 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       /* soge-car-color-v1: 「便から見る」ときの車タブにも同じ色を出す。
          ★片方だけ色が付いていると、見比べたときに別の意味だと思われる。 */
       row2.innerHTML = tabsHtml(cars.map(function (c) {
-        return ((c.v && c.v.color_hex) ? '<span class="sr-dot" style="background:' + c.v.color_hex + '"></span>' : '')
-             + esc(c.v.vehicle_name);
+        return ((c.v && c.v.icon_svg) || '') + esc(c.v.vehicle_name);   // soge-car-icon-v1
       }), state.tab, 'sr-tab', 'data-tab');
-      paintCarTabs(row2, cars.map(function (c) { return c.v; }));
       row2.style.display = cars.length ? 'flex' : 'none';
       row2.querySelectorAll('[data-tab]').forEach(function (el) {
         // 自分で選んだのだから、以後は勝手に動かさない
@@ -846,11 +856,12 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       state.tabKey = vs[state.tab] ? String(vs[state.tab].key) : '';
       /* soge-car-color-v1: 車のタブに色。★名前の前に丸を置き、左端に帯を引く。
          色だけに頼らない（色の見分けがつきにくい方でも、名前は名前のまま）。 */
+      /* soge-car-icon-v1: 名前は黒のまま。色は車のアイコンが持つ。
+         ★アイコンはサーバが組み立てたものをそのまま置く（形と色の
+           組み合わせを画面側で作らない）。 */
       row1.innerHTML = tabsHtml(vs.map(function (v) {
-        return (v.color_hex ? '<span class="sr-dot" style="background:' + v.color_hex + '"></span>' : '')
-             + esc(v.vehicle_name);
+        return (v.icon_svg || '') + esc(v.vehicle_name);
       }), state.tab, 'sr-tab', 'data-tab');
-      paintCarTabs(row1, vs);
       row1.querySelectorAll('[data-tab]').forEach(function (el) {
         // soge-trip-tab-v1: 車両タブを変えたら便タブも先頭に戻す
         el.onclick = function () {
@@ -888,11 +899,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     /* soge-car-color-v1: 運転手の行にも、いま開いている車の色を出す。 */
     var _dv = $('srDriver');
     _dv.innerHTML = selVehicle
-      ? ((selVehicle.color_hex
-            ? '<span class="sr-dot" style="background:' + selVehicle.color_hex
-              + (selVehicle.color_edge
-                   ? ';--sr-edge:' + selVehicle.color_edge + ';--sr-dot-w:1.5px' : '')
-              + '"></span>' : '')
+      ? ((selVehicle.icon_svg || '')                       // soge-car-icon-v1
          + esc(_drv ? ('運転手 ' + _drv) : '運転手 未設定'))
       : '';
 
@@ -902,7 +909,8 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     $('srBody').innerHTML = (state.mode === 'drive')
       /* soge-drive-v2: 道の線に使う色を渡す（soge-car-color-v1 で決めた車の色）。 */
       ? (selTrip ? driveHtml(selTrip, (selVehicle && selVehicle.color_hex) || '',
-                            (selVehicle && selVehicle.color_edge) || '')
+                            (selVehicle && selVehicle.color_edge) || '',
+                            (selVehicle && selVehicle.color_soft) || '')
                  : '<div class="sr-empty">この車の便がありません</div>')
       : ((selTrip ? tripHtml(selTrip, prevOdoEnd) : '') + addExtra);
     bind();
@@ -913,7 +921,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
        data-tap / data-abs / data-pen / data-mv を拾って動かしている。
        ここでも【同じ属性】を使う。配線は1行も書かない。
        別に書くと、片方だけ直したときに食い違う。 */
-  function driveHtml(t, roadHex, edgeHex) {
+  function driveHtml(t, roadHex, edgeHex, softHex) {
     if (t.unassigned) {
       return '<div class="sr-dv"><div class="sr-dv-name">車が決まっていません</div>'
         + '<div class="sr-dv-note">この便に乗る車が決まっていないため、'
@@ -925,6 +933,9 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     /* soge-car-color-v4: 明るい車の色は、うっすらの縁では道が見えない。
        サーバが「はっきりした黒が要る色か」を決めて渡してくる。 */
     var edge = edgeHex || '';
+    /* soge-drive-v4: うっすら敷く地。サーバが決めた色。
+       ★引けないときは何も入れない。CSS 側の既定（白）に戻るだけ。 */
+    var soft = softHex || '';
 
     var all = (t.stops || []);
     /* お休みの人は「次の人」から外す。★ただし黙って消さない（下に名前を出す）。
@@ -1034,7 +1045,9 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       /* soge-car-color-v4: 道と地点の縁の色も一緒に渡す。
          ★白い車だと、うっすらの縁では道そのものが見えない。 */
       + '<div class="sr-nv" style="--sr-road:' + road
-        + (edge ? ';--sr-edge:' + edge : '') + '">'
+        + (edge ? ';--sr-edge:' + edge : '')
+        + (soft ? ';--sr-soft:' + soft : '')      /* soge-drive-v4: うっすら敷く地 */
+        + '">'
         + depNode + stopsHtml + goal
       + '</div>' + offHtml + '</div>';
   }
