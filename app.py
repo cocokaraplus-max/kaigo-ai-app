@@ -24080,13 +24080,124 @@ def soge_color_edge(hexv):  # soge-car-color-v4
     return SOGE_EDGE_COLOR if soge_lum(hexv) > SOGE_EDGE_LUM else ""
 
 
-def soge_color_pack(hexv):  # soge-car-color-v2
-    """画面に渡す色ひとそろい。空なら空で返す（色を付けないだけ）。"""
+# ===== soge-car-icon-v1: 車の形 =====
+#   ★形も情報にする。色の見分けがつきにくい方には、色だけでは伝わらない。
+#     軽（短い・ボンネットあり）／軽バン（短い・箱型）／
+#     ワゴン（中くらい・鼻が下がる）／バン（長くて背が高い）は
+#     形だけで見分けられる。
+#   ★絵は【ここだけ】に置く。画面ごとに書くと4か所に増えて必ず食い違う。
+SOGE_BODIES = [
+    ("kei",    "軽",     "タント・N-BOX など（ボンネットあり）"),
+    ("keibox", "軽バン", "エブリイ・ハイゼットなど（箱型）"),
+    ("wagon",  "ワゴン", "セレナ・ヴォクシーなど"),
+    ("van",    "バン",   "キャラバン・ハイエースなど"),
+]
+SOGE_BODY_KEYS = [k for k, _n, _e in SOGE_BODIES]
+SOGE_BODY_DEFAULT = "wagon"
+
+# 44 x 22 の横から見た形。床は y=17。
+#   ★平らな記号にする。窓もタイヤの作り込みもしない。
+#     （HIROさん「アイコン可愛い感じのリアルなやつじゃなくていいよ」）
+#     輪郭ひとつ＋タイヤの丸だけ。小さくしても形がつぶれない。
+#   ★見分けは【長さと高さ】で付ける。
+#     軽＝短い＋ボンネット／軽バン＝短い箱／
+#     ワゴン＝中くらい・鼻が下がる／バン＝長くて背が高い
+SOGE_BODY_ART = {
+    # 軽（タントなど）。★短い車体に、短いボンネットが付く。
+    #   （HIROさん「ボンネットあるタントみたいな軽も作って」）
+    "kei": {
+        "body": ("M10 17 V11.2 Q10 10.2 11.2 9.9 L14.4 9.2 V7 Q14.4 5 16.4 5 "
+                 "H31 Q33.4 5 33.4 7.2 V17 H31 A2.6 2.6 0 0 0 25.8 17 "
+                 "H17.6 A2.6 2.6 0 0 0 12.4 17 H10 Z"),
+        "wheels": [(15, 17, 2.6), (28.4, 17, 2.6)],
+    },
+    # 軽バン（エブリイなど）。ボンネットが無い箱型。
+    "keibox": {
+        "body": ("M13 5 H31 Q33 5 33 7 V17 H30.6 A2.6 2.6 0 0 0 25.4 17 "
+                 "H18.6 A2.6 2.6 0 0 0 13.4 17 H11 V7 Q11 5 13 5 Z"),
+        "wheels": [(16, 17, 2.6), (28, 17, 2.6)],
+    },
+    "wagon": {
+        "body": ("M5 17 V11.4 Q5 9.6 6.8 9 L12.4 6.6 Q14 6 15.8 6 H33 Q37 6 37 9.4 V17 "
+                 "H33.6 A2.8 2.8 0 0 0 28 17 H15 A2.8 2.8 0 0 0 9.4 17 H5 Z"),
+        "wheels": [(12.2, 17, 2.8), (30.8, 17, 2.8)],
+    },
+    "van": {
+        "body": ("M4 17 V8 Q4 5 7.4 5 H35 Q40 5 40 9.6 V17 "
+                 "H36.6 A2.8 2.8 0 0 0 31 17 H15 A2.8 2.8 0 0 0 9.4 17 H4 Z"),
+        "wheels": [(12.2, 17, 2.8), (33.8, 17, 2.8)],
+    },
+}
+
+
+def soge_body_of(v):  # soge-car-icon-v1
+    """車の形。知らない値・空はワゴンに倒す。
+
+    ★列がまだ無い施設でも、ここが効いて全部ワゴンで出る（画面は壊れない）。
+    """
+    b = (v or "")
+    try:
+        b = b.strip()
+    except AttributeError:
+        return SOGE_BODY_DEFAULT
+    return b if b in SOGE_BODY_ART else SOGE_BODY_DEFAULT
+
+
+def soge_car_svg(body, fill, edge=""):  # soge-car-icon-v1
+    """車のアイコン。fill は車の色、edge は明るい色のときの縁。
+
+    ★平らな記号にする。窓も影も付けない。小さくしてもつぶれない。
+    ★大きさは入れない。置く場所ごとに CSS で決める（タブは小さく、記録表は大きく）。
+    ★入るのは決まった形と、確かめ済みの #rrggbb だけ。
+      色が確かめを通らなければ、色を付けずに灰色で出す（絵は必ず出す）。
+    """
+    art = SOGE_BODY_ART.get(soge_body_of(body))
+    col = fill if soge_hex_ok(fill) else "#dadce0"
+    st = edge if soge_hex_ok(edge) else "rgba(0,0,0,.42)"
+    # タイヤは輪郭だけ。塗り分けると「リアルな絵」になってしまう。
+    wheels = "".join(
+        '<circle cx="%s" cy="%s" r="%s" fill="none" stroke="%s" stroke-width="1.6"/>'
+        % (w[0], w[1], w[2], st) for w in art["wheels"])
+    return (
+        '<svg class="soge-cari" viewBox="0 0 44 22" aria-hidden="true">'
+        '<path d="%s" fill="%s" stroke="%s" stroke-width="1.6" stroke-linejoin="round"/>'
+        '%s</svg>'
+        % (art["body"], col, st, wheels))
+
+
+def soge_color_soft(hexv):  # soge-drive-v4
+    """うっすら敷く色。白に混ぜて薄くする。
+
+    ★「いま向かう人」の箱の地に使う。住所も押すところもこの上に載るので、
+      ほとんど白に近いところまで薄くする（濃いと黒文字が読みにくくなる）。
+    ★画面側で opacity をかけて薄くしてはいけない。上に載っている文字まで
+      薄くなる。地の色そのものを薄くする。
+    """
     if not soge_hex_ok(hexv):
-        return {"color_hex": "", "color_ink": "", "color_fg": "", "color_edge": ""}
+        return ""
+    r = int(hexv[1:3], 16)
+    g = int(hexv[3:5], 16)
+    b = int(hexv[5:7], 16)
+    k = 0.92          # 白の割合。0.92 = 8%だけ車の色が混じる
+    r = int(255 * k + r * (1 - k))
+    g = int(255 * k + g * (1 - k))
+    b = int(255 * k + b * (1 - k))
+    return "#%02x%02x%02x" % (min(255, r), min(255, g), min(255, b))
+
+
+def soge_color_pack(hexv):  # soge-car-color-v2
+    """画面に渡す色ひとそろい。空なら空で返す（色を付けないだけ）。
+
+    ★薄い地・白地の文字で、要る明るさはそれぞれ違う。
+      どれも【ここ1か所】で決める。画面側で薄めたり濃くしたりしない。
+    """
+    if not soge_hex_ok(hexv):
+        return {"color_hex": "", "color_ink": "", "color_fg": "", "color_edge": "",
+                "color_soft": ""}
     h = str(hexv).strip().lower()
     return {"color_hex": h, "color_ink": soge_color_ink(h), "color_fg": soge_color_fg(h),
-            "color_edge": soge_color_edge(h)}      # soge-car-color-v4
+            "color_edge": soge_color_edge(h),      # soge-car-color-v4
+            "color_soft": soge_color_soft(h)}      # soge-drive-v4: うっすら敷く地
 
 
 def soge_colors_for(rows):  # soge-car-color-v1
@@ -24140,7 +24251,9 @@ def soge_color_map(supabase, f_code):  # soge-car-color-v1
       色を決めるのはこの関数だけにする。
     ★読めなかったら空で返す。色が付かないだけで、画面は動く。
     """
-    out = {"byid": {}, "byname": {}}
+    # soge-car-icon-v1: アイコンも同じ表で配る。
+    #   ★色とアイコンを別々に引くと、片方だけ取り違える道ができる。
+    out = {"byid": {}, "byname": {}, "svgid": {}, "svgname": {}}
     try:
         # ★並びは /api/vehicles と【まったく同じ】にする。
         #   自動の色は「何番目か」で決まるので、並びがずれると
@@ -24153,11 +24266,14 @@ def soge_color_map(supabase, f_code):  # soge-car-color-v1
         _hex = soge_colors_for(_rows)
         for i, c in enumerate(_rows):
             hexv = _hex[i]
+            svg = soge_car_svg(c.get("body_type"), hexv, soge_color_edge(hexv))
             if c.get("id") is not None:
                 out["byid"][str(c["id"])] = hexv
+                out["svgid"][str(c["id"])] = svg
             nm = (c.get("name") or "").strip()
             if nm:
                 out["byname"][nm] = hexv
+                out["svgname"][nm] = svg
     except Exception as e:
         print("[soge-color] 車両の色を読めませんでした: %s" % e, flush=True)
     return out
@@ -24181,6 +24297,8 @@ def _vehicle_out(c):  # soge-seats-ui-v1
         "sort_order": c.get("sort_order") or 0,
         # soge-car-color-v1: 選んだ色（空なら自動）。色味は一覧で付ける。
         "color": (c.get("color") or ""),
+        # soge-car-icon-v1: 車の形。列がまだ無ければ空で返る（画面はワゴンで出す）。
+        "body_type": soge_body_of(c.get("body_type")),
     }
 
 
@@ -24222,6 +24340,14 @@ def _vehicle_payload(data):  # vehicles-admin-v1
             payload["color"] = SOGE_COLOR_HEX[_col]   # 近道のボタン → 色そのものへ
         else:
             return None, "色の指定が正しくありません"
+
+    # soge-car-icon-v1: 車の形は【決まった名前だけ】受け取る。
+    #   ★この値でアイコンの絵を選ぶ。知らない名前は通さない。
+    if "body_type" in data:
+        _bt = (data.get("body_type") or "").strip()
+        if _bt and _bt not in SOGE_BODY_KEYS:
+            return None, "車の形の指定が正しくありません"
+        payload["body_type"] = _bt or None
 
     fuel = data.get("fuel_km_per_l")
     if fuel in (None, ""):
@@ -24294,9 +24420,18 @@ def api_vehicles_list():
         for _i, _v in enumerate(_vs):
             # soge-car-color-v2: 塗った上に置く文字の色・白地で使える色も渡す
             _v.update(soge_color_pack(_hex[_i]))
+            # soge-car-icon-v1: できあがりのアイコンを渡す。
+            #   ★画面側で形と色を組み合わせない。4か所に増えて必ず食い違う。
+            _v["icon_svg"] = soge_car_svg(_v.get("body_type"), _v.get("color_hex"),
+                                          _v.get("color_edge"))
         return jsonify({"status": "success", "vehicles": _vs,
                         "colors": [{"key": k, "hex": h, "name": n}
-                                   for k, h, n in SOGE_COLORS]})
+                                   for k, h, n in SOGE_COLORS],
+                        # soge-car-icon-v1: 形の一覧と見本。★管理画面が名前や絵を
+                        #   書き写さずに済むように、ここから渡す。
+                        "bodies": [{"key": k, "name": n, "example": e,
+                                    "icon_svg": soge_car_svg(k, "#5f6368")}
+                                   for k, n, e in SOGE_BODIES]})
     except Exception as e:
         print("vehicles list error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -24313,16 +24448,19 @@ def _vehicle_write(fn, payload):  # soge-car-color-v1
     try:
         return fn(payload), False
     except Exception as e:
-        if "color" not in payload:
-            raise
+        # soge-car-icon-v1: color / body_type のどちらかの列がまだ無いとき。
+        #   ★落とすのはその列だけ。ほかの欄はいつもどおり保存できる。
         s = str(e).lower()
-        if "color" not in s:
+        drop = [k for k in ("color", "body_type") if k in payload and k in s]
+        if not drop:
             raise
         if not ("column" in s or "schema cache" in s or "does not exist" in s):
             raise
         p2 = dict(payload)
-        p2.pop("color", None)
-        print("[soge-color] color 列がまだありません。色を除いて保存しました", flush=True)
+        for k in drop:
+            p2.pop(k, None)
+        print("[soge-color] %s 列がまだありません。そこを除いて保存しました"
+              % "/".join(drop), flush=True)
         return fn(p2), True
 
 
@@ -24502,7 +24640,6 @@ def get_soge_settings(supabase, f_code):  # soge-settings-v1
                 "unit_count": uc,
                 "trips": _soge_norm_trips(s.get("trips"), uc),
                 "mid_dropoff_first": bool(s.get("mid_dropoff_first", True)),
-                "odo_enabled": bool(s.get("odo_enabled", False)),   # soge-odo-v1
                 "configured": True,
             }
             for k, dv in SOGE_TIME_DEFAULTS.items():   # soge-time-v1
@@ -24518,7 +24655,6 @@ def get_soge_settings(supabase, f_code):  # soge-settings-v1
         "unit_count": 1,
         "trips": [dict(t) for t in SOGE_DEFAULT_TRIPS[1]],
         "mid_dropoff_first": True,
-        "odo_enabled": False,          # soge-odo-v1: 既定は記録しない
         "configured": False,
     }
     out.update(SOGE_TIME_DEFAULTS)
@@ -24568,7 +24704,6 @@ def api_soge_settings_save():
             "unit_count": uc,
             "trips": trips,
             "mid_dropoff_first": bool(data.get("mid_dropoff_first", True)),
-            "odo_enabled": bool(data.get("odo_enabled", False)),   # soge-odo-v1
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         # soge-time-v1: 目標時間・上限時間・乗降時間
@@ -27676,6 +27811,11 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
                 cmap["byid"].get(str(d.get("vehicle_id") or ""))
                 or cmap["byname"].get((d.get("vehicle_name") or "").strip())
                 or "")))
+            # soge-car-icon-v1: 車のアイコン。「車が未定」には付けない。
+            v["icon_svg"] = ("" if _un else (
+                cmap["svgid"].get(str(d.get("vehicle_id") or ""))
+                or cmap["svgname"].get((d.get("vehicle_name") or "").strip())
+                or ""))
         ss = sorted(by_day.get(d["id"], []), key=lambda x: x.get("seq") or 0)
         v["trips"].append({
             "day_id": d["id"],
@@ -27692,8 +27832,6 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
             "departed_at": _soge_hhmm(d.get("departed_at")),     # soge-note-v1 実際の出発
             "returned_at": _soge_hhmm(d.get("returned_at")),
             "note": d.get("note") or "",                          # soge-note-v1
-            "odo_start": d.get("odo_start"),                       # soge-odo-v1
-            "odo_end": d.get("odo_end"),                           # soge-odo-v1
             "stops": [{
                 "id": s["id"],
                 # soge-move-v1: いまどの便に居るか。移動先を選ぶときに自分を外すのに使う
@@ -27716,14 +27854,12 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
             } for s in ss],
         })
 
-    # soge-odo-v1: 走行距離を記録する施設かどうか。画面はこれを見て入力欄を出す。
     # soge-lock-v1: 確定しているか／もう動き出しているかを画面に伝える
     st = _soge_day_state(supabase, f_code, date_str)
     # soge-past-admin-v1: 過ぎた日を直せる人かどうか。画面はこれを見てボタンを出し分ける。
     #   ★画面の出し分けは【親切のため】。守りはAPI側にある。
     _can = _soge_past_admin_ok(supabase, f_code, date_str, session.get("my_name", ""))
     return {"date": date_str, "vehicles": list(vehicles.values()),
-            "odo_enabled": bool(settings.get("odo_enabled")),
             "can_edit": bool(_can),                      # soge-past-admin-v1
             "locked": st["locked"], "touched": st["touched"], "past": st["past"]}
 
@@ -27753,6 +27889,61 @@ def api_soge_run_get():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def _soge_vno_of(d):  # soge-lock-unassigned-v1
+    """その枠の車番号。読めない値は「車が未定(0)」に倒す。
+
+    ★`int(x or 1)` と書いてはいけない。0 は「車が未定」の意味を持つ値なのに
+      偽なので、`0 or 1` が 1 になって守りが素通りする（別の直しで実際に踏んだ）。
+    """
+    v = d.get("vehicle_no")
+    if v is None:
+        return SOGE_VNO_UNASSIGNED
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return SOGE_VNO_UNASSIGNED
+
+
+def _soge_unassigned_names(supabase, f_code, date_str):  # soge-lock-unassigned-v1
+    """その日、まだ乗る車が決まっていない方の名前（重複なし・並び順のまま）。
+
+    ★数えない人
+      ・「送迎なし」の枠にいる方（家族送迎など。決めたうえでそうしている）
+      ・当日欠席の方、休み連絡が入っている方（乗らないと決まっている）
+
+    ★読めなかったら【例外を上げる】。空で返してはいけない。
+      空で返すと「誰も居ない」ことになり、黙って確定できてしまう。
+      「無かった」と「聞けなかった」は別のこと。
+    """
+    dr = (supabase.table("soge_days").select("id,vehicle_no")
+          .eq("facility_code", f_code).eq("service_date", date_str).execute())
+
+    ids = set()
+    for d in (dr.data or []):
+        vno = _soge_vno_of(d)
+        # 車が決まっていない枠だけ。「送迎なし」は決めた結果なので外す。
+        if vno <= SOGE_VNO_UNASSIGNED and vno != SOGE_VNO_NORIDE:
+            ids.add(d["id"])
+    if not ids:
+        return []
+
+    sr = (supabase.table("soge_stops").select("day_id,user_name,is_absent")
+          .eq("facility_code", f_code).eq("service_date", date_str).execute())
+
+    leave = _soge_leave_names(supabase, f_code, date_str)
+    out = []
+    for s in (sr.data or []):
+        if s.get("day_id") not in ids:
+            continue
+        if s.get("is_absent"):
+            continue
+        nm = (s.get("user_name") or "").strip()
+        if not nm or nm in leave or nm in out:
+            continue
+        out.append(nm)
+    return out
+
+
 @app.route("/api/soge/run/lock", methods=["POST"])  # soge-lock-v1
 @login_required
 def api_soge_run_lock():
@@ -27770,6 +27961,22 @@ def api_soge_run_lock():
             return jsonify({"status": "error", "message": "日付が必要です"}), 400
         want = bool(d.get("locked"))
         if want:
+            # soge-lock-unassigned-v1: 乗る車が決まっていない方が残っていたら、
+            #   一度止めて名前を出す。★確定そのものを禁止はしない。
+            #   車が足りない日もあるので、禁止にすると「確定しないまま走る」
+            #   というもっと危ないほうへ倒れる。承知して進んだ人は
+            #   locked_by に残るので、あとから誰が通したか分かる。
+            _un = _soge_unassigned_names(supabase, f_code, date_str)
+            if _un and not bool(d.get("ack_unassigned")):
+                return jsonify({
+                    "status": "confirm",          # ★"success" ではない。画面は必ず止まる
+                    "reason": "unassigned",
+                    "names": _un,
+                    "message": "乗る車が決まっていない方がいます",
+                }), 409
+            if _un:
+                print("[soge-lock] 車が未定のまま確定: %s / %s / %s"
+                      % (date_str, session.get("my_name", ""), "、".join(_un)), flush=True)
             supabase.table("soge_day_locks").upsert({
                 "facility_code": f_code, "service_date": date_str,
                 "locked_by": session.get("my_name", ""),
@@ -27821,7 +28028,7 @@ def api_soge_run_replan():
     休み連絡は当日の朝に入ることが多い。そのときにはもう運行表が作られているので、
     予定時刻だけをあとから引き直せるようにする。
 
-    ★触るのは planned_at だけ。打刻・欠席・メーター・臨時便には一切さわらない。
+    ★触るのは planned_at だけ。打刻・欠席・臨時便には一切さわらない。
       だから【確定済みの日でも押せる】。予定が変わるだけで記録は変わらない。
     """
     try:
@@ -28257,23 +28464,6 @@ def api_soge_run_day_edit():
         if "note" in data:
             upd["note"] = (data.get("note") or "").strip()[:500] or None
 
-        # soge-odo-v1: メーター（整数km）。空文字で消せる。
-        # 桁を打ち間違えると走行距離が跳ねるので、範囲だけ見ておく。
-        for key in ("odo_start", "odo_end"):
-            if key not in data:
-                continue
-            v = data.get(key)
-            if v in (None, ""):
-                upd[key] = None
-                continue
-            try:
-                v = int(str(v).replace(",", "").strip())
-            except (TypeError, ValueError):
-                return jsonify({"status": "error", "message": "メーターは数字で入れてください"}), 400
-            if v < 0 or v > 9999999:
-                return jsonify({"status": "error", "message": "メーターの桁が多すぎます"}), 400
-            upd[key] = v
-
         supabase.table("soge_days").update(upd) \
             .eq("facility_code", f_code).eq("id", day_id).execute()
         return jsonify({"status": "success"})
@@ -28608,6 +28798,10 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
                 cmap["byid"].get(str(d.get("vehicle_id") or ""))
                 or cmap["byname"].get((d.get("vehicle_name") or "").strip())
                 or ""))
+            # soge-car-icon-v1: 紙にも出す。★白黒で刷っても形で見分けられる。
+            cur["icon_svg"] = (cmap["svgid"].get(str(d.get("vehicle_id") or ""))
+                               or cmap["svgname"].get((d.get("vehicle_name") or "").strip())
+                               or "")
             out.append(cur)
             last_date = None
 
@@ -28645,11 +28839,6 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
             "departed_at": _soge_hhmm(d.get("departed_at")),     # soge-note-v1
             "returned_at": _soge_hhmm(d.get("returned_at")),
             "note": d.get("note") or "",                         # soge-note-v1
-            "odo_start": d.get("odo_start"),                      # soge-odo-v1
-            "odo_end": d.get("odo_end"),                          # soge-odo-v1
-            "odo_km": (d.get("odo_end") - d.get("odo_start"))
-                      if (d.get("odo_start") is not None and d.get("odo_end") is not None
-                          and d.get("odo_end") >= d.get("odo_start")) else None,
             "stops": [{
                 # soge-print-edit-v1: どれを直すか指すのに要る
                 "id": s.get("id"),
@@ -28684,8 +28873,6 @@ def soge_print_page():
     except Exception:
         fname = ""
 
-    odo_on = bool(get_soge_settings(supabase, f_code).get("odo_enabled"))   # soge-odo-v1
-
     # soge-past-admin-v1: 過ぎた日を直せる人か（画面の出し分けに使う。守りはAPI側）
     _can_past = False
     try:
@@ -28698,7 +28885,6 @@ def soge_print_page():
                            vehicles=vehicles,
                            facility_name=fname,
                            month=ym,
-                           odo_enabled=odo_on,
                            month_label="%d年%d月" % (int(ym[:4]), int(ym[5:7])))
 # ===== /soge-print-v2 =====
 

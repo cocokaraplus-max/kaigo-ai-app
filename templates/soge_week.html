@@ -73,10 +73,16 @@
 }
 .sg-car-head { display:flex; align-items:center; gap:8px; padding:10px 12px; background:#eef2f7;
   border-bottom:1px solid #e3e8ef; flex-wrap:wrap; }
+/* soge-car-icon-v1: 車のアイコン。色はここが持つ。 */
+.soge-cari { display:inline-block; width:26px; height:15px; vertical-align:-3px;
+  flex:0 0 auto; margin-right:5px; }
 .sg-car-badge { background:#1a73e8; color:#fff; font-size:0.7rem; font-weight:800; border-radius:999px;
   padding:3px 9px; white-space:nowrap; }
 .sg-sel { border:1px solid #d6dbe3; border-radius:8px; padding:6px 8px; font-size:0.85rem; background:#fff; }
 .sg-car-meta { flex:1; text-align:right; font-size:0.75rem; color:#5f6368; font-weight:600; }
+/* soge-car-icon-v1: 車のバッジ。地を塗らず、黒文字＋アイコンにする。 */
+.sg-car-badge.plain { background:#fff; color:#202124; border:1px solid #dadce0;
+  display:inline-flex; align-items:center; padding:3px 9px 3px 6px; }
 /* soge-car-color-v1: 車の箱に色。左端の帯とバッジで、どの車かをすぐ見分ける。
    ★専用のクラスを付けた箱だけ太くする。.sg-car にそのまま書くと、
      「まだ車が決まっていない人」「送迎なし」の箱まで左だけ太くなる。 */
@@ -630,10 +636,10 @@
              + '"' : '') + '>' +
       '<div class="sg-car-head">' +
         /* soge-car-color-v2: 白い車も選べるので、文字色はサーバが決めた色を使う。 */
-        '<span class="sg-car-badge"' + (_ch ? ' style="background:' + _ch
-          + ';color:' + ((_cv && _cv.color_fg) || '#fff')
-          + ';box-shadow:0 0 0 ' + (_ce ? '1.5px ' + _ce : '1px rgba(0,0,0,.25)') + '"' : '') + '>車 '
-          + (realCars(t).indexOf(v) + 1) + '</span>' +
+        /* soge-car-icon-v1: バッジは白地・黒文字にして、色はアイコンが持つ。
+           ★塗るのをやめたので、白い車でも文字が読めなくならない。 */
+        '<span class="sg-car-badge plain">' + ((_cv && _cv.icon_svg) || '')
+          + '車 ' + (realCars(t).indexOf(v) + 1) + '</span>' +
         '<select class="sg-sel" data-veh="' + ti + '_' + vi + '"><option value="">車両…</option>' + vopts + '</select>' +
         '<select class="sg-sel" data-drv="' + ti + '_' + vi + '"><option value="">運転手…</option>' + sopts + '</select>' +
         '<span class="sg-car-meta">' + mins +

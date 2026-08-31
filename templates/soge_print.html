@@ -48,7 +48,12 @@
   .sp-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
              border-bottom: 2px solid #185FA5; padding-bottom: 8px; margin-bottom: 10px; }
   .sp-title { font-size: 1.05rem; font-weight: 800; letter-spacing: 0.1em; }
-  .sp-car { font-size: 1rem; font-weight: 800; color: #185FA5; }
+  /* soge-car-icon-v1: 車名は黒。色は車のアイコンが持つ。
+     ★白黒で刷っても、形（軽・ワゴン・バン）で見分けられる。 */
+  .sp-car { font-size: 1rem; font-weight: 800; color: #202124;
+            display: inline-flex; align-items: center; }
+  .soge-cari { display: inline-block; width: 34px; height: 20px; margin-right: 7px;
+               flex: 0 0 auto; }
   .sp-fac { font-size: 0.82rem; color: #5f6368; margin-left: auto; }
 
   /* 横スクロール。日付・出発・帰着は左に固定して、立ち寄りだけ流す。 */
@@ -98,13 +103,6 @@
   .sp-s:last-child::after { content: ''; margin: 0; }
   .sp-s:nth-child(4n)::after { content: ''; margin: 0; }
 
-  /* soge-odo-v1: メーターの列。数字は右そろえ・等幅。 */
-  .sp-odo { min-width: 62px; text-align: right; }
-  .sp-odo input { width: 58px; border: 1px solid #dadce0; border-radius: 6px; padding: 3px 4px;
-                  font-size: 0.76rem; font-family: inherit; text-align: right;
-                  font-variant-numeric: tabular-nums; }
-  .sp-odo input:focus { outline: 2px solid #1a73e8; border-color: #1a73e8; }
-  .sp-km { min-width: 52px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
 
   .sp-note { min-width: 180px; }
   .sp-note input { width: 100%; min-width: 170px; border: 1px solid #dadce0; border-radius: 6px;
@@ -143,7 +141,6 @@
     .sp-s, .sp-s .nm { white-space: nowrap; }
     .sp-note { min-width: 0; }
     .sp-note input { border: none; padding: 0; min-width: 0; font-size: 0.62rem; }
-    .sp-odo input { border: none; padding: 0; width: 100%; font-size: 0.62rem; }   /* soge-odo-v1 */
     .sp-tap { display: none; }
     .sp-tbl tr { page-break-inside: avoid; }
     thead { display: table-header-group; }
@@ -186,7 +183,11 @@
          白い車を選べるようにしたので、文字まで本当の色にすると読めなくなる。
          帯のほうは本当の色のまま出す（車と見比べられるように）。 #}
       {# soge-car-color-v4: 明るい色の帯は、白い紙で消える。帯の両側に線を引いて囲む。 #}
-      <span class="sp-car"{% if v.color_hex %} style="border-left:6px solid {{ v.color_hex }};box-shadow:{% if v.color_edge %}inset 1px 0 0 {{ v.color_edge }},inset 6px 0 0 -5px {{ v.color_edge }}{% else %}inset 1px 0 0 rgba(0,0,0,.25){% endif %};padding-left:8px;color:{{ v.color_ink }};"{% endif %}>{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
+      {# soge-car-icon-v1: 車名は黒にして、前に車のアイコンを置く。
+         ★色の帯はやめた。アイコンと帯で同じことを2回言うことになるため。
+         ★アイコンはサーバが組み立てたもの。中身は決まった形と、
+           確かめ済みの #rrggbb だけ。 #}
+      <span class="sp-car">{{ v.icon_svg|safe }}{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
       <span class="sp-title" style="font-weight:600;font-size:0.9rem;">{{ month_label }}</span>
       <span class="sp-fac">{{ facility_name }}</span>
     </div>
@@ -200,11 +201,6 @@
             <th class="tm">出発</th>
             <th class="tm">帰着</th>
             <th class="sp-stops">各利用者宅 到着時刻</th>
-            {% if odo_enabled %}
-            <th class="sp-odo">出発㎞</th>
-            <th class="sp-odo">帰着㎞</th>
-            <th class="sp-km">走行㎞</th>
-            {% endif %}
             <th class="sp-note">備考</th>
           </tr>
         </thead>
@@ -243,17 +239,6 @@
               {%- endfor -%}
               </div>
             </td>
-            {% if odo_enabled %}
-            <td class="sp-odo">
-              <input type="number" value="{{ row.odo_start if row.odo_start is not none else '' }}"
-                     data-odo="odo_start" data-day="{{ row.day_id }}">
-            </td>
-            <td class="sp-odo">
-              <input type="number" value="{{ row.odo_end if row.odo_end is not none else '' }}"
-                     data-odo="odo_end" data-day="{{ row.day_id }}">
-            </td>
-            <td class="sp-km">{{ row.odo_km if row.odo_km is not none else '' }}</td>
-            {% endif %}
             <td class="sp-note">
               <input type="text" value="{{ row.note }}" data-note="{{ row.day_id }}" placeholder="">
             </td>
@@ -272,9 +257,19 @@
 
 <style>
 /* ===== soge-print-admin-v1: 順番ボタンと、並べ替えの一覧 ===== */
-.sp-ord { float: right; margin: 0 0 2px 6px; border: 1px solid #dadce0; background: #fff;
+/* soge-print-ord-fix-v1: フロートをやめ、マスの右上に置く。
+   ★float:right のままだと、下の立ち寄り一覧（display:grid）がボタンを避けず、
+     4列目の氏名がボタンの下に潜り込んで文字が重なる（実測で確認）。
+     文章はフロートを避けるが、グリッドは避けない。
+   ★マスの側に右の余白を確保して、一覧がそこへ入り込めないようにする。
+     余白は実測したボタンの幅から決めている（幅52 + 位置6 + 隙間8 = 66 → 68px）。 */
+td.sp-stops { position: relative; padding-right: 68px; }
+.sp-ord { position: absolute; top: 4px; right: 6px; float: none; margin: 0;
+  border: 1px solid #dadce0; background: #fff;
   border-radius: 7px; padding: 3px 8px; font-size: 0.68rem; font-weight: 700;
   color: #5f6368; cursor: pointer; }
+/* 紙にはボタンを出していないので、余白も戻す（残すと名前が詰まる） */
+@media print { td.sp-stops { padding-right: 4px; } }
 .sp-ord:hover { border-color: #1a73e8; color: #1a73e8; }
 .sp-ord:disabled { opacity: .5; cursor: not-allowed; }
 @media print { .sp-ord { display: none !important; } }
@@ -347,10 +342,9 @@
         el.disabled = true;
         el.title = '過ぎた日の記録は管理者だけが直せます';
       });
-      tr.querySelectorAll('[data-day],[data-note],[data-odo],[data-stop]').forEach(function (el) {
+      tr.querySelectorAll('[data-day],[data-note],[data-stop]').forEach(function (el) {
         el.removeAttribute('data-day');
         el.removeAttribute('data-note');
-        el.removeAttribute('data-odo');
         el.removeAttribute('data-fld');
         el.removeAttribute('data-stop');
         el.classList.remove('sp-ed');
@@ -429,29 +423,6 @@
     };
   }
   document.querySelectorAll('[data-fld]').forEach(bindTime);
-
-  // soge-odo-v1: メーター … 打ち終わって離れたら保存。走行㎞ はその場で出し直す。
-  document.querySelectorAll('[data-odo]').forEach(function (inp) {
-    var last = inp.value;
-    inp.onblur = async function () {
-      if (inp.value === last) return;
-      var body = {};
-      body[inp.dataset.odo] = inp.value;
-      var ok = await saveDay(inp.dataset.day, body);
-      if (!ok) { inp.value = last; return; }
-      last = inp.value;
-      toast('メーターを保存しました');
-      var tr = inp.closest('tr');
-      var s = tr.querySelector('[data-odo="odo_start"]'),
-          e = tr.querySelector('[data-odo="odo_end"]'),
-          km = tr.querySelector('.sp-km');
-      if (s && e && km) {
-        var a = parseInt(s.value, 10), b = parseInt(e.value, 10);
-        km.textContent = (!isNaN(a) && !isNaN(b) && b >= a) ? String(b - a) : '';
-      }
-    };
-    inp.onkeydown = function (e) { if (e.key === 'Enter') inp.blur(); };
-  });
 
   /* ===== soge-print-edit-v1: 利用者ごとの到着時刻を直す =====
      ★送り先は運行画面と【同じAPI】(/api/soge/run/stop)。仕掛けを2つ持たない。

@@ -16,7 +16,15 @@
 .sr-tabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; margin-bottom:8px; }
 .sr-tab { flex:0 0 auto; padding:9px 14px; border-radius:10px; border:1.5px solid #dadce0; background:#fff;
   color:#5f6368; font-weight:800; font-size:0.9rem; cursor:pointer; white-space:nowrap; }
-.sr-tab.on { background:#1a73e8; border-color:#1a73e8; color:#fff; }
+/* soge-car-icon-v1: 選んでいるタブは【薄い青の地＋青い枠】。
+   ★車の色で塗るのはやめた。塗ると、その上の名前を黒にできない。
+     色は車のアイコンだけが持つ。名前はどこでも黒。 */
+.sr-tab.on { background:#E8F0FE; border-color:#1a73e8; color:#202124; }
+.sr-tab { color:#202124; }
+/* 車のアイコン。置く場所ごとに大きさを決める。 */
+.soge-cari { display:inline-block; vertical-align:-4px; width:30px; height:18px;
+  flex:0 0 auto; margin-right:6px; }
+.sr-driver .soge-cari { width:26px; height:15px; vertical-align:-3px; }
 
 /* soge-view-v1: 見せ方の切り替え（車両から／便から）
    現場の要望。運転手は「自分の車」から見たいが、送迎の全体を組む人は
@@ -102,15 +110,6 @@
 .sr-x { flex:0 0 auto; border:1px solid #dadce0; background:#fff; border-radius:10px; width:38px; height:38px;
   cursor:pointer; color:#9aa0a6; font-size:0.95rem; font-weight:800; line-height:1; padding:0; }
 .sr-x.on { background:#fce8e6; border-color:#f5c6c2; color:#c5221f; }
-
-/* soge-odo-v1: メーター。便ごとに1行。狭いので数字だけ大きく、単位は小さく。 */
-.sr-odo { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin:0 0 8px;
-  padding:7px 9px; background:#f7f9fc; border:1px solid #e3e8ef; border-radius:10px;
-  font-size:0.74rem; color:#5f6368; }
-.sr-odo label { display:inline-flex; align-items:center; gap:4px; }
-.sr-odo input { width:82px; border:1px solid #dadce0; border-radius:8px; padding:6px 7px;
-  font-size:0.9rem; font-weight:700; font-variant-numeric:tabular-nums; text-align:right; }
-.sr-odo b { margin-left:auto; color:#185FA5; font-size:0.8rem; }
 
 .sr-return { display:flex; justify-content:flex-end; margin-top:8px; }
 .sr-ret-btn { border:none; border-radius:10px; padding:9px 16px; font-weight:800; font-size:0.88rem;
@@ -236,7 +235,11 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
 .sr-pl.go.hasnote { border-radius:12px 12px 0 0; }
 
 /* 次の人の中身（住所と押すところ）。板の下に、白い箱として続ける */
-.sr-nvb { background:#fff; border:1px solid #E3E8EF; border-top:none;
+/* soge-drive-v4: いま向かう人の箱に、車の色をうっすら敷く。
+   ★名前・住所・押すところが、まとめて1つの箱に見えるようにする。
+   ★opacity で薄くしてはいけない。上に載る文字まで薄くなる。
+     地の色そのものを薄くしたもの(--sr-soft)を敷く。 */
+.sr-nvb { background: var(--sr-soft, #fff); border:1px solid #E3E8EF; border-top:none;
   border-radius:0 0 12px 12px; padding:12px; }
 /* ★住所は切らない。マンション名が長いと、いちばん要る号室がちょうど切れる。 */
 .sr-nva { font-size:1.05rem; line-height:1.5; color:#3c4043; overflow-wrap:anywhere; }
@@ -549,7 +552,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
   function lockEdits(root) {
     if (canEditDay()) return;
     var sel = '[data-tap],[data-pen],[data-abs],[data-mv],[data-dep],[data-ret],'
-            + '[data-edit],[data-odo],[data-exadd],[data-exdel],#srAddExtra';
+            + '[data-edit],[data-exadd],[data-exdel],#srAddExtra';   // soge-odo-off-v1
     root.querySelectorAll(sel).forEach(function (el) {
       el.disabled = true;
       el.classList.add('sr-ro');
@@ -637,7 +640,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
   }
 
   /* soge-leave-plan-v1: 休みの人を抜いた並びで、到着予定時刻を引き直す。
-     ★打刻・欠席・メーター・臨時便には触らない。予定の時刻だけが変わる。 */
+     ★打刻・欠席・臨時便には触らない。予定の時刻だけが変わる。 */
   async function doReplan() {
     var b = $('srReplan');
     if (b) { b.disabled = true; b.textContent = '計算中…'; }
@@ -654,13 +657,31 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     finally { if (b) { b.disabled = false; b.textContent = '予定時刻を計算し直す'; } }
   }
 
-  async function setLock(want) {
+  async function setLock(want, ackUnassigned) {
     try {
       var r = await fetch('/api/soge/run/lock', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: state.date, locked: want })
+        body: JSON.stringify({ date: state.date, locked: want,
+                               ack_unassigned: !!ackUnassigned })   // soge-lock-unassigned-v1
       });
       var j = await r.json();
+      /* soge-lock-unassigned-v1: 乗る車が決まっていない方が残っている。
+         ★名前を必ず出す。人数だけだと、誰を直せばよいのか分からない。
+         ★止めるだけにはしない。車が足りない日もあるので、承知したうえで
+           進めるようにしておく（進めた人は確定の記録に残る）。 */
+      if (j.status === 'confirm' && j.reason === 'unassigned') {
+        var nm = (j.names || []);
+        if (!confirm(
+              'まだ乗る車が決まっていない方がいます。\n\n'
+            + '　' + nm.join('、') + '（' + nm.length + '名）\n\n'
+            + 'このまま確定すると、この方たちは送迎されません。\n'
+            + '「配車編集」で車に移してから確定するのがおすすめです。\n\n'
+            + 'それでもこのまま確定しますか。')) {
+          toast('確定していません。配車編集で車に移してください', 'err');
+          return;
+        }
+        return setLock(want, true);        // 承知したうえでもう一度
+      }
       if (j.status !== 'success') { toast(j.message || '変えられませんでした', 'err'); return; }
       toast(want ? 'この日を確定しました' : '確定を解除しました');
       await load();
@@ -668,7 +689,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
   }
 
   async function doRebuild() {
-    if (!confirm('配車表からこの日を作り直します。\n\n★この日の打刻・欠席・メーター・臨時便は消えます。\nよろしいですか。')) return;
+    if (!confirm('配車表からこの日を作り直します。\n\n★この日の打刻・欠席・臨時便は消えます。\nよろしいですか。')) return;
     try {
       var r = await fetch('/api/soge/run/rebuild', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -736,7 +757,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     }
 
     var row1 = $('srTabs'), row2 = $('srTripTabs');
-    var selVehicle = null, selTrip = null, prevOdoEnd;
+    var selVehicle = null, selTrip = null;   // soge-odo-off-v1: 前の便の㎞は使わない
 
     if (state.mode === 'trip') {
       // ===== 便から見る（soge-view-v1）=====
@@ -792,10 +813,8 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       /* soge-car-color-v1: 「便から見る」ときの車タブにも同じ色を出す。
          ★片方だけ色が付いていると、見比べたときに別の意味だと思われる。 */
       row2.innerHTML = tabsHtml(cars.map(function (c) {
-        return ((c.v && c.v.color_hex) ? '<span class="sr-dot" style="background:' + c.v.color_hex + '"></span>' : '')
-             + esc(c.v.vehicle_name);
+        return ((c.v && c.v.icon_svg) || '') + esc(c.v.vehicle_name);   // soge-car-icon-v1
       }), state.tab, 'sr-tab', 'data-tab');
-      paintCarTabs(row2, cars.map(function (c) { return c.v; }));
       row2.style.display = cars.length ? 'flex' : 'none';
       row2.querySelectorAll('[data-tab]').forEach(function (el) {
         // 自分で選んだのだから、以後は勝手に動かさない
@@ -810,8 +829,6 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       if (sel) {
         selVehicle = sel.v;
         selTrip = sel.t;
-        // 前の便の帰着㎞は【同じ車の1つ前の便】から取る。便の並びではない
-        prevOdoEnd = sel.ti > 0 ? ((sel.v.trips[sel.ti - 1] || {}).odo_end) : undefined;
       }
     } else {
       // ===== 車両から見る（これまでどおり。運転手はこちら）=====
@@ -828,11 +845,12 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       state.tabKey = vs[state.tab] ? String(vs[state.tab].key) : '';
       /* soge-car-color-v1: 車のタブに色。★名前の前に丸を置き、左端に帯を引く。
          色だけに頼らない（色の見分けがつきにくい方でも、名前は名前のまま）。 */
+      /* soge-car-icon-v1: 名前は黒のまま。色は車のアイコンが持つ。
+         ★アイコンはサーバが組み立てたものをそのまま置く（形と色の
+           組み合わせを画面側で作らない）。 */
       row1.innerHTML = tabsHtml(vs.map(function (v) {
-        return (v.color_hex ? '<span class="sr-dot" style="background:' + v.color_hex + '"></span>' : '')
-             + esc(v.vehicle_name);
+        return (v.icon_svg || '') + esc(v.vehicle_name);
       }), state.tab, 'sr-tab', 'data-tab');
-      paintCarTabs(row1, vs);
       row1.querySelectorAll('[data-tab]').forEach(function (el) {
         // soge-trip-tab-v1: 車両タブを変えたら便タブも先頭に戻す
         el.onclick = function () {
@@ -853,7 +871,6 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
           el.onclick = function () { state.tripTab = Number(el.dataset.ttab); keepScroll(render); };
         });
         selTrip = trips[state.tripTab];
-        prevOdoEnd = state.tripTab > 0 ? (trips[state.tripTab - 1] || {}).odo_end : undefined;
       } else {
         row2.style.display = 'none';
         row2.innerHTML = '';
@@ -870,11 +887,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     /* soge-car-color-v1: 運転手の行にも、いま開いている車の色を出す。 */
     var _dv = $('srDriver');
     _dv.innerHTML = selVehicle
-      ? ((selVehicle.color_hex
-            ? '<span class="sr-dot" style="background:' + selVehicle.color_hex
-              + (selVehicle.color_edge
-                   ? ';--sr-edge:' + selVehicle.color_edge + ';--sr-dot-w:1.5px' : '')
-              + '"></span>' : '')
+      ? ((selVehicle.icon_svg || '')                       // soge-car-icon-v1
          + esc(_drv ? ('運転手 ' + _drv) : '運転手 未設定'))
       : '';
 
@@ -884,9 +897,10 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     $('srBody').innerHTML = (state.mode === 'drive')
       /* soge-drive-v2: 道の線に使う色を渡す（soge-car-color-v1 で決めた車の色）。 */
       ? (selTrip ? driveHtml(selTrip, (selVehicle && selVehicle.color_hex) || '',
-                            (selVehicle && selVehicle.color_edge) || '')
+                            (selVehicle && selVehicle.color_edge) || '',
+                            (selVehicle && selVehicle.color_soft) || '')
                  : '<div class="sr-empty">この車の便がありません</div>')
-      : ((selTrip ? tripHtml(selTrip, prevOdoEnd) : '') + addExtra);
+      : ((selTrip ? tripHtml(selTrip) : '') + addExtra);
     bind();
   }
 
@@ -895,7 +909,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
        data-tap / data-abs / data-pen / data-mv を拾って動かしている。
        ここでも【同じ属性】を使う。配線は1行も書かない。
        別に書くと、片方だけ直したときに食い違う。 */
-  function driveHtml(t, roadHex, edgeHex) {
+  function driveHtml(t, roadHex, edgeHex, softHex) {
     if (t.unassigned) {
       return '<div class="sr-dv"><div class="sr-dv-name">車が決まっていません</div>'
         + '<div class="sr-dv-note">この便に乗る車が決まっていないため、'
@@ -907,6 +921,9 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     /* soge-car-color-v4: 明るい車の色は、うっすらの縁では道が見えない。
        サーバが「はっきりした黒が要る色か」を決めて渡してくる。 */
     var edge = edgeHex || '';
+    /* soge-drive-v4: うっすら敷く地。サーバが決めた色。
+       ★引けないときは何も入れない。CSS 側の既定（白）に戻るだけ。 */
+    var soft = softHex || '';
 
     var all = (t.stops || []);
     /* お休みの人は「次の人」から外す。★ただし黙って消さない（下に名前を出す）。
@@ -1016,31 +1033,16 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       /* soge-car-color-v4: 道と地点の縁の色も一緒に渡す。
          ★白い車だと、うっすらの縁では道そのものが見えない。 */
       + '<div class="sr-nv" style="--sr-road:' + road
-        + (edge ? ';--sr-edge:' + edge : '') + '">'
+        + (edge ? ';--sr-edge:' + edge : '')
+        + (soft ? ';--sr-soft:' + soft : '')      /* soge-drive-v4: うっすら敷く地 */
+        + '">'
         + depNode + stopsHtml + goal
       + '</div>' + offHtml + '</div>';
   }
 
-  // soge-odo-v1: メーター入力。odo_enabled の施設だけ出す。
-  function odoHtml(t, prevEnd) {
-    var s = (t.odo_start == null ? '' : t.odo_start);
-    var e = (t.odo_end == null ? '' : t.odo_end);
-    var km = (t.odo_start != null && t.odo_end != null && t.odo_end >= t.odo_start)
-      ? ('走行 ' + (t.odo_end - t.odo_start) + ' km') : '';
-    var ph = (prevEnd == null ? '' : String(prevEnd));   // 前の便の帰着＝この便の出発の目安
-    return '<div class="sr-odo">' +
-      '<span>メーター</span>' +
-      '<label>出発 <input type="number" inputmode="numeric" data-odo="odo_start" data-day="' + t.day_id +
-        '" value="' + s + '" placeholder="' + ph + '"> km</label>' +
-      '<label>帰着 <input type="number" inputmode="numeric" data-odo="odo_end" data-day="' + t.day_id +
-        '" value="' + e + '"> km</label>' +
-      '<b>' + km + '</b>' +
-    '</div>';
-  }
-
-  function tripHtml(t, prevEnd) {
+  function tripHtml(t) {
     /* soge-unassigned-v1: 乗る車が決まっていない人。
-       出発・帰着・メーター・到着打刻は【出さない】。走らないので押しようがなく、
+       出発・帰着・到着打刻は【出さない】。走らないので押しようがなく、
        押せてしまうと「走ったことになった記録」が残る。
        ここに出す目的は、運転手・職員が乗せ忘れに気づくこと。 */
     if (t.unassigned) {
@@ -1131,12 +1133,9 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
         : '') +
       '</div>';
 
-    var odo = (state.data && state.data.odo_enabled) ? odoHtml(t, prevEnd) : '';   // soge-odo-v1
-
     return '<div class="sr-trip' + (t.is_extra ? ' extra' : '') + '">' + head +
       '<div class="sr-trip-body">' +
         '<div class="sr-return" style="justify-content:flex-start;margin:0 0 8px;">' + dep + '</div>' +
-        odo +
         (stops || '<div class="sr-empty">立ち寄りなし</div>') +
         '<div class="sr-return">' + ret + '</div>' +
       '</div>' +
@@ -1249,27 +1248,6 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     /* soge-past-admin-v1: 先に止める。あとから onclick を付け直されないよう、
        ここで止めてから、下の配線を通す（下の配線は disabled を見ない）。 */
     lockEdits(root);
-
-    // soge-odo-v1: メーター。打ち終わって離れたら保存。走行距離の表示だけ描き直す。
-    root.querySelectorAll('[data-odo]').forEach(function (inp) {
-      var last = inp.value;
-      inp.onchange = inp.onblur = async function () {
-        if (inp.value === last) return;
-        var body = { day_id: inp.dataset.day };
-        body[inp.dataset.odo] = inp.value;
-        var r = await fetch('/api/soge/run/day', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        var j = await r.json();
-        if (j.status !== 'success') { toast(j.message || '保存できませんでした', 'err'); inp.value = last; return; }
-        last = inp.value;
-        var t = findTrip(inp.dataset.day);
-        if (t) t[inp.dataset.odo] = (inp.value === '' ? null : Number(inp.value));
-        toast('メーターを記録しました');
-        keepScroll(render);
-      };
-    });
 
     // 到着の打刻。押した瞬間にボタンを止めるので、2度押ししても2回飛ばない。
     // サーバ側でも「すでに時刻が入っていたら上書きしない」を守っている。
