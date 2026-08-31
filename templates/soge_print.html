@@ -114,6 +114,24 @@
   .sp-time { font-variant-numeric: tabular-nums; font-weight: 700; cursor: pointer; }
 
   .sp-legend { font-size: 0.72rem; color: #5f6368; margin-top: 8px; }
+
+  /* ===== soge-print-driver-v1 ===== */
+  .sp-back { max-width: 1100px; margin: 0 auto; padding: 10px 16px 0; }
+  .sp-back a { display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+    font-size: 0.82rem; font-weight: 700; color: #1a73e8; background: #E8F0FE;
+    border-radius: 8px; padding: 7px 12px; }
+  .sp-back a:active { background: #D2E3FC; }
+  @media print { .sp-back { display: none !important; } }
+
+  /* 運転手の列。名前は割らない（「田中／太郎」と縦に割れると読みにくい）。 */
+  .sp-drv { min-width: 76px; white-space: nowrap; }
+  .sp-drvn { font-weight: 700; cursor: pointer; }
+  /* ★必須なのに空。赤い点線で、印刷する前に気づけるようにする。
+       紙には出さない（.sp-tap は印刷時に消える）。埋めるのは画面での仕事。 */
+  .sp-tap.need { border-color: #e39b96; color: #c5221f; background: #fff7f6; }
+  @media print { .sp-drv { min-width: 0; } }
+  .sp-ep select { flex: 1; border: 1px solid #dadce0; border-radius: 8px;
+    padding: 10px; font-size: 1rem; font-family: inherit; }
   .sp-empty { text-align: center; color: #80868b; padding: 40px 0; }
 
   .sp-toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 12px); transform: translate(-50%,-140%); z-index: 99;
@@ -157,6 +175,17 @@
        ならない（この画面だけアプリの見出しが無い独立したHTMLなので、外側の
        余白が違う）。合わせるべきは【その画面の中身との左端】。
      ★spaNav は base.html の関数で、ここには無い。ふつうのリンクにする。 -->
+<!-- soge-print-driver-v1: この画面だけ base.html を使っていないので、
+     アプリのメニュー（TOPなど）が出ない。
+     ★わざと独立させてある。1か月ぶんの横長の表が、アプリの1列
+       （--page-max-width: 既定480px）に入らないため。base.html に
+       載せ替えると表が潰れる。
+     ★そのかわり、TOPへ戻る道を1つ置く。そこからいつものメニューが使える。
+     ★印刷には出さない。 -->
+<div class="sp-back">
+  <a href="/top">← TOP へもどる</a>
+</div>
+
 <div class="sgnav" style="max-width:1100px;margin:0 auto;padding:0 16px;">
   <a href="/soge/run">運行画面</a>
   <a href="/soge">配車編集</a>
@@ -198,6 +227,8 @@
           <tr>
             <th class="fix1">日付</th>
             <th class="fix2">便</th>
+            {# soge-print-driver-v1: 運行記録表は運転手が必須。便ごとに違うので列で持つ。 #}
+            <th class="sp-drv">運転手</th>
             <th class="tm">出発</th>
             <th class="tm">帰着</th>
             <th class="sp-stops">各利用者宅 到着時刻</th>
@@ -211,6 +242,16 @@
           <tr class="{% if row.day_first %}sp-day-first {% endif %}{% if row.past and not can_edit_past %}sp-ro{% endif %}">
             <td class="fix1">{% if row.day_first %}{{ row.day_label }}{% endif %}</td>
             <td class="fix2">{{ row.trip_short }}</td>
+            <td class="sp-drv">
+              {%- if row.driver_name -%}
+                <span class="sp-drvn" data-drvday="{{ row.day_id }}"
+                      data-drvnow="{{ row.driver_name }}"
+                      title="押すと運転手を直せます">{{ row.driver_name }}</span>
+              {%- else -%}
+                <button class="sp-tap need" data-drvday="{{ row.day_id }}"
+                        data-drvnow="">入力</button>
+              {%- endif -%}
+            </td>
             <td class="tm">
               {%- if row.departed_at -%}
                 <span class="sp-time" data-day="{{ row.day_id }}" data-fld="departed">{{ row.departed_at }}</span>
@@ -342,11 +383,15 @@ td.sp-stops { position: relative; padding-right: 68px; }
         el.disabled = true;
         el.title = '過ぎた日の記録は管理者だけが直せます';
       });
-      tr.querySelectorAll('[data-day],[data-note],[data-stop]').forEach(function (el) {
+      /* soge-print-driver-v1: 今回足した data-drvday も、ここへ加える。
+         ★加え忘れると、そこだけ素通りする。 */
+      tr.querySelectorAll('[data-day],[data-note],[data-stop],[data-drvday]').forEach(function (el) {
         el.removeAttribute('data-day');
         el.removeAttribute('data-note');
         el.removeAttribute('data-fld');
         el.removeAttribute('data-stop');
+        el.removeAttribute('data-drvday');
+        el.classList.remove('sp-drvn');
         el.classList.remove('sp-ed');
         el.removeAttribute('title');
         if (el.tagName === 'BUTTON') { el.disabled = true; }
@@ -423,6 +468,11 @@ td.sp-stops { position: relative; padding-right: 68px; }
     };
   }
   document.querySelectorAll('[data-fld]').forEach(bindTime);
+
+  /* soge-print-driver-v1: 運転手のマス。押すと選べる。 */
+  document.querySelectorAll('[data-drvday]').forEach(function (el) {
+    el.onclick = function () { openDriverPanel(el); };
+  });
 
   /* ===== soge-print-edit-v1: 利用者ごとの到着時刻を直す =====
      ★送り先は運行画面と【同じAPI】(/api/soge/run/stop)。仕掛けを2つ持たない。
@@ -524,6 +574,93 @@ td.sp-stops { position: relative; padding-right: 68px; }
         toast(nm + ' さんを欠席にしました');
         close();
       } else { busy(false); }
+    };
+  }
+
+  /* ===== soge-print-driver-v1: 運転手を直す =====
+     ★直す先は運行画面と【同じAPI】(/api/soge/run/day の driver_name)。
+       仕掛けを2つ持たない。
+     ★選ぶだけにする。手で打てるようにすると、表記ゆれ（田中／田中 太郎）が
+       記録表に残り、あとで名寄せできない。 */
+
+  /* 属性に入れる文字。★esc() は " を逃がさない。
+     名前に " が入っていると属性が途中で切れて画面が壊れる。 */
+  function escA2(s) { return esc(s).replace(/"/g, '&quot;'); }
+
+  var _staffCache = null;
+  async function staffList() {
+    /* ★「読めなかった」と「1人もいない」を混ぜない。
+         混ぜると、通信が切れているだけなのに「職員がいません」と出て、
+         そのまま未設定で保存されてしまう。読めなければ null を返す。 */
+    if (_staffCache) return _staffCache;
+    try {
+      var r = await fetch('/api/soge/staff');
+      var j = await r.json();
+      if (!j || j.status !== 'success') return null;
+      _staffCache = j.staff || [];
+      return _staffCache;
+    } catch (e) { return null; }
+  }
+
+  async function openDriverPanel(el) {
+    if (document.querySelector('.sp-ep-back')) return;
+    var dayId = el.dataset.drvday;
+    if (!dayId) return;                       // 過ぎた日などで口が外されている
+    var cur = el.dataset.drvnow || '';
+
+    var list = await staffList();
+    if (list === null) {
+      toast('職員の一覧を読めませんでした。通信を確かめてください', true);
+      return;
+    }
+    list = list.slice();
+    /* ★いま入っている名前が名簿に無くても残す。
+         退職した人が運転した過去の便を開いたとき、勝手に消えないように。 */
+    if (cur && list.indexOf(cur) < 0) list.unshift(cur);
+
+    var back = document.createElement('div');
+    back.className = 'sp-ep-back no-print';
+    back.innerHTML =
+      '<div class="sp-ep">'
+      + '<h4>運転手</h4>'
+      + '<div class="sub">この便だけ替わります。ほかの便と、来週からの配車は変わりません。</div>'
+      + '<div class="row">'
+        + '<select class="dv"><option value=""' + (cur ? '' : ' selected') + '>未設定</option>'
+        + list.map(function (n) {
+            return '<option value="' + escA2(n) + '"' + (n === cur ? ' selected' : '') + '>'
+                 + esc(n) + '</option>';
+          }).join('')
+        + '</select>'
+      + '</div>'
+      + '<div class="btns">'
+      + '<button class="main ok">保存</button>'
+      + '<button class="cancel no">やめる</button>'
+      + '</div></div>';
+    document.body.appendChild(back);
+
+    function close() { back.remove(); }
+    back.onclick = function (e) { if (e.target === back) close(); };
+    back.querySelector('.no').onclick = close;
+
+    back.querySelector('.ok').onclick = async function () {
+      var nm = back.querySelector('.dv').value || '';
+      back.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+      if (!await saveDay(dayId, { driver_name: nm })) {
+        back.querySelectorAll('button').forEach(function (b) { b.disabled = false; });
+        return;
+      }
+      /* マスだけ出し直す。★読み込み直さない。1か月ぶんを開き直すと
+         見ていた場所を見失う。 */
+      var cell = el.parentNode;
+      cell.innerHTML = nm
+        ? ('<span class="sp-drvn" data-drvday="' + escA2(dayId) + '" data-drvnow="'
+           + escA2(nm) + '" title="押すと運転手を直せます">' + esc(nm) + '</span>')
+        : ('<button class="sp-tap need" data-drvday="' + escA2(dayId)
+           + '" data-drvnow="">入力</button>');
+      var again = cell.firstElementChild;
+      again.onclick = function () { openDriverPanel(again); };
+      toast(nm ? (nm + ' さんにしました') : '運転手を空にしました');
+      close();
     };
   }
 

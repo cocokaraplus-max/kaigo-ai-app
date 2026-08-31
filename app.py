@@ -28461,6 +28461,16 @@ def api_soge_run_day_edit():
             except Exception:
                 return jsonify({"status": "error", "message": "時刻は HH:MM で入れてください"}), 400
 
+        # soge-driver-change-v1: 土壇場の運転手交代。
+        #   ★替わるのは【この便】だけ。車ごと・一日ぶんには広げない。
+        #     運転手は便ごとに決まるので（soge-driver-per-trip-v1）、
+        #     広げると迎えと送りで人を分けている日がまとめて化ける。
+        #   ★触るのは soge_days（その日の便）。soge_plans（曜日ごとの配車）は
+        #     触らない。触ると「1回替えたら毎週そうなった」になる。
+        #   ★空文字で「未設定」に戻せる。戻せないと、間違えて入れた名前が残る。
+        if "driver_name" in data:
+            upd["driver_name"] = (data.get("driver_name") or "").strip()[:60] or None
+
         if "note" in data:
             upd["note"] = (data.get("note") or "").strip()[:500] or None
 
