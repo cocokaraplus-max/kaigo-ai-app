@@ -185,7 +185,8 @@
       {# soge-car-color-v2: 帯は【本当の色】、文字は【白地で読める色】。
          白い車を選べるようにしたので、文字まで本当の色にすると読めなくなる。
          帯のほうは本当の色のまま出す（車と見比べられるように）。 #}
-      <span class="sp-car"{% if v.color_hex %} style="border-left:6px solid {{ v.color_hex }};box-shadow:inset 1px 0 0 rgba(0,0,0,.25);padding-left:8px;color:{{ v.color_ink }};"{% endif %}>{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
+      {# soge-car-color-v4: 明るい色の帯は、白い紙で消える。帯の両側に線を引いて囲む。 #}
+      <span class="sp-car"{% if v.color_hex %} style="border-left:6px solid {{ v.color_hex }};box-shadow:{% if v.color_edge %}inset 1px 0 0 {{ v.color_edge }},inset 6px 0 0 -5px {{ v.color_edge }}{% else %}inset 1px 0 0 rgba(0,0,0,.25){% endif %};padding-left:8px;color:{{ v.color_ink }};"{% endif %}>{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
       <span class="sp-title" style="font-weight:600;font-size:0.9rem;">{{ month_label }}</span>
       <span class="sp-fac">{{ facility_name }}</span>
     </div>

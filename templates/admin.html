@@ -2163,6 +2163,13 @@ async function loadVehicles() {
       if (vehiclesCache[i]) vehiclesCache[i].color = v;   // ほかの欄を保存しても消えないように
       const lbl = box.querySelector('[data-vhex="' + i + '"]');
       if (lbl) lbl.textContent = v;
+      /* soge-car-color-v4: 見本も一緒に動かす。縁の出方まで、その場で分かるように。 */
+      const prev = box.querySelector('[data-vprev="' + i + '"]');
+      if (prev) {
+        const e = sogeEdgeOf(v);
+        prev.style.background = v || '#ffffff';
+        prev.style.boxShadow = '0 0 0 ' + (e ? '1.5px ' + e : '1px rgba(0,0,0,.30)');
+      }
       /* 8色のボタンと「自動」の選択の印も、その場で付け替える */
       box.querySelectorAll('[data-vcol="' + i + '"]').forEach(function (b) {
         const key = b.dataset.key;
@@ -2212,6 +2219,28 @@ let sogeColors = [];
 let sogeColorTimer = null;
 let sogeColorSaved = {};
 
+/* soge-car-color-v4: 明るい色に付ける縁。
+   ★同じ判断が app.py の soge_color_edge にもある。色を動かしている【最中】は
+     サーバに聞けないので、ここにも置く。数値は必ず同じにすること
+     （app.py の SOGE_EDGE_LUM / SOGE_EDGE_COLOR）。 */
+const SOGE_EDGE_LUM = 0.30;
+const SOGE_EDGE_COLOR = '#202124';
+
+function sogeLum(hex) {
+  const h = (hex || '').replace('#', '');
+  if (h.length !== 6) return 0.5;
+  const f = function (c) {
+    c = parseInt(c, 16) / 255;
+    return (c <= 0.03928) ? (c / 12.92) : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * f(h.slice(0, 2)) + 0.7152 * f(h.slice(2, 4)) + 0.0722 * f(h.slice(4, 6));
+}
+
+function sogeEdgeOf(hex) {
+  if (!/^#[0-9a-fA-F]{6}$/.test(hex || '')) return '';
+  return (sogeLum(hex) > SOGE_EDGE_LUM) ? SOGE_EDGE_COLOR : '';
+}
+
 /* soge-car-color-v2: いま選ばれている色を #rrggbb で返す。
    ★v1 で名前（blue など）を保存した施設がある。名前も色に直せるようにしておく。 */
 function sogeHexOf(cur) {
@@ -2251,6 +2280,12 @@ function colorPickerHtml(i, cur) {
     + 'font-size:0.75rem;font-weight:700;color:#5f6368;">'
     + '<input type="color" data-vfree="' + i + '" value="' + (curHex || '#1a73e8') + '"'
     + ' style="width:24px;height:24px;padding:0;border:none;background:none;cursor:pointer;">'
+    /* soge-car-color-v4: 選んだ色が、送迎画面でどう見えるかをここで見せる。
+       ★白を選ぶと入力欄の見本は真っ白で何も分からない。実際に付く縁ごと出す。 */
+    + '<span data-vprev="' + i + '" style="width:20px;height:20px;border-radius:50%;'
+    + 'display:inline-block;vertical-align:-4px;background:' + (curHex || '#ffffff') + ';'
+    + 'box-shadow:0 0 0 ' + (sogeEdgeOf(curHex) ? '1.5px ' + sogeEdgeOf(curHex)
+                                                : '1px rgba(0,0,0,.30)') + ';"></span>'
     + '好きな色</label>'
     + '<span data-vhex="' + i + '" style="font-size:0.72rem;color:#9aa0a6;'
     + 'font-family:monospace;">' + curHex + '</span>'

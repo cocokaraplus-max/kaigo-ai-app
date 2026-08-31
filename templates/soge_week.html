@@ -621,13 +621,18 @@
     /* soge-car-color-v1: 選ばれている車両の色。まだ選んでいなければ色なし。 */
     var _cv = (state.vehicles || []).filter(function (x) { return String(x.id) === String(v.vehicle_id); })[0];
     var _ch = _cv ? (_cv.color_hex || '') : '';
+    /* soge-car-color-v4: 明るい色は、しっかりした黒で縁取る。
+       ★左の帯は、白い車だと白い紙に白い帯で消える。帯の内側に1本線を引く。 */
+    var _ce = _cv ? (_cv.color_edge || '') : '';
     return '<div class="sg-car' + (_ch ? ' sg-col' : '') + '"'
-      + (_ch ? ' style="border-left-color:' + _ch + '"' : '') + '>' +
+      + (_ch ? ' style="border-left-color:' + _ch
+             + (_ce ? ';box-shadow:inset 1px 0 0 ' + _ce + ',inset 6px 0 0 -5px ' + _ce : '')
+             + '"' : '') + '>' +
       '<div class="sg-car-head">' +
         /* soge-car-color-v2: 白い車も選べるので、文字色はサーバが決めた色を使う。 */
         '<span class="sg-car-badge"' + (_ch ? ' style="background:' + _ch
           + ';color:' + ((_cv && _cv.color_fg) || '#fff')
-          + ';box-shadow:0 0 0 1px rgba(0,0,0,.25)"' : '') + '>車 '
+          + ';box-shadow:0 0 0 ' + (_ce ? '1.5px ' + _ce : '1px rgba(0,0,0,.25)') + '"' : '') + '>車 '
           + (realCars(t).indexOf(v) + 1) + '</span>' +
         '<select class="sg-sel" data-veh="' + ti + '_' + vi + '"><option value="">車両…</option>' + vopts + '</select>' +
         '<select class="sg-sel" data-drv="' + ti + '_' + vi + '"><option value="">運転手…</option>' + sopts + '</select>' +
