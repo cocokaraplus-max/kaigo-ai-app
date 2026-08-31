@@ -10,6 +10,22 @@ body { background: #e8e8e8; font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic
 .screen-bar { background: #1a73e8; color: #fff; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; position: fixed; top: 0; left: 0; right: 0; z-index: 100; }
 .screen-bar-title { font-size: 0.95rem; font-weight: 700; }
 .screen-bar-btns { display: flex; gap: 8px; }
+/* ===== print-mobile-pdf-v2: 上のバーが画面からはみ出す =====
+   ★実機で「2枚B」が画面の外に出て押せなかった。
+     長いタイトル＋2つのボタン＋「全員のレイアウト」を1行に詰めていたため。
+   ★折り返せるようにする。狭い画面ではタイトルを小さくし、
+     レイアウトの選択は【1行まるごと】使わせる（3つとも指で押せる幅を残す）。 */
+@media (max-width: 793px) {
+    .screen-bar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
+    .screen-bar-title { font-size: 0.82rem; flex: 1 1 auto; min-width: 0; }
+    .screen-bar-btns { flex: 0 0 auto; }
+    .screen-bar .btn-print-now,
+    .screen-bar .btn-close { padding: 8px 12px !important; font-size: 0.8rem !important;
+        white-space: nowrap; }
+    .screen-bar .lx-bulk { flex: 1 1 100%; margin-left: 0; justify-content: flex-start;
+        flex-wrap: wrap; }
+    .screen-bar .lx-bulk .lx-seg button { padding: 7px 12px; font-size: 12px; }
+}
 .btn-print-now { background: #fff; color: #1a73e8; border: none; border-radius: 8px; padding: 7px 16px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .btn-close { background: rgba(255,255,255,0.2); color: #fff; border: none; border-radius: 8px; padding: 7px 14px; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .pages-wrap { padding: 60px 16px 40px; display: flex; flex-direction: column; align-items: center; gap: 24px; }
@@ -1056,7 +1072,13 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
 .rep-image-grid-item-comment { font-size: 7.5pt; color: #333; margin-top: 1mm; }
 
 /* 編集機能(変化・課題・特記事項) */
-.rep-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2mm; padding: 4px 8px; background: #f1f6ff; border: 1px dashed #1a73e8; border-radius: 6px; }
+/* print-mobile-pdf-v2: 折り返せるようにする。
+   ★実測：この行だけ紙の右端から外へ出ていた（「文章を短くして1枚に収める」が切れる）。
+     説明文＋文字サイズ＋長いボタン2つを、折り返さない1行に詰めていたため。
+   ★この行は no-print なので、紙には出ない。画面だけの話。
+   ★入りきるときは今までどおり1行のまま。入らないときだけ折り返る。 */
+.rep-edit-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 2mm; padding: 4px 8px; background: #f1f6ff; border: 1px dashed #1a73e8; border-radius: 6px; flex-wrap: wrap; }
+.rep-edit-bar .rep-edit-hint { min-width: 0; }
 .rep-edit-hint { font-size: 7.5pt; color: #1a73e8; }
 .rep-edit-save-btn { font-size: 7.5pt; padding: 4px 12px; background: #1a73e8; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: 700; white-space: nowrap; }
 .rep-edit-save-btn:hover { background: #1557b0; }
@@ -1173,7 +1195,9 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         {% endif %}
 {% endmacro %}
 
-<div class="pages-wrap">
+{# print-mobile-pdf-v2: バーが折り返して高くなるので、上の余白を測って合わせる。
+   60px 決め打ちのままだと、1枚目の上がバーに隠れる。 #}
+<div class="pages-wrap" id="lxPagesWrap">
 {% for rd in report_data_list %}
 {% set p = rd.patient %}
 {% set cm = rd.caremanager %}
@@ -3258,14 +3282,92 @@ function _lxBuildPrintHtml(){
     return '<!doctype html>\n' + clone.outerHTML;
 }
 
+/* print-mobile-pdf-v2: 上のバーの高さを測って、本文の余白に反映する。
+   ★決め打ちの 60px では、バーが2段になったときに1枚目の上が隠れる。
+     測れば、何段になっても隠れない。 */
+(function lxBarPad(){
+    function fit(){
+        var b = document.querySelector('.screen-bar');
+        var w = document.getElementById('lxPagesWrap');
+        if (!b || !w) return;
+        var h = b.getBoundingClientRect().height;
+        if (h > 0) w.style.paddingTop = (h + 12) + 'px';
+    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fit);
+    else fit();
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', function(){ setTimeout(fit, 1400); });  // 選択バーが出来たあと
+})();
+
 // server-pdf-btn-v1: サーバー(Chromium)で確実なA4・グラフ入りPDFを新規タブで生成
+/* print-mobile-pdf-v2: いま選ばれている並べ方（1枚 / 2枚A / 2枚B）を返す。
+   ★「全員のレイアウト」が押されていればそれ。
+   ★押されていなければ一人ひとりの選択を見て、全員同じならその並べ方。
+     人によって違うなら null。勝手に揃えない（保存済みのまま描かせる）。 */
+function _lxPickedLayout(){
+    function norm(m){ return (m === 'richA' || m === 'richB') ? m : (m === 'compact' ? m : null); }
+    var on = document.querySelector('.lx-seg[data-bulk="1"] button.on');
+    if (on && norm(on.getAttribute('data-mode'))) return norm(on.getAttribute('data-mode'));
+    var segs = document.querySelectorAll('.lx-seg[data-user]');
+    if (!segs.length) return null;
+    var first = null;
+    for (var i = 0; i < segs.length; i++) {
+        var b = segs[i].querySelector('button.on');
+        if (!b) return null;
+        var m = norm(b.getAttribute('data-mode'));
+        if (!m) return null;
+        if (first === null) first = m;
+        else if (first !== m) return null;      // 人によって違う
+    }
+    return first;
+}
+
 function serverPdfOutput(btn){
     var o = btn ? btn.textContent : '';
     var u;
-    try{ var _u = new URL(window.location.href); _u.searchParams.set('pdf','1'); u = _u.toString(); }
+    try{ var _u = new URL(window.location.href); _u.searchParams.set('pdf','1');
+         var _lm = _lxPickedLayout();                       // print-mobile-pdf-v2
+         if(_lm){ _u.searchParams.set('layout', _lm); } else { _u.searchParams.delete('layout'); }
+         u = _u.toString(); }
     catch(e){ u = location.href + (location.search ? '&' : '?') + 'pdf=1'; }
     // ユーザー操作の文脈で先にタブを開く(ポップアップブロック回避)。生成中メッセージを表示。
     var w = window.open('', '_blank');
+
+    /* ===== print-mobile-pdf-v2: スマホは【画面を送らない】 =====
+       ★この下の道（_lxBuildPrintHtml）は「見たまま主義」で、
+         いまの画面のDOMをそのままサーバへ送る。PCでは正しい。
+         スマホでは画面が 390px 幅なので、【見たままが間違っている】。
+         グラフは toDataURL() でスマホ用の小さい絵として画像化され、
+         それをA4まで引き伸ばすのでラベルが重なって潰れる（実機で確認）。
+       ★スマホでは ?pdf=1&layout=… へ行く。サーバのChromiumが 1200px で
+         一から描き直すので、機種にも画面幅にも左右されない。
+       ★この u は、これまで組み立てておきながら一度も使われていなかった
+         （昔の作りの残骸）。ここで使う。 */
+    if (typeof ovIsMobile === 'function' && ovIsMobile()) {
+        /* ★一から描き直すので、画面でいじって【まだ保存していない】直しは入らない。
+             黙って落とさない。待っている画面にそう書く。
+           ★先に文字を書いてから移動する。移動が終わるまでこの文字が残るので、
+             数秒のあいだ真っ白にならない（真っ白だと壊れたと思って戻られる）。 */
+        if (w) {
+            try {
+                w.document.write('<!doctype html><meta charset="utf-8">'
+                  + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+                  + '<title>PDF作成中</title>'
+                  + '<body style="font-family:sans-serif;color:#333;padding:32px 20px;'
+                  + 'line-height:1.8;text-align:center">'
+                  + '<h2 style="color:#0b8043;font-size:1.1rem">\uD83D\uDCC4 PDFを作成しています…</h2>'
+                  + '<p style="font-size:0.9rem">パソコンと同じA4で作り直しています。<br>'
+                  + '数秒〜十数秒お待ちください。</p>'
+                  + '<p style="font-size:0.8rem;color:#777">'
+                  + '※ <b>保存済みの内容</b>でPDFになります。<br>'
+                  + '画面で直したところは、先に保存してください。</p></body>');
+            } catch (e) {}
+            w.location.href = u;
+        } else {
+            location.href = u;                  // 新しいタブが止められたとき
+        }
+        return;
+    }
     if(w){ try{ w.document.write('<!doctype html><meta charset="utf-8"><title>PDF生成中</title><body style="font-family:sans-serif;color:#333;padding:40px;line-height:1.7;text-align:center"><h2 style="color:#0b8043">\uD83D\uDCC4 PDFを作成しています…</h2><p>プレビューの見たままをPDFにしています。<br>数秒〜十数秒お待ちください。<br>(このタブが自動でPDFに切り替わります)</p></body>'); }catch(e){} }
     if(btn){ btn.disabled=true; btn.textContent='PDF生成中…'; }
     function _restore(){ if(btn){ btn.disabled=false; btn.textContent=o||'\uD83D\uDDA8 PDF保存 / 印刷'; } }
