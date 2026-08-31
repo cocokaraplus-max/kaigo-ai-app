@@ -24058,12 +24058,35 @@ def soge_color_ink(hexv):  # soge-car-color-v2
     return "#%02x%02x%02x" % (r, g, b)
 
 
-def soge_color_pack(hexv):  # soge-car-color-v2
-    """画面に渡す3つ組。空なら空で返す（色を付けないだけ）。"""
+# soge-car-color-v4: 白地に置いて見分けられるかの境目。
+#   ★この値は admin.html にも同じ名前で書いてある（色を動かしている最中は
+#     サーバに聞けないため）。片方だけ直さないこと。
+SOGE_EDGE_LUM = 0.30
+SOGE_EDGE_COLOR = "#202124"
+
+
+def soge_color_edge(hexv):  # soge-car-color-v4
+    """その色を塗ったとき、まわりに引く縁の色。要らなければ空。
+
+    ★白・銀・ベージュのような明るい色は、白い画面に置くと輪郭が消える。
+      HIROさん「白を選択した場合には黒く縁取りを入れて欲しい」。
+    ★色そのものは変えない。白い車は白いまま出して、まわりだけ黒で囲む。
+      灰色に置き換えると、実際の車と見比べられなくなる。
+    ★境目は soge_color_ink と【同じ基準】（白との明暗の差が3:1に届くか）。
+      基準を2つ持つと、片方だけ直したときに食い違う。
+    """
     if not soge_hex_ok(hexv):
-        return {"color_hex": "", "color_ink": "", "color_fg": ""}
+        return ""
+    return SOGE_EDGE_COLOR if soge_lum(hexv) > SOGE_EDGE_LUM else ""
+
+
+def soge_color_pack(hexv):  # soge-car-color-v2
+    """画面に渡す色ひとそろい。空なら空で返す（色を付けないだけ）。"""
+    if not soge_hex_ok(hexv):
+        return {"color_hex": "", "color_ink": "", "color_fg": "", "color_edge": ""}
     h = str(hexv).strip().lower()
-    return {"color_hex": h, "color_ink": soge_color_ink(h), "color_fg": soge_color_fg(h)}
+    return {"color_hex": h, "color_ink": soge_color_ink(h), "color_fg": soge_color_fg(h),
+            "color_edge": soge_color_edge(h)}      # soge-car-color-v4
 
 
 def soge_colors_for(rows):  # soge-car-color-v1

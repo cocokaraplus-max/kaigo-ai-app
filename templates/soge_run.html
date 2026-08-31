@@ -181,20 +181,20 @@
    ★色そのものは変えない。白い車の道は白いまま。 */
 .sr-nv::before { content:''; position:absolute; left:13px; top:10px; bottom:10px; width:6px;
   border-radius:3px; background:var(--sr-road, #1a73e8); opacity:.45;
-  box-shadow:0 0 0 1px rgba(0,0,0,.14); }
+  box-shadow:0 0 0 1px var(--sr-edge, rgba(0,0,0,.14)); }   /* soge-car-color-v4 */
 .sr-nd { position:relative; margin-bottom:12px; }
 .sr-nd:last-child { margin-bottom:0; }
 .sr-nd::before { content:''; position:absolute; left:-27px; top:13px;
   width:12px; height:12px; border-radius:50%; background:#fff;
   border:3px solid var(--sr-road, #1a73e8);
-  box-shadow:0 0 0 1px rgba(0,0,0,.18); }   /* soge-car-color-v2: 薄い色でも見えるように */
+  box-shadow:0 0 0 1px var(--sr-edge, rgba(0,0,0,.18)); }   /* soge-car-color-v4 */
 /* いま向かっている先。ここだけ塗って、目が最初に行くようにする */
 /* soge-car-color-v2: ★ここにも細い縁が要る。塗りつぶしの丸なので、
    白い車だと「白地に白い丸」で完全に消える（実際に測って消えていた）。
    下の box-shadow は【後ろに書いたほうが勝つ】ので、縁を先に足しておく。 */
 .sr-nd.now::before { left:-31px; top:9px; width:20px; height:20px; border-width:4px;
   background:var(--sr-road, #1a73e8);
-  box-shadow:0 0 0 1px rgba(0,0,0,.30), 0 0 0 6px rgba(0,0,0,.06); }
+  box-shadow:0 0 0 1.5px var(--sr-edge, rgba(0,0,0,.30)), 0 0 0 6px rgba(0,0,0,.06); }
 /* もう済んだところ（出発の打刻など）。灰色にして、押すものではないと分かるように */
 .sr-nd.past::before { border-color:#bdc1c6; }
 /* 事業所（終点）。丸ではなく四角にして、人の家と見分ける */
@@ -254,8 +254,11 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
 /* soge-car-color-v2: 薄い色（白・銀・ベージュ）も選べるので、
    丸には必ず細い縁を付ける。★白い車は【白いまま】出す。灰色に置き換えると
    実際の車と見比べられなくなる。縁があれば白でも位置が分かる。 */
+/* soge-car-color-v4: 縁の濃さは色ごとに変える。明るい色ははっきりした黒、
+   暗い色はうっすらで足りる。--sr-edge はサーバが決めた色（無ければ既定）。 */
 .sr-dot { display:inline-block; width:11px; height:11px; border-radius:50%;
-  margin-right:6px; vertical-align:-1px; box-shadow:0 0 0 1px rgba(0,0,0,.30); }
+  margin-right:6px; vertical-align:-1px;
+  box-shadow:0 0 0 var(--sr-dot-w, 1px) var(--sr-edge, rgba(0,0,0,.30)); }
 
 /* soge-past-admin-v1: 直せない日の見た目。押せないことが見て分かるようにする。 */
 .sr-ro { opacity: .45 !important; cursor: not-allowed !important; }
@@ -484,15 +487,33 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     row.querySelectorAll('[data-tab]').forEach(function (el, i) {
       var c = (list[i] && list[i].color_hex) || '';
       if (!c) return;
+      /* soge-car-color-v4: 明るい色（白・銀など）は、しっかりした黒で縁取る。
+         ★これが無いと、白い車の丸も帯も輪郭ごと消える。 */
+      var e = (list[i] && list[i].color_edge) || '';
       el.style.borderLeftColor = c;
+      var dot = el.querySelector('.sr-dot');
+      if (dot) {
+        dot.style.background = c;                 /* 丸は【いつも本当の色】 */
+        if (e) {
+          dot.style.setProperty('--sr-edge', e);
+          dot.style.setProperty('--sr-dot-w', '1.5px');
+        }
+      }
       if (el.classList.contains('on')) {
-        el.style.background = c;
-        el.style.borderColor = c;
-        /* soge-car-color-v2: 塗った上の文字色はサーバが決めた色を使う。
-           ★白い車を選べるので「白地に白文字」が起きる。決め打ちにできない。 */
-        el.style.color = (list[i].color_fg || '#fff');
-        var d = el.querySelector('.sr-dot');
-        if (d) d.style.background = (list[i].color_fg || '#fff');
+        if (e) {
+          /* soge-car-color-v4: 明るい色でタブを塗ると、白い画面の中で
+             「いま選んでいるタブ」が分からなくなる。塗るのはやめて、
+             いつもの青のままにする。車の色は左の帯と丸で伝わる。
+             ★v2 はここで丸を文字色で塗っていた。白い車の丸が【黒】になり、
+               黒い車と見分けがつかなくなっていた（実際に測って出た）。 */
+          el.style.borderLeftColor = c;
+        } else {
+          el.style.background = c;
+          el.style.borderColor = c;
+          /* 塗った上の文字色はサーバが決めた色を使う（読めなくならないように） */
+          el.style.color = (list[i].color_fg || '#fff');
+          if (dot) dot.style.background = (list[i].color_fg || '#fff');
+        }
       }
     });
   }
@@ -850,7 +871,10 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     var _dv = $('srDriver');
     _dv.innerHTML = selVehicle
       ? ((selVehicle.color_hex
-            ? '<span class="sr-dot" style="background:' + selVehicle.color_hex + '"></span>' : '')
+            ? '<span class="sr-dot" style="background:' + selVehicle.color_hex
+              + (selVehicle.color_edge
+                   ? ';--sr-edge:' + selVehicle.color_edge + ';--sr-dot-w:1.5px' : '')
+              + '"></span>' : '')
          + esc(_drv ? ('運転手 ' + _drv) : '運転手 未設定'))
       : '';
 
@@ -859,7 +883,8 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
        ★「＋ 臨時便」は運転中には出さない。運転席で押すものではない。 */
     $('srBody').innerHTML = (state.mode === 'drive')
       /* soge-drive-v2: 道の線に使う色を渡す（soge-car-color-v1 で決めた車の色）。 */
-      ? (selTrip ? driveHtml(selTrip, (selVehicle && selVehicle.color_hex) || '')
+      ? (selTrip ? driveHtml(selTrip, (selVehicle && selVehicle.color_hex) || '',
+                            (selVehicle && selVehicle.color_edge) || '')
                  : '<div class="sr-empty">この車の便がありません</div>')
       : ((selTrip ? tripHtml(selTrip, prevOdoEnd) : '') + addExtra);
     bind();
@@ -870,7 +895,7 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
        data-tap / data-abs / data-pen / data-mv を拾って動かしている。
        ここでも【同じ属性】を使う。配線は1行も書かない。
        別に書くと、片方だけ直したときに食い違う。 */
-  function driveHtml(t, roadHex) {
+  function driveHtml(t, roadHex, edgeHex) {
     if (t.unassigned) {
       return '<div class="sr-dv"><div class="sr-dv-name">車が決まっていません</div>'
         + '<div class="sr-dv-note">この便に乗る車が決まっていないため、'
@@ -879,6 +904,9 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     }
     /* soge-drive-v2: 道の線の色。車の色が引けないときは、これまでの青のまま。 */
     var road = roadHex || '#1a73e8';
+    /* soge-car-color-v4: 明るい車の色は、うっすらの縁では道が見えない。
+       サーバが「はっきりした黒が要る色か」を決めて渡してくる。 */
+    var edge = edgeHex || '';
 
     var all = (t.stops || []);
     /* お休みの人は「次の人」から外す。★ただし黙って消さない（下に名前を出す）。
@@ -985,7 +1013,10 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
     }
 
     return '<div class="sr-dv">' + head
-      + '<div class="sr-nv" style="--sr-road:' + road + '">'
+      /* soge-car-color-v4: 道と地点の縁の色も一緒に渡す。
+         ★白い車だと、うっすらの縁では道そのものが見えない。 */
+      + '<div class="sr-nv" style="--sr-road:' + road
+        + (edge ? ';--sr-edge:' + edge : '') + '">'
         + depNode + stopsHtml + goal
       + '</div>' + offHtml + '</div>';
   }
