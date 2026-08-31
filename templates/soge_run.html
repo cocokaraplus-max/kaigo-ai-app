@@ -219,6 +219,22 @@
 .sr-pl.dep.done { background:#EEF2F7; color:#5f6368; }
 .sr-pl.dep.wait { background:#EEF2F7; color:#9aa0a6; }
 
+/* soge-drive-v3: 事業所の出発・帰着は【板そのもの】を押す。
+   ★同じ文字が2つ（板と、その下のボタン）出ていた。押すところが2か所ある
+     ように見えるうえ、白い箱のぶん次の人が下へ押し出されていた。
+   ★押せる板だけ青くする。済んだ板（灰）・まだ押せない板（薄い灰）・
+     人の板（緑）と、色で役割が分かれる。
+   ★人の板は押せるようにしない。名前を読もうとして触れただけで
+     到着が付いてしまう。 */
+button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
+  cursor:pointer; -webkit-appearance:none; appearance:none; }
+.sr-pl.go { background:#1a73e8; padding:15px 14px; }
+.sr-pl.go:active { background:#1558b0; }
+.sr-pl.go .nm { font-size:1.15rem; }
+.sr-pl.go .go-i { font-size:0.85rem; opacity:.9; margin-left:8px; }
+/* 板の下に文だけが続くとき（帰着の説明）。角を板とつなげる */
+.sr-pl.go.hasnote { border-radius:12px 12px 0 0; }
+
 /* 次の人の中身（住所と押すところ）。板の下に、白い箱として続ける */
 .sr-nvb { background:#fff; border:1px solid #E3E8EF; border-top:none;
   border-radius:0 0 12px 12px; padding:12px; }
@@ -898,12 +914,14 @@
       ? '<div class="sr-nd past"><div class="sr-pl dep done">'
           + '<span class="nm">事業所を出発</span>'
           + '<span class="tm">' + esc(t.departed_at) + '</span></div></div>'
-      : '<div class="sr-nd now"><div class="sr-pl dep">'
-          + '<span class="nm">事業所を出発</span>'
-          + (t.depart ? '<span class="tm">予定 ' + esc(t.depart) + '</span>' : '')
-        + '</div><div class="sr-nvb">'
-          + '<button class="sr-dv-tap" data-dep="' + t.day_id + '">事業所を出発</button>'
-        + '</div></div>';
+      /* soge-drive-v3: 板そのものを押す。★data-dep は変えない
+         （押したときの動きは、すでにある bind() がそのまま拾う）。 */
+      : '<div class="sr-nd now">'
+          + '<button type="button" class="sr-pl dep go" data-dep="' + t.day_id + '">'
+            + '<span class="nm">事業所を出発</span>'
+            + (t.depart ? '<span class="tm">予定 ' + esc(t.depart) + '</span>' : '')
+            + '<span class="go-i">▶</span>'
+          + '</button></div>';
 
     /* --- 立ち寄り先を、上から順に並べる --- */
     var stopsHtml = left.map(function (s, i) {
@@ -952,14 +970,17 @@
       goal = '<div class="sr-nd goal"><div class="sr-pl dep wait">'
         + '<span class="nm">事業所に戻る</span></div></div>';
     } else {
-      goal = '<div class="sr-nd goal now"><div class="sr-pl dep">'
-        + '<span class="nm">事業所に戻る</span></div>'
-        + '<div class="sr-nvb">'
-          + '<div class="sr-dv-note">'
-            + (live.length ? ('この便は全員おわりました（到着 ' + doneN + ' 人）。')
-                           : 'この便に立ち寄りはありません。')
-            + '<br>次の便に行くときは、上の便のタブを押してください。</div>'
-          + '<button class="sr-dv-tap" data-ret="' + t.day_id + '">事業所に戻った</button>'
+      /* soge-drive-v3: ここも板そのものを押す。文字は「事業所に戻った」に
+         そろえる（押したら記録が付く、と読めるように）。
+         ★説明は板の【下】に置く。上に置くと、押すところが下がって遠くなる。 */
+      goal = '<div class="sr-nd goal now">'
+        + '<button type="button" class="sr-pl dep go hasnote" data-ret="' + t.day_id + '">'
+          + '<span class="nm">事業所に戻った</span><span class="go-i">▶</span>'
+        + '</button>'
+        + '<div class="sr-nvb"><div class="sr-dv-note">'
+          + (live.length ? ('この便は全員おわりました（到着 ' + doneN + ' 人）。')
+                         : 'この便に立ち寄りはありません。')
+          + '<br>次の便に行くときは、上の便のタブを押してください。</div>'
         + '</div></div>';
     }
 
