@@ -23969,6 +23969,91 @@ def api_rec_staff():
 # 参照は全職員、更新は管理者のみ。削除は is_active=False の論理削除（過去の記録を壊さない）。
 
 
+# ===== soge-car-color-v1: 車両の色 =====
+#   ★色の名前と色味の対応は【ここだけ】。DBには名前しか入れない。
+#     あとで色味を直したくなっても、データを触らずに済む。
+#   ★3つの画面それぞれにパレットを書くと必ず食い違う。
+#     記録表は base.html を使っていない独立したHTMLで、CSSを共有できない。
+#     だからサーバから色そのものを渡す。
+SOGE_COLORS = [
+    ("blue",   "#1a73e8", "青"),
+    ("green",  "#137333", "緑"),
+    ("orange", "#e8710a", "橙"),
+    ("purple", "#8e24aa", "紫"),
+    ("red",    "#c5221f", "赤"),
+    ("teal",   "#00796b", "青緑"),
+    ("brown",  "#795548", "茶"),
+    ("pink",   "#d81b60", "桃"),
+]
+SOGE_COLOR_KEYS = [k for k, _h, _n in SOGE_COLORS]
+SOGE_COLOR_HEX = dict((k, h) for k, h, _n in SOGE_COLORS)
+
+
+def soge_colors_for(rows):  # soge-car-color-v1
+    """車の並び（並び順どおり）を渡すと、同じ数だけ色を返す。
+
+    ★色を決めるのは【この関数だけ】。一覧・運行画面・記録表がそれぞれ
+      計算すると、必ず食い違う。呼ぶ側は並びを渡すだけにする。
+
+    ★自分で選んだ色は、自動の車には回さない。
+      回すと「1号車を赤にしたら、5号車も自動で赤」が起きる。
+      実際に確かめて出た。これでは「パッと見てどの車か分かる」が壊れる。
+
+    ★ハッシュで決めない。2台が同じ色になることがある。
+      並び順なら、8台までは必ず違う色になる。
+    """
+    def _key(c):
+        try:
+            return (c.get("color") or "").strip()
+        except AttributeError:
+            return ""
+
+    taken = set(k for k in (_key(c) for c in rows) if k in SOGE_COLOR_HEX)
+    pool = [h for k, h, _n in SOGE_COLORS if k not in taken]
+    if not pool:                       # 8色すべて選ばれている（まれ）
+        pool = [h for _k, h, _n in SOGE_COLORS]
+
+    out, i = [], 0
+    for c in rows:
+        k = _key(c)
+        if k in SOGE_COLOR_HEX:
+            out.append(SOGE_COLOR_HEX[k])
+        else:
+            out.append(pool[i % len(pool)])
+            i += 1
+    return out
+
+
+def soge_color_map(supabase, f_code):  # soge-car-color-v1
+    """その施設の車両 → 色。IDでも名前でも引けるようにして返す。
+
+    ★同じ車がどの画面でも同じ色になることが肝なので、
+      色を決めるのはこの関数だけにする。
+    ★読めなかったら空で返す。色が付かないだけで、画面は動く。
+    """
+    out = {"byid": {}, "byname": {}}
+    try:
+        # ★並びは /api/vehicles と【まったく同じ】にする。
+        #   自動の色は「何番目か」で決まるので、並びがずれると
+        #   配車と記録表で同じ車の色が変わってしまう。
+        #   sort_order が同じ車があると順番が決まらないので id も添える。
+        r = (supabase.table("rec_cars").select("*")
+             .eq("facility_code", f_code).eq("is_active", True)
+             .order("sort_order").order("id").execute())
+        _rows = r.data or []
+        _hex = soge_colors_for(_rows)
+        for i, c in enumerate(_rows):
+            hexv = _hex[i]
+            if c.get("id") is not None:
+                out["byid"][str(c["id"])] = hexv
+            nm = (c.get("name") or "").strip()
+            if nm:
+                out["byname"][nm] = hexv
+    except Exception as e:
+        print("[soge-color] 車両の色を読めませんでした: %s" % e, flush=True)
+    return out
+
+
 def _vehicle_out(c):  # soge-seats-ui-v1
     def _i(k):
         v = c.get(k)
@@ -23985,6 +24070,8 @@ def _vehicle_out(c):  # soge-seats-ui-v1
         "wheelchair_max": _i("wheelchair_max"),
         "note": c.get("note") or "",
         "sort_order": c.get("sort_order") or 0,
+        # soge-car-color-v1: 選んだ色（空なら自動）。色味は一覧で付ける。
+        "color": (c.get("color") or ""),
     }
 
 
@@ -24009,6 +24096,15 @@ def _vehicle_payload(data):  # vehicles-admin-v1
         "plate_no": (data.get("plate_no") or "").strip() or None,
         "note": (data.get("note") or "").strip() or None,
     }
+
+    # soge-car-color-v1: 色は【決まった名前だけ】受け取る。
+    #   ★色そのもの(#xxxxxx)は受け取らない。画面にそのまま流す値なので、
+    #     知らない文字が入る道を作らない。空なら自動（並び順）。
+    if "color" in data:
+        _col = (data.get("color") or "").strip()
+        if _col and _col not in SOGE_COLOR_KEYS:
+            return None, "知らない色です"
+        payload["color"] = _col or None
 
     fuel = data.get("fuel_km_per_l")
     if fuel in (None, ""):
@@ -24065,14 +24161,51 @@ def api_vehicles_list():
     try:
         f_code = session["f_code"]
         supabase = get_supabase()
+        # soge-car-color-v1: 並び順に id を足す。
+        #   ★自動の色は「何番目か」で決まる。sort_order が同じ車があると
+        #     読むたびに順番が入れ替わり、同じ車の色が変わってしまう。
+        #     soge_color_map() も同じ並びにしてある。ここだけ直しても意味が無い。
         r = (supabase.table("rec_cars").select("*")
              .eq("facility_code", f_code).eq("is_active", True)
-             .order("sort_order").execute())
-        return jsonify({"status": "success",
-                        "vehicles": [_vehicle_out(c) for c in (r.data or [])]})
+             .order("sort_order").order("id").execute())
+        # soge-car-color-v1: 色を付ける。
+        #   ★配車も運行画面もこの一覧を読んでいるので、ここで付ければ両方に届く。
+        #   ★決めるのは soge_colors_for の1か所。ここで別に計算してはいけない。
+        _rows = r.data or []
+        _vs = [_vehicle_out(c) for c in _rows]
+        _hex = soge_colors_for(_rows)
+        for _i, _v in enumerate(_vs):
+            _v["color_hex"] = _hex[_i]
+        return jsonify({"status": "success", "vehicles": _vs,
+                        "colors": [{"key": k, "hex": h, "name": n}
+                                   for k, h, n in SOGE_COLORS]})
     except Exception as e:
         print("vehicles list error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+def _vehicle_write(fn, payload):  # soge-car-color-v1
+    """車両マスタへ書く。(結果, 色だけ落としたか) を返す。
+
+    ★DDL(color 列を足す)より先にコードが出ることがある。
+      そのとき車両の登録・更新がまるごと失敗すると、送迎と関係のない
+      「定員を直す」までできなくなる。色だけ落として、あとは通す。
+    ★落とした事実は画面に返す。黙って落とすと、色が変わらない理由が分からない。
+    """
+    try:
+        return fn(payload), False
+    except Exception as e:
+        if "color" not in payload:
+            raise
+        s = str(e).lower()
+        if "color" not in s:
+            raise
+        if not ("column" in s or "schema cache" in s or "does not exist" in s):
+            raise
+        p2 = dict(payload)
+        p2.pop("color", None)
+        print("[soge-color] color 列がまだありません。色を除いて保存しました", flush=True)
+        return fn(p2), True
 
 
 @app.route("/api/vehicles", methods=["POST"])  # vehicles-admin-v1
@@ -24088,8 +24221,11 @@ def api_vehicles_create():
             return jsonify({"status": "error", "message": msg}), 400
         payload["facility_code"] = f_code
         payload["is_active"] = True
-        r = supabase.table("rec_cars").insert(payload).execute()
-        return jsonify({"status": "success", "id": (r.data[0]["id"] if r.data else None)})
+        # soge-car-color-v1: color 列がまだ無ければ色だけ落として通す
+        r, _cng = _vehicle_write(
+            lambda p: supabase.table("rec_cars").insert(p).execute(), payload)
+        return jsonify({"status": "success", "color_ng": _cng,
+                        "id": (r.data[0]["id"] if r.data else None)})
     except Exception as e:
         print("vehicles create error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -24106,11 +24242,14 @@ def api_vehicles_update(vehicle_id):
         payload, msg = _vehicle_payload(request.json or {})
         if msg:
             return jsonify({"status": "error", "message": msg}), 400
-        r = (supabase.table("rec_cars").update(payload)
-             .eq("id", vehicle_id).eq("facility_code", f_code).execute())
+        # soge-car-color-v1: color 列がまだ無ければ色だけ落として通す
+        r, _cng = _vehicle_write(
+            lambda p: (supabase.table("rec_cars").update(p)
+                       .eq("id", vehicle_id).eq("facility_code", f_code).execute()),
+            payload)
         if not r.data:
             return jsonify({"status": "error", "message": "見つかりません"}), 404
-        return jsonify({"status": "success"})
+        return jsonify({"status": "success", "color_ng": _cng})
     except Exception as e:
         print("vehicles update error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -27392,6 +27531,7 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
 
     days.sort(key=_order_key)
 
+    cmap = soge_color_map(supabase, f_code)      # soge-car-color-v1
     vehicles = {}
     for d in days:
         # soge-unassigned-v1: 未割当は車ではないので、車両IDで束ねずに専用のタブにする
@@ -27407,6 +27547,12 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
                              else (d.get("vehicle_name") or ("車 %s" % _vno))),
             "plate_no": ("" if _un else (d.get("plate_no") or "")),
             "driver_name": ("" if _un else (d.get("driver_name") or "")),
+            # soge-car-color-v1: 車の色。IDで引けなければ、そのときの車名で引く。
+            #   ★車両マスタから消された車でも、記録には名前が残っている。
+            "color_hex": ("" if _un else (
+                cmap["byid"].get(str(d.get("vehicle_id") or ""))
+                or cmap["byname"].get((d.get("vehicle_name") or "").strip())
+                or "")),
             "trips": [],
         })
         ss = sorted(by_day.get(d["id"], []), key=lambda x: x.get("seq") or 0)
@@ -28318,6 +28464,7 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
 
     settings = get_soge_settings(supabase, f_code)
     torder = dict((t["key"], i) for i, t in enumerate(settings["trips"]))
+    cmap = soge_color_map(supabase, f_code)      # soge-car-color-v1
 
     # 車 → 日付 → 便 の順に並べる
     days.sort(key=lambda d: (str(d.get("vehicle_name") or ""),
@@ -28329,9 +28476,14 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
     for d in days:
         key = str(d.get("vehicle_id") or d.get("vehicle_name") or d.get("vehicle_no"))
         if not cur or cur["key"] != key:
+            # soge-car-color-v1: 記録表は /api/vehicles を読んでいないので、
+            #   サーバ側で引いて渡す。★色を決めるのは soge_color_map の1か所。
             cur = {"key": key,
                    "vehicle_name": d.get("vehicle_name") or ("車 %s" % (d.get("vehicle_no") or 1)),
                    "plate_no": d.get("plate_no") or "",
+                   "color_hex": (cmap["byid"].get(str(d.get("vehicle_id") or ""))
+                                 or cmap["byname"].get((d.get("vehicle_name") or "").strip())
+                                 or ""),
                    "rows": []}
             out.append(cur)
             last_date = None

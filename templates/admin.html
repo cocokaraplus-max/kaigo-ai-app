@@ -2089,6 +2089,9 @@ async function loadVehicles() {
   const j = await r.json();
   if (j.status !== 'success') { box.innerHTML = '<div style="color:#d93025;font-size:0.8rem;">' + j.message + '</div>'; return; }
   vehiclesCache = j.vehicles;
+  // soge-car-color-v1: 色の一覧はサーバから受け取る。
+  //   ★車が0台のときはこの先で戻ってしまうので、ここで受け取っておく。
+  sogeColors = j.colors || sogeColors;
   if (!vehiclesCache.length) {
     box.innerHTML = '<div style="color:#9aa0a6;font-size:0.85rem;">まだ登録がありません</div>';
     return;
@@ -2114,6 +2117,7 @@ async function loadVehicles() {
       '<div class="form-group" style="margin-bottom:6px;">' + vlbl('ナンバー') +
         '<input type="text" class="form-control" value="' + escHtml(v.plate_no) + '" data-vp="' + i + '" placeholder="ナンバー">' +
       '</div>' +
+      colorPickerHtml(i, v.color || '') +          /* soge-car-color-v1 */
       '<div style="display:flex;gap:8px;margin-bottom:6px;">' +
         '<div style="flex:1;">' + vlbl('燃費（km/L）') +
           '<input type="number" step="0.1" class="form-control" style="width:100%;" value="' + (v.fuel_km_per_l || '') + '" data-vf="' + i + '" placeholder="例 8.5">' +
@@ -2140,6 +2144,28 @@ async function loadVehicles() {
     '</div>';
   }).join('');
 
+  /* soge-car-color-v1: 色は押した瞬間に保存する。
+     ★「保存」を押し忘れて色が変わらない、をなくす。ほかの欄とは性格が違う
+       （見た目だけの設定で、打ち間違いも起きない）ので、その場で確定させる。 */
+  box.querySelectorAll('[data-vcol]').forEach(function (b) {
+    b.onclick = async function () {
+      const i = Number(b.dataset.vcol);
+      const v = vehiclesCache[i];
+      const body = vehicleFormFrom(i);
+      body.color = b.dataset.key || '';
+      const r = await fetch('/api/vehicles/' + v.id, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const j = await r.json();
+      if (j.status !== 'success') { alert(j.message || '色を変えられませんでした'); return; }
+      /* soge-car-color-v1: 色の置き場（列）がまだ無いとき。
+         ★黙って戻ると「押したのに変わらない」になる。理由を出す。 */
+      if (j.color_ng) { alert('色を保存する準備がまだできていません。開発元にご連絡ください。'); }
+      await loadVehicles();
+    };
+  });
+
   box.querySelectorAll('[data-vsave]').forEach(function (b) {
     b.onclick = function () { saveVehicle(Number(b.dataset.vsave)); };
   });
@@ -2149,6 +2175,30 @@ async function loadVehicles() {
 }
 
 function escHtml(s) { const d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+
+/* soge-car-color-v1: 色を選ぶ並び。★色の一覧はサーバから来たものを使う。
+   画面に色の名前を書き写すと、あとで色味を直したときに食い違う。 */
+let sogeColors = [];
+function colorPickerHtml(i, cur) {
+  if (!sogeColors.length) return '';
+  const sw = sogeColors.map(function (c) {
+    const on = (c.key === cur);
+    return '<button type="button" data-vcol="' + i + '" data-key="' + c.key + '" title="' + c.name + '"'
+      + ' style="width:30px;height:30px;border-radius:50%;cursor:pointer;background:' + c.hex + ';'
+      + 'border:' + (on ? '3px solid #202124' : '2px solid #fff')
+      + ';box-shadow:0 0 0 1px #dadce0;"></button>';
+  }).join('');
+  const autoOn = !cur;
+  return '<div class="form-group" style="margin-bottom:6px;">'
+    + '<label style="font-size:0.78rem;color:#5f6368;font-weight:700;">送迎画面での色'
+    + '<span style="font-weight:400;"> — 実際の車の色に合わせると分かりやすいです</span></label>'
+    + '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px;">' + sw
+    + '<button type="button" data-vcol="' + i + '" data-key=""'
+    + ' style="height:30px;padding:0 10px;border-radius:15px;cursor:pointer;background:#fff;'
+    + 'font-size:0.75rem;font-weight:700;color:#5f6368;'
+    + 'border:' + (autoOn ? '3px solid #202124' : '1px solid #dadce0') + ';">自動</button>'
+    + '</div></div>';
+}
 
 function vehicleFormFrom(i) {
   const box = document.getElementById('vehicles-list');
@@ -2160,7 +2210,10 @@ function vehicleFormFrom(i) {
     capacity: val('vc'),
     soge_seats: val('vs'),          // soge-seats-ui-v1
     wheelchair_seats: val('vws'),
-    wheelchair_max: val('vwm')
+    wheelchair_max: val('vwm'),
+    // soge-car-color-v1: いま選ばれている色を持ち回る。
+    //   ★ここで持たないと、ほかの欄を「保存」したときに色が消える。
+    color: (vehiclesCache[i] || {}).color || ''
   };
 }
 

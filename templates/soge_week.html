@@ -77,6 +77,10 @@
   padding:3px 9px; white-space:nowrap; }
 .sg-sel { border:1px solid #d6dbe3; border-radius:8px; padding:6px 8px; font-size:0.85rem; background:#fff; }
 .sg-car-meta { flex:1; text-align:right; font-size:0.75rem; color:#5f6368; font-weight:600; }
+/* soge-car-color-v1: 車の箱に色。左端の帯とバッジで、どの車かをすぐ見分ける。
+   ★専用のクラスを付けた箱だけ太くする。.sg-car にそのまま書くと、
+     「まだ車が決まっていない人」「送迎なし」の箱まで左だけ太くなる。 */
+.sg-car.sg-col { border-left-width: 5px; }
 .sg-min { font-weight:800; }
 .sg-min.over { color:#c5221f; }
 .sg-min.stale { color:#9aa0a6; }
@@ -591,9 +595,14 @@
       '</div>';
     }
 
-    return '<div class="sg-car">' +
+    /* soge-car-color-v1: 選ばれている車両の色。まだ選んでいなければ色なし。 */
+    var _cv = (state.vehicles || []).filter(function (x) { return String(x.id) === String(v.vehicle_id); })[0];
+    var _ch = _cv ? (_cv.color_hex || '') : '';
+    return '<div class="sg-car' + (_ch ? ' sg-col' : '') + '"'
+      + (_ch ? ' style="border-left-color:' + _ch + '"' : '') + '>' +
       '<div class="sg-car-head">' +
-        '<span class="sg-car-badge">車 ' + (realCars(t).indexOf(v) + 1) + '</span>' +
+        '<span class="sg-car-badge"' + (_ch ? ' style="background:' + _ch + '"' : '') + '>車 '
+          + (realCars(t).indexOf(v) + 1) + '</span>' +
         '<select class="sg-sel" data-veh="' + ti + '_' + vi + '"><option value="">車両…</option>' + vopts + '</select>' +
         '<select class="sg-sel" data-drv="' + ti + '_' + vi + '"><option value="">運転手…</option>' + sopts + '</select>' +
         '<span class="sg-car-meta">' + mins +

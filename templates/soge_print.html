@@ -154,7 +154,8 @@
   <div class="sp-page">
     <div class="sp-head">
       <span class="sp-title">運行記録表</span>
-      <span class="sp-car">{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
+      {# soge-car-color-v1: 車の色。紙にも出す（白黒印刷でも左の帯で位置が分かる）。 #}
+      <span class="sp-car"{% if v.color_hex %} style="border-left:6px solid {{ v.color_hex }};padding-left:8px;color:{{ v.color_hex }};"{% endif %}>{{ v.vehicle_name }}{% if v.plate_no %}（{{ v.plate_no }}）{% endif %}</span>
       <span class="sp-title" style="font-weight:600;font-size:0.9rem;">{{ month_label }}</span>
       <span class="sp-fac">{{ facility_name }}</span>
     </div>
