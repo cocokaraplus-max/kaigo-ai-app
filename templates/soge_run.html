@@ -53,6 +53,19 @@
   margin-bottom:10px; }
 
 .sr-driver { font-size:0.8rem; color:#5f6368; font-weight:700; margin-bottom:10px; }
+/* soge-driver-change-v1: 運転手の行を押して替えられるようにする。
+   ★押せると分かる形にする（枠と「交代」の札）。ただの文字のままだと、
+     押せることに誰も気づかない。
+   ★大きくはしない。運転席で押すものではなく、出発前に事務所で押すもの。 */
+.sr-drv-b { border:1px solid #dadce0; background:#fff; border-radius:9px;
+  font-family:inherit; font-size:0.8rem; font-weight:700; color:#3c4043;
+  padding:5px 9px; cursor:pointer; display:inline-flex; align-items:center; gap:7px; }
+.sr-drv-b:active { background:#eef2f7; }
+.sr-drv-b:disabled { opacity:.55; cursor:not-allowed; }
+.sr-drv-i { font-size:0.68rem; font-weight:800; color:#1a73e8;
+  background:#E8F0FE; border-radius:6px; padding:2px 6px; }
+.sr-drv-b:disabled .sr-drv-i { color:#5f6368; background:#eceff1; }
+.sr-drvp-n { font-size:0.76rem; color:#8a5a00; line-height:1.6; margin-top:6px; }
 
 .sr-trip { border:1px solid #dbe3ee; border-radius:12px; margin-bottom:14px; background:#fafcff; overflow:hidden; }
 .sr-trip-head { display:flex; align-items:center; gap:8px; padding:10px 12px; background:#eef2f7;
@@ -1025,10 +1038,30 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
             || (selVehicle && selVehicle.driver_name) || '';
     /* soge-car-color-v1: 運転手の行にも、いま開いている車の色を出す。 */
     var _dv = $('srDriver');
+    /* soge-driver-change-v1: 押すと、この便の運転手を替えられる。
+       ★「車が未定」の枠では押せるようにしない。走らない枠なので、
+         運転手を入れると走ったことになる記録が残る。 */
+    var _canDrv = !!(selTrip && !selTrip.unassigned && selVehicle && !selVehicle.unassigned);
     _dv.innerHTML = selVehicle
       ? ((selVehicle.icon_svg || '')                       // soge-car-icon-v1
-         + esc(_drv ? ('運転手 ' + _drv) : '運転手 未設定'))
+         + (_canDrv
+             ? ('<button type="button" class="sr-drv-b" data-drv="' + escA(selTrip.day_id) + '"'
+                + ' data-drvnow="' + escA(_drv) + '">'
+                + esc(_drv ? ('運転手 ' + _drv) : '運転手 未設定')
+                + '<span class="sr-drv-i">交代</span></button>')
+             : esc(_drv ? ('運転手 ' + _drv) : '運転手 未設定')))
       : '';
+    /* ★この行は srBody の外にあるので、bind() も lockEdits() も届かない。
+         ここで自分で配線し、過ぎた日は自分で止める。 */
+    var _db = _dv.querySelector('[data-drv]');
+    if (_db) {
+      if (!canEditDay()) {
+        _db.disabled = true;
+        _db.title = '過ぎた日の記録は管理者だけが直せます';
+      } else {
+        _db.onclick = function () { openDriverPanel(_db); };
+      }
+    }
 
     /* soge-drive-v1: 運転中は本文だけ差し替える。
        タブの選び方は「車両から」とまったく同じ道を通す（別に持たない）。
@@ -1366,6 +1399,77 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       });
     });
     return out;
+  }
+
+  /* ===== soge-driver-change-v1: 運転手を替えるパネル =====
+     ★選ぶだけにする。手で打てるようにしない。打つと表記ゆれ（田中／田中 太郎）
+       が記録表に残り、あとで名寄せできない。
+     ★いま入っている名前が職員名簿に無いときは、それも選べるように足す。
+       退職した人の名前が入っている便を開いたとき、勝手に消えないように。 */
+  function openDriverPanel(btn) {
+    if (document.querySelector('.sr-panel')) return;
+    var dayId = btn.dataset.drv;
+    var cur = btn.dataset.drvnow || '';
+
+    var list = (state.staff || []).slice();
+    if (cur && list.indexOf(cur) < 0) list.unshift(cur);   // ★いまの名前は必ず残す
+    var opts = list.map(function (n) {
+      return '<option value="' + escA(n) + '"' + (n === cur ? ' selected' : '') + '>'
+        + esc(n) + '</option>';
+    }).join('');
+
+    var box = document.createElement('div');
+    box.className = 'sr-panel';
+    box.innerHTML =
+      '<div style="font-weight:800;font-size:0.95rem;">運転手を替える</div>'
+      + '<div class="sr-drvp-n">替わるのは<b>いま開いている便だけ</b>です。'
+      + 'ほかの便と、来週からの配車は変わりません。<br>'
+      + '空にしたいときは「記録表」から。</div>'
+      + '<div class="row">'
+        /* ★ここに「未設定」は置かない。置くと嘘になる。
+             この画面は、便に運転手が入っていないと【車の側の名前】に落とす
+             （soge-driver-per-trip-v1 のつくり）。だから空にしても、同じ車の
+             別の便の人の名前が出てしまう。「未設定にしたのに名前が出る」と
+             見えるくらいなら、はじめから選ばせない。
+           ★空にしたいときは記録表からできる（あちらは落とさずそのまま出す）。 */
+        + '<select class="drv2">'
+        + (cur ? '' : '<option value="" disabled selected>選んでください</option>')
+        + opts + '</select>'
+      + '</div>'
+      + '<div class="row" style="margin-top:10px;">'
+        + '<button class="sr-tap ok" style="min-width:80px;">替える</button>'
+        + '<button class="sr-mini no">やめる</button>'
+      + '</div>';
+    btn.parentNode.appendChild(box);
+
+    box.querySelector('.no').onclick = function () { box.remove(); };
+    box.querySelector('.ok').onclick = async function () {
+      var nm = box.querySelector('.drv2').value || '';
+      if (!nm) { toast('運転手を選んでください', 'err'); return; }
+      if (nm === cur) { box.remove(); return; }            // 何も変えていない
+      var key = 'drv' + dayId;
+      if (state.busy[key]) return;
+      state.busy[key] = true;
+      this.disabled = true;
+      try {
+        var r = await fetch('/api/soge/run/day', {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ day_id: dayId, driver_name: nm })
+        });
+        var j = await r.json();
+        if (j.status !== 'success') {
+          toast(j.message || '替えられませんでした', 'err');
+          this.disabled = false;
+          return;
+        }
+        /* 全部読み直すと画面が先頭に飛ぶので、その便だけ直す。 */
+        var t = findTrip(dayId);
+        if (t) t.driver_name = nm;
+        box.remove();
+        toast('運転手を ' + nm + ' さんに替えました');
+        keepScroll(render);
+      } finally { state.busy[key] = false; }
+    };
   }
 
   function openMovePanel(btn, stopId) {
