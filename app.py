@@ -28308,6 +28308,8 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
                       if (d.get("odo_start") is not None and d.get("odo_end") is not None
                           and d.get("odo_end") >= d.get("odo_start")) else None,
             "stops": [{
+                # soge-print-edit-v1: どれを直すか指すのに要る
+                "id": s.get("id"),
                 "user_name": s.get("user_name") or "",
                 "type": s.get("stop_type") or "pickup",
                 "arrived_at": _soge_hhmm(s.get("arrived_at")),

@@ -200,7 +200,9 @@
             <td class="sp-stops">
               <div class="grid">
               {%- for s in row.stops -%}
-                <span class="sp-s {{ s.type }}{% if s.is_absent %} absent{% elif not s.arrived_at %} none{% endif %}"><span class="n">{{ loop.index }}</span><span class="nm">{{ s.user_name }}</span><span class="t">{% if s.is_absent %}欠{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
+                {# soge-print-edit-v1: 押すと到着時刻を直せる。
+                   ★過ぎた日の行では、下のJSが data-stop を外して押せなくする。 #}
+                <span class="sp-s sp-ed {{ s.type }}{% if s.is_absent %} absent{% elif not s.arrived_at %} none{% endif %}" data-stop="{{ s.id }}" data-nm="{{ s.user_name }}" data-day="{{ row.day_label }}" title="押すと到着時刻を直せます"><span class="n">{{ loop.index }}</span><span class="nm">{{ s.user_name }}</span><span class="t">{% if s.is_absent %}欠{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
               {%- endfor -%}
               </div>
             </td>
@@ -232,6 +234,30 @@
 </div>
 
 <style>
+/* ===== soge-print-edit-v1: 到着時刻を直すパネル ===== */
+.sp-ed { cursor: pointer; }
+.sp-ed:hover { outline: 2px solid #1a73e8; outline-offset: 1px; }
+.sp-ep-back { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 1200;
+  display: flex; align-items: center; justify-content: center; padding: 16px; }
+.sp-ep { background: #fff; border-radius: 14px; padding: 16px; width: min(360px, 100%);
+  box-shadow: 0 6px 24px rgba(0,0,0,.3);
+  font-family: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif; }
+.sp-ep h4 { font-size: 0.98rem; font-weight: 800; margin: 0 0 2px; color: #1a1a1a; }
+.sp-ep .sub { font-size: 0.78rem; color: #5f6368; margin-bottom: 12px; }
+.sp-ep .row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.sp-ep .row label { font-size: 0.84rem; font-weight: 700; color: #3c4043; }
+.sp-ep input[type=time] { flex: 1; border: 1px solid #dadce0; border-radius: 8px;
+  padding: 10px; font-size: 1rem; }
+.sp-ep .btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.sp-ep button { flex: 1 1 30%; min-width: 92px; border: 1px solid #dadce0; background: #fff;
+  border-radius: 9px; padding: 11px 6px; font-size: 0.84rem; font-weight: 700;
+  color: #3c4043; cursor: pointer; }
+.sp-ep button.main { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+.sp-ep button.warn { background: #fce8e6; color: #a50e0e; border-color: #f5c6c2; }
+.sp-ep button:disabled { opacity: .5; cursor: default; }
+.sp-ep .cancel { flex: 1 1 100%; margin-top: 4px; }
+@media print { .sp-ep-back { display: none !important; } }
+
 /* soge-past-admin-v1: 直せない行の見た目 */
 .sp-ro input, .sp-ro .sp-tap { opacity: .5; cursor: not-allowed; }
 .sp-ro .sp-time { color: #9aa0a6; }
@@ -254,11 +280,16 @@
         i.readOnly = true; i.disabled = true;
         i.title = '過ぎた日の記録は管理者だけが直せます';
       });
-      tr.querySelectorAll('[data-day],[data-note],[data-odo]').forEach(function (el) {
+      /* soge-print-edit-v1: 今回足した data-stop も、ここで外す。
+         ★外し忘れると、過ぎた日の到着時刻だけ押せてしまう。 */
+      tr.querySelectorAll('[data-day],[data-note],[data-odo],[data-stop]').forEach(function (el) {
         el.removeAttribute('data-day');
         el.removeAttribute('data-note');
         el.removeAttribute('data-odo');
         el.removeAttribute('data-fld');
+        el.removeAttribute('data-stop');
+        el.classList.remove('sp-ed');
+        el.removeAttribute('title');
         if (el.tagName === 'BUTTON') { el.disabled = true; }
         el.title = '過ぎた日の記録は管理者だけが直せます';
       });
@@ -355,6 +386,105 @@
       }
     };
     inp.onkeydown = function (e) { if (e.key === 'Enter') inp.blur(); };
+  });
+
+  /* ===== soge-print-edit-v1: 利用者ごとの到着時刻を直す =====
+     ★送り先は運行画面と【同じAPI】(/api/soge/run/stop)。仕掛けを2つ持たない。
+     ★利用者のマスは狭いので、その場に入力欄を詰め込まずパネルを出す。
+       誰の・いつの記録かを見出しに出せるので、押し間違いにも気づける。 */
+  async function saveStop(stopId, body) {
+    body.stop_id = stopId;
+    var r = await fetch('/api/soge/run/stop', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { toast(j.message || '保存できませんでした', true); return false; }
+    return true;
+  }
+
+  /* マスの見た目を、保存した中身に合わせて出し直す。
+     ★読み込み直さない。1か月ぶんを開き直すと、見ていた場所を見失う。 */
+  function paintStop(el, state, text) {
+    el.classList.remove('absent', 'none');
+    if (state === 'absent') el.classList.add('absent');
+    if (state === 'none') el.classList.add('none');
+    var t = el.querySelector('.t');
+    if (t) t.textContent = text;
+  }
+
+  function openStopPanel(el) {
+    if (document.querySelector('.sp-ep-back')) return;
+    var stopId = el.dataset.stop;
+    if (!stopId) return;                       // 過ぎた日などで口が外されている
+    var nm = el.dataset.nm || '';
+    var day = el.dataset.day || '';
+    var cur = (el.querySelector('.t') || {}).textContent || '';
+    cur = cur.trim();
+    var isTime = /^\d{2}:\d{2}$/.test(cur);
+
+    var back = document.createElement('div');
+    back.className = 'sp-ep-back no-print';
+    back.innerHTML =
+      '<div class="sp-ep">'
+      + '<h4>' + (nm || 'この方') + ' さんの到着時刻</h4>'
+      + '<div class="sub">' + (day ? day + '　' : '')
+      + (el.classList.contains('dropoff') ? '送り' : '迎え') + '</div>'
+      + '<div class="row"><label>到着</label>'
+      + '<input type="time" class="tv" value="' + (isTime ? cur : '') + '"></div>'
+      + '<div class="btns">'
+      + '<button class="main ok">保存</button>'
+      + '<button class="clr">空にする</button>'
+      + '<button class="warn abs">欠席にする</button>'
+      + '<button class="cancel no">やめる</button>'
+      + '</div></div>';
+    document.body.appendChild(back);
+    var inp = back.querySelector('.tv');
+    inp.focus();
+
+    function close() { back.remove(); }
+    back.onclick = function (e) { if (e.target === back) close(); };
+    back.querySelector('.no').onclick = close;
+
+    function busy(on) {
+      back.querySelectorAll('button').forEach(function (b) { b.disabled = on; });
+    }
+
+    back.querySelector('.ok').onclick = async function () {
+      var v = (inp.value || '').trim();
+      if (!v) { toast('時刻を入れてください（消すなら「空にする」）', true); return; }
+      busy(true);
+      /* ★時刻を入れたら欠席は自動で外れる（乗ったのだから）。
+           これはサーバ側(/api/soge/run/stop)がそうしている。ここでは重ねて送らない。 */
+      if (await saveStop(stopId, { time: v })) {
+        paintStop(el, '', v);
+        toast(nm + ' さん ' + v + ' に直しました');
+        close();
+      } else { busy(false); }
+    };
+
+    back.querySelector('.clr').onclick = async function () {
+      busy(true);
+      if (await saveStop(stopId, { time: '' })) {
+        paintStop(el, 'none', '—');
+        toast(nm + ' さんの時刻を消しました');
+        close();
+      } else { busy(false); }
+    };
+
+    back.querySelector('.abs').onclick = async function () {
+      if (!confirm(nm + ' さんを「欠席」にします。\n入っている到着時刻は消えます。\nよろしいですか。')) return;
+      busy(true);
+      if (await saveStop(stopId, { absent: true })) {
+        paintStop(el, 'absent', '欠');
+        toast(nm + ' さんを欠席にしました');
+        close();
+      } else { busy(false); }
+    };
+  }
+
+  document.querySelectorAll('[data-stop]').forEach(function (el) {
+    el.onclick = function () { openStopPanel(el); };
   });
 
   // 備考 … 打ち終わって離れたら保存
