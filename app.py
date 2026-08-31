@@ -27398,6 +27398,12 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
             "odo_end": d.get("odo_end"),                           # soge-odo-v1
             "stops": [{
                 "id": s["id"],
+                # soge-move-v1: いまどの便に居るか。移動先を選ぶときに自分を外すのに使う
+                "day_id": d["id"],
+                # soge-move-v1: 移した跡。★列がまだ無い環境では空で返るだけ（壊れない）
+                "moved_from": s.get("moved_from") or "",
+                "moved_by": s.get("moved_by") or "",
+                "moved_at": _soge_hhmm(s.get("moved_at")),
                 "patient_id": str(s.get("patient_id")),
                 "user_name": s.get("user_name") or "",
                 "type": s.get("stop_type") or "pickup",
@@ -27673,6 +27679,134 @@ def api_soge_run_stop_edit():
         return jsonify({"status": "success"})
     except Exception as e:
         print("api_soge_run_stop_edit error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/move", methods=["POST"])  # soge-move-v1
+@login_required
+def api_soge_run_move():
+    """その人を、別の車（別の便でも）へ移す。
+
+    ★これまで移す手段が無かった。直前の乗せ替えができず、
+      臨時便を作るか、その日を丸ごと作り直す（打刻が全部消える）しかなかった。
+    ★確定済み・過ぎた日でも移せる（HIROさんの決め）。
+      記録の書き換えになるので confirm を明示的に受け取り、
+      いつ・誰が・どこから移したかを残す。
+    """
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        data = request.json or {}
+        stop_id = str(data.get("stop_id") or "").strip()
+        to_day = str(data.get("to_day_id") or "").strip()
+        if not stop_id or not to_day:
+            return jsonify({"status": "error", "message": "対象がありません"}), 400
+
+        r = (supabase.table("soge_stops")
+             .select("id,day_id,service_date,patient_id,stop_type,user_name,arrived_at")
+             .eq("facility_code", f_code).eq("id", stop_id).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+        s = r.data[0]
+        if str(s.get("day_id")) == to_day:
+            return jsonify({"status": "error", "message": "すでにその車です"}), 400
+        date_str = str(s.get("service_date"))[:10]
+        who = (s.get("user_name") or "この方")
+
+        # ★移せるのは【同じ日の中】だけ。日をまたぐと別の日の運行になり、
+        #   出発時刻も記録表の行も意味が変わる。
+        dr = (supabase.table("soge_days").select("*")
+              .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        days = dict((str(d["id"]), d) for d in (dr.data or []))
+        dst = days.get(to_day)
+        if not dst:
+            return jsonify({"status": "error",
+                            "message": "移す先の車が、その日の運行表にありません"}), 404
+        src = days.get(str(s.get("day_id"))) or {}
+
+        # ★「車が未定」へは移せない。走らない枠なので、
+        #   入れた瞬間にその人は誰にも運ばれなくなる。
+        # ★`int(x or 1)` と書いてはいけない。vehicle_no は 0 が「車が未定」で、
+        #   0 は偽なので `0 or 1` が 1 になり、守りがまるごと素通りする（実際に踏んだ）。
+        #   app.py の他の場所（_vno_of）と同じく、None かどうかで見る。
+        _dv = dst.get("vehicle_no")
+        try:
+            _dvno = int(_dv) if _dv is not None else 1
+        except (TypeError, ValueError):
+            _dvno = 1
+        if _dvno <= SOGE_VNO_UNASSIGNED:
+            return jsonify({"status": "error",
+                            "message": "「車が未定」へは移せません。"
+                                       "乗せないのであれば ✕（休み）を使ってください"}), 400
+
+        # ★二重登録の先回り。soge_stops には
+        #   unique (day_id, patient_id, stop_type) が張ってある。
+        #   このまま更新すればDBエラーになり、職員には意味の分からない画面が出る。
+        ex = (supabase.table("soge_stops").select("id")
+              .eq("facility_code", f_code).eq("day_id", to_day)
+              .eq("patient_id", str(s.get("patient_id")))
+              .eq("stop_type", s.get("stop_type") or "pickup").execute())
+        if ex.data:
+            return jsonify({"status": "error",
+                            "message": "その便には %s さんがすでに入っています" % who}), 409
+
+        st = _soge_day_state(supabase, f_code, date_str)
+        if (st["locked"] or st["past"]) and not data.get("confirm"):
+            # ★画面側でも確認を出しているが、サーバ側でも止める。
+            #   画面を通さない呼び方でも、記録が黙って書き換わらないようにする。
+            return jsonify({"status": "error", "need_confirm": True,
+                            "message": "この日は記録として閉じています"}), 409
+
+        # 並び順は移す先の【最後】。途中に割り込ませない。
+        sr = (supabase.table("soge_stops").select("seq")
+              .eq("facility_code", f_code).eq("day_id", to_day).execute())
+        seqs = [int(x.get("seq") or 0) for x in (sr.data or [])]
+        new_seq = (max(seqs) + 1) if seqs else 0
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        moved_from = ("%s %s" % (src.get("vehicle_name") or "",
+                                 src.get("trip_name") or "")).strip() or "別の車"
+        upd = {
+            "day_id": to_day,
+            "seq": new_seq,
+            "moved_at": now_iso,
+            "moved_by": my_name,
+            "moved_from": moved_from,
+            "edited_at": now_iso,
+            "edited_by": my_name,
+        }
+        # ★まだ着いていない人の到着予定は、車が変わった時点で意味を失う。
+        #   残すと、走ってもいない車の予定時刻が紙に出る。
+        #   すでに着いている人（＝記録の訂正）は、実績も当時の予定も触らない。
+        if not s.get("arrived_at"):
+            upd["planned_at"] = None
+
+        try:
+            (supabase.table("soge_stops").update(upd)
+             .eq("facility_code", f_code).eq("id", stop_id).execute())
+        except Exception as e:
+            # ★DDL（moved_* の3列）がまだ入っていない環境でも移せるようにする。
+            #   記録が残らないことだけは、はっきり画面に伝える。
+            msg = str(e)
+            if "moved_" not in msg:
+                raise
+            for k in ("moved_at", "moved_by", "moved_from"):
+                upd.pop(k, None)
+            (supabase.table("soge_stops").update(upd)
+             .eq("facility_code", f_code).eq("id", stop_id).execute())
+            print("[soge-move] moved_* 列が無いため記録なしで移しました: %s" % msg, flush=True)
+            return jsonify({"status": "success", "to": (dst.get("vehicle_name") or ""),
+                            "replan": (not s.get("arrived_at")),
+                            "warn": "移しましたが、変更の記録（誰がいつ）は残っていません。"
+                                    "db/ddl_soge_move_v1.sql を流してください"})
+
+        print("[soge-move] %s %s: %s → %s (%s)" % (
+            date_str, who, moved_from, dst.get("vehicle_name") or "", my_name), flush=True)
+        return jsonify({"status": "success", "to": (dst.get("vehicle_name") or ""),
+                        "replan": (not s.get("arrived_at"))})
+    except Exception as e:
+        print("api_soge_run_move error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
