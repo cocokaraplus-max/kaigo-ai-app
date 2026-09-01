@@ -751,6 +751,18 @@ def delete_patient_evaluation(supabase, facility_code: str, user_name: str,
     return {"success": True, "id": row["id"], "filled": filled}
 
 
+# eval-blank-null-v1: 決まった中からしか選べない列（DBに CHECK制約が付いている）。
+#   ★ここに書いてあるものと、名前が _status で終わる列は、
+#     空文字ではなく NULL で保存する。空文字は制約に当たってはじかれる。
+#   ★自由文の列は入れないこと。入れると、空にしたときの保存の形が変わる。
+_EVAL_CHOICE_KEYS = (
+    "care_classification",        # 要介護／要支援／総合事業
+    "new_requests_exist",         # あり／なし
+    "satisfaction",               # ○／△／×
+    "service_appropriateness",    # ○／△／×
+)
+
+
 def upsert_patient_evaluation(supabase, payload: dict, current_user: str,
                               section: str = None) -> dict:
     """評価データを UPSERT する。
@@ -795,6 +807,28 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str,
     for numeric_key in ("weight_kg", "attendance_count", "attendance_target"):
         if numeric_key in clean and clean[numeric_key] == "":
             clean[numeric_key] = None
+
+    # eval-blank-null-v1: ★選択肢の列は、空文字ではなく【NULL】で保存する。
+    #   DB側に「達成／一部達成／未達成 のどれか、または NULL」という決まり
+    #   (CHECK制約) が付いている。空文字はどれにも当てはまらず、はじかれる。
+    #
+    #   実際に本番で出た（HIROさん 2026-09-01）:
+    #     violates check constraint
+    #     "patient_evaluations_long_goal_activity_status_check"
+    #
+    #   ★ふだんの保存では起きなかった。目標が登録されていない軸は画面に欄が
+    #     出ない＝送られないため。削除は【画面に出ていない軸も含めて全部】
+    #     空にするので、そこで初めて出た。
+    #   ★ここ1か所で受け止める。画面ごとに直すと、片方だけ直したときに食い違う。
+    #   ★自由文の列は触らない。空文字のまま保存する。
+    #     NULL と空文字は画面ではどちらも空に見えるが、別のもの。
+    #     必要のない書き換えはしない。
+    for _k in list(clean.keys()):
+        if clean[_k] != "":
+            continue
+        # 軸ごとの達成度。★名前で見る。軸が増えても自動で効く。
+        if _k.endswith("_status") or _k in _EVAL_CHOICE_KEYS:
+            clean[_k] = None
 
     # 既存検索
     try:
