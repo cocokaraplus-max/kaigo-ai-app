@@ -247,6 +247,10 @@
 .sg-foot { margin-top:18px; }
 .sg-warn { background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:8px;
   padding:10px; font-size:0.8rem; line-height:1.6; margin-bottom:8px; }
+/* soge-week-warn-v1: 打刻が始まっている日は、もう「注意」ではない。保存すれば届く。
+   ★オレンジのままだと、悪いことが起きるように読める。落ち着いた色にする。 */
+.sg-warn.ok { background:#E6F4EA; border-color:#a8d5b5; color:#1E6B36; }
+.sg-warn b { font-weight:800; }
 .sg-info { font-size:0.75rem; color:#8a93a0; line-height:1.6; }
 
 .sg-toast { position:fixed; left:50%; top:calc(env(safe-area-inset-top, 0px) + 12px); transform:translate(-50%,-140%); z-index:9999;
@@ -407,10 +411,25 @@
     /* ★確定済み・過ぎた日・打刻が始まった日は、保存はできるが
          【当日の運行表は作り直されない】。それを日付を選んだ時点で出す。
        ★押したあとに言われても遅い。 */
-    var why = d.locked ? 'この日は確定済みです。'
-            : d.past ? 'これは過ぎた日です。'
-            : d.touched ? 'この日はもう打刻が始まっています。'
-            : '';
+    /* soge-week-warn-v1: ★3つの場合で、起きることが【違う】。
+       ひとつの文で済ませていたので、打刻ありの日に嘘を言っていた
+       （soge-day-merge-v1 で反映するようにしたのに「作り直されません」のまま）。
+       ★「どうなるか」と「どうすればよいか」まで、その場に書く。 */
+    var why = '', whyOk = false;
+    if (d.locked) {
+      why = 'この日は<b>確定済み</b>です。保存はできますが、'
+          + '<b>当日の運行表は変わりません</b>。<br>'
+          + '反映するには、<b>運行画面の「一覧」</b>で<b>確定を解除</b>してください。';
+    } else if (d.past) {
+      why = 'これは<b>過ぎた日</b>です。保存はできますが、当日の運行表は変わりません。<br>'
+          + '過ぎた日は<b>実際に走った記録</b>なので、配車表からは書き換えません。';
+    } else if (d.touched) {
+      /* ★もう注意ではない。保存すれば届く。打刻が消えないことまで書く。
+         書かないと「反映＝作り直し＝打刻が消える」と読まれる。 */
+      why = 'この日はもう<b>打刻が始まっています</b>。保存すると、'
+          + '<b>当日の運行表にも反映します</b>（すでに入っている打刻はそのままです）。';
+      whyOk = true;
+    }
     $('sgDays').className = 'sg-days sg-days-date';   // ★横並びをやめる
     $('sgDays').innerHTML =
       '<div class="sg-datebar">' +
@@ -423,8 +442,10 @@
           ? '<button type="button" class="sg-btn sg-btn-sm sg-btn-zero" id="sgDrop">今日だけの配車をやめる</button>'
           : '') +
       '</div>' +
-      (why ? '<div class="sg-warn">' + esc(why) +
-             '保存はできますが、当日の運行表は作り直されません。</div>' : '');
+      /* soge-week-warn-v1: ★文は場合ごとに作ってある。共通の1文を足さない。
+         esc() は掛けない（この文はこちらで組み立てた決め打ちで、
+         中に <b> を入れてある。外から来た文字は入っていない）。 */
+      (why ? '<div class="sg-warn' + (whyOk ? ' ok' : '') + '">' + why + '</div>' : '');
 
     var inp = document.getElementById('sgDate');
     if (inp) inp.onchange = function () {
