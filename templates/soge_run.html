@@ -1848,12 +1848,15 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       inp.value = initial || '';
       el.replaceWith(inp);
       inp.focus();
-      var done = false;
+      var done = false, tmr = null;
       async function commit() {
         if (done) return;
-        done = true;
         var t = inp.value;
-        if (!t) { keepScroll(render); return; }
+        /* soge-time-edit-v1: ★何も変えていないなら送らない。触っただけで保存しない。 */
+        if (t === (initial || '')) { done = true; clearTimeout(tmr); keepScroll(render); return; }
+        if (!t) { done = true; clearTimeout(tmr); keepScroll(render); return; }
+        done = true;
+        clearTimeout(tmr);
         var res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: id, time: t });
         if (!res.ok) {
           /* soge-tap-retry-v1: 手で入れた時刻も貯める。入れた時刻のまま送る。 */
@@ -1875,7 +1878,10 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         }
         keepScroll(render);
       }
-      inp.onchange = commit;
+      /* soge-time-edit-v1: ★change ですぐ確定しない。
+         input[type=time] は「時」を選んだ時点でも change を投げる。
+         そこで確定すると「分」を選ぶ前に入力欄が消える（記録表で実際に起きた）。 */
+      inp.onchange = function () { clearTimeout(tmr); tmr = setTimeout(commit, 900); };
       inp.onblur = commit;
     }
 
