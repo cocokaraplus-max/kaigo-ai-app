@@ -129,6 +129,11 @@
   font-family:inherit;font-size:.84rem;font-weight:800;padding:9px 16px;cursor:pointer;}
 .a2-v-stop:active{background:#b31412;}
 .a2-v-busy{font-size:.8rem;color:#1558d6;font-weight:700;line-height:1.6;}
+/* a2-section-delete-v1: 消すところ。★目立たせない。
+   保存ボタンから離し、線で区切って、いちばん下に置く。
+   押し間違えるほうが、見つけにくいことより怖い。 */
+.a2-secdel{margin-top:26px;padding-top:14px;border-top:1px solid #eceff3;text-align:center;}
+.a2-secdel .a2-note{margin-top:7px;}
 .a2-note.center{text-align:center;}
 .a2-warn{background:#fef7e0;border:1px solid #fdd663;border-radius:9px;padding:9px 12px;
   font-size:.79rem;color:#7a5200;line-height:1.6;margin-bottom:11px;}
@@ -372,6 +377,15 @@
 
     <button type="button" class="a2-btn save" onclick="a2Save('eval')">保存する</button>
     <div class="a2-note center">★保存されるのは、この画面にある欄だけです。相手の入力は触りません。</div>
+
+    {# a2-section-delete-v1: このページの入力だけを消す。
+       ★保存ボタンから離して、いちばん下に小さく置く。押し間違いのほうが怖い。
+       ★消えるものは confirm に並べて出す（何が消えるか見ないまま押させない）。 #}
+    <div class="a2-secdel">
+      <button type="button" class="a2-del" onclick="a2ClearSection('eval')">このページの入力を消す</button>
+      <div class="a2-note">目標の達成度・聞き取りメモ・満足度・体重／出席・評価者名が消えます。
+        <b>機能訓練指導員ページの入力は消えません。</b></div>
+    </div>
   </div>
 
   {# ── 画面C：体の評価を記録する ── #}
@@ -420,6 +434,13 @@
 
     <button type="button" class="a2-btn save" onclick="a2Save('ft')">保存する</button>
     <div class="a2-note center">★保存されるのは、この画面にある欄だけです。相手の入力は触りません。</div>
+
+    {# a2-section-delete-v1: このページの入力だけを消す。 #}
+    <div class="a2-secdel">
+      <button type="button" class="a2-del" onclick="a2ClearSection('ft')">このページの入力を消す</button>
+      <div class="a2-note">体の評価・訓練による変化・課題とその要因・特記事項が消えます。
+        <b>評価担当ページの入力は消えません。</b></div>
+    </div>
   </div>
 
   {# 知らせの帯（eval-two-entrances-v1）
@@ -1346,6 +1367,62 @@ window.addEventListener('beforeunload', function(){
 });
 
 /* ── 保存：自分の入口の欄だけ送る ── */
+/* ===== a2-section-delete-v1: このページの入力だけを消す =====
+   ★新しいAPIは作らない。すでにある保存に、その入口ぶんの欄を空で送るだけ。
+     入口ごとのロック（誰かが開いていたら断る）も、そのまま効く。
+   ★相手の欄は送らない。送らなければサーバは触らない。 */
+async function a2ClearSection(section){
+  if(!A2.patient){ alert('利用者を選んでください。'); return; }
+  if(!A2.evalId){ alert('この月の評価はまだありません。消すものがありません。'); return; }
+  var ym = $('a2-ym').value;
+  var isEval = (section === 'eval');
+  var lbl  = isEval ? '評価担当ページ' : '機能訓練指導員ページ';
+  var other= isEval ? '機能訓練指導員ページ' : '評価担当ページ';
+  var items = isEval
+    ? '・目標がどこまでできたか（新しい目標も）\n・聞き取りメモ\n'
+      + '・満足度／サービスの適切さ／新しいご希望\n・体重／出席\n・評価者名'
+    : '・体の評価\n・訓練による変化\n・課題とその要因\n・特記事項';
+  /* ★何が消えるかを並べて出す。「本当に削除しますか？」だけでは、
+       どこまで消えるのか分からないまま押すことになる。 */
+  if(!confirm(A2.patient.name + ' さんの【' + ym + '】から、\n'
+            + lbl + 'の入力を消します。\n\n'
+            + items + '\n\n'
+            + '★' + other + 'の入力は消えません。\n'
+            + '★元に戻せません。\n\n消しますか？')) return;
+
+  var d = { user_name: A2.patient.name, year_month: ym, section: section };
+  if(isEval){
+    d.evaluator_name          = '';
+    d.source_data_eval        = '';
+    d.satisfaction            = '';
+    d.service_appropriateness = '';
+    d.new_requests_exist      = '';
+    d.new_requests_detail     = '';
+    d.weight_kg               = '';
+    d.attendance_count        = '';
+    /* ★軸ごとの欄は【全部】空にする。画面に出ている軸だけだと、
+         目標が登録されていない軸に古い評価が残る（画面に出ないので気づけない）。 */
+    A2_AXES.concat(A2_SIMPLE).forEach(function(x){ d[x[1]] = ''; d[x[2]] = ''; });
+    /* ★介護区分(care_classification)は送らない＝消さない。
+         利用者情報から引くもので、この画面で書いたものではない。
+         消すと目標の出し分けが崩れる。 */
+  } else {
+    d.source_data         = '';
+    d.changes_by_training = '';
+    d.issues_and_causes   = '';
+    d.special_notes       = '';
+  }
+
+  try{
+    var r = await fetch('/api/save_patient_evaluation', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(d)});
+    var j = await r.json();
+    if(j.status !== 'success'){ alert(j.message || '消せませんでした'); return; }
+    a2Toast(lbl + 'の入力を消しました。', true);
+    await a2Back();
+  }catch(e){ alert('消せませんでした'); }
+}
+
 async function a2Save(section){
   if(!A2.patient){ alert('利用者を選んでください。'); return; }
   var d = {

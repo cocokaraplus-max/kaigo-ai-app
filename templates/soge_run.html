@@ -1426,7 +1426,12 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     /* --- 立ち寄り先を、上から順に並べる --- */
     var stopsHtml = left.map(function (s, i) {
       var tag = (s.is_wheelchair ? '<span class="tag">車いす</span>' : '');
-      var tm  = (s.planned_at ? '<span class="tm">' + esc(s.planned_at) + '</span>' : '');
+      /* soge-plan-label-v1: ★「予定」と必ず書く。
+         書かないと、記録した時刻に見える。実際にそう読まれた。
+         そのあとの人の板は灰色で、このアプリの灰色は「済んだ」の色なので、
+         数字だけだと【打刻済み】としか読めない。
+         いま向かう人の板と同じ書き方にそろえる。 */
+      var tm  = (s.planned_at ? '<span class="tm">予定 ' + esc(s.planned_at) + '</span>' : '');
       if (i > 0) {
         /* 先の人。板だけ。★名前は割らない。住所は詰める（下見なので全部は要らない）。 */
         /* soge-drive-v5: 先の人は灰色。緑は「いま向かう人」だけにする。 */
