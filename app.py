@@ -26769,6 +26769,9 @@ _SOGE_REBUILD_SAY = {
     "past": "ただし、過ぎた日なので、当日の運行表は作り直していません。",
     "clear_failed": "ただし、当日の運行表を作り直せませんでした。",
     "no_week": "ただし、元になる配車が見つからず、当日の運行表は作り直していません。",
+    # soge-day-guard-v1: 読めなかったとき。★「作り直しました」とは言わない。
+    "unknown": "ただし、いま運行表の状態を確かめられなかったので、"
+               "当日の運行表は作り直していません。少し時間をおいてお試しください。",
 }
 
 
@@ -27533,8 +27536,18 @@ def _soge_past_admin_ok(supabase, f_code, date_str, my_name):  # soge-past-admin
 
 
 def _soge_day_state(supabase, f_code, date_str):
-    """確定しているか／動き出しているかをまとめて返す。"""
+    """確定しているか／動き出しているかをまとめて返す。
+
+    ★soge-day-guard-v1: 「読めたかどうか」も返す（read_ok）。
+      これまでは読めなくても days=[] / stops=[] のまま進んでいた。
+      その結果 touched が False になり、【打刻が入っている日でも作り直され、
+      打刻が消える】ことがありえた。作り直しは行ごと入れ替えるので、
+      消えた跡も残らない。
+      すぐ下の _soge_day_locked は、わざと逆（読めなければ確定扱い）にしてある。
+      同じ考えを touched にも効かせる。使う側で read_ok を見ること。
+    """
     days, stops = [], []
+    read_ok = True
     try:
         dr = (supabase.table("soge_days").select("*")
               .eq("facility_code", f_code).eq("service_date", date_str).execute())
@@ -27544,8 +27557,10 @@ def _soge_day_state(supabase, f_code, date_str):
                   .eq("facility_code", f_code).eq("service_date", date_str).execute())
             stops = sr.data or []
     except Exception as e:
+        read_ok = False
         print("soge day state error: %s" % e, flush=True)
     return {"exists": bool(days),
+            "read_ok": read_ok,
             "locked": _soge_day_locked(supabase, f_code, date_str),
             "touched": _soge_day_touched(days, stops),
             "past": date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d")}
@@ -27630,6 +27645,15 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
     """
     keep_absent = set()      # soge-lock-v2: 作り直しても消さない「欠席（✕）」
     st = _soge_day_state(supabase, f_code, date_str)
+    # soge-day-guard-v1: 状態が読めなかったら、何もしない。
+    #   ★「読めなかった」と「打刻が無い」を混ぜない。混ぜると、
+    #     入っている打刻を消して作り直してしまう（消えた跡も残らない）。
+    #   ★exists も当てにならない（読めていれば有ったかもしれない）ので、
+    #     exists を見る前に止める。でないと、もう1組の当日データを作ってしまう。
+    if not st.get("read_ok", True):
+        print("[soge-guard] %s %s の状態を読めなかったので、作り直しませんでした"
+              % (f_code, date_str), flush=True)
+        return {"built": False, "reason": "unknown"}
     if st["exists"]:
         if st["locked"]:
             return {"built": False, "reason": "locked"}
@@ -27651,6 +27675,28 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                 keep_absent.add((str(x.get("patient_id")), x.get("stop_type") or "pickup"))
         except Exception as e:
             print("soge_materialize_day keep_absent error: %s" % e, flush=True)
+        # soge-day-guard-v1: ログに出すために、消す前の中身を控える。
+        _st_days, _st_stops = [], []
+        try:
+            _dr = (supabase.table("soge_days").select("id")
+                   .eq("facility_code", f_code).eq("service_date", date_str).execute())
+            _st_days = _dr.data or []
+            _sr = (supabase.table("soge_stops").select("arrived_at")
+                   .eq("facility_code", f_code).eq("service_date", date_str).execute())
+            _st_stops = _sr.data or []
+        except Exception:
+            pass
+        # soge-day-guard-v1: 消す前に、何を消すのかをログに残す。
+        #   ★作り直しは行ごと入れ替えるので、消えた跡がデータに残らない。
+        #     あとから「打刻が消えた」と言われたときに、作り直しなのか
+        #     そもそも届いていなかったのかを、ログで分けられるようにする。
+        try:
+            _n_day = len([1 for _x in (_st_days or [])])
+            _n_tap = len([1 for _x in (_st_stops or []) if _x.get("arrived_at")])
+            print("[soge-guard] %s %s を作り直します（便%d 打刻%d 力ずく=%s）"
+                  % (f_code, date_str, _n_day, _n_tap, bool(force)), flush=True)
+        except Exception:
+            pass
         if not _soge_clear_day(supabase, f_code, date_str):
             return {"built": False, "reason": "clear_failed"}
 
@@ -27669,6 +27715,9 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
         week = soge_build_week(supabase, f_code, weekday, settings)
     if not week:
         return {"built": False, "reason": "no_week"}
+    # soge-day-guard-v1: いま使っているのが【その日だけの配車】かどうか。
+    #   _soge_saved_date だけが has_plan を立てる（曜日の配車は立てない）。
+    _by_date = bool(week.get("has_plan"))
 
     # patient-active-v1: 利用を中止した方は、中止日より後の日には出さない。
     #   ★過去の日を見るときは、その日を基準に判定するので、中止前はちゃんと出る。
@@ -27699,6 +27748,14 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
     _wk = visit_week_of_month(date_str)
 
     def _nth_ok_today(s):
+        # soge-day-guard-v1: ★その日だけの配車は、日付を名指しで決めたもの。
+        #   「第2火曜だけ」のような【曜日の条件】で外してはいけない。
+        #   外していたので、今日だけの配車に入れた人が運行画面に出ず、
+        #   記録も残らなかった（2026-09-01 に実際に起きた）。
+        #   ★曜日の配車のときは、これまでどおり絞る。曜日の表は日付を持たず、
+        #     「第2火曜だけ」の人も全部の火曜に入っているため。
+        if _by_date:
+            return True
         n = int(s.get("nth") or 0)
         return (n < 1) or (n == _wk)
 
