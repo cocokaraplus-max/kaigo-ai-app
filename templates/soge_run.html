@@ -70,6 +70,22 @@
 .sr-ac.un { border:1.5px solid #f9ab00; background:#fffdf5; }
 .sr-ac.un .sr-ac-h { background:#FEF7E0; }
 
+/* soge-run-pick-v1: 車を選ぶボタンと、まだ選んでいないときの案内 */
+.sr-pick { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+.sr-pick-b { flex:1 1 auto; display:flex; align-items:center; gap:8px; border:1.5px solid #dadce0;
+  background:#fff; border-radius:10px; padding:11px 12px; font-family:inherit;
+  font-size:0.9rem; font-weight:800; color:#202124; cursor:pointer; text-align:left; }
+.sr-pick-b:active { background:#eef2f7; }
+.sr-pick-b .ar { margin-left:auto; color:#5f6368; font-size:0.8rem; }
+.sr-pick-hint { border:1px dashed #dadce0; border-radius:11px; padding:18px 14px;
+  text-align:center; font-size:0.86rem; color:#5f6368; line-height:1.8; }
+/* 押すと下に開く選択肢。★編集パネル(.sr-panel の橙の破線)とは別の見た目にする。
+   同じ見た目だと「何かを直す場所」に見える。ここは【選ぶだけ】。 */
+.sr-panel.sr-pickpanel { border:1px solid #dadce0; background:#fff; border-radius:12px;
+  padding:8px; margin:6px 0 0; box-shadow:0 4px 14px rgba(0,0,0,.14); }
+.sr-pick > .sr-panel { flex:1 1 100%; }
+.sr-pickpanel .sr-mvlist { margin-top:0; }
+
 /* ===== soge-run-list-v1: その日の全部を上から順に見る「一覧」 ===== */
 .sr-lg { margin-bottom:16px; }
 /* 便の見出し。★便ごとに区切る。車ごとに区切ると、同じ車の迎えと送りが
@@ -590,7 +606,12 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
 (function () {
   var state = { date: '', data: null, tab: 0, tripTab: 0, autoTab: true, tabKey: '', busy: {}, staff: [], vehicles: [], patients: [],
                 undo: null, doneOpen: false,   // soge-undo-v1: 直後の帯 / 済んだ人を開いているか
-                mode: 'drive' };   // soge-run-list-v1: 'drive'=運転中 / 'list'=一覧
+                mode: 'drive',   // soge-run-list-v1: 'drive'=運転中 / 'list'=一覧
+                /* soge-run-pick-v1: どちらも【はじめは畳んでおく】。
+                   ★accOpen=false … 運転中の車は全部閉じた状態から始める
+                   ★lsCar=''      … 一覧はまだ車を選んでいない状態から始める
+                   ページを開くたびにここへ戻る（覚えない）。 */
+                accOpen: false, lsCar: '' };
 
   /* soge-view-v1: 選んだ見せ方は端末ごとに覚える。
      運転手はいつも「車両から」、送迎を組む人はいつも「便から」使うため、
@@ -1453,14 +1474,33 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       /* soge-run-acc-v1: 横に並べず、縦に積む。
          ★右に何台あるかが、スクロールしてみるまで分からなかった。 */
       row1.className = 'sr-acc';
-      row1.innerHTML = accHtml(vs, state.tab);
+      /* soge-run-pick-v1: はじめは全部閉じる。押した車だけ開く。 */
+      row1.innerHTML = accHtml(vs, (state.accOpen ? state.tab : -1));
       row1.querySelectorAll('[data-tab]').forEach(function (el) {
         // soge-trip-tab-v1: 車両タブを変えたら便タブも先頭に戻す
         el.onclick = function () {
-          state.tab = Number(el.dataset.tab); state.tripTab = 0;
+          var i = Number(el.dataset.tab);
+          /* soge-run-pick-v1: 開いている車をもう一度押したら閉じる。
+             ★閉じる手が無いと、一覧のように全部を見渡す形に戻せない。 */
+          if (state.accOpen && state.tab === i) { state.accOpen = false; render(); return; }
+          state.accOpen = true;
+          state.tab = i; state.tripTab = 0;
           state.tabKey = ''; state.autoTab = false; render();   // 自分で選んだタブは動かさない
         };
       });
+
+      /* soge-run-pick-v1: どれも開いていないときは、下に何も出さない。
+         ★便タブ・運転手・道は、開いた車の中にだけ出す。
+           閉じているのに下に道が残ると、どの車のものか分からない。 */
+      if (!state.accOpen) {
+        row2.style.display = 'none';
+        row2.innerHTML = '';
+        $('srDriver').innerHTML = '';
+        $('srBody').innerHTML =
+          '<div class="sr-pick-hint">上の車を押すと、その車の行き先が出ます。</div>';
+        bind();
+        return;
+      }
 
       selVehicle = vs[state.tab];
       var trips = (selVehicle && selVehicle.trips) || [];
@@ -1654,8 +1694,70 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       + '</div>';
   }
 
+  /* soge-run-pick-v1: 一覧に出す車を選ぶ。
+     ★「車が決まっていません」の枠は、何を選んでいても必ず出す。
+       ここを絞り込みで隠すと、【誰にも運ばれない人】が黙って見えなくなる。 */
+  function listCars() {   // soge-run-pick-v1
+    return ((state.data && state.data.vehicles) || [])
+      .filter(function (v) { return !v.unassigned; });
+  }
+
+  function listPickLabel() {   // soge-run-pick-v1
+    if (state.lsCar === 'all') return 'すべての車';
+    var hit = listCars().filter(function (v) {
+      return String(v.key) === String(state.lsCar); })[0];
+    return hit ? (hit.vehicle_name || '') : '車を選ぶ';
+  }
+
+  function openListPick(btn) {   // soge-run-pick-v1
+    if (document.querySelector('.sr-panel')) return;
+    var cars = listCars();
+    var box = document.createElement('div');
+    /* ★見た目は編集パネルと分ける。ただしクラス名 sr-panel は残す。
+       「パネルは一度に1つ」の歯止めがこの名前で効いているため。 */
+    box.className = 'sr-panel sr-pickpanel';
+    box.innerHTML =
+      '<div style="font-weight:800;font-size:0.82rem;color:#5f6368;padding:2px 4px 6px;">どの車を見ますか</div>'
+      + '<div class="sr-mvlist">'
+        + '<button data-k="all"><span class="n">すべての車</span>'
+          + '<span class="m">その日の全部を上から順に</span></button>'
+        + cars.map(function (v) {
+            var c = accCount(v);
+            var nx = accNext(v);
+            var drv = (nx && nx.t.driver_name)
+                   || ((v.trips || [])[0] || {}).driver_name || v.driver_name || '';
+            return '<button data-k="' + escA(v.key) + '">'
+              + '<span class="n">' + esc(v.vehicle_name || '') + '</span>'
+              + '<span class="m">' + esc(drv ? drv : '運転手 未設定')
+              + ' ／ ' + (c.started ? ('残り' + c.left + '・到着' + c.done)
+                                    : (c.live + '人')) + '</span>'
+              + '</button>';
+          }).join('')
+      + '</div>'
+      + '<div class="row" style="margin-top:10px;"><button class="sr-mini no">やめる</button></div>';
+    (btn.parentNode || btn).appendChild(box);
+    box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    box.querySelector('.no').onclick = function () { box.remove(); };
+    box.querySelectorAll('[data-k]').forEach(function (el) {
+      el.onclick = function () {
+        state.lsCar = el.dataset.k;
+        box.remove();
+        keepScroll(render);
+      };
+    });
+  }
+
   function listHtml() {   // soge-run-list-v1
     var vs = (state.data && state.data.vehicles) || [];
+    /* soge-run-pick-v1: 選んだ車だけにする。
+       ★「車が決まっていません」は、選んでいる車に関わらず必ず残す。 */
+    var picked = state.lsCar;
+    if (picked && picked !== 'all') {
+      vs = vs.filter(function (v) {
+        return v.unassigned || String(v.key) === String(picked); });
+    } else if (!picked) {
+      vs = vs.filter(function (v) { return v.unassigned; });
+    }
     /* 便ごとにまとめる。★車ごとにまとめない。
        車ごとだと、同じ車の迎えと送りが並んで、いまどちらを走っているのか
        読めなくなる。現場が見たいのは「この便に誰が乗るか」。 */
@@ -1673,9 +1775,21 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     });
     groups.sort(function (a, b) { return a.order - b.order; });
 
+    /* soge-run-pick-v1: 上に「車を選ぶ」を置く。 */
+    var pick = '<div class="sr-pick" id="srLsPick">'
+      + '<button type="button" class="sr-pick-b" data-lspick="1">'
+        + '<span>' + esc(listPickLabel()) + '</span>'
+        + '<span class="ar">▼ 変える</span>'
+      + '</button></div>';
+
     if (!groups.length) {
-      return '<div class="sr-empty">この日の送迎はありません。<br>'
-        + '配車の画面で配車を保存すると、ここに出ます。</div>';
+      /* ★まだ車を選んでいないときと、その日に送迎が無いときは別のこと。
+         同じ文にすると、選べば出るのか、そもそも無いのかが分からない。 */
+      return pick + (state.lsCar
+        ? '<div class="sr-empty">この車には、この日の送迎がありません。</div>'
+        : '<div class="sr-pick-hint">上の<b>「車を選ぶ」</b>を押すと、'
+          + '<br>その車の送迎一覧が出ます。<br>'
+          + '「すべての車」を選ぶと、その日の全部が出ます。</div>');
     }
 
     var out = groups.map(function (g) {
@@ -1747,7 +1861,14 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       return '<div class="sr-lg">' + head + cars + '</div>';
     }).join('');
 
-    return out;
+    /* soge-run-pick-v1: まだ車を選んでいないときも、
+       「車が決まっていません」だけは出る（上の絞り込みで残してある）。
+       ★そのときは、選び方の案内も一緒に出す。出さないと、
+         警告だけが出ていて他に何も無い画面になり、壊れたように見える。 */
+    return pick + out + (state.lsCar ? ''
+      : '<div class="sr-pick-hint">上の<b>「車を選ぶ」</b>を押すと、'
+        + '<br>その車の送迎一覧が出ます。<br>'
+        + '「すべての車」を選ぶと、その日の全部が出ます。</div>');
   }
 
   /* ===== soge-drive-v1: 運転中の本文 =====
@@ -2130,7 +2251,12 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
           : '<div class="sr-mvwarn">この日には、移せる車がほかにありません。</div>')
       + '<div class="row" style="margin-top:10px;"><button class="sr-mini no">やめる</button></div>';
 
-    var host = btn.closest('.sr-trip') || btn.closest('.sr-stop');
+    /* soge-run-pick-v1: ★置き先が見つからないと appendChild で落ちて、
+       押しても【何も起きない】。一覧から ⇄ を押したときに実際に起きた（私の落ち度）。
+       一覧の枠(.sr-lc)も置き先に加え、それでも無ければボタンの親に置く。
+       落ちるより、どこかに出るほうがよい。 */
+    var host = btn.closest('.sr-trip') || btn.closest('.sr-stop')
+            || btn.closest('.sr-lc') || btn.parentNode;
     host.appendChild(box);
     box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 
@@ -2521,6 +2647,11 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       };
     });
 
+    /* soge-run-pick-v1: 一覧の「車を選ぶ」。 */
+    root.querySelectorAll('[data-lspick]').forEach(function (el) {
+      el.onclick = function () { openListPick(el); };
+    });
+
     /* soge-run-list-v1: 一覧から、その車を運転中で開く。
        ★車は key で指定する（並び順で指定しない）。
          臨時便を作った直後などに並びが変わると、別の車が開く。 */
@@ -2528,6 +2659,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       el.onclick = function () {
         var key = el.dataset.golist, day = el.dataset.golistt || '';
         state.mode = 'drive';
+        /* soge-run-pick-v1: ★開いた状態で戻す。閉じたまま戻すと、
+           「運転中で開く」を押したのに何も開かない。 */
+        state.accOpen = true;
         try { localStorage.setItem('soge_run_mode', 'drive'); } catch (e) {}
         state.tabKey = key;
         state.autoTab = false;      /* 自分で選んだ車は動かさない */
@@ -2733,7 +2867,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
   // すでにある臨時便に、あとから1名足す
   function openAddToExtra(btn, dayId) {
     if (document.querySelector('.sr-panel')) return;
-    var trip = btn.closest('.sr-trip');
+    /* soge-run-pick-v1: ★ここも同じ。一覧の「＋ 利用者」は .sr-trip の中に
+       居ないので、置き先が見つからず落ちていた（私の落ち度）。 */
+    var trip = btn.closest('.sr-trip') || btn.closest('.sr-lc') || btn.parentNode;
 
     var box = document.createElement('div');
     box.className = 'sr-panel';
