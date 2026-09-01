@@ -26,6 +26,58 @@
 /* いま見ているほうを白くする。★色だけに頼らないよう aria-current も付ける。 */
 .sg-seg a.on { background:#fff; color:#1a73e8; box-shadow:0 1px 2px rgba(0,0,0,.14); }
 /* 下段＝操作。等幅にして、幅が変わっても並びが変わらないようにする。 */
+/* ===== soge-week-preview-v1: 見るだけの配車プレビュー ===== */
+.sg-view { display:flex; background:#eef2f7; border-radius:10px; padding:3px; gap:3px;
+  margin-bottom:12px; }
+.sg-view button { flex:1; border:none; background:none; border-radius:8px; padding:9px 4px;
+  font-family:inherit; font-size:0.84rem; font-weight:800; color:#5f6368; cursor:pointer;
+  white-space:nowrap; }
+.sg-view button.on { background:#fff; color:#1a73e8; box-shadow:0 1px 2px rgba(0,0,0,.14); }
+/* 保存前の中身も出すので、それが分かるように必ず書く。 */
+.sg-pv-note { font-size:0.78rem; color:#5f6368; background:#f8f9fa; border:1px solid #e3e8ef;
+  border-radius:10px; padding:9px 11px; margin-bottom:11px; line-height:1.7; }
+.sg-pv-note b { color:#202124; }
+.sg-pv-g { margin-bottom:16px; }
+.sg-pv-h { display:flex; align-items:center; gap:8px; font-size:0.86rem; font-weight:800;
+  color:#3c4043; margin:0 0 7px; flex-wrap:wrap; }
+.sg-pv-h .tm { font-weight:700; color:#80868b; font-size:0.8rem; }
+.sg-pv-h .n { margin-left:auto; font-weight:700; color:#80868b; font-size:0.78rem; }
+.sg-pv-c { border:1px solid #e3e8ef; border-radius:11px; overflow:hidden; margin-bottom:8px;
+  background:#fff; }
+.sg-pv-ch { display:flex; align-items:center; gap:8px; padding:9px 11px; background:#f8f9fa;
+  border-bottom:1px solid #e3e8ef; font-size:0.85rem; flex-wrap:wrap; }
+.sg-pv-ch .cn { font-weight:800; white-space:nowrap; }
+.sg-pv-ch .dv { color:#5f6368; font-size:0.78rem; white-space:nowrap; }
+.sg-pv-ch .n { margin-left:auto; font-size:0.75rem; font-weight:800; color:#5f6368;
+  white-space:nowrap; }
+.sg-pv-r { display:flex; align-items:center; gap:9px; padding:8px 11px;
+  border-bottom:1px solid #f1f3f5; font-size:0.87rem; }
+.sg-pv-r:last-child { border-bottom:none; }
+.sg-pv-r .no { min-width:16px; color:#9aa0a6; font-weight:800; font-size:0.76rem; }
+.sg-pv-r .nm { font-weight:700; }
+.sg-pv-r .bg { margin-left:auto; font-size:0.65rem; font-weight:800; border-radius:5px;
+  padding:2px 5px; background:#eef2f7; color:#5f6368; white-space:nowrap; }
+.sg-pv-e { padding:9px 11px; font-size:0.8rem; color:#9aa0a6; }
+/* 未割当。★どの見方でも必ず出す。隠すと誰にも運ばれない人が見えなくなる。 */
+.sg-pv-c.un { border:1.5px solid #f9ab00; background:#fffdf5; }
+.sg-pv-c.un .sg-pv-ch { background:#FEF7E0; border-bottom-color:#f9ab00; }
+.sg-pv-w { font-size:0.76rem; color:#8a6d00; padding:8px 11px; line-height:1.6;
+  border-bottom:1px solid #f7e3b0; }
+/* 送迎なしは、いちばん下でたたむ（編集画面と同じ扱い）。 */
+.sg-pv-nd { margin-top:6px; border:1px solid #e3e8ef; border-radius:11px; background:#fff; }
+.sg-pv-nd > summary { padding:10px 12px; font-size:0.82rem; font-weight:700; color:#5f6368;
+  cursor:pointer; }
+/* ★横に並べる。配車編集はパソコンでも使うので、迎え・中間・送りが並ぶと
+   「時間帯でどの車に誰が乗るか」が一度に読める。
+   ★画面の幅では決めない。本文の幅は base 側の --page-max-width で
+     絞られていて、画面が広くても本文は 480px のことがある。
+     実際、画面 1200px で列が 120px になり、名前が1文字ずつ縦に割れた。
+   ★入る幅があるときだけ並べる（280px を切ったら1列に戻る）。
+     こうしておくと、本文の幅を変えてもいつも正しい列数になる。 */
+.sg-pv-wrap { display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+  gap:14px; align-items:start; }
+.sg-pv-wrap > .sg-pv-g { margin-bottom:0; }
+
 /* soge-week-gap-v1: 下に余白を付ける。
    ★soge-week-head-v1 でボタンを .sg-head の外に出したとき、
      .sg-head が持っていた下の余白(10px)を付け直し忘れていた。
@@ -249,6 +301,14 @@
 
   <div class="sg-days" id="sgDays"></div>
 
+  {# soge-week-preview-v1: 編集／見るだけ の切り替え。
+     ★便タブの【上】に置く。プレビューでは便タブを出さない（全部の便を出すので）。 #}
+  <div class="sg-view" id="sgView">
+    <button type="button" data-view="edit">編集</button>
+    <button type="button" data-view="trip">便で見る</button>
+    <button type="button" data-view="car">車で見る</button>
+  </div>
+
   <div class="sg-ttabs" id="sgTripTabs"></div>
   <div id="sgTrips"></div>
 
@@ -268,7 +328,11 @@
     { n: 4, label: '木' }, { n: 5, label: '金' }, { n: 6, label: '土' }, { n: 0, label: '日' }
   ];
   var state = { weekday: 1, data: null, staff: [], vehicles: [], patients: [], dirty: false,
-                tripTab: 0 };   // soge-week-tab-v1: 表示中の便（d.trips の本当の位置）
+                tripTab: 0,   // soge-week-tab-v1: 表示中の便（d.trips の本当の位置）
+                /* soge-week-preview-v1: 'edit'=直す / 'trip'=便で見る / 'car'=車で見る。
+                   ★覚えない。画面を開いたら必ず「編集」から始める。
+                     見るだけの画面で開いて、直せないと悩む人が出ないように。 */
+                view: 'edit' };
 
   /* ===== soge-date-ui-v1 : この画面は顔が2つある =====
        'week' … 曜日ごとの【いつもの配車】（これまでどおり）
@@ -471,6 +535,137 @@
      vehicle_no で枠を見分ける。0 = まだ車が決まっていない人 / -1 = 送迎なし。
      車と同じ形にしてあるので、ドラッグ・保存・並べ替えの仕組みをそのまま使える。 */
   var VNO_UNASSIGNED = 0, VNO_NORIDE = -1;
+  /* ===== soge-week-preview-v1: 見るだけの配車プレビュー =====
+     ★直せる形にはしない。配車編集の肝は【つまんで車から車へ移す】ことで、
+       1台ずつ出す形にすると移す先が画面から消え、その操作ができなくなる。
+       だからここは見るだけ。直すのは「編集」でやる。
+     ★ドラッグの目印(⠿)も、車や人を足すボタンも出さない。
+       出すと「ここでも直せる」と読めてしまう。 */
+
+  function pvRow(s, i) {   // soge-week-preview-v1
+    return '<div class="sg-pv-r">'
+      + '<span class="no">' + (i + 1) + '</span>'
+      + '<span class="nm">' + esc(s.user_name || '') + '</span>'
+      + (s.is_wheelchair ? '<span class="bg">車いす</span>' : '')
+      + '</div>';
+  }
+
+  /* 1台ぶんの箱。★未割当は黄色にして、必ず出す。 */
+  function pvCar(v, title, sub) {   // soge-week-preview-v1
+    var un = isUnassigned(v);
+    var ss = (v.stops || []);
+    return '<div class="sg-pv-c' + (un ? ' un' : '') + '">'
+      + '<div class="sg-pv-ch">'
+        + '<span class="cn">' + esc(title) + '</span>'
+        + (sub ? '<span class="dv">' + esc(sub) + '</span>' : '')
+        + '<span class="n">' + ss.length + '名'
+          + (!un && v.seats ? '／席 ' + v.seats : '') + '</span>'
+      + '</div>'
+      + (un ? '<div class="sg-pv-w">このままだと、この方は誰にも運ばれません。'
+             + '「編集」で車に入れてください。</div>' : '')
+      + (ss.length ? ss.map(pvRow).join('')
+                   : '<div class="sg-pv-e">この便の対象者はいません</div>')
+      + '</div>';
+  }
+
+  /* 便で見る … その便に、どの車で誰が乗るか。 */
+  function pvByTrip() {   // soge-week-preview-v1
+    var trips = (state.data && state.data.trips) || [];
+    if (!trips.length) return '<div class="sg-empty">この日の送迎はありません。</div>';
+    return trips.map(function (t) {
+      var vs = t.vehicles || [];
+      var n = 0;
+      vs.forEach(function (v) { if (!isNoride(v)) n += (v.stops || []).length; });
+      /* ★未割当を先に出す。目に入らないと意味がない。 */
+      var un = vs.filter(function (v) { return isUnassigned(v); })
+                 .filter(function (v) { return (v.stops || []).length; })
+                 .map(function (v) { return pvCar(v, '⚠ 車が決まっていません', ''); }).join('');
+      var cars = realCars(t).map(function (v) {
+        return pvCar(v, v.vehicle_name || '車', v.driver_name || '運転手 未設定');
+      }).join('');
+      var nd = vs.filter(isNoride);
+      var ndN = 0;
+      nd.forEach(function (v) { ndN += (v.stops || []).length; });
+      var ndHtml = ndN
+        ? '<details class="sg-pv-nd"><summary>送迎なし（' + ndN + '件）</summary>'
+          + nd.map(function (v) { return pvCar(v, '送迎なし', ''); }).join('') + '</details>'
+        : '';
+      return '<div class="sg-pv-g">'
+        + '<div class="sg-pv-h"><span>' + esc(t.trip_name || '便') + '</span>'
+          + (t.depart ? '<span class="tm">' + esc(t.depart) + ' 出発</span>' : '')
+          + '<span class="n">' + n + '名</span></div>'
+        + un + (cars || '<div class="sg-pv-e">この便に車がありません</div>') + ndHtml
+        + '</div>';
+    }).join('');
+  }
+
+  /* 車で見る … その車が1日で誰を乗せるか。★1台の1日ぶんが1本の列で読める。
+     ★車は名前でまとめる。便ごとに別の箱として持っているため、
+       まとめないと「1号車」が便の数だけ並ぶ。 */
+  function pvByCar() {   // soge-week-preview-v1
+    var trips = (state.data && state.data.trips) || [];
+    if (!trips.length) return '<div class="sg-empty">この日の送迎はありません。</div>';
+    var cars = [], byName = {};
+    trips.forEach(function (t) {
+      realCars(t).forEach(function (v) {
+        var k = String(v.vehicle_id || v.vehicle_name || ('no' + v.vehicle_no));
+        if (!byName[k]) {
+          byName[k] = { key: k, name: v.vehicle_name || '車', rows: [], n: 0 };
+          cars.push(byName[k]);
+        }
+        byName[k].rows.push({ t: t, v: v });
+        byName[k].n += (v.stops || []).length;
+      });
+    });
+    /* ★未割当は、どの車にも属さないので最後にまとめて出す。
+       便をまたいで1か所に出したほうが、見落としにくい。 */
+    var unRows = [];
+    trips.forEach(function (t) {
+      (t.vehicles || []).forEach(function (v) {
+        if (isUnassigned(v) && (v.stops || []).length) unRows.push({ t: t, v: v });
+      });
+    });
+
+    var out = cars.map(function (c) {
+      return '<div class="sg-pv-g">'
+        + '<div class="sg-pv-h"><span>' + esc(c.name) + '</span>'
+          + '<span class="n">1日で ' + c.n + '名</span></div>'
+        + c.rows.map(function (r) {
+            return pvCar(r.v,
+                         (r.t.trip_name || '便') + (r.t.depart ? ' ' + r.t.depart : ''),
+                         r.v.driver_name || '運転手 未設定');
+          }).join('')
+        + '</div>';
+    }).join('');
+
+    if (unRows.length) {
+      out += '<div class="sg-pv-g">'
+        + '<div class="sg-pv-h"><span>⚠ 車が決まっていません</span></div>'
+        + unRows.map(function (r) {
+            return pvCar(r.v, (r.t.trip_name || '便')
+                              + (r.t.depart ? ' ' + r.t.depart : ''), '');
+          }).join('')
+        + '</div>';
+    }
+    return out || '<div class="sg-empty">この日は車がありません。</div>';
+  }
+
+  function renderView() {   // soge-week-preview-v1
+    var box = $('sgView');
+    if (!box) return;
+    box.querySelectorAll('[data-view]').forEach(function (b) {
+      if (b.dataset.view === state.view) b.classList.add('on');
+      else b.classList.remove('on');
+      b.onclick = function () {
+        if (state.view === b.dataset.view) return;
+        state.view = b.dataset.view;
+        render();
+        var w = document.querySelector('.page-wrapper');
+        if (w) w.scrollTop = 0; else window.scrollTo(0, 0);
+      };
+    });
+  }
+
   function isSpecial(v) { return !!v && v.vehicle_no != null && Number(v.vehicle_no) <= 0; }
   function isUnassigned(v) { return !!v && Number(v.vehicle_no) === VNO_UNASSIGNED; }
   function isNoride(v) { return !!v && Number(v.vehicle_no) === VNO_NORIDE; }
@@ -509,6 +704,33 @@
   // ---------- 描画 ----------
   function render() {
     var d = state.data;
+
+    renderView();   // soge-week-preview-v1
+
+    /* soge-week-preview-v1: 見るだけの2つ。
+       ★便タブは出さない（全部の便を出すので、選ぶものが無い）。
+       ★保存前の中身をそのまま描く。直しながら確かめられるように。
+         そのかわり「保存前」と分かるように上に必ず書く。 */
+    if (state.view === 'trip' || state.view === 'car') {
+      $('sgState').innerHTML = state.dirty || !d.saved
+        ? '<span class="sg-chip unsaved">未保存</span>'
+        : '<span class="sg-chip saved">保存済</span>';
+      $('sgTripTabs').style.display = 'none';
+      $('sgTripTabs').innerHTML = '';
+      $('sgTrips').innerHTML =
+        '<div class="sg-pv-note">'
+        + (state.dirty ? '<b>保存していない直しも、そのまま出しています。</b><br>' : '')
+        + 'ここは<b>見るだけ</b>です。直すときは「編集」に切り替えてください。</div>'
+        + '<div class="sg-pv-wrap">'
+        + (state.view === 'car' ? pvByCar() : pvByTrip())
+        + '</div>';
+      $('sgWarnings').innerHTML = (d.warnings || []).length
+        ? '<div class="sg-warn">' + d.warnings.map(esc).join('<br>') + '</div>' : '';
+      $('sgInfo').innerHTML =
+        '対象 ' + (d.target_count != null ? d.target_count + '名' : '—') +
+        (d.wheelchair_count ? '（うち車いす ' + d.wheelchair_count + '名）' : '');
+      return;   /* ★bind() は呼ばない。見るだけなので、つかむ所も直す所も無い。 */
+    }
 
     $('sgState').innerHTML = state.dirty || !d.saved
       ? '<span class="sg-chip unsaved">未保存</span>'
