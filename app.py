@@ -8257,7 +8257,8 @@ def api_evaluation_ingest_file():
     第1弾は文字化のみ。要約・整理・構造化は一切しない。
     """
     try:
-        from utils import get_generative_model, upload_audio_to_supabase
+        # eval-audio-nostore-v1: upload_audio_to_supabase は使わない（音声を保存しない）
+        from utils import get_generative_model
         import io
 
         f = request.files.get('file')
@@ -8300,10 +8301,19 @@ def api_evaluation_ingest_file():
             }
             mime = mime_map.get(ext, 'audio/webm')
 
-            # ストレージに一時保存（評価確定時に削除）
-            f_code = session.get("f_code", "unknown")
-            supabase = get_supabase()
-            upload_audio_to_supabase(supabase, file_bytes, f.filename or 'audio', f_code)
+            # eval-audio-nostore-v1: 音声を Storage に保存しない。
+            #   ★旧: upload_audio_to_supabase() で
+            #     assessment-audio/{施設コード}/{ランダムUUID}.{拡張子} に置いていた。
+            #     コメントには「評価確定時に削除」と書いてあったが、
+            #     【その削除はどこにも実装されていなかった】。
+            #     ・戻り値(URL)を捨てていたので、どのファイルが誰の何月のものか残らない
+            #     ・削除の口(/api/meeting/audio_cleanup, /api/meeting/audio_delete)は
+            #       {施設コード}/{エリア}/{セッションID}/ の下しか見ない。ここの音声は
+            #       その【外側】にあるので、一生消えなかった
+            #   ★音声はこの場で文字起こしに使うだけ。元のファイルは職員の端末に
+            #     残っているので、取り直しにも困らない。
+            #   ★入れ直したくなったら、まず「どのファイルが誰のか」を残す仕組みを
+            #     先に作ること。それが無いまま保存すると、また消せなくなる。
 
             if audio_mode == 'dialog':
                 prompt = """これは介護施設における機能訓練指導員と利用者の会話の録音です。
