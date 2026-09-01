@@ -70,6 +70,28 @@
 .sr-ac.un { border:1.5px solid #f9ab00; background:#fffdf5; }
 .sr-ac.un .sr-ac-h { background:#FEF7E0; }
 
+/* soge-trip-pick-v1: 便を選ぶ札。★横に並べて、いま見ている便が常に見えるようにする。
+   ★便は2〜3個しかない。押して開く形にすると、開くまで分からなくなる。
+     車は台数が増えるので、あちらは押して開く形のまま。 */
+/* ★横に並べる。折り返しにすると「送り」だけが次の行にひとつ残る（実際にそうなった）。
+   列の数を決めて置けば、いつも同じ形になる。列の数は JS 側で入れる
+   （便が2つの日に3列だと、右が1つぶん空いて欠けて見える）。 */
+.sr-ltrips { display:grid; gap:6px; margin-bottom:8px; }
+/* 「すべて」は横いっぱい。★便と同じ大きさで並べると、
+   「すべて」も便の一種に見える。別のものなので、幅で分ける。 */
+.sr-ltrips .sr-ltrip.all { grid-column:1 / -1; }
+.sr-ltrip { text-align:center; border:1.5px solid #dadce0;
+  background:#fff; border-radius:10px; padding:9px 8px; font-family:inherit;
+  font-size:0.84rem; font-weight:800; color:#5f6368; cursor:pointer; }
+.sr-ltrip:active { background:#eef2f7; }
+.sr-ltrip.on { background:#137333; border-color:#137333; color:#fff; }
+.sr-ltrip .tm { display:block; font-size:0.72rem; font-weight:700; opacity:.85;
+  margin-top:1px; }
+/* 便で絞ったせいで隠れた「車が決まっていない人」の知らせ。
+   ★黙って消さない。消えると、誰にも運ばれない人が見えなくなる。 */
+.sr-lhide { border:1.5px solid #f9ab00; background:#FEF7E0; border-radius:11px;
+  padding:10px 12px; font-size:0.8rem; color:#8a6d00; line-height:1.7; margin-bottom:9px; }
+
 /* soge-run-pick-v1: 車を選ぶボタンと、まだ選んでいないときの案内 */
 .sr-pick { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
 .sr-pick-b { flex:1 1 auto; display:flex; align-items:center; gap:8px; border:1.5px solid #dadce0;
@@ -611,7 +633,10 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
                    ★accOpen=false … 運転中の車は全部閉じた状態から始める
                    ★lsCar=''      … 一覧はまだ車を選んでいない状態から始める
                    ページを開くたびにここへ戻る（覚えない）。 */
-                accOpen: false, lsCar: '' };
+                /* soge-trip-pick-v1: lsTrip='all' … 便は はじめ「すべて」。
+                   ★便まで選ばせると、一覧を開いてから中身が出るまでが遠くなる。
+                     便は常に見えているので、必要なときに押せばよい。 */
+                accOpen: false, lsCar: '', lsTrip: 'all' };
 
   /* soge-view-v1: 選んだ見せ方は端末ごとに覚える。
      運転手はいつも「車両から」、送迎を組む人はいつも「便から」使うため、
@@ -1694,6 +1719,67 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       + '</div>';
   }
 
+  /* ===== soge-trip-pick-v1: 一覧に出す便を選ぶ =====
+     ★上から【便 → 車 → 一覧】。現場が最初に決めるのは「いまどの便の話か」。 */
+
+  /* 便をひとまとめにする鍵。★臨時便は日ごとに別物なので、まとめて「臨時便」。
+     1本ずつ札を出すと、臨時便を作るたびに札が増えて並びが崩れる。 */
+  function tripPickKey(t) {   // soge-trip-pick-v1
+    return t.is_extra ? 'extra' : String(t.trip_key || tripLabel(t));
+  }
+
+  /* 便の名前。★施設が付けた名前(trip_name)を先に使う。
+     tripLabel() は【立ち寄りの種類】から名前を決めているので、
+     中間便でも送りしか無ければ「送り便」になる。札を横に並べると
+     「送り便 12:00」「送り便 16:30」と同じ名前が2つ出て、どちらか分からない
+     （実際にそうなった）。施設の呼び方があるなら、それを出す。
+     ★無いときは、これまでどおり種類から決める。 */
+  function tripPickName(t) {   // soge-trip-pick-v1
+    return ((t.trip_name || '').trim()) || tripLabel(t);
+  }
+
+  /* その日にある便の札。★車の絞り込みとは【別に】、その日の全部から作る。
+     車で絞ったあとから作ると、車を変えるたびに札が増えたり消えたりする。 */
+  function tripPickList() {   // soge-trip-pick-v1
+    var out = [], seen = {};
+    ((state.data && state.data.vehicles) || []).forEach(function (v) {
+      (v.trips || []).forEach(function (t) {
+        var k = tripPickKey(t);
+        if (seen[k]) return;
+        seen[k] = true;
+        out.push({ key: k, label: tripPickName(t), depart: t.depart || '',
+                   order: tripOrder(tripLabel(t)) });
+      });
+    });
+    /* ★並びは「種類 → 出発時刻」。種類だけだと、中間便と送り便がどちらも
+       「送り便」と判定されたときに、時刻の逆転が起きうる。 */
+    out.sort(function (a, b) {
+      return (a.order - b.order) || (a.depart < b.depart ? -1 : (a.depart > b.depart ? 1 : 0));
+    });
+    return out;
+  }
+
+  function tripPickHtml() {   // soge-trip-pick-v1
+    var ts = tripPickList();
+    if (!ts.length) return '';
+    /* ★「すべて」を必ず残す。一覧はもともと全員をザッと見るためのもの。
+       便で必ず絞る形にすると、その用が足せなくなる。 */
+    var h = '<button type="button" class="sr-ltrip all'
+          + (state.lsTrip === 'all' ? ' on' : '') + '" data-lstrip="all">すべて</button>';
+    h += ts.map(function (t) {
+      return '<button type="button" class="sr-ltrip'
+        + (state.lsTrip === t.key ? ' on' : '') + '" data-lstrip="' + escA(t.key) + '">'
+        + esc(t.label)
+        + (t.depart ? '<span class="tm">' + esc(t.depart) + '</span>' : '')
+        + '</button>';
+    }).join('');
+    /* ★列の数は便の数に合わせる（最大3列）。
+       3列に決め打ちすると、便が2つの日に右が1つぶん空いて欠けて見える。 */
+    var cols = Math.min(3, ts.length) || 1;
+    return '<div class="sr-ltrips" style="grid-template-columns:repeat('
+      + cols + ',1fr)">' + h + '</div>';
+  }
+
   /* soge-run-pick-v1: 一覧に出す車を選ぶ。
      ★「車が決まっていません」の枠は、何を選んでいても必ず出す。
        ここを絞り込みで隠すと、【誰にも運ばれない人】が黙って見えなくなる。 */
@@ -1762,31 +1848,54 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
        車ごとだと、同じ車の迎えと送りが並んで、いまどちらを走っているのか
        読めなくなる。現場が見たいのは「この便に誰が乗るか」。 */
     var groups = [], byKey = {};
+    /* soge-trip-pick-v1: 便で絞ったせいで隠れた「車が決まっていない人」を数える。
+       ★黙って消さない。下に人数を出す。 */
+    var hiddenUn = 0;
     vs.forEach(function (v) {
       (v.trips || []).forEach(function (t) {
+        /* soge-trip-pick-v1: 選んだ便だけにする。 */
+        if (state.lsTrip !== 'all' && tripPickKey(t) !== state.lsTrip) {
+          if (v.unassigned || t.unassigned) hiddenUn += (t.stops || []).length;
+          return;
+        }
         var k = t.is_extra ? ('x' + t.day_id) : String(t.trip_key || tripLabel(t));
         if (!byKey[k]) {
-          byKey[k] = { key: k, label: tripLabel(t), depart: t.depart || '',
+          /* soge-trip-pick-v1: 見出しの名前と並びを、上の札とそろえる。
+             ★食い違うと「送り便を選んだのに見出しは中間便」になる。 */
+          byKey[k] = { key: k, label: tripPickName(t), depart: t.depart || '',
                        order: tripOrder(tripLabel(t)), extra: !!t.is_extra, cars: [] };
           groups.push(byKey[k]);
         }
         byKey[k].cars.push({ v: v, t: t });
       });
     });
-    groups.sort(function (a, b) { return a.order - b.order; });
+    groups.sort(function (a, b) {
+      return (a.order - b.order) || (a.depart < b.depart ? -1 : (a.depart > b.depart ? 1 : 0));
+    });
 
-    /* soge-run-pick-v1: 上に「車を選ぶ」を置く。 */
-    var pick = '<div class="sr-pick" id="srLsPick">'
+    /* soge-run-pick-v1: 「車を選ぶ」。
+       soge-trip-pick-v1: ★その【上】に便の札を置く。便 → 車 の順。 */
+    var pick = tripPickHtml()
+      + '<div class="sr-pick" id="srLsPick">'
       + '<button type="button" class="sr-pick-b" data-lspick="1">'
         + '<span>' + esc(listPickLabel()) + '</span>'
         + '<span class="ar">▼ 変える</span>'
       + '</button></div>';
 
+    /* soge-trip-pick-v1: 便で絞って隠れた「車が決まっていない人」の知らせ。 */
+    var hideNote = hiddenUn
+      ? '<div class="sr-lhide">ほかの便に、<b>車が決まっていない方が ' + hiddenUn
+        + ' 人</b>います。<br>上の「すべて」を押すと出ます。</div>'
+      : '';
+
     if (!groups.length) {
       /* ★まだ車を選んでいないときと、その日に送迎が無いときは別のこと。
          同じ文にすると、選べば出るのか、そもそも無いのかが分からない。 */
-      return pick + (state.lsCar
-        ? '<div class="sr-empty">この車には、この日の送迎がありません。</div>'
+      return pick + hideNote + (state.lsCar
+        ? '<div class="sr-empty">'
+          + (state.lsTrip === 'all' ? 'この車には、この日の送迎がありません。'
+                                    : 'この車には、この便の送迎がありません。')
+          + '</div>'
         : '<div class="sr-pick-hint">上の<b>「車を選ぶ」</b>を押すと、'
           + '<br>その車の送迎一覧が出ます。<br>'
           + '「すべての車」を選ぶと、その日の全部が出ます。</div>');
@@ -1865,7 +1974,7 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
        「車が決まっていません」だけは出る（上の絞り込みで残してある）。
        ★そのときは、選び方の案内も一緒に出す。出さないと、
          警告だけが出ていて他に何も無い画面になり、壊れたように見える。 */
-    return pick + out + (state.lsCar ? ''
+    return pick + hideNote + out + (state.lsCar ? ''
       : '<div class="sr-pick-hint">上の<b>「車を選ぶ」</b>を押すと、'
         + '<br>その車の送迎一覧が出ます。<br>'
         + '「すべての車」を選ぶと、その日の全部が出ます。</div>');
@@ -2644,6 +2753,15 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
                          text: ((_s && _s.user_name) || '') + 'さんを後に' };
           keepScroll(render);
         } finally { state.busy[key] = false; }
+      };
+    });
+
+    /* soge-trip-pick-v1: 一覧の便の札。 */
+    root.querySelectorAll('[data-lstrip]').forEach(function (el) {
+      el.onclick = function () {
+        if (state.lsTrip === el.dataset.lstrip) return;
+        state.lsTrip = el.dataset.lstrip;
+        keepScroll(render);
       };
     });
 
