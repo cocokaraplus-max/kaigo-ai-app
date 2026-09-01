@@ -26756,8 +26756,16 @@ def _soge_date_rebuild(supabase, f_code, date_str):  # soge-date-plan-v1
       先に作ると、まだ誰も見ていない日の運行表が増えるだけ。
     """
     st = _soge_day_state(supabase, f_code, date_str)
+    # soge-day-merge-v1: 読めなかったら何もしない
+    if not st.get("read_ok", True):
+        return {"built": False, "reason": "unknown"}
     if not st["exists"]:
         return {"built": False, "reason": "not_yet"}
+    # soge-day-merge-v1: ★走り出したあとは【差分だけ】当てる。
+    #   作り直しは行ごと入れ替えるので打刻が消える。走っている最中に使えない。
+    #   当日の配車変更はいちばん起きることなので、ここで止めない。
+    if st["touched"]:
+        return _soge_merge_day(supabase, f_code, date_str)
     return soge_materialize_day(supabase, f_code, date_str)
 
 
@@ -26772,6 +26780,9 @@ _SOGE_REBUILD_SAY = {
     # soge-day-guard-v1: 読めなかったとき。★「作り直しました」とは言わない。
     "unknown": "ただし、いま運行表の状態を確かめられなかったので、"
                "当日の運行表は作り直していません。少し時間をおいてお試しください。",
+    # soge-day-merge-v1: 走り出したあとに差分を当てたとき。
+    #   ★「打刻はそのまま」と必ず書く。書かないと、消えたのではと不安になる。
+    "merged": "当日の運行表にも反映しました（すでに入っている打刻はそのままです）。",
 }
 
 
@@ -27633,6 +27644,273 @@ def _soge_leave_names(supabase, f_code, date_str):  # soge-leave-v1
     return names
 
 
+def _soge_week_for_day(supabase, f_code, date_str, settings):  # soge-day-merge-v1
+    """その日に使う配車を1か所で決める。日付の配車がいちばん強い。
+
+    ★作り直し(soge_materialize_day)と差分当て(_soge_merge_day)で
+      【同じ順番】を使うために切り出した。2か所に書くと、
+      片方だけ直したときに食い違う。中身はこれまでと同じ。
+    """
+    weekday = _soge_date_weekday(date_str)
+    week = _soge_saved_date(supabase, f_code, date_str, settings)
+    if not week:
+        week = _soge_saved_week(supabase, f_code, weekday, settings)
+    if not week:
+        week = soge_build_week(supabase, f_code, weekday, settings)
+    return week
+
+
+def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
+    """走り出したあとでも、配車の直しを当日の運行表に当てる（差分だけ）。
+
+    ★作り直しは使わない。作り直しは行ごと入れ替えるので打刻が消える。
+    ★返り値は soge_materialize_day と同じ形。
+    """
+    st = _soge_day_state(supabase, f_code, date_str)
+    # ★読めなかったら何もしない（soge-day-guard-v1 と同じ考え）
+    if not st.get("read_ok", True):
+        print("[soge-merge] %s %s の状態を読めなかったので、当てませんでした"
+              % (f_code, date_str), flush=True)
+        return {"built": False, "reason": "unknown"}
+    if not st["exists"]:
+        return {"built": False, "reason": "not_yet"}
+    if st["locked"]:
+        return {"built": False, "reason": "locked"}
+    if date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d"):
+        return {"built": False, "reason": "past"}
+
+    settings = get_soge_settings(supabase, f_code)
+    week = _soge_week_for_day(supabase, f_code, date_str, settings)
+    if not week:
+        return {"built": False, "reason": "no_week"}
+    _by_date = bool(week.get("has_plan"))
+
+    try:
+        _dr = (supabase.table("soge_days").select("*")
+               .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        cur_days = _dr.data or []
+        _sr = (supabase.table("soge_stops").select("*")
+               .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        cur_stops = _sr.data or []
+    except Exception as e:
+        print("[soge-merge] いまの運行表を読めませんでした: %s" % e, flush=True)
+        return {"built": False, "reason": "unknown"}
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    geo = soge_geo_map(supabase, f_code)
+    leave_names = _soge_leave_names(supabase, f_code, date_str)
+    _wk = visit_week_of_month(date_str)
+
+    # 利用を中止した方は、日付を名指ししても乗せない
+    active = {}
+    try:
+        pr = (supabase.table("patient_profiles")
+              .select("id,is_discontinued,discontinued_date")
+              .eq("facility_code", f_code).execute())
+        for x in (pr.data or []):
+            active[str(x["id"])] = patient_active_on(x, date_str)
+    except Exception as e:
+        print("[soge-merge] 利用者を読めませんでした: %s" % e, flush=True)
+
+    def _active_today(s):
+        v = active.get(str(s.get("patient_id")))
+        return True if v is None else v      # 分からない人は出す（消すより安全）
+
+    def _nth_ok_today(s):
+        # soge-day-guard-v1 と同じ規則。日付の配車は曜日の条件で外さない。
+        if _by_date:
+            return True
+        n = int(s.get("nth") or 0)
+        return (n < 1) or (n == _wk)
+
+    def _vno_of(v):
+        k = v.get("vehicle_no")
+        try:
+            return int(k) if k is not None else 1
+        except (TypeError, ValueError):
+            return 1
+
+    # いまある便を (便, 車番) で引けるようにする。★臨時便は配車表に無いので外す。
+    day_by_key = {}
+    for d in cur_days:
+        if d.get("is_extra"):
+            continue
+        try:
+            _k = int(d.get("vehicle_no")) if d.get("vehicle_no") is not None else 1
+        except (TypeError, ValueError):
+            _k = 1
+        day_by_key[(d.get("trip_key"), _k)] = d
+
+    # いまある立ち寄りを (利用者, 迎え/送り) で引けるようにする。
+    #   ★車をまたいで探す。車が変わっただけの人を、消して作り直さないため
+    #     （消すと到着時刻も消える）。
+    #   ★臨時便に入っている人は触らない。臨時便は配車表の外のもの。
+    extra_day_ids = set(str(d["id"]) for d in cur_days if d.get("is_extra"))
+    stop_by_key, extra_keys = {}, set()
+    for s in cur_stops:
+        _pk = (str(s.get("patient_id")), s.get("stop_type") or "pickup")
+        if str(s.get("day_id")) in extra_day_ids:
+            extra_keys.add(_pk)
+            continue
+        stop_by_key[_pk] = s
+
+    used_keys, used_day_ids = set(), set()
+    n_add, n_move, n_del, n_keep = 0, 0, 0, 0
+
+    for trip in (week.get("trips") or []):
+        for v in (trip.get("vehicles") or []):
+            _vno = _vno_of(v)
+            if _vno == SOGE_VNO_NORIDE:
+                continue
+            stops = [s for s in (v.get("stops") or [])
+                     if _nth_ok_today(s) and _active_today(s)]
+            # ★臨時便に移した人は、配車表側にも残っている。二重に作らない。
+            stops = [s for s in stops
+                     if (str(s.get("patient_id")), s.get("type") or "pickup") not in extra_keys]
+
+            key = (trip.get("trip_key"), _vno)
+            day = day_by_key.get(key)
+
+            if not stops and not day:
+                continue
+
+            # 到着予定。作り直しと同じ出し方。
+            riding = [s for s in stops
+                      if (s.get("user_name") or "").strip() not in leave_names]
+            if _vno <= SOGE_VNO_UNASSIGNED:
+                planned = [None] * len(stops)
+            elif len(riding) != len(stops):
+                drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, riding)
+                times = _soge_planned_times(trip.get("depart") or "",
+                                            riding, drive or 0, settings, _lg)
+                tmap = {}
+                for _s, _t in zip(riding, times):
+                    tmap[id(_s)] = _t
+                planned = [tmap.get(id(s)) for s in stops]
+            else:
+                planned = [s.get("planned_at") for s in stops]
+                if not any(planned):
+                    drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, stops)
+                    planned = _soge_planned_times(trip.get("depart") or "",
+                                                  stops, drive or 0, settings, _lg)
+
+            head = {
+                "trip_name": trip.get("trip_name"),
+                "vehicle_id": v.get("vehicle_id") or None,
+                "vehicle_name": v.get("vehicle_name") or "",
+                "plate_no": v.get("plate_no") or "",
+                "driver_name": v.get("driver_name") or "",
+                "depart_at": (trip.get("depart") or None),
+                "updated_at": now_iso,
+            }
+            if day:
+                day_id = day["id"]
+                # ★出発・帰着・備考は触らない。実績なので。
+                try:
+                    (supabase.table("soge_days").update(head)
+                     .eq("facility_code", f_code).eq("id", day_id).execute())
+                except Exception as e:
+                    print("[soge-merge] 便を直せませんでした: %s" % e, flush=True)
+                    continue
+            else:
+                try:
+                    _ins = dict(head)
+                    _ins.update({"facility_code": f_code, "service_date": date_str,
+                                 "trip_key": trip.get("trip_key"), "vehicle_no": _vno,
+                                 "created_at": now_iso})
+                    _r = supabase.table("soge_days").insert(_ins).execute()
+                    day_id = _r.data[0]["id"]
+                except Exception as e:
+                    print("[soge-merge] 便を作れませんでした: %s" % e, flush=True)
+                    continue
+            used_day_ids.add(str(day_id))
+
+            new_rows = []
+            for i, s in enumerate(stops):
+                pk = (str(s.get("patient_id")), s.get("type") or "pickup")
+                used_keys.add(pk)
+                old = stop_by_key.get(pk)
+                _pl = (planned[i] if i < len(planned) else None) or None
+                if old:
+                    # ★行ごと移す。到着時刻・欠席・打刻者はそのまま。
+                    upd = {"day_id": day_id, "seq": i, "planned_at": _pl,
+                           "user_name": s.get("user_name") or old.get("user_name") or ""}
+                    try:
+                        (supabase.table("soge_stops").update(upd)
+                         .eq("facility_code", f_code).eq("id", old["id"]).execute())
+                        if str(old.get("day_id")) != str(day_id):
+                            n_move += 1
+                    except Exception as e:
+                        print("[soge-merge] 立ち寄りを直せませんでした: %s" % e, flush=True)
+                else:
+                    new_rows.append({
+                        "day_id": day_id,
+                        "facility_code": f_code,
+                        "service_date": date_str,
+                        "patient_id": str(s.get("patient_id")),
+                        "user_name": s.get("user_name") or "",
+                        "stop_type": s.get("type") or "pickup",
+                        "seq": i,
+                        "planned_at": _pl,
+                        "created_at": now_iso,
+                    })
+            if new_rows:
+                try:
+                    supabase.table("soge_stops").insert(new_rows).execute()
+                    n_add += len(new_rows)
+                except Exception as e:
+                    print("[soge-merge] 立ち寄りを足せませんでした: %s" % e, flush=True)
+
+    # ---- 配車から消えた人 ----
+    #   ★打刻・欠席が付いていたら消さない。実際に乗せた記録・意図して付けた印。
+    gone_ids = []
+    for pk, s in stop_by_key.items():
+        if pk in used_keys:
+            continue
+        if s.get("arrived_at") or s.get("is_absent"):
+            n_keep += 1
+            continue
+        gone_ids.append(s["id"])
+    if gone_ids:
+        try:
+            (supabase.table("soge_stops").delete()
+             .eq("facility_code", f_code).in_("id", gone_ids).execute())
+            n_del = len(gone_ids)
+        except Exception as e:
+            print("[soge-merge] 立ち寄りを消せませんでした: %s" % e, flush=True)
+
+    # ---- 空になった便 ----
+    #   ★出発・帰着・備考が入っている便は残す（実際に走った跡）。
+    #   ★臨時便は触らない。
+    try:
+        _sr2 = (supabase.table("soge_stops").select("day_id")
+                .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        left = set(str(x.get("day_id")) for x in (_sr2.data or []))
+    except Exception as e:
+        print("[soge-merge] 残りを数えられませんでした: %s" % e, flush=True)
+        left = None
+    if left is not None:
+        drop = []
+        for d in cur_days:
+            if d.get("is_extra"):
+                continue
+            if str(d["id"]) in left or str(d["id"]) in used_day_ids:
+                continue
+            if _soge_day_touched([d], []):
+                continue
+            drop.append(d["id"])
+        if drop:
+            try:
+                (supabase.table("soge_days").delete()
+                 .eq("facility_code", f_code).in_("id", drop).execute())
+            except Exception as e:
+                print("[soge-merge] 便を消せませんでした: %s" % e, flush=True)
+
+    print("[soge-merge] %s %s に配車の直しを当てました（足した%d 移した%d 消した%d "
+          "残した%d）" % (f_code, date_str, n_add, n_move, n_del, n_keep), flush=True)
+    return {"built": True, "reason": "merged"}
+
+
 def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v1 / soge-lock-v1
     """その日の運行（soge_days / soge_stops）を配車表から作る。
 
@@ -27700,19 +27978,15 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
         if not _soge_clear_day(supabase, f_code, date_str):
             return {"built": False, "reason": "clear_failed"}
 
-    y, m, d = [int(x) for x in date_str.split("-")]
-    weekday = (datetime(y, m, d).weekday() + 1) % 7      # Python: 月=0 → アプリ: 日=0
-
+    # soge-day-merge-v1: 曜日の計算は _soge_week_for_day に移した（ここでは使わない）
     settings = get_soge_settings(supabase, f_code)
     # soge-date-plan-v1: ★ここが肝。日付の配車が【先】。
     #   その日だけの配車があれば、いつもの曜日の配車より優先する。
     #   （HIROさん「日付で決めた配車を運行画面では優先する」）
     #   ここ1か所を直せば、運行画面も印刷も、その先すべてが日付の配車で動く。
-    week = _soge_saved_date(supabase, f_code, date_str, settings)
-    if not week:
-        week = _soge_saved_week(supabase, f_code, weekday, settings)
-    if not week:
-        week = soge_build_week(supabase, f_code, weekday, settings)
+    # soge-day-merge-v1: 元をどれにするかは _soge_week_for_day に1本化した。
+    #   ★差分当て(_soge_merge_day)と同じ順番を使うため。
+    week = _soge_week_for_day(supabase, f_code, date_str, settings)
     if not week:
         return {"built": False, "reason": "no_week"}
     # soge-day-guard-v1: いま使っているのが【その日だけの配車】かどうか。

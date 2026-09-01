@@ -450,21 +450,44 @@ td.sp-stops { position: relative; padding-right: 68px; }
       cell.innerHTML = '';
       cell.appendChild(inp);
       inp.focus();
-      var done = false;
-      inp.onblur = inp.onchange = async function () {
-        if (done) return;
-        done = true;
-        var body = {};
-        body[fld] = inp.value || '';
-        var ok = await saveDay(dayId, body);
-        if (ok) toast(inp.value ? (inp.value + ' に記録しました') : '時刻を消しました');
-        if (inp.value) {
-          cell.innerHTML = '<span class="sp-time" data-day="' + dayId + '" data-fld="' + fld + '">' + inp.value + '</span>';
-        } else {
-          cell.innerHTML = '<button class="sp-tap" data-day="' + dayId + '" data-fld="' + fld + '">入力</button>';
-        }
+      var done = false, tmr = null;
+
+      /* soge-time-edit-v1: マスを元の見た目に戻す（保存の有無にかかわらず使う） */
+      function paint(v) {
+        cell.innerHTML = v
+          ? ('<span class="sp-time" data-day="' + dayId + '" data-fld="' + fld + '">' + v + '</span>')
+          : ('<button class="sp-tap" data-day="' + dayId + '" data-fld="' + fld + '">入力</button>');
         bindTime(cell.firstElementChild);
-      };
+      }
+
+      async function commit() {
+        if (done) return;
+        var t = inp.value || '';
+        /* ★何も変えていないなら送らない。触っただけで保存しない。 */
+        if (t === cur) { done = true; clearTimeout(tmr); paint(cur); return; }
+        /* ★空にするのは【消す】操作。触った拍子に実績が消えないよう、確認する。 */
+        if (!t && cur) {
+          if (!confirm('入っている時刻（' + cur + '）を消しますか？')) {
+            inp.value = cur;
+            return;
+          }
+        }
+        done = true;
+        clearTimeout(tmr);
+        var body = {};
+        body[fld] = t;
+        var ok = await saveDay(dayId, body);
+        if (ok) toast(t ? (t + ' に記録しました') : '時刻を消しました');
+        paint(ok ? t : cur);
+      }
+
+      /* ★change ですぐ確定しない。
+         input[type=time] は「時」を選んだ時点でも change を投げるので、
+         そこで確定すると「分」を選ぶ前に入力欄ごと消える（実際に起きた）。
+         少し待って、続きの操作が無ければ確定する。 */
+      inp.onchange = function () { clearTimeout(tmr); tmr = setTimeout(commit, 900); };
+      /* 指を離したときは待たない。 */
+      inp.onblur = commit;
     };
   }
   document.querySelectorAll('[data-fld]').forEach(bindTime);

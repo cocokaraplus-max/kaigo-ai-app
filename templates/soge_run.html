@@ -268,6 +268,33 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
    ★消してはいけない。名前・時刻・車いすはそのまま読める濃さで残す。
      運転席から「次の次は誰か」は見えている必要がある。 */
 .sr-pl.later { background:#EEF0F2; color:#5f6368; }
+/* soge-done-road-v1: 送り終わった人。★「事業所を出発（済み）」と同じ灰色にする。
+   このアプリで #EEF2F7 は【済んだ】の色。先の人(.later)の灰色とは別にして、
+   終わった人と、これから行く人を、色でも見分けられるようにする。 */
+.sr-pl.fin { background:#EEF2F7; color:#5f6368; }
+.sr-pl.fin .tm { color:#3c4043; }
+/* soge-back-v1: 1つ後ろへ回す。★小さいボタンの列(.sr-dv-sub)には入れない。
+   運行中いちばんよく使う操作なので、親指ひとつで届くところにはっきり出す。 */
+.sr-dv-back { display:block; width:100%; margin-top:8px; border:1px solid #C4CAD2;
+  background:#fff; color:#3c4043; border-radius:12px; padding:12px 10px;
+  font-size:0.95rem; font-weight:800; font-family:inherit; text-align:center;
+  cursor:pointer; }
+.sr-dv-back:active { background:#E4EAF2; }
+.sr-dv-back:disabled { opacity:0.6; }
+/* 誰が先になるかを添える。★押す前に効き目が分かるようにする。 */
+.sr-dv-back .w { display:block; margin-top:2px; font-size:0.78rem; font-weight:700;
+  color:#5f6368; }
+/* soge-back-v1: 先の人の板にも「後に」を置く。
+   ★これが無いと、1回押したあと【同じ人をもう1段後ろへ】回せない。
+     押すと一番上の人が入れ替わるので、上の板のボタンだけだと、
+     2回目は入れ替わった相手を押すことになり、行ったり来たりになる
+     （実際にそうなった。作ってから測って分かった）。
+     回したい人の板そのものにボタンを置けば、押すたびに1段ずつ下がる。 */
+.sr-pl-bk { align-self:center; border:1px solid #C4CAD2; background:#fff; color:#3c4043;
+  font-family:inherit; font-size:0.78rem; font-weight:800; border-radius:8px;
+  padding:9px 12px; margin-left:8px; white-space:nowrap; cursor:pointer; }
+.sr-pl-bk:active { background:#E4EAF2; }
+.sr-pl-bk:disabled { opacity:0.6; }
 /* ★札の地は白のままだと薄い灰に溶ける（実際に重ねて消えた）。暗いほうに替える。 */
 .sr-pl.later .tag { background:rgba(0,0,0,.08); color:#3c4043; }
 /* 道の丸も灰色に。板だけ灰色だと丸が浮いて見える。 */
@@ -635,6 +662,82 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     state.undo = { kind: kind, id: id, isDay: !!isDay, day: dayId, text: text };
   }
 
+  /* ===== soge-back-v1: 運転席で順番を入れ替える =====
+     ★迎えの途中で「Aさんより先にBさんへ」が起きる。これまでは配車の画面まで
+       戻らないと直せなかった。押すたびに【1つずつ】後ろへ回す。
+     ★新しいAPIは作らない。すでにある /api/soge/run/order を使う。
+       あちらは「その便の全員」を並べ順で受け取り、顔ぶれが違えば断る。
+     ★貯めて後で送る（srq）は【しない】。
+       打刻は「その時刻に着いた」という単独の事実なので貯めてよいが、
+       並びは「そのとき誰が居たか」の上に成り立つ。電波が戻ったころには
+       別の人が移動・欠席しているかもしれず、古い並びを流し込むと
+       あとの操作を打ち消す。届かなかったときは、届かなかったと出す。 */
+
+  /* その人を1つ後ろへ回した並びを作る。★返すのは「その便の全員」。
+     お休み・到着ずみの人は飛ばして、次に【回れる人】と入れ替える。
+     ★飛ばした人の位置は動かさない。動かすと、記録表の並びまで
+       関係のないところで変わる。 */
+  function orderAfterBack(t, sid) {   // soge-back-v1
+    var ss = (t && t.stops) || [];
+    var ids = ss.map(function (s) { return s.id; });
+    var i = ids.indexOf(sid);
+    if (i < 0) return null;
+    var j = -1;
+    for (var k = i + 1; k < ss.length; k++) {
+      var s = ss[k];
+      if (s.arrived_at || s.is_absent || s.is_leave) continue;
+      j = k;
+      break;
+    }
+    if (j < 0) return null;              /* もう後ろに回せる人が居ない */
+    var out = ids.slice();
+    out[i] = ids[j];
+    out[j] = ids[i];
+    return out;
+  }
+
+  /* 次に先へ出る人。ボタンに添えて、押す前に効き目が分かるようにする。 */
+  function nextLiveAfter(t, sid) {   // soge-back-v1
+    var ss = (t && t.stops) || [];
+    var seen = false;
+    for (var k = 0; k < ss.length; k++) {
+      if (ss[k].id === sid) { seen = true; continue; }
+      if (!seen) continue;
+      if (ss[k].arrived_at || ss[k].is_absent || ss[k].is_leave) continue;
+      return ss[k];
+    }
+    return null;
+  }
+
+  async function sendOrder(dayId, ids) {   // soge-back-v1
+    var res = await srSend('/api/soge/run/order', 'PUT',
+                           { day_id: dayId, stop_ids: ids });
+    if (!res.ok) {
+      /* ★「順番は変わっていません」まで書く。書かないと、変わったのか
+         変わっていないのか分からないまま走ることになる。 */
+      srAlert('err', '順番を変えられませんでした（' + res.why + '）。順番はそのままです');
+      return false;
+    }
+    srAlert('');
+    return true;
+  }
+
+  /* 画面が持っている並びも、同じ順に直す。★load() を待たない。
+     運転席で1秒待たされると「効かなかった」と思って二度押す。 */
+  function applyOrder(t, ids) {   // soge-back-v1
+    var by = {};
+    (t.stops || []).forEach(function (s) { by[s.id] = s; });
+    var out = [];
+    ids.forEach(function (id) { if (by[id]) out.push(by[id]); });
+    /* ★渡した並びに入っていない人が居たら、落とさずに後ろへ付ける。
+       黙って消えるほうが、順番がずれるよりずっと悪い。 */
+    (t.stops || []).forEach(function (s) {
+      if (ids.indexOf(s.id) < 0) out.push(s);
+    });
+    t.stops = out;
+    out.forEach(function (s, i) { s.seq = i; });
+  }
+
   /* ===== soge-tap-retry-v1: 送る道を1本にする =====
      ★ここが今回の肝。例外を外に出さない。
        これまでは fetch や r.json() が投げると、赤い帯を出す行まで届かず、
@@ -934,7 +1037,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
        止めて理由を出せば、管理者に頼めばよいと分かる。 */
   function lockEdits(root) {
     if (canEditDay()) return;
-    var sel = '[data-tap],[data-pen],[data-abs],[data-mv],[data-dep],[data-ret],'
+    /* soge-back-v1: 「後にする」も直す操作なので、同じように止める。
+       ★入れ忘れると、過ぎた日や確定済みの日で順番だけ変えられてしまう。 */
+    var sel = '[data-tap],[data-pen],[data-abs],[data-mv],[data-dep],[data-ret],[data-back],'
             + '[data-edit],[data-exadd],[data-exdel],#srAddExtra'    // soge-odo-off-v1
             /* soge-undo-v1: 戻すも「直す」なので、同じように止める。
                ★開け閉め([data-doneopen])は見るだけなので止めない。 */
@@ -1423,6 +1528,26 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
             + '<span class="go-i">▶</span>'
           + '</button></div>';
 
+    /* soge-done-road-v1: 送り終わった人を、道の上に灰色で残す。
+       ★これまでは到着を押した瞬間に道から消えていた。運転席から
+         「誰まで終わったか」が見えず、順番の入れ替えもしにくかった。
+       ★時刻には必ず【済】と書く。すぐ下に「予定 08:49」が並ぶので、
+         数字だけだと、どちらの時刻か読み分けられない。
+         灰色の板の数字を打刻済みと読み違えた実例がある（soge-plan-label-v1）。
+       ★出すのは直近3人まで。全員出すと「事業所に戻る」まで遠くなる。
+         ただし黙って隠さない。すぐ上の〈済んだ人 N 人〉に全員ぶんが出る。 */
+    var doneNodes = doneList.slice(-3).map(function (s) {
+      var _pend = srqPendingStops()[s.id];
+      return '<div class="sr-nd past"><div class="sr-pl fin">'
+        + '<span class="nm">' + esc(s.user_name) + '</span>'
+        + (_pend ? '<span class="sr-pend">未送信</span>' : '')
+        + '<span class="tm">済 ' + esc(s.arrived_at) + '</span>'
+        + '<button type="button" class="sr-pl-u" data-uds="' + escA(s.id) + '"'
+          + ' data-udk="arrive" data-udn="' + escA(s.user_name) + '"'
+          + ' data-udt="' + escA(s.arrived_at) + '">戻す</button>'
+        + '</div></div>';
+    }).join('');
+
     /* --- 立ち寄り先を、上から順に並べる --- */
     var stopsHtml = left.map(function (s, i) {
       var tag = (s.is_wheelchair ? '<span class="tag">車いす</span>' : '');
@@ -1437,11 +1562,19 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         /* soge-drive-v5: 先の人は灰色。緑は「いま向かう人」だけにする。 */
         return '<div class="sr-nd later">'
           + '<div class="sr-pl later"><span class="nm">' + esc(s.user_name) + '</span>'
-            + tag + tm + '</div>'
+            + tag + tm
+            /* soge-back-v1: この人をもう1段後ろへ。
+               ★後ろに誰も居ない人には出さない（押しても何も起きないボタンは出さない）。 */
+            + (nextLiveAfter(t, s.id)
+                ? '<button type="button" class="sr-pl-bk" data-back="' + escA(s.id) + '">↓ 後に</button>'
+                : '')
+            + '</div>'
           + (s.address ? '<div class="sr-nvs">' + esc(s.address) + '</div>' : '')
           + '</div>';
       }
       /* いま向かう人。ここだけ大きく、住所は切らずに号室まで出す。 */
+      /* soge-back-v1: この人の次に回れる人（居なければ null）。 */
+      var _bkNext = nextLiveAfter(t, s.id);
       return '<div class="sr-nd now">'
         + '<div class="sr-pl big"><span class="nm">' + esc(s.user_name) + '</span>'
           + tag + (s.planned_at ? '<span class="tm">予定 ' + esc(s.planned_at) + '</span>' : '')
@@ -1451,6 +1584,14 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
                        : '<div class="sr-nva none">住所が登録されていません</div>')
           + mvHtml(s)
           + '<button class="sr-dv-tap" data-tap="' + s.id + '">到着</button>'
+          /* soge-back-v1: 1つ後ろへ回す。★誰が先になるかを添える。
+             後ろに回せる人が居ないときは出さない（押せないボタンを
+             出しておくより、無いほうが迷わない）。 */
+          + (_bkNext
+              ? '<button class="sr-dv-back" data-back="' + s.id + '">↓ 後にする'
+                + '<span class="w">' + esc(_bkNext.user_name) + 'さんが先になります</span>'
+                + '</button>'
+              : '')
           + '<div class="sr-dv-sub">'
             + '<button data-abs="' + s.id + '">お休みだった</button>'
             + '<button data-pen="' + s.id + '" data-init="' + esc(s.planned_at || '') + '">時刻を手で</button>'
@@ -1504,7 +1645,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         + (edge ? ';--sr-edge:' + edge : '')
         + (soft ? ';--sr-soft:' + soft : '')      /* soge-drive-v4: うっすら敷く地 */
         + '">'
-        + depNode + stopsHtml + goal
+        /* soge-done-road-v1: 出発 → 送り終わった人 → いま向かう人 → 先の人、
+           の順に並べる。上から下へ、時間どおりに読める形にする。 */
+        + depNode + doneNodes + stopsHtml + goal
       + '</div>' + offHtml + '</div>';
   }
 
@@ -1848,12 +1991,15 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       inp.value = initial || '';
       el.replaceWith(inp);
       inp.focus();
-      var done = false;
+      var done = false, tmr = null;
       async function commit() {
         if (done) return;
-        done = true;
         var t = inp.value;
-        if (!t) { keepScroll(render); return; }
+        /* soge-time-edit-v1: ★何も変えていないなら送らない。触っただけで保存しない。 */
+        if (t === (initial || '')) { done = true; clearTimeout(tmr); keepScroll(render); return; }
+        if (!t) { done = true; clearTimeout(tmr); keepScroll(render); return; }
+        done = true;
+        clearTimeout(tmr);
         var res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: id, time: t });
         if (!res.ok) {
           /* soge-tap-retry-v1: 手で入れた時刻も貯める。入れた時刻のまま送る。 */
@@ -1875,7 +2021,10 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         }
         keepScroll(render);
       }
-      inp.onchange = commit;
+      /* soge-time-edit-v1: ★change ですぐ確定しない。
+         input[type=time] は「時」を選んだ時点でも change を投げる。
+         そこで確定すると「分」を選ぶ前に入力欄が消える（記録表で実際に起きた）。 */
+      inp.onchange = function () { clearTimeout(tmr); tmr = setTimeout(commit, 900); };
       inp.onblur = commit;
     }
 
@@ -2029,7 +2178,19 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         state.busy[key] = true;
         el.disabled = true;
         try {
-          var ok = u.isDay ? await undoDay(u.id, u.kind) : await undoStop(u.id, u.kind);
+          var ok;
+          /* soge-back-v1: 順番を戻すときは、前の並びをそのまま送り直す。
+             ★打刻の「戻す」とは別の道。あちらは値を空にするだけだが、
+               順番は「全員の並び」を渡さないと直らない。 */
+          if (u.kind === 'order') {
+            ok = await sendOrder(u.day, u.ids || []);
+            if (ok) {
+              var _t = findTrip(u.day);
+              if (_t) applyOrder(_t, u.ids || []);
+            }
+          } else {
+            ok = u.isDay ? await undoDay(u.id, u.kind) : await undoStop(u.id, u.kind);
+          }
           if (!ok) { el.disabled = false; return; }
           toast('戻しました');
           state.undo = null;
@@ -2083,6 +2244,44 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       };
     });
 
+
+    /* soge-back-v1: 1つ後ろへ回す。★確認は出さない。
+       押し間違えても、すぐ上の帯から戻せる。走行中に確認を出すと、
+       画面を見る時間が増える。 */
+    root.querySelectorAll('[data-back]').forEach(function (el) {
+      el.onclick = async function () {
+        var id = el.dataset.back;
+        var t = findTrip(dayIdOfStop(id));
+        if (!t) return;
+        var before = (t.stops || []).map(function (s) { return s.id; });
+        var ids = orderAfterBack(t, id);
+        if (!ids) { toast('これ以上うしろに回せません'); return; }
+        var key = 'b' + id;
+        if (state.busy[key]) return;
+        state.busy[key] = true;
+        /* ★中の文字を作り直さない。名前が入っているので、消すと戻せない。 */
+        var oldHtml = el.innerHTML;
+        el.innerHTML = '…';
+        el.disabled = true;
+        try {
+          if (!await sendOrder(t.day_id, ids)) {
+            el.innerHTML = oldHtml;
+            el.disabled = false;
+            return;
+          }
+          applyOrder(t, ids);
+          var _s = findStop(id);
+          /* soge-undo-v1 と同じ帯に出す。★前の並びをそのまま覚えておいて、
+             戻すときはそれを送り直す。 */
+          /* ★帯の文は短く。長いと幅に入りきらず「…」で切れる。
+             「○○さんを後にしました」は実際に切れた。名前を先に置いて詰める。 */
+          state.undo = { kind: 'order', id: id, isDay: false, day: t.day_id,
+                         ids: before,
+                         text: ((_s && _s.user_name) || '') + 'さんを後に' };
+          keepScroll(render);
+        } finally { state.busy[key] = false; }
+      };
+    });
 
     if (addBtn) addBtn.onclick = function () { openExtraPanel(addBtn); };
 
