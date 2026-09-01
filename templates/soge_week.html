@@ -78,6 +78,29 @@
   gap:14px; align-items:start; }
 .sg-pv-wrap > .sg-pv-g { margin-bottom:0; }
 
+/* ===== soge-week-pvmx-v1: 「車で見る」を表にする（横＝車 / 縦＝便） =====
+   ★せまいときは、これまでどおり縦に積む。出す順番を「車ごと」にしてあるので、
+     積んだだけで今までと同じ読み方になる。HTMLは1つ。
+   ★ひろいときだけ、置き直して表にする。同じ便が同じ行に来るので、
+     その車にその便が無いことも、空欄でひと目で分かる。 */
+.sg-pv-mxw { overflow-x:auto; }
+.sg-pv-mx { display:block; }
+/* ★画面の幅では決めない。本文の幅は --page-max-width で絞られていて、
+   画面が広くても本文は 480px のことがある（前に列が 120px になり、
+   名前が1文字ずつ縦に割れた）。入れ物の幅で見る。 */
+@container (min-width: 700px) {
+  .sg-pv-mx { display:grid; gap:0 14px; align-items:start; }
+  /* 表の中の箱は、下に余白を付けて行を離す */
+  .sg-pv-mx > .sg-pv-c { margin-bottom:10px; }
+  .sg-pv-mx > .sg-pv-hd { margin-bottom:7px; }
+  .sg-pv-mx > * { min-width:0; }
+}
+/* 車の名前の見出し（表のいちばん上の行） */
+.sg-pv-hd { display:flex; align-items:center; gap:8px; font-size:0.86rem; font-weight:800;
+  color:#3c4043; margin:0 0 7px; flex-wrap:wrap; }
+.sg-pv-hd .n { margin-left:auto; font-weight:700; color:#80868b; font-size:0.78rem; }
+.sg-pv-hd.un { color:#8a6d00; }
+
 /* soge-week-gap-v1: 下に余白を付ける。
    ★soge-week-head-v1 でボタンを .sg-head の外に出したとき、
      .sg-head が持っていた下の余白(10px)を付け直し忘れていた。
@@ -572,10 +595,13 @@
   }
 
   /* 1台ぶんの箱。★未割当は黄色にして、必ず出す。 */
-  function pvCar(v, title, sub) {   // soge-week-preview-v1
+  function pvCar(v, title, sub, css) {   // soge-week-preview-v1
     var un = isUnassigned(v);
     var ss = (v.stops || []);
-    return '<div class="sg-pv-c' + (un ? ' un' : '') + '">'
+    /* soge-week-pvmx-v1: 表にするときの置き場所。渡されなければ何も付けない
+       （「便で見る」はこれまでどおり）。 */
+    return '<div class="sg-pv-c' + (un ? ' un' : '') + '"'
+      + (css ? ' style="' + css + '"' : '') + '>'
       + '<div class="sg-pv-ch">'
         + '<span class="cn">' + esc(title) + '</span>'
         + (sub ? '<span class="dv">' + esc(sub) + '</span>' : '')
@@ -647,28 +673,53 @@
       });
     });
 
-    var out = cars.map(function (c) {
-      return '<div class="sg-pv-g">'
-        + '<div class="sg-pv-h"><span>' + esc(c.name) + '</span>'
-          + '<span class="n">1日で ' + c.n + '名</span></div>'
-        + c.rows.map(function (r) {
-            return pvCar(r.v,
-                         (r.t.trip_name || '便') + (r.t.depart ? ' ' + r.t.depart : ''),
-                         r.v.driver_name || '運転手 未設定');
-          }).join('')
+    /* soge-week-pvmx-v1: どの便が何行目かを決める。
+       ★便の並び（state.data.trips）の順をそのまま行の順にする。
+         ここで別の並べ方をすると、上の「便で見る」と順番が食い違う。 */
+    var rowOf = {};
+    trips.forEach(function (t, i) { rowOf[tripRowKey(t)] = i; });
+
+    /* ★出す順番は【車ごと】にする。
+       こうしておくと、せまい画面で表をやめて縦に積んだときに、
+       車ごとにまとまって読める（HTMLを2つ書かなくて済む）。 */
+    var cols = cars.slice();
+    if (unRows.length) {
+      cols.push({ key: '__un', name: '⚠ 車が決まっていません', un: true,
+                  rows: unRows, n: unRows.reduce(function (a, r) {
+                    return a + (r.v.stops || []).length; }, 0) });
+    }
+    if (!cols.length) return '<div class="sg-empty">この日は車がありません。</div>';
+
+    var cells = cols.map(function (c, ci) {
+      /* 表にしたときの置き場所。せまい画面では効かない（block になるので）。 */
+      var col = 'grid-column:' + (ci + 1) + ';';
+      var h = '<div class="sg-pv-hd' + (c.un ? ' un' : '') + '"'
+        + ' style="' + col + 'grid-row:1">'
+        + '<span>' + esc(c.name) + '</span>'
+        + (c.un ? '' : '<span class="n">1日で ' + c.n + '名</span>')
         + '</div>';
+      var body = c.rows.map(function (r) {
+        /* ★同じ便は必ず同じ行に置く。その車にその便が無ければ、そこは空欄になる。
+           詰めてはいけない。詰めると「無い」が見えなくなる。 */
+        var row = 'grid-row:' + ((rowOf[tripRowKey(r.t)] || 0) + 2) + ';';
+        return pvCar(r.v,
+                     (r.t.trip_name || '便') + (r.t.depart ? ' ' + r.t.depart : ''),
+                     c.un ? '' : (r.v.driver_name || '運転手 未設定'),
+                     col + row);
+      }).join('');
+      return h + body;
     }).join('');
 
-    if (unRows.length) {
-      out += '<div class="sg-pv-g">'
-        + '<div class="sg-pv-h"><span>⚠ 車が決まっていません</span></div>'
-        + unRows.map(function (r) {
-            return pvCar(r.v, (r.t.trip_name || '便')
-                              + (r.t.depart ? ' ' + r.t.depart : ''), '');
-          }).join('')
-        + '</div>';
-    }
-    return out || '<div class="sg-empty">この日は車がありません。</div>';
+    /* 車が多い日は横に流す。★1列を 240px より狭くしない（名前が縦に割れる）。 */
+    return '<div class="sg-pv-mxw"><div class="sg-pv-mx" style="'
+      + 'grid-template-columns:repeat(' + cols.length + ',minmax(240px,1fr))">'
+      + cells + '</div></div>';
+  }
+
+  /* 便を行にまとめる鍵。★臨時便は日ごとに別物なので、まとめて1行にする。
+     1本ずつ行にすると、臨時便を作るたびに表の行が増えて読みにくくなる。 */
+  function tripRowKey(t) {   // soge-week-pvmx-v1
+    return String(t.key || t.trip_key || t.trip_name || '便');
   }
 
   function renderView() {   // soge-week-preview-v1
