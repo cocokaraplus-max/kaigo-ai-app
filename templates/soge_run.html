@@ -37,6 +37,91 @@
 .sr-mode button + button { border-left:1.5px solid #dadce0; }
 .sr-mode-hint { font-size:0.75rem; color:#9aa3b2; font-weight:600; }
 
+/* ===== soge-run-acc-v1: 運転中の車えらび（縦に積む） =====
+   ★横スクロールをやめる。右に何台あるかは、スクロールしてみるまで
+     分からなかった。縦なら台数がひと目で分かる。 */
+.sr-acc { display:block; overflow:visible; margin-bottom:10px; }
+.sr-ac { border:1px solid #e3e8ef; border-radius:11px; overflow:hidden; margin-bottom:8px;
+  background:#fff; }
+.sr-ac.open { border-color:#c9d6ea; box-shadow:0 1px 4px rgba(26,115,232,.13); }
+.sr-ac-h { display:flex; align-items:center; gap:8px; width:100%; padding:11px 12px;
+  background:#f8f9fa; border:none; font-family:inherit; text-align:left; cursor:pointer;
+  flex-wrap:wrap; }
+.sr-ac.open .sr-ac-h { background:#E8F0FE; }
+.sr-ac-h .cn { font-weight:800; font-size:0.92rem; white-space:nowrap; color:#202124; }
+/* ★名前は詰めない。詰めると「山…」と1文字になり、誰が運転するのか読めない。 */
+.sr-ac-h .dv { font-size:0.78rem; color:#5f6368; white-space:nowrap; }
+.sr-ac-h .cnt { margin-left:auto; font-size:0.75rem; font-weight:800; color:#5f6368;
+  white-space:nowrap; }
+.sr-ac-h .ar { font-size:0.8rem; color:#5f6368; font-weight:800; }
+/* 閉じている車にも、次にどこへ行くかを1行出す。
+   ★出さないと、開くまで何も分からない。他の車の進み具合が見えなくなる。 */
+.sr-ac-n { padding:8px 12px 10px; font-size:0.79rem; color:#5f6368; line-height:1.6;
+  border-top:1px solid #f1f3f5; }
+.sr-ac-n b { color:#202124; }
+/* 開いた中身。便タブ・運転手・本文がここへ入る。
+   ★横の余白はほとんど取らない。取ると道の板がそのぶん狭くなり、
+     「戻す」が2行に折れて縦に伸びる（実際にそうなった）。
+     余白は、中の便タブと運転手の行だけに付ける。 */
+.sr-ac-b { padding:9px 0 8px; }
+.sr-ac-b > .sr-ttabs, .sr-ac-b > .sr-driver { padding-left:7px; padding-right:7px; }
+.sr-ac-b > .sr-ttabs { margin-bottom:10px; }
+/* 車が決まっていない枠。★黄色。黙って下に置かない。 */
+.sr-ac.un { border:1.5px solid #f9ab00; background:#fffdf5; }
+.sr-ac.un .sr-ac-h { background:#FEF7E0; }
+
+/* ===== soge-run-list-v1: その日の全部を上から順に見る「一覧」 ===== */
+.sr-lg { margin-bottom:16px; }
+/* 便の見出し。★便ごとに区切る。車ごとに区切ると、同じ車の迎えと送りが
+   並んで「いま走っているのはどっちか」が読めなくなる。 */
+.sr-lg-h { display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:800;
+  color:#5f6368; margin:0 0 7px; }
+.sr-lg-h .tm { font-weight:700; color:#80868b; }
+.sr-lg-h .n { margin-left:auto; font-weight:700; color:#80868b; white-space:nowrap; }
+.sr-lc { border:1px solid #e3e8ef; border-radius:11px; overflow:hidden; margin-bottom:9px;
+  background:#fff; }
+/* ★入りきらないときは折り返す。詰めない。
+   詰めると運転手の名前が「山…」と1文字になり、誰が運転するのか読めなくなる
+   （実際にそうなった）。名前は名前のまま出して、ボタンを下の行へ落とす。 */
+.sr-lc-h { display:flex; align-items:center; gap:8px; padding:9px 11px; background:#f8f9fa;
+  border-bottom:1px solid #e3e8ef; font-size:0.85rem; flex-wrap:wrap; }
+.sr-lc-h .cn { font-weight:800; white-space:nowrap; }
+.sr-lc-h .dv { color:#5f6368; font-size:0.78rem; white-space:nowrap; }
+.sr-lc-h .cnt { margin-left:auto; font-size:0.74rem; font-weight:800; color:#5f6368;
+  white-space:nowrap; }
+.sr-lc-h svg { flex:0 0 auto; }
+/* その車を運転中で開く。★一覧から運転席へ、1タップで戻れるようにする。 */
+.sr-lc-go { margin-left:auto; border:1px solid #C4CAD2; background:#fff; color:#1a73e8; border-radius:8px;
+  padding:7px 10px; font-size:0.74rem; font-weight:800; font-family:inherit;
+  white-space:nowrap; cursor:pointer; }
+.sr-lc-go:active { background:#E4EAF2; }
+.sr-lr { display:flex; align-items:center; gap:9px; padding:9px 11px;
+  border-bottom:1px solid #f1f3f5; font-size:0.88rem; }
+.sr-lr:last-child { border-bottom:none; }
+.sr-lr .no { min-width:16px; color:#9aa0a6; font-weight:800; font-size:0.76rem; }
+.sr-lr .nm { font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.sr-lr .tm { margin-left:auto; font-weight:800; font-size:0.8rem; white-space:nowrap; }
+/* 済んだ人。★「済」の字を必ず付ける（下の「予定」と読み分けるため）。 */
+.sr-lr.fin { background:#f7f9fb; }
+.sr-lr.fin .nm { color:#5f6368; }
+.sr-lr.fin .tm { color:#137333; }
+.sr-lr.now { background:#E8F0FE; }
+.sr-lr.now .nm { color:#0b57d0; }
+.sr-lr.now .tm { color:#1a73e8; }
+.sr-lr .tm.pl { color:#80868b; font-weight:700; }
+.sr-lr.off .nm { color:#9aa0a6; text-decoration:line-through; }
+.sr-lr .bg { font-size:0.65rem; font-weight:800; border-radius:5px; padding:2px 5px;
+  background:#eef2f7; color:#5f6368; white-space:nowrap; }
+.sr-lr .sr-mv { margin-left:auto; }
+/* 車が決まっていない人。★黄色で目立たせる。黙って一覧の下に置かない。 */
+.sr-lc.un { border:1.5px solid #f9ab00; background:#fffdf5; }
+.sr-lc.un .sr-lc-h { background:#FEF7E0; border-bottom-color:#f9ab00; }
+.sr-lc-w { font-size:0.76rem; color:#8a6d00; padding:8px 11px; line-height:1.6;
+  border-bottom:1px solid #f7e3b0; }
+/* 臨時便 */
+.sr-lc.ex .sr-lc-h { background:#F3E8FD; border-bottom-color:#d7bcf5; }
+.sr-lc-x { margin-left:auto; display:flex; gap:6px; }
+
 /* soge-trip-tab-v1: 便タブ（迎え便・送り便ごとに切り替え） */
 .sr-ttabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; margin-bottom:12px; }
 .sr-ttab { flex:0 0 auto; padding:8px 14px; border-radius:10px; border:1.5px solid #dadce0; background:#fff;
@@ -481,10 +566,13 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
 
   <div class="sr-mode-row">
     <div class="sr-mode" id="srMode">
-      <button type="button" data-mode="vehicle">車両から</button>
-      <button type="button" data-mode="trip">便から</button>
       <!-- soge-drive-v1: 運転席で片手で使う見せ方 -->
+      <!-- soge-run-list-v1: 「車両から」「便から」は無くした。
+           2つとも事務所用で、運転席では使わないのに一番上を占めていた。
+           そこにしか無かったもの（確定・作り直し・臨時便・車が未定の人）は
+           「一覧」と上の帯に置いてある。 -->
       <button type="button" data-mode="drive">運転中</button>
+      <button type="button" data-mode="list">一覧</button>
     </div>
     <span class="sr-mode-hint" id="srModeHint"></span>
   </div>
@@ -502,7 +590,7 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
 (function () {
   var state = { date: '', data: null, tab: 0, tripTab: 0, autoTab: true, tabKey: '', busy: {}, staff: [], vehicles: [], patients: [],
                 undo: null, doneOpen: false,   // soge-undo-v1: 直後の帯 / 済んだ人を開いているか
-                mode: 'vehicle' };   // soge-view-v1: 'vehicle'=車両から / 'trip'=便から
+                mode: 'drive' };   // soge-run-list-v1: 'drive'=運転中 / 'list'=一覧
 
   /* soge-view-v1: 選んだ見せ方は端末ごとに覚える。
      運転手はいつも「車両から」、送迎を組む人はいつも「便から」使うため、
@@ -511,7 +599,11 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     var _m = localStorage.getItem('soge_run_mode');
     // soge-drive-v1: 'drive' も許す。★ここに足し忘れると、運転手が
     //   「運転中」を選んでも、画面を開くたびに元に戻る（覚えたことにならない）。
-    if (_m === 'trip' || _m === 'vehicle' || _m === 'drive') state.mode = _m;
+    // soge-run-list-v1: ★端末には無くなった 'vehicle' / 'trip' が残っている。
+    //   そのまま入れると、どのボタンにも当たらない見せ方が選ばれ、
+    //   【何も出ない画面】になる。古い値は「運転中」に読み替える。
+    if (_m === 'vehicle' || _m === 'trip') _m = 'drive';
+    if (_m === 'drive' || _m === 'list') state.mode = _m;
   } catch (e) {}
 
   function $(id) { return document.getElementById(id); }
@@ -1069,12 +1161,15 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
          走っている最中に親指の近くへ置いてよいものではない。
        ★かといって状態を隠さない。隠すと、確定済みなのに配車を直して
          「反映されない」と悩むことになる。出す。ただし読むだけ。
-       確定や作り直しをしたいときは「車両から」に切り替えてもらう。 */
+       確定や作り直しをしたいときは「一覧」に切り替えてもらう。
+       soge-run-list-v1: ★ここが 'drive' のときだけ効くこと。
+         「一覧」でも読むだけにしてしまうと、確定も作り直しもできなくなる
+         （「車両から」を無くしたので、他に押せる場所が無い）。 */
     if (state.mode === 'drive') {
       box.className = 'sr-lock' + (locked || past ? ' on' : '');
       box.innerHTML = '<span class="st">'
         + (past ? '過ぎた日' : (locked ? '確定済み' : '未確定')) + '</span>'
-        + '<span class="ex">確定や作り直しは「車両から」に切り替えてください。</span>';
+        + '<span class="ex">確定や作り直しは「一覧」に切り替えてください。</span>';
       return;
     }
     box.className = 'sr-lock' + (locked || past ? ' on' : '');
@@ -1209,11 +1304,10 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         render();
       };
     });
-    $('srModeHint').textContent = (state.mode === 'trip')
-      ? '便 → 車両 の順に選びます'
-      : (state.mode === 'drive'
-          ? '行き先を上から順に出します'      // soge-drive-v2
-          : '車両 → 便 の順に選びます');
+    // soge-run-list-v1
+    $('srModeHint').textContent = (state.mode === 'list')
+      ? 'その日の全部を上から順に'
+      : '行き先を上から順に出します';      // soge-drive-v2
   }
 
   /* soge-unassigned-v1: 「⚠ 車が未定」を最初に開かせない。
@@ -1231,6 +1325,10 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
   }
 
   function render() {
+    /* soge-run-acc-v1: ★まず元の場所へ戻す。
+       戻さずに #srTabs の中身を消すと、その中に入れた #srBody ごと消えて、
+       画面が真っ白になる。 */
+    accRestore();
     renderLock();
     renderMode();
     var vs = (state.data && state.data.vehicles) || [];
@@ -1249,6 +1347,19 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
 
     var row1 = $('srTabs'), row2 = $('srTripTabs');
     var selVehicle = null, selTrip = null;   // soge-odo-off-v1: 前の便の㎞は使わない
+
+    /* soge-run-list-v1: 一覧のときは、車・便のタブと運転手の行を出さない。
+       一覧の中に全部の車と便が出ているので、上で選ぶものが無い。
+       ★出したままにすると、選んだ車と一覧の中身が食い違って見える。 */
+    if (state.mode === 'list') {
+      row1.innerHTML = '';
+      row2.style.display = 'none';
+      row2.innerHTML = '';
+      $('srDriver').innerHTML = '';
+      $('srBody').innerHTML = listHtml() + addExtra;
+      bind();
+      return;
+    }
 
     if (state.mode === 'trip') {
       // ===== 便から見る（soge-view-v1）=====
@@ -1339,9 +1450,10 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       /* soge-car-icon-v1: 名前は黒のまま。色は車のアイコンが持つ。
          ★アイコンはサーバが組み立てたものをそのまま置く（形と色の
            組み合わせを画面側で作らない）。 */
-      row1.innerHTML = tabsHtml(vs.map(function (v) {
-        return (v.icon_svg || '') + esc(v.vehicle_name);
-      }), state.tab, 'sr-tab', 'data-tab');
+      /* soge-run-acc-v1: 横に並べず、縦に積む。
+         ★右に何台あるかが、スクロールしてみるまで分からなかった。 */
+      row1.className = 'sr-acc';
+      row1.innerHTML = accHtml(vs, state.tab);
       row1.querySelectorAll('[data-tab]').forEach(function (el) {
         // soge-trip-tab-v1: 車両タブを変えたら便タブも先頭に戻す
         el.onclick = function () {
@@ -1402,6 +1514,16 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       }
     }
 
+    /* soge-run-acc-v1: 開いている車の中へ、便タブ・運転手・本文を入れ直す。
+       ★ここで【入れ直すだけ】。中身は下でこれまでどおり作る。
+       ★入れ直せなかったときは、元の場所のまま出す。出ないより出るほうがよい。 */
+    var _accHost = $('srAccBody');
+    if (_accHost) {
+      _accHost.appendChild(row2);
+      _accHost.appendChild($('srDriver'));
+      _accHost.appendChild($('srBody'));
+    }
+
     /* soge-drive-v1: 運転中は本文だけ差し替える。
        タブの選び方は「車両から」とまったく同じ道を通す（別に持たない）。
        ★「＋ 臨時便」は運転中には出さない。運転席で押すものではない。 */
@@ -1411,8 +1533,221 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
                             (selVehicle && selVehicle.color_edge) || '',
                             (selVehicle && selVehicle.color_soft) || '')
                  : '<div class="sr-empty">この車の便がありません</div>')
-      : ((selTrip ? tripHtml(selTrip) : '') + addExtra);
+      /* soge-run-list-v1: 一覧。★「＋ 臨時便」はここに残す。
+         「車両から」を無くしたので、他に臨時便を作れる場所が無い。 */
+      : (listHtml() + addExtra);
     bind();
+  }
+
+  /* ===== soge-run-acc-v1: 運転中の車えらびをアコーディオンにする =====
+     ★中身（便タブ・運転手・本文）は作り直さない。DOMごと入れ直す。
+       HTMLを二重に書くと、片方だけ直したときに食い違う。
+       入れ直すだけなら、これまでの配線がそのまま効く。 */
+
+  /* 入れ直した3つを、元の場所へ戻す。
+     ★これを呼ばずに親（#srTabs）の中身を消すと、#srBody ごと消える。
+       消えると innerHTML を入れる先が無く、画面が真っ白になる。
+       render() のはじめで必ず呼ぶこと。 */
+  function accRestore() {   // soge-run-acc-v1
+    var tabs = $('srTabs');
+    if (!tabs) return;
+    var host = tabs.parentNode;
+    if (!host) return;
+    ['srTripTabs', 'srDriver', 'srBody'].forEach(function (id) {
+      var el = $(id);
+      if (el && el.parentNode !== host) host.appendChild(el);
+    });
+  }
+
+  /* その車で、次にどこへ行くか。★便をまたいで、上から順に最初の1人。
+     迎えが終われば、自然に送りの1人目になる。 */
+  function accNext(v) {   // soge-run-acc-v1
+    var ts = (v.trips || []);
+    for (var k = 0; k < ts.length; k++) {
+      var ss = ts[k].stops || [];
+      for (var i = 0; i < ss.length; i++) {
+        var s = ss[i];
+        if (s.is_absent || s.is_leave || s.arrived_at) continue;
+        return { s: s, t: ts[k] };
+      }
+    }
+    return null;
+  }
+
+  /* その車の人数。★便をまとめて数える。休みの人は数えない。 */
+  function accCount(v) {   // soge-run-acc-v1
+    var live = 0, done = 0, started = false;
+    (v.trips || []).forEach(function (t) {
+      if (t.departed_at) started = true;
+      (t.stops || []).forEach(function (s) {
+        if (s.is_absent || s.is_leave) return;
+        live++;
+        if (s.arrived_at) done++;
+      });
+    });
+    return { live: live, done: done, left: live - done, started: started };
+  }
+
+  function accHtml(vs, active) {   // soge-run-acc-v1
+    return vs.map(function (v, i) {
+      var open = (i === active);
+      var un = !!v.unassigned;
+      var c = accCount(v);
+      var nx = accNext(v);
+      var drv = '';
+      if (!un) {
+        var ts = (v.trips || []);
+        drv = (nx && nx.t.driver_name) || (ts[0] && ts[0].driver_name) || v.driver_name || '';
+      }
+      var cnt = un
+        ? (c.live + '名')
+        : (c.started ? ('残り' + c.left + '／到着' + c.done)
+                     : (c.live ? (c.live + '名') : '立ち寄りなし'));
+      var head = '<button type="button" class="sr-ac-h" data-tab="' + i + '">'
+        + (un ? '' : (v.icon_svg || ''))
+        + '<span class="cn">' + esc(un ? '⚠ 車が決まっていません' : (v.vehicle_name || '')) + '</span>'
+        + (un ? '' : '<span class="dv">' + esc(drv ? drv : '運転手 未設定') + '</span>')
+        + '<span class="cnt">' + cnt + '</span>'
+        + '<span class="ar">' + (open ? '▲' : '▼') + '</span>'
+        + '</button>';
+      var body = open
+        ? '<div class="sr-ac-b" id="srAccBody"></div>'
+        : ('<div class="sr-ac-n">'
+            + (un
+                ? 'このままだと、この方は誰にも運ばれません。'
+                : (nx
+                    ? ('次は <b>' + esc(nx.s.user_name) + '</b>'
+                       + (nx.s.planned_at ? '（予定 ' + esc(nx.s.planned_at) + '）' : ''))
+                    : (c.live ? 'この車はぜんぶ終わりました。' : 'この車に立ち寄りはありません。')))
+            + '</div>');
+      return '<div class="sr-ac' + (open ? ' open' : '') + (un ? ' un' : '') + '">'
+        + head + body + '</div>';
+    }).join('');
+  }
+
+  /* ===== soge-run-list-v1: その日の全部を上から順に見る「一覧」 =====
+     ★「車両から／便から」を無くした代わり。事務所で見るところ。
+     ★新しい配線は書かない。⇄（data-mv）・臨時便（data-exadd / data-exdel）は、
+       すでに bind() が拾っている目印をそのまま使う。
+       別に書くと、片方だけ直したときに食い違う。 */
+
+  /* 一人ぶんの行。★「済」と「予定」は必ず言葉で書く。
+     数字だけだと、打刻なのか予定なのか読み分けられない
+     （灰色の板の数字を打刻済みと読み違えた実例がある）。 */
+  function listRow(s, i, isNow, canMove) {   // soge-run-list-v1
+    var off = (s.is_absent || s.is_leave);
+    var cls = off ? 'off' : (s.arrived_at ? 'fin' : (isNow ? 'now' : ''));
+    var tm;
+    if (off) tm = '<span class="tm pl">—</span>';
+    else if (s.arrived_at) tm = '<span class="tm">済 ' + esc(s.arrived_at) + '</span>';
+    else if (isNow) tm = '<span class="tm">いま向かう</span>';
+    else tm = '<span class="tm pl">' + (s.planned_at ? ('予定 ' + esc(s.planned_at)) : '—') + '</span>';
+    return '<div class="sr-lr ' + cls + '">'
+      + '<span class="no">' + (i + 1) + '</span>'
+      + '<span class="nm">' + esc(s.user_name) + '</span>'
+      + (s.is_wheelchair ? '<span class="bg">車いす</span>' : '')
+      + (s.is_leave ? '<span class="bg">休み連絡</span>' : (s.is_absent ? '<span class="bg">休み</span>' : ''))
+      /* ★車が決まっていない人だけ、ここから車へ乗せられるようにする。
+         これが無いと「誰にも運ばれない人」に気づく場所が無くなる。 */
+      + (canMove ? '<button class="sr-mv" data-mv="' + escA(s.id) + '" title="別の車へ移す">⇄</button>' : '')
+      + tm
+      + '</div>';
+  }
+
+  function listHtml() {   // soge-run-list-v1
+    var vs = (state.data && state.data.vehicles) || [];
+    /* 便ごとにまとめる。★車ごとにまとめない。
+       車ごとだと、同じ車の迎えと送りが並んで、いまどちらを走っているのか
+       読めなくなる。現場が見たいのは「この便に誰が乗るか」。 */
+    var groups = [], byKey = {};
+    vs.forEach(function (v) {
+      (v.trips || []).forEach(function (t) {
+        var k = t.is_extra ? ('x' + t.day_id) : String(t.trip_key || tripLabel(t));
+        if (!byKey[k]) {
+          byKey[k] = { key: k, label: tripLabel(t), depart: t.depart || '',
+                       order: tripOrder(tripLabel(t)), extra: !!t.is_extra, cars: [] };
+          groups.push(byKey[k]);
+        }
+        byKey[k].cars.push({ v: v, t: t });
+      });
+    });
+    groups.sort(function (a, b) { return a.order - b.order; });
+
+    if (!groups.length) {
+      return '<div class="sr-empty">この日の送迎はありません。<br>'
+        + '配車の画面で配車を保存すると、ここに出ます。</div>';
+    }
+
+    var out = groups.map(function (g) {
+      var nAll = 0, nDone = 0;
+      g.cars.forEach(function (c) {
+        (c.t.stops || []).forEach(function (s) {
+          if (s.is_absent || s.is_leave) return;
+          nAll++;
+          if (s.arrived_at) nDone++;
+        });
+      });
+      var head = '<div class="sr-lg-h"><span>' + esc(g.label) + '</span>'
+        + (g.depart ? '<span class="tm">' + esc(g.depart) + ' 出発</span>' : '')
+        + '<span class="n">' + nAll + '名'
+          + (nDone ? ('／到着 ' + nDone + '名') : '') + '</span></div>';
+
+      var cars = g.cars.map(function (c) {
+        var v = c.v, t = c.t;
+        var un = !!(t.unassigned || v.unassigned);
+        var stops = (t.stops || []);
+        var live = stops.filter(function (s) { return !s.is_absent && !s.is_leave; });
+        var leftN = live.filter(function (s) { return !s.arrived_at; }).length;
+        var doneN = live.length - leftN;
+        /* 「いま向かう人」＝まだ着いていない人のうち、いちばん上。
+           ★出発していない便では出さない。走り出す前に「いま向かう」は嘘になる。 */
+        var nowId = '';
+        if (!un && t.departed_at) {
+          for (var i = 0; i < stops.length; i++) {
+            var s = stops[i];
+            if (s.is_absent || s.is_leave || s.arrived_at) continue;
+            nowId = s.id; break;
+          }
+        }
+        var drv = t.driver_name || v.driver_name || '';
+        var h = '<div class="sr-lc-h">'
+          + (un ? '' : (v.icon_svg || ''))
+          + '<span class="cn">' + esc(un ? '⚠ 車が決まっていません' : (v.vehicle_name || '')) + '</span>'
+          + (un ? '' : '<span class="dv">' + esc(drv ? drv : '運転手 未設定') + '</span>')
+          + (t.is_extra
+              ? '<span class="sr-lc-x">'
+                  + '<button class="sr-mini" data-exadd="' + escA(t.day_id) + '">＋ 利用者</button>'
+                  + '<button class="sr-mini del" data-exdel="' + escA(t.day_id) + '">取消</button>'
+                + '</span>'
+              : (un
+                  ? '<span class="cnt">' + stops.length + '名</span>'
+                  /* ★一覧から運転席へ1タップで戻れるようにする。
+                     戻れないと、確かめるたびに上のボタンを押し直すことになる。 */
+                  : '<button type="button" class="sr-lc-go" data-golist="' + escA(v.key) + '"'
+                    + ' data-golistt="' + escA(t.day_id) + '">運転中で開く</button>'))
+          + '</div>';
+        if (!t.is_extra && !un) {
+          h = h.replace('<button type="button" class="sr-lc-go"',
+                        '<span class="cnt">' + (t.departed_at
+                          ? ('残り' + leftN + '／到着' + doneN)
+                          : (live.length + '名')) + '</span>'
+                        + '<button type="button" class="sr-lc-go"');
+        }
+        var body = un
+          ? '<div class="sr-lc-w">このままだと、この方は誰にも運ばれません。'
+            + '⇄ を押して車に乗せてください。</div>'
+          : '';
+        body += stops.length
+          ? stops.map(function (s, i) { return listRow(s, i, s.id === nowId, un); }).join('')
+          : '<div class="sr-lc-w">立ち寄りはありません。</div>';
+        return '<div class="sr-lc' + (un ? ' un' : '') + (t.is_extra ? ' ex' : '') + '">'
+          + h + body + '</div>';
+      }).join('');
+
+      return '<div class="sr-lg">' + head + cars + '</div>';
+    }).join('');
+
+    return out;
   }
 
   /* ===== soge-drive-v1: 運転中の本文 =====
@@ -1424,7 +1759,7 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     if (t.unassigned) {
       return '<div class="sr-dv"><div class="sr-dv-name">車が決まっていません</div>'
         + '<div class="sr-dv-note">この便に乗る車が決まっていないため、'
-        + '運転中の画面には出せません。「車両から」に切り替えて、'
+        + '運転中の画面には出せません。上の「一覧」に切り替えて、'
         + '⇄ で車に移してください。</div></div>';
     }
     /* soge-drive-v2: 道の線の色。車の色が引けないときは、これまでの青のまま。 */
@@ -1651,107 +1986,10 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       + '</div>' + offHtml + '</div>';
   }
 
-  function tripHtml(t) {
-    /* soge-unassigned-v1: 乗る車が決まっていない人。
-       出発・帰着・到着打刻は【出さない】。走らないので押しようがなく、
-       押せてしまうと「走ったことになった記録」が残る。
-       ここに出す目的は、運転手・職員が乗せ忘れに気づくこと。 */
-    if (t.unassigned) {
-      var un = (t.stops || []).map(function (s) {
-        return '<div class="sr-stop">' +
-          '<span class="sr-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>' +
-          '<div class="sr-info">' +
-            '<span class="sr-name">' + esc(s.user_name) +
-              (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') +
-              (s.is_leave ? '<span class="sr-tag leave">休み連絡</span>' : '') +
-            '</span>' +
-            (s.address ? '<span class="sr-addr">' + esc(s.address) + '</span>' : '') +
-            mvHtml(s) +
-          '</div>' +
-          /* soge-move-v1: ★ここから車へ移すのが、いちばん要る操作。
-             「車が未定」のまま走り出すと、その人は誰にも運ばれない。 */
-          '<div class="sr-actions">' +
-            '<button class="sr-mv" data-mv="' + s.id + '" title="車に乗せる">⇄</button>' +
-          '</div>' +
-        '</div>';
-      }).join('');
-      return '<div class="sr-trip unassigned">' +
-        '<div class="sr-trip-head">' + esc(tripLabel(t)) +
-          '<span class="sr-trip-time">車が決まっていません</span></div>' +
-        '<div class="sr-trip-body">' +
-          '<div class="sr-unassigned-note">この人まだ乗る車が決まっていません。' +
-            '配車の画面で乗る車を決めてください。</div>' +
-          (un || '<div class="sr-empty">立ち寄りなし</div>') +
-        '</div>' +
-      '</div>';
-    }
-
-    var stops = (t.stops || []).map(function (s, i) {
-      // soge-leave-v1: 休み連絡が入っている方は「お休み」として出す。
-      //   ★手で付けた欠席（✕）とは別に持つ。連絡が取り消されたら自動で戻る。
-      var off = s.is_absent || s.is_leave;
-      var cls = 'sr-stop' + (off ? ' absent' : (s.arrived_at ? ' done' : ''));
-      // 打刻がまだの人にも、あとから時刻を手で入れられるように ✎ を出す
-      // （運転手が走り終わってからまとめて入力する場合がある）
-      var right = off
-        ? '<span class="sr-time" style="background:#f6f7f9;border-color:#e6e8ec;color:#9aa0a6;">'
-            + (s.is_leave && !s.is_absent ? 'お休み' : '休み') + '</span>'
-        : (s.arrived_at
-            ? '<span class="sr-time" data-edit="' + s.id + '" title="タップで時刻を直す">' + esc(s.arrived_at) + '</span>'
-            : '<button class="sr-tap" data-tap="' + s.id + '">到着</button>' +
-              '<button class="sr-pen" data-pen="' + s.id + '" data-init="' + esc(s.planned_at || '') + '" title="時刻を手で入れる">✎</button>');
-
-      // soge-layout-v2: 名前(sr-info)とボタン(sr-actions)を分離して名前が縦にならないようにする
-      return '<div class="sr-stop ' + cls + '">' +
-        '<span class="sr-seq">' + (i + 1) + '</span>' +
-        '<span class="sr-type ' + s.type + '">' + (s.type === 'pickup' ? '迎' : '送') + '</span>' +
-        '<div class="sr-info">' +
-          '<span class="sr-name">' + esc(s.user_name) +
-            (s.is_wheelchair ? '<span class="sr-tag">車いす</span>' : '') +
-            (s.is_leave ? '<span class="sr-tag leave">休み連絡</span>' : '') +
-          '</span>' +
-          (s.address ? '<span class="sr-addr">' + esc(s.address) + '</span>' : '') +
-          (s.planned_at ? '<span class="sr-plan">予定 ' + esc(s.planned_at) + '</span>' : '') +
-          mvHtml(s) +
-        '</div>' +
-        '<div class="sr-actions">' +
-          right +
-          '<button class="sr-mv" data-mv="' + s.id + '" title="別の車へ移す">⇄</button>' +
-          '<button class="sr-x' + (s.is_absent ? ' on' : '') + '" data-abs="' + s.id + '" title="休み">✕</button>' +
-        '</div>' +
-      '</div>';
-    }).join('');
-
-    // soge-note-v1: 出発と帰着。記録表の「出発時刻／到着時刻」はこれが入る。
-    var dep = t.departed_at
-      ? '<button class="sr-ret-btn done" disabled>出発 ' + esc(t.departed_at) + '</button>'
-      : '<button class="sr-ret-btn" data-dep="' + t.day_id + '">事業所を出発</button>';
-    var ret = t.returned_at
-      ? '<button class="sr-ret-btn done" disabled>帰着 ' + esc(t.returned_at) + '</button>'
-      : '<button class="sr-ret-btn" data-ret="' + t.day_id + '">事業所に戻った</button>';
-
-    // soge-extra-v1: 臨時便は色を変え、取り消しと利用者追加を付ける
-    // soge-trip-tab-v1: 便名は tripLabel() で統一（trip_name の代わりに種別から決定）
-    var head = '<div class="sr-trip-head">' +
-      (t.is_extra ? '<span class="sr-badge-extra">臨時</span>' : '') +
-      esc(tripLabel(t)) +
-      '<span class="sr-trip-time">' + esc(t.depart || '') + ' 出発予定</span>' +
-      (t.is_extra
-        ? '<span style="margin-left:auto;display:flex;gap:6px;">' +
-            '<button class="sr-mini" data-exadd="' + t.day_id + '">＋ 利用者</button>' +
-            '<button class="sr-mini del" data-exdel="' + t.day_id + '">取消</button>' +
-          '</span>'
-        : '') +
-      '</div>';
-
-    return '<div class="sr-trip' + (t.is_extra ? ' extra' : '') + '">' + head +
-      '<div class="sr-trip-body">' +
-        '<div class="sr-return" style="justify-content:flex-start;margin:0 0 8px;">' + dep + '</div>' +
-        (stops || '<div class="sr-empty">立ち寄りなし</div>') +
-        '<div class="sr-return">' + ret + '</div>' +
-      '</div>' +
-    '</div>';
-  }
+  /* soge-run-list-v1: 「車両から／便から」の本文(tripHtml)は消しました。
+     どこからも呼ばれなくなったため。★残すと、誰も開かない画面のコードだけが
+     古びていき、次に読む人が「どちらが本物か」で迷う。
+     欲しくなったら git から戻せます。 */
 
   /* soge-move-v1: 移した跡を、その人の行に出す。
      ★あとで記録表を見た人が「なぜこの車なのか」を追えるようにする。 */
@@ -2280,6 +2518,33 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
                          text: ((_s && _s.user_name) || '') + 'さんを後に' };
           keepScroll(render);
         } finally { state.busy[key] = false; }
+      };
+    });
+
+    /* soge-run-list-v1: 一覧から、その車を運転中で開く。
+       ★車は key で指定する（並び順で指定しない）。
+         臨時便を作った直後などに並びが変わると、別の車が開く。 */
+    root.querySelectorAll('[data-golist]').forEach(function (el) {
+      el.onclick = function () {
+        var key = el.dataset.golist, day = el.dataset.golistt || '';
+        state.mode = 'drive';
+        try { localStorage.setItem('soge_run_mode', 'drive'); } catch (e) {}
+        state.tabKey = key;
+        state.autoTab = false;      /* 自分で選んだ車は動かさない */
+        state.tripTab = 0;
+        /* その車の中で、押した便を開く */
+        var vs = (state.data && state.data.vehicles) || [];
+        for (var i = 0; i < vs.length; i++) {
+          if (String(vs[i].key) !== String(key)) continue;
+          state.tab = i;
+          var ts = vs[i].trips || [];
+          for (var k = 0; k < ts.length; k++) {
+            if (String(ts[k].day_id) === String(day)) { state.tripTab = k; break; }
+          }
+          break;
+        }
+        window.scrollTo(0, 0);
+        render();
       };
     });
 
