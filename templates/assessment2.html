@@ -298,10 +298,18 @@
       </div>
     </div>
 
-    <div class="a2-sec"><h3>1. 目標がどこまでできたか</h3><div class="bd" id="a2-goalBox"></div></div>
-
-    <div class="a2-sec"><h3>2. ご本人に聞く</h3><div class="bd">
-      <div class="a2-lab">タブレットや聞き取りで答えてもらった内容を取り込みます</div>
+    {# a2-seq-swap-v1: ★【聞き取りが先、目標があと】。
+       目標を先に置いていたころは、上から順に埋めた人が、目標を手で書いてから
+       下の「取り込む」に気づいていた。そのとき目標はもう埋まっているので、
+       自動入力は【入っている所は触らない】決まりに従って何もしない。
+       手で入れた手間が、まるごと無駄になっていた。
+       順番が、せっかくの自動入力を殺していた。 #}
+    <div class="a2-sec"><h3>1. ご本人に聞く</h3><div class="bd">
+      {# a2-seq-swap-v1: ★はじめての人に、なぜここが先なのかを書く。
+         並べ替えただけでは「先にやる意味」は伝わらない。 #}
+      <div class="a2-lab">タブレットや聞き取りで答えてもらった内容を取り込みます。<br>
+        取り込むと、下の<b>「2. 目標」「3. 満足度・ご要望」にも自動で入ります</b>
+        （すでに入っている所は、そのままにします）。</div>
       {# a2-selfeval-make-v1: 質問を作る所。
          ★リンクを置くだけでは「新しい画面だけで評価を終える」ことにならない。
            作る → 直す → 渡す まで、ここで終わるようにした。
@@ -345,6 +353,11 @@
       <textarea id="a2-intake" rows="8" placeholder="聞いた内容をそのまま書いてください"></textarea>
       <div class="a2-note">★この内容は、機能訓練指導員の画面でも<b>読めます</b>。報告文を作るときに使われます。</div>
     </div></div>
+
+    {# a2-seq-swap-v1: 聞き取りのあとに置く。
+       ★中身(id="a2-goalBox")は1文字も変えていない。入れる先は id で決まっていて、
+         並び順は見ていないので、動かしても自動入力はそのまま効く。 #}
+    <div class="a2-sec"><h3>2. 目標がどこまでできたか</h3><div class="bd" id="a2-goalBox"></div></div>
 
     <div class="a2-sec"><h3>3. 満足度・ご要望</h3><div class="bd">
       <div class="a2-row"><span class="a2-lab">サービスへの満足度</span>
@@ -989,7 +1002,8 @@ async function a2VSend(){
   A2V.sec = 0;
 }
 
-/* a2-pull-answers-v1: ご本人の答えを、1番・3番の欄にも入れる。
+/* a2-pull-answers-v1: ご本人の答えを、2番・3番の欄にも入れる。
+   （a2-seq-swap-v1 で並びを入れ替えたので、目標は2番）
    ★同じことを2回入れさせない（HIROさん 2026-08-30）。
    ★入れるのは【空いている所だけ】。
      職員がすでに選んでいたら黙って変えない。食い違うときは知らせて、
@@ -1025,7 +1039,7 @@ function a2PullOne(id, v, label, put, kept){
 function a2PullFill(p){
   var put1 = [], put3 = [], kept = [];
 
-  // 1. 目標がどこまでできたか
+  // 2. 目標がどこまでできたか（a2-seq-swap-v1）
   var g = p.goals || {};
   Object.keys(g).forEach(function(k){
     a2PullOne(k, g[k], (A2_PULL_LBL[k] || k) + '＝' + g[k], put1, kept);
@@ -1045,7 +1059,7 @@ function a2PullFill(p){
   a2PullSegRefresh();
 
   var say = [];
-  if(put1.length) say.push('「1. 目標」に ' + put1.join('・'));
+  if(put1.length) say.push('「2. 目標」に ' + put1.join('・'));
   if(put3.length) say.push('「3. 満足度・ご要望」に ' + put3.join('・'));
   if(say.length) a2Toast('ご本人の答えを入れました（' + say.join(' ／ ') + '）', true);
 
