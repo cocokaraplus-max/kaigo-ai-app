@@ -281,6 +281,30 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
   font-size:0.8rem; color:#5f6368; margin-bottom:10px; }
 .sr-nv-head .cnt { margin-left:auto; font-weight:800; color:#1f2933; }
 
+/* ===== soge-tap-retry-v1: 打刻が届かなかったことを、必ず見えるようにする =====
+   ★トーストでは駄目。2.4秒で消えるので、運転席では見落とす。
+     届いていないあいだは【出しっぱなし】にする。
+   ★画面のいちばん上に固定する。運行の帯より前に目に入る位置。 */
+.sr-bar { position:fixed; left:0; right:0; z-index:70; padding:10px 12px;
+  font-size:0.84rem; font-weight:700; line-height:1.5;
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  box-shadow:0 2px 8px rgba(16,24,40,.18); }
+.sr-bar.err  { top:0; background:#FCE8E6; color:#A50E0E; border-bottom:2px solid #D93025; }
+.sr-bar.wait { top:0; background:#FEF7E0; color:#7A5200; border-bottom:2px solid #F0B429; }
+/* 赤と黄が同時に出るときは、赤を上に重ねる */
+.sr-bar.wait.under { top:auto; }
+.sr-bar .t { flex:1; min-width:120px; }
+.sr-bar button { border:1px solid currentColor; background:#fff; color:inherit;
+  font-family:inherit; font-size:0.8rem; font-weight:800; border-radius:8px;
+  padding:7px 13px; cursor:pointer; white-space:nowrap; }
+.sr-bar button:disabled { opacity:.6; cursor:default; }
+/* 帯が出ているあいだ、本文が隠れないように上を空ける */
+body.sr-hasbar .sr-wrap { padding-top:60px; }
+body.sr-hasbar2 .sr-wrap { padding-top:112px; }
+/* まだ送れていない打刻の印 */
+.sr-pend { font-size:0.68rem; font-weight:800; color:#7A5200; background:#FEF7E0;
+  border:1px solid #F0B429; border-radius:6px; padding:2px 6px; white-space:nowrap; }
+
 /* ===== soge-undo-v1: 押し間違いを戻す =====
    ★直後の帯。運転席で「あ、間違えた」と思った瞬間に押せる場所に置く。
      時間で消さない。走っている最中に消えたら、戻す手立てが無くなる。
@@ -496,6 +520,10 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
        ★中身が入れ替わったあとも残っていると、もう無いものを指して押せてしまう。 */
     state.undo = null;
     render();
+    /* soge-tap-retry-v1: 開いたときに、たまっている打刻を送ってみる。
+       ★render のあと。先に送ると、送れたあとの load() と二重に描くことになる。 */
+    srBars();
+    if (srqLoad().length) srqFlush(false);
   }
 
   // 打刻するたびに画面が先頭まで飛ばないように、見ていた位置を保つ
@@ -575,12 +603,12 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
          休みにした時点でサーバが消しているため。時刻は入れ直しになる。 */
     var body = (kind === 'absent') ? { stop_id: id, absent: false }
                                    : { stop_id: id, time: '' };
-    var r = await fetch('/api/soge/run/stop', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    var j = await r.json();
-    if (j.status !== 'success') { toast(j.message || '戻せませんでした', 'err'); return false; }
+    /* soge-tap-retry-v1: ここも catch が無く、黙って終わっていた（私の落ち度）。
+       ★まだ送れていない打刻なら、貯めてある側から取り消すだけで足りる。 */
+    srqDrop(kind === 'absent' ? 'absent' : 'arrive', id);
+    var res = await srSend('/api/soge/run/stop', 'PUT', body);
+    if (!res.ok) { srAlert('err', '戻せませんでした（' + res.why + '）'); return false; }
+    srAlert('');
     var s = findStop(id);
     if (s) { if (kind === 'absent') s.is_absent = false; else s.arrived_at = ''; }
     return true;
@@ -589,12 +617,11 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
   async function undoDay(id, kind) {
     var body = (kind === 'return') ? { day_id: id, returned: '' }
                                    : { day_id: id, departed: '' };
-    var r = await fetch('/api/soge/run/day', {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-    var j = await r.json();
-    if (j.status !== 'success') { toast(j.message || '戻せませんでした', 'err'); return false; }
+    /* soge-tap-retry-v1: ここも catch が無かった（私の落ち度）。 */
+    srqDrop(kind === 'return' ? 'return' : 'depart', id);
+    var res = await srSend('/api/soge/run/day', 'PUT', body);
+    if (!res.ok) { srAlert('err', '戻せませんでした（' + res.why + '）'); return false; }
+    srAlert('');
     var t = findTrip(id);
     if (t) { if (kind === 'return') t.returned_at = ''; else t.departed_at = ''; }
     return true;
@@ -607,6 +634,213 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
   function setUndo(kind, id, isDay, dayId, text) {
     state.undo = { kind: kind, id: id, isDay: !!isDay, day: dayId, text: text };
   }
+
+  /* ===== soge-tap-retry-v1: 送る道を1本にする =====
+     ★ここが今回の肝。例外を外に出さない。
+       これまでは fetch や r.json() が投げると、赤い帯を出す行まで届かず、
+       運転手には「押したのに何も起きない」だけが残っていた（実測で確認）。 */
+  async function srSend(url, method, body) {
+    try {
+      var r = await fetch(url, {
+        method: method, credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      /* ★返事の【形】を先に見る。ログインが切れると、JSONではなく
+           ログイン画面のHTMLが200で返る。そのまま r.json() すると例外。 */
+      var ct = (r.headers.get('content-type') || '');
+      if (ct.indexOf('json') < 0) {
+        /* ★JSONでない返事は、ほぼログイン画面のHTML。
+             ただし言い切らない。「切れています」と断定して、実は別の
+             不具合だったら、直す人が回り道をする。可能性として出す。 */
+        return { ok: false, off: false,
+                 why: (r.status === 401 || r.status === 403 || r.redirected)
+                      ? 'ログインが切れています。開き直してください'
+                      : 'ログインが切れているかもしれません（サーバからJSONが返りませんでした）' };
+      }
+      var j = await r.json();
+      if (!j || j.status !== 'success') {
+        return { ok: false, off: false, data: j,
+                 why: (j && j.message) || '記録できませんでした' };
+      }
+      return { ok: true, data: j };
+    } catch (e) {
+      /* 通信そのものが届いていない（圏外・切断）。あとで送り直せる。 */
+      return { ok: false, off: true, why: '電波が届いていません' };
+    }
+  }
+
+  async function srGet(url) {
+    try {
+      var r = await fetch(url, { credentials: 'same-origin' });
+      var ct = (r.headers.get('content-type') || '');
+      if (ct.indexOf('json') < 0) return { ok: false };
+      var j = await r.json();
+      if (!j || j.status !== 'success') return { ok: false };
+      return { ok: true, data: j };
+    } catch (e) { return { ok: false }; }
+  }
+
+  function srNowHM() {
+    var d = new Date();
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  }
+
+  /* ===== 送れなかった打刻を貯める箱 =====
+     ★端末に貯める。画面を閉じても残る。
+     ★48時間で捨てる。走った日をとうに過ぎてから勝手に書き込むほうが怖い。 */
+  var SRQ_KEY = 'soge_tap_queue_v1';
+  var SRQ_MAX = 200;
+
+  function srqLoad() {
+    try {
+      var a = JSON.parse(localStorage.getItem(SRQ_KEY) || '[]');
+      if (!Array.isArray(a)) return [];
+      var lim = Date.now() - 48 * 3600 * 1000;
+      return a.filter(function (x) { return x && (x.at || 0) > lim; });
+    } catch (e) { return []; }
+  }
+
+  function srqSave(a) {
+    try { localStorage.setItem(SRQ_KEY, JSON.stringify(a.slice(-SRQ_MAX))); } catch (e) {}
+  }
+
+  function srqAdd(item) {
+    var a = srqLoad();
+    /* 同じところへの2件目は、あとのほうだけ残す（押し直したのだから） */
+    a = a.filter(function (x) { return !(x.k === item.k && x.id === item.id); });
+    item.at = Date.now();
+    a.push(item);
+    srqSave(a);
+    srBars();
+  }
+
+  function srqDrop(kind, id) {
+    var a = srqLoad();
+    var b = a.filter(function (x) { return !(x.k === kind && x.id === id); });
+    if (b.length !== a.length) { srqSave(b); srBars(); }
+  }
+
+  /* いまの画面で「まだ送れていない」立ち寄りの一覧（印を出すのに使う） */
+  function srqPendingStops() {
+    var m = {};
+    srqLoad().forEach(function (x) { if (x.k === 'arrive' || x.k === 'absent') m[x.id] = x; });
+    return m;
+  }
+
+  var srqBusy = false;
+
+  async function srqFlush(manual) {
+    if (srqBusy) return;
+    var a = srqLoad();
+    if (!a.length) { srBars(); return; }
+    srqBusy = true;
+    srBars();
+    try {
+      /* ★送る前に、その日の【いまの中身】を1回読む。
+           すでに時刻が入っているところへは送らない。
+           事務所が手で直したあとに、貯めていた古い時刻で上書きしないため。 */
+      var byDate = {};
+      a.forEach(function (x) { byDate[x.date] = 1; });
+      var have = { stop: {}, day: {} };
+      for (var dkey in byDate) {
+        var g = await srGet('/api/soge/run?date=' + encodeURIComponent(dkey));
+        if (!g.ok) { return; }                 // 読めない＝まだ届かない。今回は送らない。
+        (g.data.vehicles || []).forEach(function (v) {
+          (v.trips || []).forEach(function (t) {
+            have.day[t.day_id] = { dep: !!t.departed_at, ret: !!t.returned_at };
+            (t.stops || []).forEach(function (s) {
+              have.stop[s.id] = { at: !!s.arrived_at, ab: !!s.is_absent };
+            });
+          });
+        });
+      }
+
+      var left = [];
+      for (var i = 0; i < a.length; i++) {
+        var x = a[i];
+        var res = null;
+        if (x.k === 'arrive') {
+          var hs = have.stop[x.id];
+          if (!hs) { continue; }                       // その立ち寄りが無い（作り直された）→ 捨てる
+          if (hs.at) { continue; }                     // もう入っている → 送らない
+          res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: x.id, time: x.hhmm });
+        } else if (x.k === 'absent') {
+          var hs2 = have.stop[x.id];
+          if (!hs2) { continue; }
+          if (hs2.ab === !!x.on) { continue; }         // もうその状態 → 送らない
+          res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: x.id, absent: !!x.on });
+        } else if (x.k === 'depart' || x.k === 'return') {
+          var hd = have.day[x.id];
+          if (!hd) { continue; }
+          if (x.k === 'depart' && hd.dep) { continue; }
+          if (x.k === 'return' && hd.ret) { continue; }
+          var bd = { day_id: x.id };
+          bd[x.k === 'depart' ? 'departed' : 'returned'] = x.hhmm;
+          res = await srSend('/api/soge/run/day', 'PUT', bd);
+        } else {
+          continue;                                    // 知らない種類は捨てる
+        }
+        if (!res.ok) {
+          /* ★届かないなら、そこで止めて残す。順番を保つ。 */
+          left = a.slice(i);
+          break;
+        }
+      }
+      srqSave(left);
+      if (!left.length) {
+        srAlert('');                                   // 赤い帯を消す
+        if (manual) toast('たまっていた打刻を送りました');
+        await load();                                  // 画面をサーバの中身に合わせる
+      }
+    } finally {
+      srqBusy = false;
+      srBars();
+    }
+  }
+
+  /* ===== 出しっぱなしの帯 ===== */
+  var srErrMsg = '';
+  function srAlert(kind, msg) { srErrMsg = (kind === 'err') ? (msg || '') : ''; srBars(); }
+
+  function srBars() {
+    var host = document.body;
+    var old = document.getElementById('srBarErr');
+    if (old) old.remove();
+    old = document.getElementById('srBarWait');
+    if (old) old.remove();
+    var n = srqLoad().length;
+    var top = 0;
+    if (srErrMsg) {
+      var e1 = document.createElement('div');
+      e1.id = 'srBarErr';
+      e1.className = 'sr-bar err';
+      e1.innerHTML = '<span class="t">' + esc(srErrMsg) + '</span>'
+                   + '<button type="button" id="srBarErrX">閉じる</button>';
+      host.appendChild(e1);
+      e1.querySelector('#srBarErrX').onclick = function () { srAlert(''); };
+      top = e1.getBoundingClientRect().height;
+    }
+    if (n > 0) {
+      var e2 = document.createElement('div');
+      e2.id = 'srBarWait';
+      e2.className = 'sr-bar wait';
+      e2.style.top = top + 'px';
+      e2.innerHTML = '<span class="t">まだ送れていない打刻が ' + n + ' 件あります。'
+                   + '電波が戻ると自動で送ります。</span>'
+                   + '<button type="button" id="srBarNow"' + (srqBusy ? ' disabled' : '') + '>'
+                   + (srqBusy ? '送っています…' : 'いま送る') + '</button>';
+      host.appendChild(e2);
+      var nb = e2.querySelector('#srBarNow');
+      if (nb) nb.onclick = function () { srqFlush(true); };
+    }
+    document.body.classList.toggle('sr-hasbar', !!(srErrMsg || n));
+    document.body.classList.toggle('sr-hasbar2', !!(srErrMsg && n));
+  }
+
+  /* 電波が戻ったら送る／開いたときにも送る／残っているあいだは30秒ごとに試す */
+  window.addEventListener('online', function () { srqFlush(false); });
+  setInterval(function () { if (srqLoad().length) srqFlush(false); }, 30000);
 
   // soge-trip-tab-v1: 便の種別から表示名を決める
   function tripLabel(t) {
@@ -1133,8 +1367,12 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
           + '</button>'
           + (state.doneOpen
               ? '<div class="sr-done-b">' + doneList.map(function (s) {
+                  /* soge-tap-retry-v1: まだ送れていない打刻には印を出す。
+                     ★出さないと「送れた」と思ってしまう。 */
+                  var _pend = srqPendingStops()[s.id];
                   return '<div class="sr-done-r">'
                     + '<span class="n">' + esc(s.user_name) + '</span>'
+                    + (_pend ? '<span class="sr-pend">未送信</span>' : '')
                     + '<span class="t">' + esc(s.arrived_at) + '</span>'
                     + '<button type="button" data-uds="' + escA(s.id) + '" data-udk="arrive"'
                       + ' data-udn="' + escA(s.user_name) + '"'
@@ -1452,13 +1690,13 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
       state.busy[key] = true;
       this.disabled = true;
       try {
-        var r = await fetch('/api/soge/run/day', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ day_id: dayId, driver_name: nm })
-        });
-        var j = await r.json();
-        if (j.status !== 'success') {
-          toast(j.message || '替えられませんでした', 'err');
+        /* soge-tap-retry-v1: ここも catch が無かった（私の落ち度）。
+           ★運転手は貯めない。走る前に事務所で押すもので、あとから
+             勝手に書き換わるほうが困る。失敗したら、そう出す。 */
+        var res = await srSend('/api/soge/run/day', 'PUT',
+                               { day_id: dayId, driver_name: nm });
+        if (!res.ok) {
+          srAlert('err', '運転手を替えられませんでした（' + res.why + '）');
           this.disabled = false;
           return;
         }
@@ -1554,16 +1792,30 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
         state.busy[id] = true;
         el.disabled = true; el.textContent = '…';
         try {
-          var r = await fetch('/api/soge/run/arrive', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stop_id: id })
-          });
-          var j = await r.json();
-          if (j.status !== 'success') {
-            toast(j.message || '打刻できませんでした', 'err');
+          /* soge-tap-retry-v1: ★押した時刻をここで控える。
+             届かなかったときは、この時刻で送り直す。送り直した時刻ではない。 */
+          var hm = srNowHM();
+          var res = await srSend('/api/soge/run/arrive', 'POST', { stop_id: id });
+          if (!res.ok) {
+            /* ★黙って終わらせない。ここが今回いちばん大事なところ。
+               ・赤い帯を出しっぱなしにする（トーストは2.4秒で消えて見落とす）
+               ・端末に貯めて、電波が戻ったら押した時刻で送る
+               ・画面は先に進める（運転席で並びが止まるほうが困る）。
+                 ただし「まだ送れていない」印を出し、帯にも件数を出し続ける。 */
+            var sf = findStop(id);
+            srqAdd({ k: 'arrive', id: id, date: state.date, hhmm: hm,
+                     nm: (sf && sf.user_name) || '' });
+            if (sf) { sf.arrived_at = hm; sf.is_absent = false; }
+            srAlert('err', ((sf && sf.user_name) || 'この方') + ' ' + hm
+                    + ' を記録できませんでした（' + res.why + '）。電波が戻ると自動で送ります。');
             el.disabled = false; el.textContent = '到着';
+            keepScroll(render);
             return;
           }
+          var j = res.data;
+          /* 届いたので、貯めてあった同じ打刻は捨てる（二重に送らない） */
+          srqDrop('arrive', id);
+          srAlert('');
           // 全部読み直すと画面が先頭に飛ぶので、その行だけ直す
           var s = findStop(id);
           if (j.already) {
@@ -1597,14 +1849,18 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
         done = true;
         var t = inp.value;
         if (!t) { keepScroll(render); return; }
-        var r = await fetch('/api/soge/run/stop', {
-          method: 'PUT', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ stop_id: id, time: t })
-        });
-        var j = await r.json();
-        if (j.status !== 'success') {
-          toast(j.message || '記録できませんでした', 'err');
+        var res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: id, time: t });
+        if (!res.ok) {
+          /* soge-tap-retry-v1: 手で入れた時刻も貯める。入れた時刻のまま送る。 */
+          var sf2 = findStop(id);
+          srqAdd({ k: 'arrive', id: id, date: state.date, hhmm: t,
+                   nm: (sf2 && sf2.user_name) || '' });
+          if (sf2) { sf2.arrived_at = t; sf2.is_absent = false; }
+          srAlert('err', ((sf2 && sf2.user_name) || 'この方') + ' ' + t
+                  + ' を記録できませんでした（' + res.why + '）。電波が戻ると自動で送ります。');
         } else {
+          srqDrop('arrive', id);
+          srAlert('');
           toast(t + ' で記録しました');
           var s = findStop(id);
           /* soge-undo-v1: 手で入れた時刻も戻せるようにする。 */
@@ -1647,12 +1903,20 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
         if (!on && !confirm('この方を休みにしますか？（その日の送迎から外します）')) return;
         state.busy[id] = true;
         try {
-          var r = await fetch('/api/soge/run/stop', {
-            method: 'PUT', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ stop_id: id, absent: !on })
-          });
-          var j = await r.json();
-          if (j.status !== 'success') { toast(j.message || '変更できませんでした', 'err'); return; }
+          var res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: id, absent: !on });
+          if (!res.ok) {
+            /* soge-tap-retry-v1: 休みも貯める。★画面は先に進める。 */
+            var sa = findStop(id);
+            srqAdd({ k: 'absent', id: id, date: state.date, on: !on,
+                     nm: (sa && sa.user_name) || '' });
+            if (sa) { sa.is_absent = !on; if (!on) sa.arrived_at = ''; }
+            srAlert('err', ((sa && sa.user_name) || 'この方')
+                    + ' の休みを記録できませんでした（' + res.why + '）。電波が戻ると自動で送ります。');
+            keepScroll(render);
+            return;
+          }
+          srqDrop('absent', id);
+          srAlert('');
           toast(on ? '休みを取り消しました' : '休みにしました');
           var s = findStop(id);
           /* soge-undo-v1: 休みにしたときだけ帯を出す（取り消しは戻す対象ではない）。 */
@@ -1678,16 +1942,22 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
         state.busy['d' + id] = true;
         el.disabled = true;
         try {
-          var r = await fetch('/api/soge/run/depart', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ day_id: id })
-          });
-          var j = await r.json();
-          if (j.status !== 'success') {
-            toast(j.message || '記録できませんでした', 'err');
+          var hmd = srNowHM();
+          var res = await srSend('/api/soge/run/depart', 'POST', { day_id: id });
+          if (!res.ok) {
+            /* soge-tap-retry-v1: 出発も貯める。押した時刻で送り直す。 */
+            srqAdd({ k: 'depart', id: id, date: state.date, hhmm: hmd });
+            var td = findTrip(id);
+            if (td) td.departed_at = hmd;
+            srAlert('err', '出発 ' + hmd + ' を記録できませんでした（' + res.why
+                    + '）。電波が戻ると自動で送ります。');
             el.disabled = false;
+            keepScroll(render);
             return;
           }
+          var j = res.data;
+          srqDrop('depart', id);
+          srAlert('');
           toast('出発 ' + j.departed_at);
           /* soge-undo-v1: 2度押し(already)のときは出さない。何も新しく起きていない。 */
           if (!j.already) setUndo('depart', id, true, id, '出発 ' + j.departed_at + ' を記録');
@@ -1708,16 +1978,22 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
         state.busy[id] = true;
         el.disabled = true;
         try {
-          var r = await fetch('/api/soge/run/return', {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ day_id: id })
-          });
-          var j = await r.json();
-          if (j.status !== 'success') {
-            toast(j.message || '記録できませんでした', 'err');
+          var hmr = srNowHM();
+          var res = await srSend('/api/soge/run/return', 'POST', { day_id: id });
+          if (!res.ok) {
+            /* soge-tap-retry-v1: 帰着も貯める。押した時刻で送り直す。 */
+            srqAdd({ k: 'return', id: id, date: state.date, hhmm: hmr });
+            var tr = findTrip(id);
+            if (tr) tr.returned_at = hmr;
+            srAlert('err', '帰着 ' + hmr + ' を記録できませんでした（' + res.why
+                    + '）。電波が戻ると自動で送ります。');
             el.disabled = false;
+            keepScroll(render);
             return;
           }
+          var j = res.data;
+          srqDrop('return', id);
+          srAlert('');
           toast('帰着 ' + j.returned_at);
           if (!j.already) setUndo('return', id, true, id, '帰着 ' + j.returned_at + ' を記録');
           var t = findTrip(id);

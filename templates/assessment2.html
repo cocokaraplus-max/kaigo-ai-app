@@ -108,6 +108,27 @@
 .a2-btn.save{background:#137333;color:#fff;}
 .a2-btn[disabled]{opacity:.6;cursor:default;}
 .a2-note{font-size:.76rem;color:#5f6368;line-height:1.65;margin-top:7px;}
+/* a2-voice-v1: 聞き取りメモの音声文字起こし。
+   ★この画面はアイコン（material symbols）を使っていないので、ここでも使わない。
+     文字だけで組む。読み込みに失敗しても意味が消えない。
+   ★remで書く（文字サイズ設定80〜130%で崩さない）。 */
+.a2-voice{border:1px solid #dadce0;border-radius:10px;padding:10px 12px;margin-bottom:9px;
+  background:#f8f9fa;}
+.a2-v-idle,.a2-v-rec{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.a2-v-mic{border:none;border-radius:9px;background:#1a73e8;color:#fff;font-family:inherit;
+  font-size:.84rem;font-weight:800;padding:9px 14px;cursor:pointer;white-space:nowrap;}
+.a2-v-mic:active{background:#1558b0;}
+.a2-v-mic[disabled]{opacity:.6;cursor:default;}
+.a2-v-hint{font-size:.74rem;color:#5f6368;line-height:1.6;flex:1;min-width:150px;}
+/* 録音中。赤い点が動くので、点いていることが遠目にも分かる。 */
+.a2-v-dot{width:.7rem;height:.7rem;border-radius:50%;background:#ea4335;flex:0 0 auto;
+  animation:a2vblink 1.1s ease-in-out infinite;}
+@keyframes a2vblink{0%,100%{opacity:1;}50%{opacity:.25;}}
+.a2-v-timer{font-size:.95rem;font-weight:800;color:#ea4335;font-variant-numeric:tabular-nums;}
+.a2-v-stop{margin-left:auto;border:none;border-radius:9px;background:#ea4335;color:#fff;
+  font-family:inherit;font-size:.84rem;font-weight:800;padding:9px 16px;cursor:pointer;}
+.a2-v-stop:active{background:#b31412;}
+.a2-v-busy{font-size:.8rem;color:#1558d6;font-weight:700;line-height:1.6;}
 .a2-note.center{text-align:center;}
 .a2-warn{background:#fef7e0;border:1px solid #fdd663;border-radius:9px;padding:9px 12px;
   font-size:.79rem;color:#7a5200;line-height:1.6;margin-bottom:11px;}
@@ -300,6 +321,22 @@
         ★<b>選んだ回答の月</b>と、いま開いている対象月が違うときは確認します。</div>
       <div style="height:12px;"></div>
       <span class="a2-lab">聞き取りメモ（痛み・困っていること・できるようになったこと）</span>
+      <!-- a2-voice-v1: 話しながら録って、文字にして下の欄に足す。
+           ★書いてある文章は消さない。必ずうしろに足す。 -->
+      <div class="a2-voice">
+        <div class="a2-v-idle" id="a2-v-idle">
+          <button type="button" class="a2-v-mic" id="a2-v-start"
+                  onclick="a2VoiceStart()">録音して文字にする</button>
+          <span class="a2-v-hint">聞きながら録音できます。文字は下の欄に<b>足します</b>（いまの文章は消しません）。</span>
+        </div>
+        <div class="a2-v-rec" id="a2-v-rec" style="display:none;">
+          <span class="a2-v-dot"></span>
+          <span class="a2-v-timer" id="a2-v-timer">00:00</span>
+          <button type="button" class="a2-v-stop" onclick="a2VoiceStop()">完了</button>
+        </div>
+        <div class="a2-v-busy" id="a2-v-busy" style="display:none;">
+          文字にしています…（長く録ったときは30秒ほどかかります）</div>
+      </div>
       <textarea id="a2-intake" rows="8" placeholder="聞いた内容をそのまま書いてください"></textarea>
       <div class="a2-note">★この内容は、機能訓練指導員の画面でも<b>読めます</b>。報告文を作るときに使われます。</div>
     </div></div>
@@ -361,9 +398,13 @@
     <div class="a2-sec"><h3>3. 報告文を作る</h3><div class="bd">
       <div class="a2-warn">AIは<b>体の評価と、聞き取った内容の両方を読んで</b>作ります。</div>
       <div class="a2-inline"><span class="a2-lab">長さ</span>
+        <!-- a2-len-v1: 150〜500文字の50刻み。★200は選んだままにする
+             （開いたときの見え方を変えないため）。 -->
         <select id="a2-len" class="a2-sel narrow">
-          <option value="200">200文字</option><option value="300">300文字</option>
-          <option value="400">400文字</option><option value="500">500文字</option></select></div>
+          <option value="150">150文字</option><option value="200" selected>200文字</option>
+          <option value="250">250文字</option><option value="300">300文字</option>
+          <option value="350">350文字</option><option value="400">400文字</option>
+          <option value="450">450文字</option><option value="500">500文字</option></select></div>
       <button type="button" class="a2-btn ai" id="a2-aiBtn" onclick="a2AiFill()">AIで報告文を作る</button>
       <div style="height:12px;"></div>
       <div class="a2-row"><span class="a2-lab">訓練による変化</span>
@@ -819,6 +860,112 @@ async function a2PullSelfEval(){
     t.focus();
     a2PullFill(j.pick || {});          // a2-pull-answers-v1
   }catch(e){ alert('取り込めませんでした'); }
+}
+
+/* ===== a2-voice-v1: 聞き取りメモの音声文字起こし =====
+   ★新しい仕組みは作らない。評価画面の「評価メモ」で動いているものと
+     同じ道を通す（/api/evaluation/ingest_file・audio_mode=solo）。
+     別に作ると、片方だけ直したときに食い違う。 */
+var A2V = { rec:null, chunks:[], sec:0, timer:0, mime:'audio/webm', watch:0 };
+
+function a2VTime(s){
+  return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+}
+
+function a2VShow(which){
+  var m = {idle:'a2-v-idle', rec:'a2-v-rec', busy:'a2-v-busy'};
+  for(var k in m){
+    var el = $(m[k]);
+    if(el) el.style.display = (k === which) ? (k === 'busy' ? 'block' : 'flex') : 'none';
+  }
+}
+
+async function a2VoiceStart(){
+  var b = $('a2-v-start');
+  if(A2V.rec) return;                       // ★二度押しで2本走らせない
+  if(b) b.disabled = true;
+  try{
+    var stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    A2V.mime = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm'
+             : MediaRecorder.isTypeSupported('audio/mp4')  ? 'audio/mp4' : 'audio/ogg';
+    A2V.rec = new MediaRecorder(stream, { mimeType: A2V.mime });
+    A2V.chunks = []; A2V.sec = 0;
+    A2V.rec.ondataavailable = function(e){ if(e.data && e.data.size > 0) A2V.chunks.push(e.data); };
+    A2V.rec.onstop = function(){
+      stream.getTracks().forEach(function(t){ t.stop(); });   // ★マイクを離す
+      a2VSend();
+    };
+    A2V.rec.start(1000);
+    a2VShow('rec');
+    $('a2-v-timer').textContent = '00:00';
+    A2V.timer = setInterval(function(){
+      A2V.sec++;
+      var el = $('a2-v-timer');
+      if(el) el.textContent = a2VTime(A2V.sec);
+    }, 1000);
+    /* ★画面を移ったのに録りっぱなし、を作らない。
+         この画面は1枚のHTMLの中で表示を切り替えるので、戻るを押しても
+         録音は止まらず、マイクが点いたままになる。
+         録音の帯が見えなくなったら、そこまでを文字にして足す。捨てない。 */
+    A2V.watch = setInterval(function(){
+      var r = $('a2-v-rec');
+      if(A2V.rec && r && r.offsetParent === null){
+        a2VoiceStop(true);
+      }
+    }, 1000);
+  }catch(err){
+    if(b) b.disabled = false;
+    A2V.rec = null;
+    a2VShow('idle');
+    alert('マイクを使えませんでした。\nブラウザの設定でマイクを許可してください。');
+  }
+}
+
+function a2VoiceStop(moved){
+  clearInterval(A2V.timer); A2V.timer = 0;
+  clearInterval(A2V.watch); A2V.watch = 0;
+  if(A2V.rec && A2V.rec.state !== 'inactive') A2V.rec.stop();
+  if(moved) a2Toast('画面を移ったので録音を止めました。文字にして聞き取りメモに足します');
+  a2VShow('busy');
+}
+
+async function a2VSend(){
+  A2V.rec = null;
+  var b = $('a2-v-start');
+  var blob = new Blob(A2V.chunks, { type: A2V.mime });
+  var ext  = A2V.mime.indexOf('mp4') >= 0 ? 'm4a'
+           : A2V.mime.indexOf('ogg') >= 0 ? 'ogg' : 'webm';
+  A2V.chunks = [];
+  /* ★何も録れていないときは送らない。空を送って「失敗しました」と出すと、
+       マイクの不具合なのか通信なのか分からなくなる。 */
+  if(!blob.size){
+    a2VShow('idle');
+    if(b) b.disabled = false;
+    alert('音が録れていませんでした。マイクを確かめて、もう一度お試しください。');
+    return;
+  }
+  var fd = new FormData();
+  fd.append('file', blob, 'a2_intake.' + ext);
+  fd.append('audio_mode', 'solo');
+  try{
+    var r = await fetch('/api/evaluation/ingest_file', { method:'POST', body:fd,
+                                                        credentials:'same-origin' });
+    var j = await r.json();
+    if(j.status === 'success' && j.text){
+      /* ★足す。消さない。セルフ評価の取り込みと同じ約束。 */
+      var t = $('a2-intake');
+      t.value = t.value.trim() ? (t.value.trim() + '\n\n' + j.text) : j.text;
+      a2Toast('聞き取りメモに足しました', true);
+    }else{
+      alert(j.message || '文字にできませんでした。もう一度お試しください。');
+    }
+  }catch(e){
+    alert('通信できませんでした。電波を確かめて、もう一度お試しください。');
+  }
+  a2VShow('idle');
+  if(b) b.disabled = false;
+  $('a2-v-timer').textContent = '00:00';
+  A2V.sec = 0;
 }
 
 /* a2-pull-answers-v1: ご本人の答えを、1番・3番の欄にも入れる。
