@@ -8257,7 +8257,8 @@ def api_evaluation_ingest_file():
     第1弾は文字化のみ。要約・整理・構造化は一切しない。
     """
     try:
-        from utils import get_generative_model, upload_audio_to_supabase
+        # eval-audio-nostore-v1: upload_audio_to_supabase は使わない（音声を保存しない）
+        from utils import get_generative_model
         import io
 
         f = request.files.get('file')
@@ -8300,10 +8301,19 @@ def api_evaluation_ingest_file():
             }
             mime = mime_map.get(ext, 'audio/webm')
 
-            # ストレージに一時保存（評価確定時に削除）
-            f_code = session.get("f_code", "unknown")
-            supabase = get_supabase()
-            upload_audio_to_supabase(supabase, file_bytes, f.filename or 'audio', f_code)
+            # eval-audio-nostore-v1: 音声を Storage に保存しない。
+            #   ★旧: upload_audio_to_supabase() で
+            #     assessment-audio/{施設コード}/{ランダムUUID}.{拡張子} に置いていた。
+            #     コメントには「評価確定時に削除」と書いてあったが、
+            #     【その削除はどこにも実装されていなかった】。
+            #     ・戻り値(URL)を捨てていたので、どのファイルが誰の何月のものか残らない
+            #     ・削除の口(/api/meeting/audio_cleanup, /api/meeting/audio_delete)は
+            #       {施設コード}/{エリア}/{セッションID}/ の下しか見ない。ここの音声は
+            #       その【外側】にあるので、一生消えなかった
+            #   ★音声はこの場で文字起こしに使うだけ。元のファイルは職員の端末に
+            #     残っているので、取り直しにも困らない。
+            #   ★入れ直したくなったら、まず「どのファイルが誰のか」を残す仕組みを
+            #     先に作ること。それが無いまま保存すると、また消せなくなる。
 
             if audio_mode == 'dialog':
                 prompt = """これは介護施設における機能訓練指導員と利用者の会話の録音です。
@@ -14185,6 +14195,34 @@ def _mon_strip_greeting(text):  # mon-no-greeting-v1
     return "".join(ss).strip() or t0
 
 
+def _mon_strip_read(row):  # mon-strip-read-v1
+    """保存済みの報告書を【読むとき】に、前置き・結びの挨拶を外して返す。
+
+    ★DBは1件も変えない。読んだものを渡す前に外すだけ。だからいつでも戻せる。
+    ★手直し(インライン編集)も /api/monitoring_detail から同じ文を受け取るので、
+      「画面では消えているのに編集を開くと挨拶が戻る」という食い違いが起きない。
+      手直しして保存すれば、そのときDBの側もきれいになる。
+    ★外す処理そのものは _mon_strip_greeting。40文字未満には触らないので
+      「今月このカテゴリの報告はありませんでした」は消えない。
+      「【この行は書類には印刷されません…】AIの生成に失敗しました…」も、
+      前置き・結びのどちらの形にも当たらないので消えない（確認ずみ）。
+      ここを緩めると、記録が無いことと生成が失敗したことが画面から消える。
+    ★categories は {カテゴリ名: 本文} の辞書。まとめて1本モードは full_text。
+    """
+    if not isinstance(row, dict):
+        return row
+    cats = row.get("categories")
+    if isinstance(cats, dict):
+        row["categories"] = {
+            k: (_mon_strip_greeting(v) if isinstance(v, str) else v)
+            for k, v in cats.items()
+        }
+    full = row.get("full_text")
+    if isinstance(full, str):
+        row["full_text"] = _mon_strip_greeting(full)
+    return row
+
+
 @app.route('/api/generate_monitoring', methods=['POST'])
 @login_required
 def api_generate_monitoring():
@@ -14523,7 +14561,8 @@ def api_monitoring_detail():
 
         if not res.data:
             return jsonify({"error": "見つかりません"}), 404
-        return jsonify(res.data[0])
+        # mon-strip-read-v1: 保存済みの挨拶を外してから返す（DBは変えない）
+        return jsonify(_mon_strip_read(res.data[0]))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -31416,7 +31455,7 @@ def api_monitoring_report_data():
                 "year_month", year_month).order(
                 "id", desc=True).limit(1).execute()
             if mr.data:
-                monitoring = mr.data[0]
+                monitoring = _mon_strip_read(mr.data[0])  # mon-strip-read-v1
         except Exception:
             monitoring = {}
         result["monitoring"] = monitoring
@@ -32933,6 +32972,13 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
             "・この文書は他事業所のケアマネジャーに提出します。対象の利用者様以外の人名（他の利用者・他のご家族など）が記録に出てきても、実名は一切書かず「他の利用者様」と表記する\n"
             "・箇条書きは使わず、ひとつながりの文章で書く\n"
             "・口調は外部のケアマネジャーへの報告文書として読みやすい丁寧語(です・ます)。二重敬語や過剰な敬語(「お〜になられる」「ございました」等)は避け、硬すぎず砕けすぎない自然な丁寧さにとどめる\n"
+            # mon-no-greeting-print-v1: 書類出力の自動生成にも、モニタリング画面と同じ
+            #   「挨拶を書かせない」指示を入れる。ここに無かったので、
+            #   書類出力から先に作った月だけ「今月の訓練状況をお伝えします」が
+            #   付いていた。入口によって文章が変わる状態だった。
+            #   ★指示だけでは止まりきらないので、生成後に _mon_strip_greeting も通す。
+            "・前置きの挨拶を書かない。「今月の◯◯をお伝えします」「◯◯についてご報告いたします」のような書き出しは禁止。1文目から記録の中身を書き始める\n"
+            "・結びの挨拶を書かない。「以上、ご報告いたします」「引き続き見守ってまいります」「今後ともよろしくお願いいたします」のような、記録に無いことを述べる締めの文は書かない\n"
         )
         NO_RECORD_MSG = "今月このカテゴリの報告はありませんでした"
         # gen-fail-visible-v1: 生成に失敗したカテゴリを「報告なし」にしない。
@@ -32971,7 +33017,9 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
             _gen_err = None
             for _attempt in (1, 2):
                 try:
-                    results[cat] = model.generate_content([prompt]).text.strip()
+                    # mon-no-greeting-print-v1: 付いてきた前置き・結びを外す
+                    results[cat] = _mon_strip_greeting(
+                        model.generate_content([prompt]).text.strip())
                     _gen_err = None
                     break
                 except Exception as _e:
@@ -33086,7 +33134,8 @@ def print_pdf():
             mr = supabase.table("monitoring_reports").select("*").eq(
                 "facility_code", f_code).eq("user_name", uname).eq(
                 "target_month", year_month).order("id", desc=True).limit(1).execute()
-            data["monitoring"] = mr.data[0] if mr.data else {}
+            data["monitoring"] = (_mon_strip_read(mr.data[0])
+                                  if mr.data else {})  # mon-strip-read-v1
         except Exception:
             data["monitoring"] = {}
         try:
@@ -33325,7 +33374,7 @@ def print_preview():
                 "facility_code", f_code).eq("user_name", uname).eq(
                 "target_month", year_month).order("id", desc=True).limit(1).execute()
             if mr.data:
-                data["monitoring"] = mr.data[0]
+                data["monitoring"] = _mon_strip_read(mr.data[0])  # mon-strip-read-v1
             else:
                 # 未生成の場合はバックグラウンドで生成開始し、今回は空で返す
                 import threading
