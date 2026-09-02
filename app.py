@@ -28492,6 +28492,52 @@ def api_soge_run_rebuild():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@app.route("/api/soge/run/merge", methods=["POST"])  # soge-merge-btn-v1
+@login_required
+def api_soge_run_merge():
+    """配車表の直しを、いまの運行表に【差分だけ】当てる。★打刻・欠席は消さない。
+
+    ★「配車表から作り直す」との違い
+        作り直し … 行ごと入れ替える。打刻・欠席・臨時便が消える。
+        こちら   … 増えた人を足し、外れた人を消し、車を移された人は行ごと移す。
+                   並び順も配車表に合わせる。
+                   打刻・欠席が付いている人は、配車から外れていても残す。
+                   出発・帰着・備考・臨時便は触らない。
+    ★人が押したときだけ走らせる。自動で走らせてはいけない。
+      運転席で「後にする」で並べ替えた順番が、画面を開くたびに
+      配車表の順番へ戻ってしまう。どちらを採るかは場面によるので、
+      押した人に決めてもらう。
+    ★確定済み・過ぎた日・状態が読めないときは、_soge_merge_day の中で止まる。
+    """
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        date_str = ((request.json or {}).get("date") or "").strip()
+        if not _soge_date_ok(date_str):
+            return jsonify({"status": "error", "message": "日付が正しくありません"}), 400
+        # soge-past-admin-v1: 過ぎた日は管理者だけ
+        if not _soge_past_admin_ok(supabase, f_code, date_str, my_name):
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
+        res = _soge_merge_day(supabase, f_code, date_str)
+        if not res.get("built"):
+            _why = {
+                "locked": "この日は確定済みです。先に確定を解除してください。",
+                "past": "過ぎた日には取り込めません。",
+                "not_yet": "この日の運行表がまだありません。",
+                "no_week": "元になる配車が見つかりませんでした。",
+                "unknown": "いま状態を確かめられませんでした。少し時間をおいてお試しください。",
+            }.get(res.get("reason") or "", "取り込めませんでした")
+            return jsonify({"status": "error", "message": _why}), 400
+        print("[soge-merge-btn] %s %s を取り込みました (%s)"
+              % (f_code, date_str, my_name), flush=True)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_soge_run_merge error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route("/api/soge/run/replan", methods=["POST"])  # soge-leave-plan-v1
 @login_required
 def api_soge_run_replan():
