@@ -1246,12 +1246,20 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     } else {
       h = '<span class="st">未確定</span>'
         + '<button class="main" id="srLockBtn">この日を確定する</button>'
-        + (touched ? '<button class="warn" id="srRebuild">配車表から作り直す</button>' : '')
+        /* soge-merge-btn-v1: 打刻を消さずに配車表を取り込む道を足す。
+           ★これが無いと、取り込む手段が「作り直す」だけになり、
+             打刻・臨時便を捨てないと配車の直しを反映できなかった。 */
+        + (touched ? '<button class="main" id="srMergeBtn">配車表を取り込む</button>' : '')
+        + (touched ? '<button class="warn" id="srRebuild">ゼロから作り直す</button>' : '')
         + replan
         + '<span class="ex">'
         + (touched
-            ? 'この日はもう打刻などが入っているため、配車表を直しても自動では反映しません。'
-              + '取り込むには「配車表から作り直す」を押してください（<b>打刻と臨時便は消えます</b>）。'
+            ? 'この日はもう手が入っているので、配車表を直しても自動では入りません。'
+              + '取り込みかたは2つあります。<br>'
+              + '<b>配車表を取り込む</b>＝並び順や人の入れ替えだけを当てます'
+              + '（<b>打刻・欠席・臨時便はそのまま</b>）。ふだんはこちら。<br>'
+              + '<b>ゼロから作り直す</b>＝配車表そのままに戻します'
+              + '（<b>打刻と臨時便は消えます</b>）。'
             : '配車表を直すと、この画面を開くたびに反映されます。'
               + '当日を走り出す前に「確定」を押すと、それ以降は変わらなくなります。')
         + '</span>';
@@ -1267,6 +1275,8 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     };
     var b3 = $('srRebuild');
     if (b3) b3.onclick = doRebuild;
+    var b3m = $('srMergeBtn');           // soge-merge-btn-v1
+    if (b3m) b3m.onclick = doMerge;
     var b4 = $('srReplan');
     if (b4) b4.onclick = doReplan;
   }
@@ -1318,6 +1328,21 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       toast(want ? 'この日を確定しました' : '確定を解除しました');
       await load();
     } catch (e) { toast('変えられませんでした', 'err'); }
+  }
+
+  /* soge-merge-btn-v1: 打刻を消さずに配車表を取り込む。
+     ★srSend を通す。生の fetch を書くと、届かなかったときに
+       「押しても何も起きない」に戻る（soge-tap-retry-v1 で潰した穴）。 */
+  async function doMerge() {
+    if (!confirm('配車表の直しを、この日の運行表に取り込みます。\n\n'
+                 + '・並び順や人の入れ替えが入ります\n'
+                 + '・すでに入っている打刻・欠席・臨時便はそのままです\n\n'
+                 + 'よろしいですか。')) return;
+    var res = await srSend('/api/soge/run/merge', 'POST', { date: state.date });
+    if (!res.ok) { srAlert('err', '取り込めませんでした（' + res.why + '）'); return; }
+    srAlert('');
+    toast('配車表を取り込みました');
+    await load();
   }
 
   async function doRebuild() {

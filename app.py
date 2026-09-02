@@ -27864,12 +27864,24 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
             if day:
                 day_id = day["id"]
                 # ★出発・帰着・備考は触らない。実績なので。
-                try:
-                    (supabase.table("soge_days").update(head)
-                     .eq("facility_code", f_code).eq("id", day_id).execute())
-                except Exception as e:
-                    print("[soge-merge] 便を直せませんでした: %s" % e, flush=True)
-                    continue
+                # soge-stable-id-v1: 中身が同じなら書かない。
+                #   ★差分当ては運行画面を読むたびに走るようになった。
+                #     毎回 updated_at だけ動かすと、あとから
+                #     「誰がいつ直したのか」がログから読めなくなる。
+                _dsame = True
+                for _hk, _hv in head.items():
+                    if _hk == "updated_at":
+                        continue
+                    if (day.get(_hk) or "") != (_hv or ""):
+                        _dsame = False
+                        break
+                if not _dsame:
+                    try:
+                        (supabase.table("soge_days").update(head)
+                         .eq("facility_code", f_code).eq("id", day_id).execute())
+                    except Exception as e:
+                        print("[soge-merge] 便を直せませんでした: %s" % e, flush=True)
+                        continue
             else:
                 try:
                     _ins = dict(head)
@@ -27893,6 +27905,15 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
                     # ★行ごと移す。到着時刻・欠席・打刻者はそのまま。
                     upd = {"day_id": day_id, "seq": i, "planned_at": _pl,
                            "user_name": s.get("user_name") or old.get("user_name") or ""}
+                    # soge-stable-id-v1: 何も変わらない行は書かない。
+                    #   ★これが無いと、運行画面を開くたびに人数ぶんの
+                    #     書き込みが走る（14人なら14回）。運転席のタブレットで
+                    #     開くものなので、読むだけの回は読むだけで終わらせる。
+                    if (str(old.get("day_id")) == str(day_id)
+                            and old.get("seq") == i
+                            and (old.get("planned_at") or None) == _pl
+                            and (old.get("user_name") or "") == upd["user_name"]):
+                        continue
                     try:
                         (supabase.table("soge_stops").update(upd)
                          .eq("facility_code", f_code).eq("id", old["id"]).execute())
@@ -27977,7 +27998,11 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
     ★soge-lock-v1 で作り直しの条件を変えた（それまでは「一度作ったら二度と作り直さない」）。
       ・確定済みの日          → 絶対に作り直さない
       ・打刻などが始まった日  → 自動では作り直さない（force のときだけ）
-      ・それ以外              → 開くたびに作り直す＝配車表の直しがそのまま出る
+      ・それ以外              → 差分だけ当てる（soge-stable-id-v1）
+                                配車表の直しはそのまま出るが、立ち寄りの
+                                id は変わらない。以前はここで行ごと
+                                作り直していて、同じ日を2人が開くと
+                                先に開いた側の打刻が弾かれていた。
     """
     keep_absent = set()      # soge-lock-v2: 作り直しても消さない「欠席（✕）」
     st = _soge_day_state(supabase, f_code, date_str)
@@ -28001,6 +28026,20 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
             return {"built": False, "reason": "past"}
         if st["touched"] and not force:
             return {"built": False, "reason": "touched"}
+        # soge-stable-id-v1: 手つかずの日も【消して作り直さない】。差分だけ当てる。
+        #   ★作り直しは行ごと入れ替えるので、立ち寄りの id が毎回変わる。
+        #     運行画面は id で打刻を送るので、誰かが同じ日を開いた瞬間に
+        #     先に開いていた画面の id が全部死ぬ。押した打刻は
+        #     「対象が見つかりません」で弾かれ、送り直しの列に
+        #     【死んだ id のまま】積まれて、電波が戻っても入らない。
+        #     2026-09-02 に DEMO001 で再現（0.6秒あけて2回読んだだけで
+        #     3人ぶんの id が全部別物になった）。
+        #   ★差分当ての元にする配車表は _soge_week_for_day で
+        #     作り直しと同じものを見ているので、出てくる並びは変わらない。
+        #   ★force（「ゼロから作り直す」）は、これまで通り下の道を通る。
+        #     あれは「配車表そのままに戻す」ためのボタンなので変えない。
+        if not force:
+            return _soge_merge_day(supabase, f_code, date_str)
         # ★消す前に「欠席（✕）」を覚えておく。
         #   前もって入れた休みが、作り直しのたびに消えては使い物にならない。
         try:
@@ -28489,6 +28528,52 @@ def api_soge_run_rebuild():
         return jsonify({"status": "success"})
     except Exception as e:
         print("api_soge_run_rebuild error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/soge/run/merge", methods=["POST"])  # soge-merge-btn-v1
+@login_required
+def api_soge_run_merge():
+    """配車表の直しを、いまの運行表に【差分だけ】当てる。★打刻・欠席は消さない。
+
+    ★「配車表から作り直す」との違い
+        作り直し … 行ごと入れ替える。打刻・欠席・臨時便が消える。
+        こちら   … 増えた人を足し、外れた人を消し、車を移された人は行ごと移す。
+                   並び順も配車表に合わせる。
+                   打刻・欠席が付いている人は、配車から外れていても残す。
+                   出発・帰着・備考・臨時便は触らない。
+    ★人が押したときだけ走らせる。自動で走らせてはいけない。
+      運転席で「後にする」で並べ替えた順番が、画面を開くたびに
+      配車表の順番へ戻ってしまう。どちらを採るかは場面によるので、
+      押した人に決めてもらう。
+    ★確定済み・過ぎた日・状態が読めないときは、_soge_merge_day の中で止まる。
+    """
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        date_str = ((request.json or {}).get("date") or "").strip()
+        if not _soge_date_ok(date_str):
+            return jsonify({"status": "error", "message": "日付が正しくありません"}), 400
+        # soge-past-admin-v1: 過ぎた日は管理者だけ
+        if not _soge_past_admin_ok(supabase, f_code, date_str, my_name):
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
+        res = _soge_merge_day(supabase, f_code, date_str)
+        if not res.get("built"):
+            _why = {
+                "locked": "この日は確定済みです。先に確定を解除してください。",
+                "past": "過ぎた日には取り込めません。",
+                "not_yet": "この日の運行表がまだありません。",
+                "no_week": "元になる配車が見つかりませんでした。",
+                "unknown": "いま状態を確かめられませんでした。少し時間をおいてお試しください。",
+            }.get(res.get("reason") or "", "取り込めませんでした")
+            return jsonify({"status": "error", "message": _why}), 400
+        print("[soge-merge-btn] %s %s を取り込みました (%s)"
+              % (f_code, date_str, my_name), flush=True)
+        return jsonify({"status": "success"})
+    except Exception as e:
+        print("api_soge_run_merge error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
