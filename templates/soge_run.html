@@ -946,6 +946,22 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     try { localStorage.setItem(SRQ_KEY, JSON.stringify(a.slice(-SRQ_MAX))); } catch (e) {}
   }
 
+  /* soge-tap-refuse-v1 */
+  /* soge-tap-refuse-v1: 「サーバが断った」を「圏外」と混ぜない。
+     ★srSend は off:true（本当に届いていない）と off:false（断られた）を
+       分けて返しているのに、これまで呼ぶ側がどこも off を見ていなかった。
+       403(過ぎた日) / 404(対象が無い) / ログイン切れ を
+       「電波が戻ると自動で送ります」と案内して端末に貯めていたが、
+       何度送っても断られるので【永久に入らない】。
+       しかも貯めた1件が列の先頭に居座ると、そのあとの打刻が全部止まる。 */
+  function srRefused(res) { return !res.ok && res.off !== true; }
+
+  /* 断られたときの帯。★「あとで入る」と嘘をつかない。 */
+  function srRefuseAlert(what, res) {
+    srAlert('err', what + 'を記録できませんでした（' + (res.why || '理由が分かりません')
+            + '）。この記録は入っていません。画面を開き直して、もう一度押してください。');
+  }
+
   function srqAdd(item) {
     var a = srqLoad();
     /* 同じところへの2件目は、あとのほうだけ残す（押し直したのだから） */
@@ -997,42 +1013,78 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         });
       }
 
-      var left = [];
+      /* soge-tap-refuse-v1: 「処理し終えた」ものだけを列から引く。
+         ★これまでは最後に srqSave(left) で列を丸ごと書き戻していた。
+           途中に await が何度も入るのに srqAdd は止まっていないので、
+           送っている最中に運転手が押した打刻が、その書き戻しで消えていた。 */
+      var handled = {};        // k|id で「もう列に要らない」印
+      var lost = [];           // 入れられなかったもの（名前を出して知らせる）
+      var stopped = false;     // 圏外で途中で止めたか
+      function _hk(x) { return x.k + '|' + x.id; }
+      function _nm(x) { return (x.nm || 'この方'); }
+      /* 帯に出す名札。★出発・帰着に「この方」と出さない。 */
+      function _lbl(x) {
+        if (x.k === 'depart') return '出発 ' + (x.hhmm || '');
+        if (x.k === 'return') return '帰着 ' + (x.hhmm || '');
+        if (x.k === 'absent') return _nm(x) + ' の休み';
+        return _nm(x) + ' ' + (x.hhmm || '');
+      }
       for (var i = 0; i < a.length; i++) {
         var x = a[i];
         var res = null;
         if (x.k === 'arrive') {
           var hs = have.stop[x.id];
-          if (!hs) { continue; }                       // その立ち寄りが無い（作り直された）→ 捨てる
-          if (hs.at) { continue; }                     // もう入っている → 送らない
+          /* soge-tap-refuse-v1: 消えた立ち寄りあての打刻を【黙って捨てない】。
+             ★まだ送れていない打刻は DB では arrived_at が空なので、
+               配車から外れると _soge_merge_day に行ごと消される。
+               捨てると、打刻が消えたことに誰も気づけない。 */
+          if (!hs) { handled[_hk(x)] = 1; lost.push(_lbl(x)); continue; }
+          if (hs.at) { handled[_hk(x)] = 1; continue; }   // もう入っている → 送らない
           res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: x.id, time: x.hhmm });
         } else if (x.k === 'absent') {
           var hs2 = have.stop[x.id];
-          if (!hs2) { continue; }
-          if (hs2.ab === !!x.on) { continue; }         // もうその状態 → 送らない
+          if (!hs2) { handled[_hk(x)] = 1; lost.push(_lbl(x)); continue; }
+          if (hs2.ab === !!x.on) { handled[_hk(x)] = 1; continue; }   // もうその状態 → 送らない
           res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: x.id, absent: !!x.on });
         } else if (x.k === 'depart' || x.k === 'return') {
           var hd = have.day[x.id];
-          if (!hd) { continue; }
-          if (x.k === 'depart' && hd.dep) { continue; }
-          if (x.k === 'return' && hd.ret) { continue; }
+          if (!hd) { handled[_hk(x)] = 1; lost.push(_lbl(x)); continue; }
+          if (x.k === 'depart' && hd.dep) { handled[_hk(x)] = 1; continue; }
+          if (x.k === 'return' && hd.ret) { handled[_hk(x)] = 1; continue; }
           var bd = { day_id: x.id };
           bd[x.k === 'depart' ? 'departed' : 'returned'] = x.hhmm;
           res = await srSend('/api/soge/run/day', 'PUT', bd);
         } else {
-          continue;                                    // 知らない種類は捨てる
+          handled[_hk(x)] = 1;                         // 知らない種類は捨てる
+          continue;
         }
-        if (!res.ok) {
-          /* ★届かないなら、そこで止めて残す。順番を保つ。 */
-          left = a.slice(i);
+        if (res.ok) { handled[_hk(x)] = 1; continue; }
+        if (res.off === true) {
+          /* ★本当に届いていない。ここで止めて、残りは列に置いたままにする。
+               順番を保つため、先へは進めない。 */
+          stopped = true;
           break;
         }
+        /* soge-tap-refuse-v1: サーバが断った（過ぎた日 / 対象が無い / ログイン切れ）。
+           ★何度送っても入らないので、列から外して次へ進む。
+             外さないと、この1件が先頭に居座って
+             【そのあとの打刻が全部止まる】。 */
+        handled[_hk(x)] = 1;
+        lost.push(_lbl(x) + '（' + (res.why || '断られました') + '）');
       }
-      srqSave(left);
-      if (!left.length) {
-        srAlert('');                                   // 赤い帯を消す
-        if (manual) toast('たまっていた打刻を送りました');
+      /* soge-tap-refuse-v1: 丸ごと書き戻さない。いまの列を読み直して、済んだ分だけ引く。 */
+      var still = srqLoad().filter(function (y) { return !handled[_hk(y)]; });
+      srqSave(still);
+      if (!still.length && !stopped) {
+        if (manual && !lost.length) toast('たまっていた打刻を送りました');
         await load();                                  // 画面をサーバの中身に合わせる
+      }
+      /* ★帯は load のあとに出す。入れられなかったものは名前を出して残す。 */
+      if (lost.length) {
+        srAlert('err', '入れられなかった記録が ' + lost.length + ' 件あります：'
+                + lost.join('／') + '。画面を確かめて、もう一度押してください。');
+      } else if (!still.length) {
+        srAlert('');                                   // 赤い帯を消す
       }
     } finally {
       srqBusy = false;
@@ -1082,6 +1134,49 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
   /* 電波が戻ったら送る／開いたときにも送る／残っているあいだは30秒ごとに試す */
   window.addEventListener('online', function () { srqFlush(false); });
   setInterval(function () { if (srqLoad().length) srqFlush(false); }, 30000);
+
+  /* soge-fresh-word-v1: 画面が前面に戻ったら読み直す。
+     ★これまで自動で読み直す仕掛けが【一つも無かった】。上の30秒タイマーは
+       送れていない打刻が溜まっているときしか動かない。だから開きっぱなしの
+       タブレットは、事務所が配車を直しても古い並びのまま走っていた。
+     ★日付も動かなかった。state.date は起動のとき1回入れるだけなので、
+       前の晩から開きっぱなしだと朝になっても【昨日】のまま。そのまま
+       「到着」を押すと「過ぎた日は管理者だけ」で断られる。 */
+  var srFreshAt = 0;
+  var srDateAuto = true;   // 日付を人が選んだら false。勝手に今日へ動かさない。
+
+  async function srMaybeReload() {
+    if (document.visibilityState !== 'visible') return;
+    /* ★読み直さない場合。ここを決めておかないと現場で邪魔になる。 */
+    if (srqBusy) return;                                   // 打刻を送っている最中
+    if (document.querySelector('.sr-timeedit')) return;    // 時刻を手で入れている最中
+    for (var _k in state.busy) { if (state.busy[_k]) return; }   // ボタンを押している最中
+    if (Date.now() - srFreshAt < 8000) return;             // 点け消しの連打よけ
+    srFreshAt = Date.now();
+    /* ★日付が「今日」で開かれていたなら、日をまたいでいたら今日に直す。
+         人が自分で選んだ日付は動かさない（過去を見ている最中に飛ばさない）。 */
+    if (srDateAuto) {
+      var _t = todayStr();
+      if (state.date !== _t) {
+        state.date = _t;
+        if ($('srDate')) $('srDate').value = _t;
+        if ($('srPrint')) $('srPrint').href = '/soge/print?month=' + _t.slice(0, 7);
+        state.tab = 0; state.tabKey = ''; state.autoTab = true;
+      }
+    }
+    /* ★見ていた位置は保つ。運転席で先頭に飛ばされるのがいちばん困る。 */
+    var _sc = scrollBox();
+    var _y = _sc ? _sc.scrollTop : 0;
+    try { await load(); } catch (e) {}
+    if (_sc) {
+      _sc.scrollTop = _y;
+      if (window.requestAnimationFrame) {
+        requestAnimationFrame(function () { _sc.scrollTop = _y; });
+      }
+    }
+  }
+  document.addEventListener('visibilitychange', srMaybeReload);
+  window.addEventListener('focus', srMaybeReload);
 
   // soge-trip-tab-v1: 便の種別から表示名を決める
   function tripLabel(t) {
@@ -1254,8 +1349,16 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         + replan
         + '<span class="ex">'
         + (touched
-            ? 'この日はもう手が入っているので、配車表を直しても自動では入りません。'
-              + '取り込みかたは2つあります。<br>'
+            /* soge-fresh-word-v1: HIROさんの文に差し替え。
+               ★「手が入っている」は伝わらない。何が起きたのかを書く。
+               ★「今日だけの配車」なら保存すれば入ることを、ここで教える。
+                 これを書かないと、直したい人が行き先を失う。
+               ★下の2つのボタンは【すでに直してある配車表を持ってくる】ため。
+                 これから直す人向けではないので、条件を書き分ける。 */
+            ? 'この日はもう、運行画面で<b>打刻や並べ替え</b>がされています。<br>'
+              + '<b>いつもの配車</b>を変更しても、運行画面には反映されません。'
+              + '運行画面を変えたい場合は<b>「今日だけの配車」</b>から変更してください。<br>'
+              + 'すでに直した配車表を、この日に取り込みたい場合は、下のどちらかを押してください。<br>'
               + '<b>配車表を取り込む</b>＝並び順や人の入れ替えだけを当てます'
               + '（<b>打刻・欠席・臨時便はそのまま</b>）。ふだんはこちら。<br>'
               + '<b>ゼロから作り直す</b>＝配車表そのままに戻します'
@@ -2442,6 +2545,14 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
              届かなかったときは、この時刻で送り直す。送り直した時刻ではない。 */
           var hm = srNowHM();
           var res = await srSend('/api/soge/run/arrive', 'POST', { stop_id: id });
+          /* soge-tap-refuse-v1: 断られたら貯めない。画面も進めない。 */
+          if (srRefused(res)) {
+            var sx = findStop(id);
+            srRefuseAlert(((sx && sx.user_name) || 'この方') + ' ' + hm + ' ', res);
+            el.disabled = false; el.textContent = '到着';
+            keepScroll(render);
+            return;
+          }
           if (!res.ok) {
             /* ★黙って終わらせない。ここが今回いちばん大事なところ。
                ・赤い帯を出しっぱなしにする（トーストは2.4秒で消えて見落とす）
@@ -2499,6 +2610,13 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         done = true;
         clearTimeout(tmr);
         var res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: id, time: t });
+        /* soge-tap-refuse-v1: 断られたら貯めない。画面も進めない。 */
+        if (srRefused(res)) {
+          var sx2 = findStop(id);
+          srRefuseAlert(((sx2 && sx2.user_name) || 'この方') + ' ' + t + ' ', res);
+          keepScroll(render);
+          return;
+        }
         if (!res.ok) {
           /* soge-tap-retry-v1: 手で入れた時刻も貯める。入れた時刻のまま送る。 */
           var sf2 = findStop(id);
@@ -2556,6 +2674,13 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         state.busy[id] = true;
         try {
           var res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: id, absent: !on });
+          /* soge-tap-refuse-v1: 断られたら貯めない。画面も進めない。 */
+          if (srRefused(res)) {
+            var sx3 = findStop(id);
+            srRefuseAlert(((sx3 && sx3.user_name) || 'この方') + ' の休み', res);
+            keepScroll(render);
+            return;
+          }
           if (!res.ok) {
             /* soge-tap-retry-v1: 休みも貯める。★画面は先に進める。 */
             var sa = findStop(id);
@@ -2596,6 +2721,13 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         try {
           var hmd = srNowHM();
           var res = await srSend('/api/soge/run/depart', 'POST', { day_id: id });
+          /* soge-tap-refuse-v1: 断られたら貯めない。画面も進めない。 */
+          if (srRefused(res)) {
+            srRefuseAlert('出発 ' + hmd + ' ', res);
+            el.disabled = false;
+            keepScroll(render);
+            return;
+          }
           if (!res.ok) {
             /* soge-tap-retry-v1: 出発も貯める。押した時刻で送り直す。 */
             srqAdd({ k: 'depart', id: id, date: state.date, hhmm: hmd });
@@ -2632,6 +2764,13 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         try {
           var hmr = srNowHM();
           var res = await srSend('/api/soge/run/return', 'POST', { day_id: id });
+          /* soge-tap-refuse-v1: 断られたら貯めない。画面も進めない。 */
+          if (srRefused(res)) {
+            srRefuseAlert('帰着 ' + hmr + ' ', res);
+            el.disabled = false;
+            keepScroll(render);
+            return;
+          }
           if (!res.ok) {
             /* soge-tap-retry-v1: 帰着も貯める。押した時刻で送り直す。 */
             srqAdd({ k: 'return', id: id, date: state.date, hhmm: hmr });
@@ -3052,6 +3191,8 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     $('srDate').value = state.date;
     $('srDate').onchange = function () {
       state.date = $('srDate').value || todayStr();
+      // soge-fresh-word-v1: 人が選んだ日付は、前面に戻っても勝手に今日へ動かさない。
+      srDateAuto = (state.date === todayStr());
       state.tab = 0; state.tabKey = ''; state.autoTab = true;
       $('srPrint').href = '/soge/print?month=' + state.date.slice(0, 7);   // soge-print-v2
       load();
