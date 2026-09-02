@@ -31709,14 +31709,26 @@ def api_monitoring_report_data():
         # ---- 4. モニタリング本文（monitoring_reports 当月・最新1件） ----
         monitoring = {}
         try:
+            # mon-target-month-v1: ★列は target_month。year_month という列は無い。
+            #   ここだけ year_month で引いていたので PostgREST が弾き、
+            #   下の except に落ちて【いつでも必ず空】が返っていた。
+            #   monitoring_reports を引く他6か所は全部 target_month。
+            #   ★列があることは DEMO001 の実データで確認ずみ（2026-09-02）。
+            #   ★同じ関数の patient_evaluations は year_month が正しい列名なので、
+            #     そちらは触らない。直すのはこの1行だけ。
             mr = supabase.table("monitoring_reports").select("*").eq(
                 "facility_code", f_code).eq(
                 "user_name", user_name).eq(
-                "year_month", year_month).order(
+                "target_month", year_month).order(
                 "id", desc=True).limit(1).execute()
             if mr.data:
                 monitoring = _mon_strip_read(mr.data[0])  # mon-strip-read-v1
-        except Exception:
+        except Exception as e:
+            # mon-target-month-v1: ★黙って空にしない。理由をログに残す。
+            #   前は except Exception: だけだったので、列名が違っていても
+            #   誰にも分からないまま空が返り続けていた。
+            print("[mon-report-data] モニタリング本文を読めませんでした: %s"
+                  % e, flush=True)
             monitoring = {}
         result["monitoring"] = monitoring
 
@@ -36069,6 +36081,110 @@ def _mtg_cleanup_targets(supabase, f_code):
                 continue
             targets.append({"area": area, "session_id": sid, "bytes": z.get("bytes", 0)})
     return targets, remaining, skipped, count, total_bytes
+
+
+# ============================================================
+# eval-audio-count-v1 : 取り残された「評価の音声」を数える（読むだけ）
+#   ★評価の音声は assessment-audio/{施設コード}/{UUID}.{拡張子} に置かれていた。
+#     会議の音声（{施設コード}/meetings/... と {施設コード}/staff_minutes/...）の
+#     【外側】なので、会議用の整理の口からは一生見えない。
+#   ★eval-audio-nostore-v1（2026-09-01）で新しく増えるのは止めた。
+#     ここで数えるのは、それより前に置かれたぶん。
+#   ★この口は消さない。数えるだけ。
+# ============================================================
+_EVAL_AUDIO_SKIP_DIRS = ("meetings", "staff_minutes")
+
+
+def _eval_audio_list_root(supabase, f_code, cap=20000):
+    """{施設コード} の直下を最後まで一覧する。(件のリスト, 打ち切ったか)
+
+    ★list() は何も指定しないと【100件まで】しか返さない。
+      いまの会議側の口は指定していないので、100を超えると見落とす。
+      ここは 100件ずつ最後まで送る。
+    """
+    out, off, step, truncated = [], 0, 100, False
+    while True:
+        try:
+            page = supabase.storage.from_("assessment-audio").list(
+                f_code, {"limit": step, "offset": off}) or []
+        except Exception as e:
+            print("[eval-audio] 一覧に失敗 (offset=%d): %s" % (off, e), flush=True)
+            break
+        out.extend(page)
+        if len(page) < step:
+            break
+        off += step
+        if off >= cap:
+            truncated = True
+            break
+    return out, truncated
+
+
+@app.route("/api/admin/eval_audio_stats", methods=["GET"])  # eval-audio-count-v1
+@login_required
+def api_admin_eval_audio_stats():
+    """取り残された評価の音声を数える。★消さない。読むだけ。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error",
+                            "message": "管理者のみ確認できます"}), 403
+
+        entries, truncated = _eval_audio_list_root(supabase, f_code)
+
+        files, skipped_dirs, others = [], [], []
+        for x in (entries or []):
+            nm = (x.get("name") or "").strip()
+            if not nm or nm.startswith("."):
+                continue
+            if nm in _EVAL_AUDIO_SKIP_DIRS:
+                skipped_dirs.append(nm)
+                continue
+            ext = nm.rsplit(".", 1)[-1].lower() if "." in nm else ""
+            if ext in _MTG_AUDIO_EXTS:
+                files.append((nm, ext, x))
+            else:
+                # ★フォルダも、知らない拡張子も、ここに入る。
+                #   「音声だと分かったものだけ」を数の本体にする。
+                others.append(nm)
+
+        total = 0
+        by_ext = {}
+        times = []
+        for nm, ext, x in files:
+            try:
+                sz = int((x.get("metadata") or {}).get("size") or 0)
+            except (TypeError, ValueError):
+                sz = 0
+            total += sz
+            e = by_ext.setdefault(ext, {"count": 0, "bytes": 0})
+            e["count"] += 1
+            e["bytes"] += sz
+            t = (x.get("updated_at") or x.get("created_at")
+                 or (x.get("metadata") or {}).get("lastModified") or "")
+            if t:
+                times.append(str(t))
+
+        return jsonify({
+            "status": "success",
+            "facility_code": f_code,
+            "count": len(files),
+            "total_bytes": total,
+            "total_mb": round(total / 1024 / 1024, 1),
+            "by_ext": by_ext,
+            "oldest": min(times) if times else "",
+            "newest": max(times) if times else "",
+            "skipped_dirs": skipped_dirs,          # meetings / staff_minutes
+            "other_names": others[:50],            # 音声と分からなかったもの（確認用）
+            "other_count": len(others),
+            "truncated": truncated,                # 上限で打ち切ったか
+            "note": "この口は数えるだけで、1バイトも消しません。",
+        })
+    except Exception as e:
+        print("api_admin_eval_audio_stats error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/api/meeting/audio_stats", methods=["GET"])
