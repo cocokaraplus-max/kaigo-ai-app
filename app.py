@@ -29282,7 +29282,7 @@ def api_soge_run_return():
 # soge-print-noaddr-v1: 運行記録表（印刷）に住所は載せない。住所は運行画面だけ。
 
 
-def _soge_addr_short(a):  # soge-run-addr2-v1
+def _soge_addr_short(a):  # soge-run-addr2-v1 / soge-addr-none-v1
     """運行画面に出す住所。都道府県を落として市から始める。
 
     運転手が見るのは市以下だけ（同一県内の利用者しかいない）。
@@ -29290,11 +29290,32 @@ def _soge_addr_short(a):  # soge-run-addr2-v1
     削ったあと空になるようなら、元の文字列をそのまま返す（壊さない）。
     """
     a = (a or "").strip()
+    # soge-addr-none-v1: 中身の無い言葉は「住所なし」として扱う。
+    #   ★patient_profiles.address に、文字列の "None" が入っている行がある。
+    #     空でも NULL でもなく、Python の str(None) がそのまま4文字で入っている。
+    #     画面側は「住所があれば出す」なので、中身のある文字列として
+    #     運行画面に None と出てしまう（2026-09-02 DEMO001 で確認）。
+    #   ★住所が本当にこの言葉だけ、ということはあり得ないので、
+    #     正しい住所を消してしまう心配はない。
+    #   ★これは見え方の応急処置。データそのものは直っていない。
+    if a.lower() in ("none", "null", "nan", "undefined", "-", "ー", "―"):
+        return ""
     if not a:
         return ""
-    for i, ch in enumerate(a[:5]):
-        if ch in "都道府県":
-            return a[i + 1:].strip() or a
+    # soge-addr-none-v1: 都道府県の名前を正面から見る。
+    #   ★前は「先頭5文字に 都/道/府/県 が出たら、そこまで捨てる」だった。
+    #     京【都】府 は2文字目が「都」なので、そこで切れて
+    #       京都府京都市中京区… → 府京都市中京区…   と頭が欠けた。
+    #     県名が無い「京都市…」も → 市中京区… になっていた。
+    for _pref in ("東京都", "北海道", "大阪府", "京都府"):
+        if a.startswith(_pref):
+            return a[len(_pref):].strip() or a
+    # 県名は2〜4文字（神奈川県・和歌山県・鹿児島県）。
+    #   ★「県」が4文字目までに出たときだけ落とす。
+    #     住所の途中に出てくる「県」（県道◯号など）で切らないため。
+    _i = a.find("県")
+    if 0 < _i <= 3:
+        return a[_i + 1:].strip() or a
     return a
 
 
