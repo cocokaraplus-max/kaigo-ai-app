@@ -27551,6 +27551,22 @@ def _soge_day_touched(days, stops):
     for s in (stops or []):
         if s.get("arrived_at"):
             return True
+        # soge-touch-edit-v1: 人が運行画面で手で直した跡も「動き出した」に数える。
+        #   ★これが無いと、まだ1件も打刻が無いうちに「後にする」で
+        #     並べ替えたり車を移したりしても touched にならず、
+        #     次に画面を読み込んだ瞬間に作り直されて【並びが消える】。
+        #     作り直しは行ごと入れ替えなので立ち寄りの id も変わり、
+        #     手元の画面から送った打刻が「対象が見つかりません」で弾かれる。
+        #     2026-09-01 の夜に本番で実際に起きた。
+        #   ★edited_at を書くのは運行画面の3つの操作だけ（確認ずみ）。
+        #     並べ替え(order) / 車を移す(move) / 時刻・欠席・取り消し(stop)。
+        #     配車編集の保存は書かないので、配車の直しが当日に届かなくなる
+        #     ことはない（保存側は走り出した日なら差分だけ当てる）。
+        #   ★【欠席にしただけの行は数えない】。2026-08-21 に実機で決めたこと。
+        #     来週の予定に前もって休みを入れるのは普通の運用で、それを
+        #     「動き出した」と見なすと配車表の直しが反映されなくなる。
+        if s.get("edited_at") and not s.get("is_absent"):
+            return True
     return False
 
 
@@ -27603,7 +27619,10 @@ def _soge_day_state(supabase, f_code, date_str):
               .eq("facility_code", f_code).eq("service_date", date_str).execute())
         days = dr.data or []
         if days:
-            sr = (supabase.table("soge_stops").select("id,arrived_at,is_absent")
+            # soge-touch-edit-v1: edited_at も持ってくる。
+            #   これが無いと _soge_day_touched が「手で直した跡」を見られない。
+            sr = (supabase.table("soge_stops")
+                  .select("id,arrived_at,is_absent,edited_at")
                   .eq("facility_code", f_code).eq("service_date", date_str).execute())
             stops = sr.data or []
     except Exception as e:
