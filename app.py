@@ -26603,19 +26603,56 @@ def api_soge_week_save():
             return jsonify({"status": "error", "message": "曜日が不正です"}), 400
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        supabase.table("soge_routes").delete() \
-            .eq("facility_code", f_code).eq("weekday", weekday).execute()
 
         # soge-date-plan-v1: 整える処理を、その日だけの配車と【共用】にした。
         #   中身は前とまったく同じ（名前の切り出しだけ）。
         #   ★車番の付け直しのような細かい規則を2か所に書くと、
         #     片方だけ直したときに必ず食い違う。
+        # soge-save-safe-v1: ★行を【消す前に】作る。
+        #   前は消してから作っていたので、_soge_plan_rows がおかしなデータで
+        #   落ちると、消したあとで止まって【その曜日の配車が空になった】。
         rows = _soge_plan_rows(data.get("trips") or [],
                                {"facility_code": f_code, "weekday": weekday},
                                my_name, now_iso)
 
-        if rows:
-            supabase.table("soge_routes").insert(rows).execute()
+        # soge-save-safe-v1: 消す前に、いまの中身を控える。
+        #   ★控えられなかったら【消さない】。戻せない消し方はしない。
+        try:
+            _pr = (supabase.table("soge_routes").select("*")
+                   .eq("facility_code", f_code).eq("weekday", weekday).execute())
+            _old = _pr.data or []
+        except Exception as e:
+            print("[soge-save] いまの曜日の配車を読めませんでした: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "いま確認できませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+
+        supabase.table("soge_routes").delete() \
+            .eq("facility_code", f_code).eq("weekday", weekday).execute()
+
+        # soge-save-safe-v1: 入れ直しに失敗したら、控えたものを書き戻す。
+        #   ★空のまま残すと、以後その曜日は【自動生成の案】で走る
+        #     （_soge_saved_week は行が0なら None を返す）。
+        #     顔ぶれも並びも車も別物に組み直される。
+        try:
+            if rows:
+                supabase.table("soge_routes").insert(rows).execute()
+        except Exception as e:
+            print("[soge-save] 曜日の配車を入れ直せませんでした: %s" % e, flush=True)
+            _back = True
+            try:
+                if _old:
+                    supabase.table("soge_routes").insert(_old).execute()
+            except Exception as e2:
+                _back = False
+                print("[soge-save] 元の曜日の配車を書き戻せませんでした: %s" % e2, flush=True)
+            return jsonify({
+                "status": "error",
+                "message": ("保存できませんでした。前の配車に戻してあります。"
+                            "もう一度お試しください。") if _back else
+                           ("保存できませんでした。前の配車も戻せていません。"
+                            "配車編集を開いて、中身を確かめてください。"),
+            }), 500
         return jsonify({"status": "success", "saved": len(rows)})
     except Exception as e:
         print("api_soge_week_save error: %s" % e, flush=True)
@@ -26923,6 +26960,18 @@ def api_soge_date_save():
             return jsonify({"status": "error",
                             "message": "保存できませんでした。もう一度お試しください。"}), 500
 
+        # soge-save-safe-v1: 消す前に、いまの中身を控える。
+        #   ★控えられなかったら【消さない】。戻せない消し方はしない。
+        try:
+            _pr = (supabase.table("soge_date_routes").select("*")
+                   .eq("facility_code", f_code).eq("service_date", date_str).execute())
+            _old = _pr.data or []
+        except Exception as e:
+            print("[soge-save] いまのその日の配車を読めませんでした: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "いま確認できませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+
         try:
             (supabase.table("soge_date_routes").delete()
              .eq("facility_code", f_code).eq("service_date", date_str).execute())
@@ -26930,8 +26979,23 @@ def api_soge_date_save():
                 supabase.table("soge_date_routes").insert(rows).execute()
         except Exception as e:
             print("[soge] その日の配車の保存に失敗: %s" % e, flush=True)
-            return jsonify({"status": "error",
-                            "message": "保存できませんでした。もう一度お試しください。"}), 500
+            # soge-save-safe-v1: 消したぶんを書き戻す。
+            #   ★中身だけ空になると、宣言は残っているので
+            #     _soge_rows_view の補完で【全員が「⚠ 車が未定」へ移る】。
+            _back = True
+            try:
+                if _old:
+                    supabase.table("soge_date_routes").insert(_old).execute()
+            except Exception as e2:
+                _back = False
+                print("[soge-save] 元のその日の配車を書き戻せませんでした: %s" % e2, flush=True)
+            return jsonify({
+                "status": "error",
+                "message": ("保存できませんでした。前の配車に戻してあります。"
+                            "もう一度お試しください。") if _back else
+                           ("保存できませんでした。前の配車も戻せていません。"
+                            "配車編集を開いて、中身を確かめてください。"),
+            }), 500
 
         res = _soge_date_rebuild(supabase, f_code, date_str)
         say = "" if res.get("built") else _SOGE_REBUILD_SAY.get(res.get("reason") or "", "")
@@ -31645,14 +31709,26 @@ def api_monitoring_report_data():
         # ---- 4. モニタリング本文（monitoring_reports 当月・最新1件） ----
         monitoring = {}
         try:
+            # mon-target-month-v1: ★列は target_month。year_month という列は無い。
+            #   ここだけ year_month で引いていたので PostgREST が弾き、
+            #   下の except に落ちて【いつでも必ず空】が返っていた。
+            #   monitoring_reports を引く他6か所は全部 target_month。
+            #   ★列があることは DEMO001 の実データで確認ずみ（2026-09-02）。
+            #   ★同じ関数の patient_evaluations は year_month が正しい列名なので、
+            #     そちらは触らない。直すのはこの1行だけ。
             mr = supabase.table("monitoring_reports").select("*").eq(
                 "facility_code", f_code).eq(
                 "user_name", user_name).eq(
-                "year_month", year_month).order(
+                "target_month", year_month).order(
                 "id", desc=True).limit(1).execute()
             if mr.data:
                 monitoring = _mon_strip_read(mr.data[0])  # mon-strip-read-v1
-        except Exception:
+        except Exception as e:
+            # mon-target-month-v1: ★黙って空にしない。理由をログに残す。
+            #   前は except Exception: だけだったので、列名が違っていても
+            #   誰にも分からないまま空が返り続けていた。
+            print("[mon-report-data] モニタリング本文を読めませんでした: %s"
+                  % e, flush=True)
             monitoring = {}
         result["monitoring"] = monitoring
 
@@ -36005,6 +36081,110 @@ def _mtg_cleanup_targets(supabase, f_code):
                 continue
             targets.append({"area": area, "session_id": sid, "bytes": z.get("bytes", 0)})
     return targets, remaining, skipped, count, total_bytes
+
+
+# ============================================================
+# eval-audio-count-v1 : 取り残された「評価の音声」を数える（読むだけ）
+#   ★評価の音声は assessment-audio/{施設コード}/{UUID}.{拡張子} に置かれていた。
+#     会議の音声（{施設コード}/meetings/... と {施設コード}/staff_minutes/...）の
+#     【外側】なので、会議用の整理の口からは一生見えない。
+#   ★eval-audio-nostore-v1（2026-09-01）で新しく増えるのは止めた。
+#     ここで数えるのは、それより前に置かれたぶん。
+#   ★この口は消さない。数えるだけ。
+# ============================================================
+_EVAL_AUDIO_SKIP_DIRS = ("meetings", "staff_minutes")
+
+
+def _eval_audio_list_root(supabase, f_code, cap=20000):
+    """{施設コード} の直下を最後まで一覧する。(件のリスト, 打ち切ったか)
+
+    ★list() は何も指定しないと【100件まで】しか返さない。
+      いまの会議側の口は指定していないので、100を超えると見落とす。
+      ここは 100件ずつ最後まで送る。
+    """
+    out, off, step, truncated = [], 0, 100, False
+    while True:
+        try:
+            page = supabase.storage.from_("assessment-audio").list(
+                f_code, {"limit": step, "offset": off}) or []
+        except Exception as e:
+            print("[eval-audio] 一覧に失敗 (offset=%d): %s" % (off, e), flush=True)
+            break
+        out.extend(page)
+        if len(page) < step:
+            break
+        off += step
+        if off >= cap:
+            truncated = True
+            break
+    return out, truncated
+
+
+@app.route("/api/admin/eval_audio_stats", methods=["GET"])  # eval-audio-count-v1
+@login_required
+def api_admin_eval_audio_stats():
+    """取り残された評価の音声を数える。★消さない。読むだけ。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        if not is_admin_user(supabase, f_code, my_name):
+            return jsonify({"status": "error",
+                            "message": "管理者のみ確認できます"}), 403
+
+        entries, truncated = _eval_audio_list_root(supabase, f_code)
+
+        files, skipped_dirs, others = [], [], []
+        for x in (entries or []):
+            nm = (x.get("name") or "").strip()
+            if not nm or nm.startswith("."):
+                continue
+            if nm in _EVAL_AUDIO_SKIP_DIRS:
+                skipped_dirs.append(nm)
+                continue
+            ext = nm.rsplit(".", 1)[-1].lower() if "." in nm else ""
+            if ext in _MTG_AUDIO_EXTS:
+                files.append((nm, ext, x))
+            else:
+                # ★フォルダも、知らない拡張子も、ここに入る。
+                #   「音声だと分かったものだけ」を数の本体にする。
+                others.append(nm)
+
+        total = 0
+        by_ext = {}
+        times = []
+        for nm, ext, x in files:
+            try:
+                sz = int((x.get("metadata") or {}).get("size") or 0)
+            except (TypeError, ValueError):
+                sz = 0
+            total += sz
+            e = by_ext.setdefault(ext, {"count": 0, "bytes": 0})
+            e["count"] += 1
+            e["bytes"] += sz
+            t = (x.get("updated_at") or x.get("created_at")
+                 or (x.get("metadata") or {}).get("lastModified") or "")
+            if t:
+                times.append(str(t))
+
+        return jsonify({
+            "status": "success",
+            "facility_code": f_code,
+            "count": len(files),
+            "total_bytes": total,
+            "total_mb": round(total / 1024 / 1024, 1),
+            "by_ext": by_ext,
+            "oldest": min(times) if times else "",
+            "newest": max(times) if times else "",
+            "skipped_dirs": skipped_dirs,          # meetings / staff_minutes
+            "other_names": others[:50],            # 音声と分からなかったもの（確認用）
+            "other_count": len(others),
+            "truncated": truncated,                # 上限で打ち切ったか
+            "note": "この口は数えるだけで、1バイトも消しません。",
+        })
+    except Exception as e:
+        print("api_admin_eval_audio_stats error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/api/meeting/audio_stats", methods=["GET"])
