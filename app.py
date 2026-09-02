@@ -26822,6 +26822,9 @@ _SOGE_REBUILD_SAY = {
     # soge-day-merge-v1: 走り出したあとに差分を当てたとき。
     #   ★「打刻はそのまま」と必ず書く。書かないと、消えたのではと不安になる。
     "merged": "当日の運行表にも反映しました（すでに入っている打刻はそのままです）。",
+    # soge-guard4-v1: 書き込みに失敗したとき。★「反映しました」と嘘をつかない。
+    "write_failed": "ただし、当日の運行表に一部が入りませんでした。"
+                    "運行画面を開いて確かめ、もう一度お試しください。",
 }
 
 
@@ -27814,6 +27817,7 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
 
     used_keys, used_day_ids = set(), set()
     n_add, n_move, n_del, n_keep = 0, 0, 0, 0
+    _wfail = 0               # soge-guard4-v1: 書き込みに失敗した数
 
     for trip in (week.get("trips") or []):
         for v in (trip.get("vehicles") or []):
@@ -27861,6 +27865,17 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
                 "depart_at": (trip.get("depart") or None),
                 "updated_at": now_iso,
             }
+            # soge-guard4-v1: その日にもう運転手が入っているなら、配車表で上書きしない。
+            #   ★土壇場の交代（soge-driver-change-v1）は【実績寄り】の値。
+            #     型（配車表）で塗り替えると、朝に替えた運転手が
+            #     画面を開き直した瞬間に元の名前へ戻る。
+            #   ★touched に driver_name を足す直し方は間違い。配車表から作った日は
+            #     最初から driver_name が入っているので、作った瞬間に touched になり、
+            #     配車表の直しが一切届かなくなる。
+            #   ★空に戻せば（画面から「未設定」にできる）、また配車表の名前が入る。
+            #     「ゼロから作り直す」は行ごと作り直すので、これまで通り配車表に戻る。
+            if day and (day.get("driver_name") or "").strip():
+                head["driver_name"] = day.get("driver_name")
             if day:
                 day_id = day["id"]
                 # ★出発・帰着・備考は触らない。実績なので。
@@ -27881,6 +27896,7 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
                          .eq("facility_code", f_code).eq("id", day_id).execute())
                     except Exception as e:
                         print("[soge-merge] 便を直せませんでした: %s" % e, flush=True)
+                        _wfail += 1              # soge-guard4-v1
                         continue
             else:
                 try:
@@ -27892,6 +27908,7 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
                     day_id = _r.data[0]["id"]
                 except Exception as e:
                     print("[soge-merge] 便を作れませんでした: %s" % e, flush=True)
+                    _wfail += 1                  # soge-guard4-v1
                     continue
             used_day_ids.add(str(day_id))
 
@@ -27921,6 +27938,7 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
                             n_move += 1
                     except Exception as e:
                         print("[soge-merge] 立ち寄りを直せませんでした: %s" % e, flush=True)
+                        _wfail += 1              # soge-guard4-v1
                 else:
                     new_rows.append({
                         "day_id": day_id,
@@ -27939,6 +27957,7 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
                     n_add += len(new_rows)
                 except Exception as e:
                     print("[soge-merge] 立ち寄りを足せませんでした: %s" % e, flush=True)
+                    _wfail += 1                  # soge-guard4-v1
 
     # ---- 配車から消えた人 ----
     #   ★打刻・欠席が付いていたら消さない。実際に乗せた記録・意図して付けた印。
@@ -27987,6 +28006,11 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
 
     print("[soge-merge] %s %s に配車の直しを当てました（足した%d 移した%d 消した%d "
           "残した%d）" % (f_code, date_str, n_add, n_move, n_del, n_keep), flush=True)
+    # soge-guard4-v1: 1件でも書けていないなら、成功と言わない。
+    if _wfail:
+        print("[soge-merge] %s %s の取り込みで %d 件書けませんでした"
+              % (f_code, date_str, _wfail), flush=True)
+        return {"built": False, "reason": "write_failed"}
     return {"built": True, "reason": "merged"}
 
 
@@ -28005,6 +28029,11 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                                 先に開いた側の打刻が弾かれていた。
     """
     keep_absent = set()      # soge-lock-v2: 作り直しても消さない「欠席（✕）」
+    # soge-guard4-v1: 書き込みに失敗した数。★1件でもあれば built を立てない。
+    #   force は【先に全部消してから】作り直すので、作る側が落ちると
+    #   打刻も臨時便も消えたうえに運行表が空になる。それを
+    #   「作り直しました」と出していた。
+    _wfail = 0
     st = _soge_day_state(supabase, f_code, date_str)
     # soge-day-guard-v1: 状態が読めなかったら、何もしない。
     #   ★「読めなかった」と「打刻が無い」を混ぜない。混ぜると、
@@ -28015,15 +28044,20 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
         print("[soge-guard] %s %s の状態を読めなかったので、作り直しませんでした"
               % (f_code, date_str), flush=True)
         return {"built": False, "reason": "unknown"}
+    # ★過ぎた日は絶対に作らない・作り直さない（soge-lock-v1 の重要な歯止め）。
+    #   過去の運行表は「実際にどう走ったか」の記録で、月の記録表の元にもなる。
+    #   打刻が1つも無い日（誰も押し忘れた日など）でも、今の配車表で
+    #   書き換えてしまえば記録の改ざんになる。確定の有無とは関係なく止める。
+    # soge-guard4-v1: ★この歯止めを if st["exists"] の【外】に出した。
+    #   中にあったので、運行表がまだ無い過去日はこの分岐に入らず、
+    #   そのまま下の作成処理へ落ちて【作られてしまっていた】。
+    #   運行画面の日付欄で先月の日を選んで開くだけで、その日の運行表ができ、
+    #   走っていない日が月間の運行記録表に載っていた。
+    if date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d"):
+        return {"built": False, "reason": "past"}
     if st["exists"]:
         if st["locked"]:
             return {"built": False, "reason": "locked"}
-        # ★過ぎた日は絶対に作り直さない（soge-lock-v1 の重要な歯止め）。
-        #   過去の運行表は「実際にどう走ったか」の記録で、月の記録表の元にもなる。
-        #   打刻が1つも無い日（誰も押し忘れた日など）でも、今の配車表で
-        #   書き換えてしまえば記録の改ざんになる。確定の有無とは関係なく止める。
-        if date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d"):
-            return {"built": False, "reason": "past"}
         if st["touched"] and not force:
             return {"built": False, "reason": "touched"}
         # soge-stable-id-v1: 手つかずの日も【消して作り直さない】。差分だけ当てる。
@@ -28193,6 +28227,7 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                 day_id = dr.data[0]["id"]
             except Exception as e:
                 print("soge_materialize_day insert day error: %s" % e, flush=True)
+                _wfail += 1                      # soge-guard4-v1
                 continue
 
             rows = []
@@ -28213,6 +28248,7 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                     supabase.table("soge_stops").insert(rows).execute()
                 except Exception as e:
                     print("soge_materialize_day insert stops error: %s" % e, flush=True)
+                    _wfail += 1                  # soge-guard4-v1
 
     # soge-lock-v2: 覚えておいた「欠席（✕）」を付け直す。
     #   ★同じ人が同じ種別（迎え／送り）で残っている場合だけ。
@@ -28230,6 +28266,11 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
         except Exception as e:
             print("soge_materialize_day restore absent error: %s" % e, flush=True)
 
+    # soge-guard4-v1: 1件でも書けていないなら、成功と言わない。
+    if _wfail:
+        print("[soge-guard] %s %s の作り直しで %d 件書けませんでした"
+              % (f_code, date_str, _wfail), flush=True)
+        return {"built": False, "reason": "write_failed"}
     return {"built": True, "reason": "built"}
 
 
@@ -28523,8 +28564,20 @@ def api_soge_run_rebuild():
                             "message": "過ぎた日の運行表は作り直せません（実際に走った記録のため）。"}), 400
         r = soge_materialize_day(supabase, f_code, date_str, force=True)
         if not r.get("built"):
-            return jsonify({"status": "error",
-                            "message": "作り直せませんでした（配車表がありません）"}), 400
+            # soge-guard4-v1: 理由を出し分ける。
+            #   ★これまでは何が起きても「配車表がありません」と出していた。
+            #     書き込みに失敗して運行表が空になった場合まで
+            #     そう言うので、直す人が配車表を疑って回り道をする。
+            _rbwhy = {
+                "write_failed": "一部が作れませんでした。運行画面を開いて確かめ、"
+                                "もう一度お試しください。",
+                "no_week": "作り直せませんでした（配車表がありません）",
+                "unknown": "いま状態を確かめられませんでした。少し時間をおいてお試しください。",
+                "clear_failed": "いまの運行表を消せませんでした。少し時間をおいてお試しください。",
+                "past": "過ぎた日の運行表は作り直せません（実際に走った記録のため）。",
+                "locked": "この日は確定されています。先に確定を解除してください。",
+            }.get(r.get("reason") or "", "作り直せませんでした（配車表がありません）")
+            return jsonify({"status": "error", "message": _rbwhy}), 400
         return jsonify({"status": "success"})
     except Exception as e:
         print("api_soge_run_rebuild error: %s" % e, flush=True)
@@ -28567,6 +28620,9 @@ def api_soge_run_merge():
                 "not_yet": "この日の運行表がまだありません。",
                 "no_week": "元になる配車が見つかりませんでした。",
                 "unknown": "いま状態を確かめられませんでした。少し時間をおいてお試しください。",
+                # soge-guard4-v1: 一部だけ入った場合。★成功と言わない。
+                "write_failed": "一部が入りませんでした。画面を確かめて、"
+                                "もう一度お試しください。",
             }.get(res.get("reason") or "", "取り込めませんでした")
             return jsonify({"status": "error", "message": _why}), 400
         print("[soge-merge-btn] %s %s を取り込みました (%s)"
@@ -28961,10 +29017,19 @@ def api_soge_run_depart():
         if not day_id:
             return jsonify({"status": "error", "message": "対象がありません"}), 400
 
-        r = (supabase.table("soge_days").select("id,departed_at")
+        r = (supabase.table("soge_days").select("id,departed_at,service_date")
              .eq("facility_code", f_code).eq("id", day_id).execute())
         if not r.data:
             return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+        # soge-guard4-v1: 過ぎた日は管理者だけ（soge-past-admin-v1）。
+        #   ★この1本だけガードが無く、日をまたぐと昨日の便に今日の時刻が入った。
+        #     画面側の止めは読み込んだ時の past を見ているだけなので、
+        #     開きっぱなしのタブレットでは効かない。
+        if not _soge_past_admin_ok(supabase, f_code,
+                                   str(r.data[0].get("service_date"))[:10],
+                                   session.get("my_name", "")):
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
         if r.data[0].get("departed_at"):
             return jsonify({"status": "success", "already": True,
                             "departed_at": _soge_hhmm(r.data[0]["departed_at"])})
@@ -29252,10 +29317,16 @@ def api_soge_run_return():
         if not day_id:
             return jsonify({"status": "error", "message": "対象がありません"}), 400
 
-        r = (supabase.table("soge_days").select("id,returned_at")
+        r = (supabase.table("soge_days").select("id,returned_at,service_date")
              .eq("facility_code", f_code).eq("id", day_id).execute())
         if not r.data:
             return jsonify({"status": "error", "message": "対象が見つかりません"}), 404
+        # soge-guard4-v1: 過ぎた日は管理者だけ（soge-past-admin-v1）。出発と同じ。
+        if not _soge_past_admin_ok(supabase, f_code,
+                                   str(r.data[0].get("service_date"))[:10],
+                                   session.get("my_name", "")):
+            return jsonify({"status": "error", "past_admin": True,
+                            "message": _SOGE_PAST_NG}), 403
         if r.data[0].get("returned_at"):
             return jsonify({"status": "success", "already": True,
                             "returned_at": _soge_hhmm(r.data[0]["returned_at"])})
