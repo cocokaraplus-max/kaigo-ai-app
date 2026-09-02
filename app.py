@@ -27864,12 +27864,24 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
             if day:
                 day_id = day["id"]
                 # ★出発・帰着・備考は触らない。実績なので。
-                try:
-                    (supabase.table("soge_days").update(head)
-                     .eq("facility_code", f_code).eq("id", day_id).execute())
-                except Exception as e:
-                    print("[soge-merge] 便を直せませんでした: %s" % e, flush=True)
-                    continue
+                # soge-stable-id-v1: 中身が同じなら書かない。
+                #   ★差分当ては運行画面を読むたびに走るようになった。
+                #     毎回 updated_at だけ動かすと、あとから
+                #     「誰がいつ直したのか」がログから読めなくなる。
+                _dsame = True
+                for _hk, _hv in head.items():
+                    if _hk == "updated_at":
+                        continue
+                    if (day.get(_hk) or "") != (_hv or ""):
+                        _dsame = False
+                        break
+                if not _dsame:
+                    try:
+                        (supabase.table("soge_days").update(head)
+                         .eq("facility_code", f_code).eq("id", day_id).execute())
+                    except Exception as e:
+                        print("[soge-merge] 便を直せませんでした: %s" % e, flush=True)
+                        continue
             else:
                 try:
                     _ins = dict(head)
@@ -27893,6 +27905,15 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
                     # ★行ごと移す。到着時刻・欠席・打刻者はそのまま。
                     upd = {"day_id": day_id, "seq": i, "planned_at": _pl,
                            "user_name": s.get("user_name") or old.get("user_name") or ""}
+                    # soge-stable-id-v1: 何も変わらない行は書かない。
+                    #   ★これが無いと、運行画面を開くたびに人数ぶんの
+                    #     書き込みが走る（14人なら14回）。運転席のタブレットで
+                    #     開くものなので、読むだけの回は読むだけで終わらせる。
+                    if (str(old.get("day_id")) == str(day_id)
+                            and old.get("seq") == i
+                            and (old.get("planned_at") or None) == _pl
+                            and (old.get("user_name") or "") == upd["user_name"]):
+                        continue
                     try:
                         (supabase.table("soge_stops").update(upd)
                          .eq("facility_code", f_code).eq("id", old["id"]).execute())
@@ -27977,7 +27998,11 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
     ★soge-lock-v1 で作り直しの条件を変えた（それまでは「一度作ったら二度と作り直さない」）。
       ・確定済みの日          → 絶対に作り直さない
       ・打刻などが始まった日  → 自動では作り直さない（force のときだけ）
-      ・それ以外              → 開くたびに作り直す＝配車表の直しがそのまま出る
+      ・それ以外              → 差分だけ当てる（soge-stable-id-v1）
+                                配車表の直しはそのまま出るが、立ち寄りの
+                                id は変わらない。以前はここで行ごと
+                                作り直していて、同じ日を2人が開くと
+                                先に開いた側の打刻が弾かれていた。
     """
     keep_absent = set()      # soge-lock-v2: 作り直しても消さない「欠席（✕）」
     st = _soge_day_state(supabase, f_code, date_str)
@@ -28001,6 +28026,20 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
             return {"built": False, "reason": "past"}
         if st["touched"] and not force:
             return {"built": False, "reason": "touched"}
+        # soge-stable-id-v1: 手つかずの日も【消して作り直さない】。差分だけ当てる。
+        #   ★作り直しは行ごと入れ替えるので、立ち寄りの id が毎回変わる。
+        #     運行画面は id で打刻を送るので、誰かが同じ日を開いた瞬間に
+        #     先に開いていた画面の id が全部死ぬ。押した打刻は
+        #     「対象が見つかりません」で弾かれ、送り直しの列に
+        #     【死んだ id のまま】積まれて、電波が戻っても入らない。
+        #     2026-09-02 に DEMO001 で再現（0.6秒あけて2回読んだだけで
+        #     3人ぶんの id が全部別物になった）。
+        #   ★差分当ての元にする配車表は _soge_week_for_day で
+        #     作り直しと同じものを見ているので、出てくる並びは変わらない。
+        #   ★force（「ゼロから作り直す」）は、これまで通り下の道を通る。
+        #     あれは「配車表そのままに戻す」ためのボタンなので変えない。
+        if not force:
+            return _soge_merge_day(supabase, f_code, date_str)
         # ★消す前に「欠席（✕）」を覚えておく。
         #   前もって入れた休みが、作り直しのたびに消えては使い物にならない。
         try:
