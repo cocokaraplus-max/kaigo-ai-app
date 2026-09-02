@@ -26603,19 +26603,56 @@ def api_soge_week_save():
             return jsonify({"status": "error", "message": "曜日が不正です"}), 400
 
         now_iso = datetime.now(timezone.utc).isoformat()
-        supabase.table("soge_routes").delete() \
-            .eq("facility_code", f_code).eq("weekday", weekday).execute()
 
         # soge-date-plan-v1: 整える処理を、その日だけの配車と【共用】にした。
         #   中身は前とまったく同じ（名前の切り出しだけ）。
         #   ★車番の付け直しのような細かい規則を2か所に書くと、
         #     片方だけ直したときに必ず食い違う。
+        # soge-save-safe-v1: ★行を【消す前に】作る。
+        #   前は消してから作っていたので、_soge_plan_rows がおかしなデータで
+        #   落ちると、消したあとで止まって【その曜日の配車が空になった】。
         rows = _soge_plan_rows(data.get("trips") or [],
                                {"facility_code": f_code, "weekday": weekday},
                                my_name, now_iso)
 
-        if rows:
-            supabase.table("soge_routes").insert(rows).execute()
+        # soge-save-safe-v1: 消す前に、いまの中身を控える。
+        #   ★控えられなかったら【消さない】。戻せない消し方はしない。
+        try:
+            _pr = (supabase.table("soge_routes").select("*")
+                   .eq("facility_code", f_code).eq("weekday", weekday).execute())
+            _old = _pr.data or []
+        except Exception as e:
+            print("[soge-save] いまの曜日の配車を読めませんでした: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "いま確認できませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+
+        supabase.table("soge_routes").delete() \
+            .eq("facility_code", f_code).eq("weekday", weekday).execute()
+
+        # soge-save-safe-v1: 入れ直しに失敗したら、控えたものを書き戻す。
+        #   ★空のまま残すと、以後その曜日は【自動生成の案】で走る
+        #     （_soge_saved_week は行が0なら None を返す）。
+        #     顔ぶれも並びも車も別物に組み直される。
+        try:
+            if rows:
+                supabase.table("soge_routes").insert(rows).execute()
+        except Exception as e:
+            print("[soge-save] 曜日の配車を入れ直せませんでした: %s" % e, flush=True)
+            _back = True
+            try:
+                if _old:
+                    supabase.table("soge_routes").insert(_old).execute()
+            except Exception as e2:
+                _back = False
+                print("[soge-save] 元の曜日の配車を書き戻せませんでした: %s" % e2, flush=True)
+            return jsonify({
+                "status": "error",
+                "message": ("保存できませんでした。前の配車に戻してあります。"
+                            "もう一度お試しください。") if _back else
+                           ("保存できませんでした。前の配車も戻せていません。"
+                            "配車編集を開いて、中身を確かめてください。"),
+            }), 500
         return jsonify({"status": "success", "saved": len(rows)})
     except Exception as e:
         print("api_soge_week_save error: %s" % e, flush=True)
@@ -26923,6 +26960,18 @@ def api_soge_date_save():
             return jsonify({"status": "error",
                             "message": "保存できませんでした。もう一度お試しください。"}), 500
 
+        # soge-save-safe-v1: 消す前に、いまの中身を控える。
+        #   ★控えられなかったら【消さない】。戻せない消し方はしない。
+        try:
+            _pr = (supabase.table("soge_date_routes").select("*")
+                   .eq("facility_code", f_code).eq("service_date", date_str).execute())
+            _old = _pr.data or []
+        except Exception as e:
+            print("[soge-save] いまのその日の配車を読めませんでした: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "いま確認できませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+
         try:
             (supabase.table("soge_date_routes").delete()
              .eq("facility_code", f_code).eq("service_date", date_str).execute())
@@ -26930,8 +26979,23 @@ def api_soge_date_save():
                 supabase.table("soge_date_routes").insert(rows).execute()
         except Exception as e:
             print("[soge] その日の配車の保存に失敗: %s" % e, flush=True)
-            return jsonify({"status": "error",
-                            "message": "保存できませんでした。もう一度お試しください。"}), 500
+            # soge-save-safe-v1: 消したぶんを書き戻す。
+            #   ★中身だけ空になると、宣言は残っているので
+            #     _soge_rows_view の補完で【全員が「⚠ 車が未定」へ移る】。
+            _back = True
+            try:
+                if _old:
+                    supabase.table("soge_date_routes").insert(_old).execute()
+            except Exception as e2:
+                _back = False
+                print("[soge-save] 元のその日の配車を書き戻せませんでした: %s" % e2, flush=True)
+            return jsonify({
+                "status": "error",
+                "message": ("保存できませんでした。前の配車に戻してあります。"
+                            "もう一度お試しください。") if _back else
+                           ("保存できませんでした。前の配車も戻せていません。"
+                            "配車編集を開いて、中身を確かめてください。"),
+            }), 500
 
         res = _soge_date_rebuild(supabase, f_code, date_str)
         say = "" if res.get("built") else _SOGE_REBUILD_SAY.get(res.get("reason") or "", "")
