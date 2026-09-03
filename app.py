@@ -21833,17 +21833,29 @@ def _ys_month_bounds(year, month):
 
 
 def _ys_staff_default_types(supabase, f_code):
-    """{_ys_norm(name): 'full'|'half'} 職員ごとの既定の型。未設定は含めない。"""
+    """{_ys_norm(staff_name): 'full'|'half'} 職員ごとの既定の型。未設定は含めない。
+
+    youshiki-yotei-fix-v1: ★staffs の氏名の列は staff_name。"name" という列は無い。
+      "name" で select していたので PostgREST が弾き、except に落ちて
+      【いつでも必ず {} が返っていた】＝職員ごとの既定の型は一度も効いていない。
+      app.py の他33か所は全部 staff_name を使っている。ここだけ取り残されていた。
+    ★これを直しても見た目は変わらない。型は ①手動 ②予定の型 ③職員既定
+      ④曜日ルール の順で決まり、いまの曜日ルールが④で必ず決めてしまうので
+      ③は出番が無い。それでも、動いていない物を動いているふりのままにしない。
+    """
     m = {}
     try:
-        r = supabase.table("staffs").select("name,youshiki_default_type").eq(
+        r = supabase.table("staffs").select("staff_name,youshiki_default_type").eq(
             "facility_code", f_code).execute()
-        for x in (r.data or []):
-            v = (x.get("youshiki_default_type") or "").strip()
-            if v in ("full", "half"):
-                m[_ys_norm(x.get("name"))] = v
+        rows = r.data or []
     except Exception as e:
+        # youshiki-yotei-fix-v1: ★黙って空にしない。列が無い場合もここに来る。
         print(f"_ys_staff_default_types error: {e}", flush=True)
+        return m
+    for x in rows:
+        v = (x.get("youshiki_default_type") or "").strip()
+        if v in ("full", "half"):
+            m[_ys_norm(x.get("staff_name"))] = v
     return m
 
 
@@ -21949,6 +21961,11 @@ def admin_timecard_youshiki():
         _dt_manual = {} if is_yotei else _ys_manual_day_types(supabase, f_code, year, month)
         _dt_unresolved = set()  # (name, ds) 曜日ルール'both'で型が決まらなかった日（警告用）
 
+        # youshiki-yotei-fix-v1: その月に勤務予定が【1行でも保存されている】職員(正規化名)。
+        #   ★空欄の理由を分けるために使う。
+        #     1行も無い ＝ 保存を押していない（画面には曜日パターンで出勤が見えている）
+        #     行はある   ＝ 保存済み。そのシートの型の日が無いだけ
+        _ys_plan_seen = set()
         # (name, 'YYYY-MM-DD') -> [(type, minute)]
         punches_map = {}
         if is_yotei:
@@ -21958,6 +21975,8 @@ def admin_timecard_youshiki():
             pres = supabase.table("staff_shift_plan").select("*").eq(
                 "facility_code", f_code).gte("plan_date", _pm_start).lt(
                 "plan_date", _pm_end).execute()
+            # youshiki-yotei-fix-v1: 出勤・休みを問わず、行があった職員を控える
+            _ys_plan_seen = {_ys_norm(r.get("staff_name")) for r in (pres.data or [])}
             for r in (pres.data or []):
                 if (r.get("status") or "") != "work":
                     continue
@@ -22016,10 +22035,27 @@ def admin_timecard_youshiki():
         for k in punches_map:
             punches_map[k].sort(key=lambda x: x[1])
 
-        # 休暇を取得（予定出力では使わない）
+        # 休暇を取得
         leaves_map = {}
         note_rows = []  # timecard-leave-note-v1: 備考一覧（表の下に出す）
-        if not is_yotei:
+        if is_yotei:
+            # youshiki-yotei-fix-v1: ★予定でも休みのマスに印を出す。
+            #   前は「予定出力では使わない」として一度も読んでいなかったので、
+            #   休みの日はただの空欄だった。空欄が「休み」なのか
+            #   「予定が入っていない」のか、見て分からなかった。
+            #   ★予定の休みは staff_leave_days ではない。あちらは実績側の記録。
+            #     予定の休みは staff_shift_plan の status が 'work' でない日。
+            #   ★区分(leave_type)が入っていればその印（有給/振休/忌休/欠勤）、
+            #     入っていなければ 'off' ＝ 「休」。
+            #   ★土曜は曜日ルールが 'none' でどちらのシートにも出ない日なので
+            #     印も出ない。日曜は1日型シート側に出る。
+            for r in (pres.data or []):
+                if (r.get("status") or "") == "work":
+                    continue
+                _lv = (r.get("leave_type") or "").strip()
+                leaves_map[(_ys_norm(r.get("staff_name")), str(r.get("plan_date")))] = (
+                    _lv if _lv in _YS_LEAVE_FORM else "off")
+        else:
             lstart = f"{year:04d}-{month:02d}-01"
             lend = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
             lres = supabase.table("staff_leave_days").select("*").eq(
@@ -22090,6 +22126,9 @@ def admin_timecard_youshiki():
                 _ws2["Q2"] = None
 
         _ys_roster = _ys_load_roster(supabase, f_code)  # youshiki-roster-v2: 職種登録から氏名を取得
+        # youshiki-yotei-fix-v1: 1件も入らなかった職員を控える {氏名: [空だったシート名]}
+        _ys_blank = {}
+        _ys_sheets_seen = []
         for sheet_name, is_full in ((_YS_SHEET_HALF, False), (_YS_SHEET_FULL, True)):
             if sheet_name not in wb.sheetnames:
                 continue
@@ -22134,6 +22173,61 @@ def admin_timecard_youshiki():
                         if val <= 0:
                             continue
                         _ys_set_cell(ws.cell(row=row, column=col), val, False)
+
+            # youshiki-yotei-fix-v1: このシートで1件も入らなかった職員を控える。
+            #   ★書いた側を数えるのではなく、【出来上がったシートの中身】を見る。
+            #     書く場所が増えても減っても、この見方なら食い違わない。
+            #   D列(4)から28日分。休みの印も「入っている」に数える。
+            for _bn, _boccurs in rowmap.items():
+                _bhas = False
+                for (_bu, _brow, _bt) in _boccurs:
+                    for _bc in range(4, 4 + 28):
+                        if ws.cell(row=_brow, column=_bc).value not in (None, ""):
+                            _bhas = True
+                            break
+                    if _bhas:
+                        break
+                if not _bhas:
+                    _ys_blank.setdefault(_bn, []).append(sheet_name)
+            _ys_sheets_seen.append(sheet_name)
+
+        # youshiki-yotei-fix-v1: 1件も入らなかった職員を、シートの下に赤字で出す。
+        #   ★様式の不具合ではなく【データが無い】ことを伝えるのが目的。
+        #     常勤換算(AG列)がその人だけ 0 になる。届出に使う前に必ず見てほしい。
+        #   ★理由を2つに分ける。ここが分かれば読むだけで直せる。
+        #     (a) その月の勤務予定が1行も保存されていない
+        #         → 画面には曜日パターンで出勤が見えているが、DBには無い。
+        #           勤務予定の画面でその月を開いて「保存」を押す。
+        #     (b) 保存はされている → そのシートの型に当たる日が無いだけ。
+        if _ys_blank and _ys_sheets_seen:
+            from openpyxl.styles import Font as _BFont, PatternFill as _BFill
+            _bfont = _BFont(name="MS PGothic", size=11, bold=True, color="FFCC0000")
+            _bfill = _BFill(fill_type="solid", fgColor="FFFFF2CC")
+            _bym = "%d年%d月" % (year, month)
+            _blines = []
+            for _bn in sorted(_ys_blank.keys()):
+                _bss = _ys_blank[_bn]
+                if is_yotei and (_bn not in _ys_plan_seen):
+                    _blines.append((_bn, _bym + "の勤務予定が一度も保存されていません。"
+                                         "勤務予定の画面でこの月を開いて「保存」を押してください。"))
+                elif len(_bss) >= len(_ys_sheets_seen):
+                    _blines.append((_bn, "どのシートにも1件もありません。"))
+                else:
+                    _blines.append((_bn, "「" + "」「".join(_bss) + "」に出る日がありません。"))
+            for _bs in _ys_sheets_seen:
+                _bws = wb[_bs]
+                _br = _bws.max_row + 3
+                _bc0 = _bws.cell(
+                    row=_br, column=1,
+                    value="⚠ 勤務が1件も入っていない職員がいます。"
+                          "様式の不具合ではなく、勤務予定/実績のデータがありません。")
+                _bc0.font = _bfont
+                for _cc in range(1, 8):
+                    _bws.cell(row=_br, column=_cc).fill = _bfill
+                for (_bn, _bmsg) in _blines:
+                    _br += 1
+                    _bws.cell(row=_br, column=1, value=_bn)
+                    _bws.cell(row=_br, column=2, value=_bmsg)
 
         # youshiki-daytype-v1: 曜日ルール'both'で型が決まらなかった日を警告として明示（黙って落とさない）
         if _dt_unresolved:
