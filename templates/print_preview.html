@@ -1605,7 +1605,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     {% if not is_radar %}
     <div class="rep-fitness-title">
         体力測定の推移
-        <span class="rep-fitness-sub">直近6回・値のある指標のみ</span>
+        <span class="rep-fitness-sub">直近3回・値のある指標のみ</span>
     </div>
     {% endif %}
     {% if is_radar %}
@@ -1615,7 +1615,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
     <!-- rep-radar-title-inline: レーダー時はタイトルをグラフ側カラム先頭に置き上端を特記事項と揃える -->
     <div class="rep-fitness-title rep-radar-title">
         体力測定の推移
-        <span class="rep-fitness-sub">直近6回・値のある指標のみ</span>
+        <span class="rep-fitness-sub">直近3回・値のある指標のみ</span>
     </div>
     <div class="rep-radar-wrap">
         <div class="rep-weight-bar" id="radar-weightbar-{{ loop.index }}"></div><div class="rep-radar-main"><canvas id="fitness-radar-{{ loop.index }}" class="rep-radar-canvas"></canvas></div>
@@ -1675,7 +1675,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             </div>
             <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
             {% else %}
-            <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6回</span></div>
+            <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近3回</span></div>
             <div class="rep-fitness-charts charts-grid">
                 {{ render_fitness_chart_boxes(loop.index, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) }}
             </div>
@@ -1709,7 +1709,7 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
             </div>
             <div class="rep-radar-source">外側ほど良い。標準域＝レベル3。出典：厚労省「介護予防マニュアル改訂版．資料3-5」<span class="rep-radar-ageavg" id="radar-ageavg-{{ loop.index }}"></span></div>
             {% else %}
-            <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近6回</span></div>
+            <div class="rep-fitness-title">体力測定の推移<span class="rep-fitness-sub">直近3回</span></div>
             <div class="rep-fitness-charts charts-grid">
                 {{ render_fitness_chart_boxes(loop.index, weights, fitness, show_weight_final, show_grip_final, show_tug_final, show_cs30_final, show_walk_final, show_balance_final) }}
             </div>
@@ -2430,6 +2430,74 @@ function drawFitnessRadar(elId, fitness, gender, weights) {
 //     線は40pxのうち6pxしか使わず、ほぼ真っ平らに見えていた（DEMO001で確認）。
 //     縦軸は display:false で隠してあるので、粗いことに誰も気づけない。
 //   ★上下に15%の余白を取る。全部同じ値のときだけ±5%。
+// report-values-v1: グラフの下に、点ごとの日付と値を全部書く。
+//   ★なぜ要るか：縦軸をどう調整しても、形だけで読む限り読み違えは残る。
+//     数値が全部書いてあれば、線がどう見えても間違えようがない。
+//     （HIROさんの指示 2026-09-03「3回分の数値をそれぞれ記載しておけば
+//       おかしいグラフとは思わない」）
+function _repNeedsDec(arrs) {
+    // ★小数の付け方は【そのカードの中でそろえる】。
+    //   1つでも小数があれば全部小数1桁。そうでなければ全部整数。
+    //   ばらばらだと「右 20.0 22.0 21.5 ／ 左 19 20 20」と並んで読みにくい。
+    var need = false;
+    (arrs || []).forEach(function (a) {
+        (a || []).forEach(function (v) {
+            if (v === null || v === undefined || v === '' || isNaN(v)) return;
+            if (Math.round(Number(v)) !== Number(v)) need = true;
+        });
+    });
+    return need;
+}
+
+function _repFmtList(arr, dec) {
+    return (arr || []).map(function (v) {
+        if (v === null || v === undefined || v === '' || isNaN(v)) return '—';
+        var n = Number(v);
+        return dec ? n.toFixed(1) : String(n);
+    });
+}
+
+// report-values-v1: labels は 'MM-DD'。'8/3' の形にして短くする。
+function _repShortDate(lb) {
+    var m = String(lb == null ? '' : lb).match(/^(\d{1,2})-(\d{1,2})$/);
+    if (!m) return String(lb == null ? '' : lb);
+    return String(parseInt(m[1], 10)) + '/' + String(parseInt(m[2], 10));
+}
+
+// report-values-v1: そのグラフの数値欄を、点ごとの日付と値で書き替える。
+//   series: [{name:'', data:[...]}] … 名前が空なら日付と値を1行にまとめる
+//           [{name:'右',...},{name:'左',...}] … 日付1行＋系列ごとに1行
+//   ★数値欄が見つからないカード（テンプレート4のグラフ列など）では何もしない。
+function _repWriteValues(canvasEl, labels, series) {
+    if (!canvasEl || !canvasEl.closest) return;
+    var box = canvasEl.closest('.rep-fitness-chart-box');
+    if (!box) return;
+    var el = box.querySelector('.rep-fitness-chart-value');
+    if (!el) return;
+    var ds = (labels || []).map(_repShortDate);
+    var ok = (series || []).filter(function (s) { return s && s.data && s.data.length; });
+    if (!ok.length) return;
+    var dec = _repNeedsDec(ok.map(function (s) { return s.data; }));
+    var lines = [];
+    if (ok.length === 1) {
+        var vv = _repFmtList(ok[0].data, dec);
+        lines.push(ds.map(function (d, i) {
+            return d + ' ' + (vv[i] === undefined ? '—' : vv[i]);
+        }).join('\u3000'));
+    } else {
+        lines.push('<span style="color:#888;font-weight:600;">'
+                   + ds.join('\u3000') + '</span>');
+        ok.forEach(function (s) {
+            lines.push('<span style="color:#888;font-weight:600;">' + s.name + '</span> '
+                       + _repFmtList(s.data, dec).join('\u3000'));
+        });
+    }
+    el.innerHTML = lines.join('<br>');
+    el.style.fontSize = (lines.length > 1) ? '7pt' : '7.5pt';
+    el.style.lineHeight = '1.35';
+    el.style.whiteSpace = 'normal';
+}
+
 function _repYRange(series) {
     var all = [];
     (series || []).forEach(function (s) {
@@ -2590,12 +2658,23 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
     leftLabel  = leftLabel  || '左(破線)';
     var el = document.getElementById(elId);
     if (!el) return;
-    if (!fitness || fitness.length <= 1) return;
+    // report-values-v2: 1回だけでも数値は書きたいので、ここでは0件だけ弾く。
+    //   線が引けるかどうかは、系列を作ったあとで見る。
+    if (!fitness || !fitness.length) return;
     var rightData = rightKey ? fitness.map(function(f){ return f[rightKey]; }) : [];
     var leftData  = leftKey  ? fitness.map(function(f){ return f[leftKey]; }) : [];
     var hasRight = rightData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     var hasLeft  = leftData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     if (!hasRight && !hasLeft) return;
+    // report-values-v2: 数値を先に書く（1回だけの方でも出る）
+    try {
+        var _vs0 = [];
+        if (hasRight) _vs0.push({ name: String(rightLabel).replace(/[（(].*$/, ''), data: rightData });
+        if (hasLeft) _vs0.push({ name: String(leftLabel).replace(/[（(].*$/, ''), data: leftData });
+        _repWriteValues(el, labels, _vs0);
+    } catch (e) {}
+    // report-values-v2: 線が引けないときは、空のグラフの箱を消す
+    if (fitness.length <= 1) { el.style.display = 'none'; return; }
     var isMono = !isColor;
     var rightColor = isMono ? '#000' : '#1565c0';
     var leftColor  = isMono ? '#888' : '#c62828';
@@ -2631,6 +2710,7 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
         }
     });
     try { if (_bc) { _bc.options.aspectRatio = _ar; _bc.resize(); } } catch(e) {}  // chart-aspect-fix-v4
+    // report-values-v2: 数値の書き込みは上（グラフを作る前）に移した
 }
 
 // 数値カードスタイル用: canvas非表示・値表示HTML挿入
@@ -2691,11 +2771,11 @@ var accent = getAccentColor();
 chartData.forEach(function(rd, idx) {
     var n = idx + 1;
     var metrics = [
-        { id: 'chart-weight-' + n, lowerIsBetter: false, getData: function() { return rd.weights && rd.weights.length > 1 ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
+        { id: 'chart-weight-' + n, lowerIsBetter: false, getData: function() { return rd.weights && rd.weights.length ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
           getLabels: function() { return rd.weights ? rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-tug-' + n, lowerIsBetter: true, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
+        { id: 'chart-tug-' + n, lowerIsBetter: true, getData: function() { return rd.fitness && rd.fitness.length ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-cs30-' + n, lowerIsBetter: false, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
+        { id: 'chart-cs30-' + n, lowerIsBetter: false, getData: function() { return rd.fitness && rd.fitness.length ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } }
     ];
 
@@ -2705,6 +2785,12 @@ chartData.forEach(function(rd, idx) {
         var data = m.getData();
         if (!data) return;
         var labels = m.getLabels();
+        // report-values-v2: ★数値は【グラフを描く前に】書く。
+        //   1回しか測っていない方は線が引けずグラフを描かないが、
+        //   v1では数値もそこで書かれず、様式の古い文字
+        //   （「6.0→6.0」＝1件しかないのに2回あるように読める）が残っていた。
+        _repWriteValues(el, labels, [{ name: '', data: data }]);
+        if (data.length < 2) { el.style.display = 'none'; return; }
 
         if (chartStyle === 4) {
             // 数値カード: first/last表示
@@ -2722,6 +2808,7 @@ chartData.forEach(function(rd, idx) {
                 try { _mc5.options.aspectRatio = _ar5; _mc5.resize(); } catch(e) {}
             }
         }
+        // report-values-v2: 数値の書き込みは上（グラフを描く前）に移した
         // トレンドバッジ（chart-xxx-N → trend-xxx-N）
         drawTrendBadge(m.id.replace('chart-', 'trend-'), data, m.lowerIsBetter);
     });

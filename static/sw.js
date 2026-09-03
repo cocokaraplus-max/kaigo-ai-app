@@ -1,6 +1,6 @@
 // TASUKARU Service Worker
 // バージョンを上げると古いキャッシュが自動削除される
-const CACHE_VERSION = 'tasukaru-v32';  // sw-post-passthrough-v1
+const CACHE_VERSION = 'tasukaru-v33';  // sw-no-report-cache-v1 (前: v32 / sw-post-passthrough-v1)
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -32,6 +32,19 @@ function isHtmlRoute(url) {
   // 拡張子付き(.js, .css, .png 等)はHTMLではない
   if (/\.[a-zA-Z0-9]+$/.test(url.pathname)) return false;
   return true;
+}
+// sw-no-report-cache-v1: ★帳票のページは【控えに残さない・古い控えも出さない】。
+//   理由: caches.put は Cache-Control を見ないので、
+//   app.py が no-store を付けていても控えが残ってしまう。
+//   その控えは通信が失敗したときに【黙って】出るため、
+//   現場では「選んだデザインと違うものが刷られた」に見えていた。
+//   全員印刷はページが重く、URLも毎回同じなので、いちばん当たりやすい。
+const NO_CACHE_PATHS = ['/print_preview', '/print_pdf', '/print_output'];
+function isNoCacheRoute(url) {
+  if (url.origin !== self.location.origin) return false;
+  return NO_CACHE_PATHS.some(function (p) {
+    return url.pathname === p || url.pathname.indexOf(p + '/') === 0;
+  });
 }
 
 // ===== インストール =====
@@ -88,12 +101,21 @@ self.addEventListener('fetch', event => {
     event.respondWith(
       fetch(event.request).then(response => {
         // offline-nav-v1: 成功したHTMLをキャッシュ（オフライン時にタップで復元できるように）
-        if (response && response.ok && event.request.method === 'GET') {
+        // sw-no-report-cache-v1: ★ただし帳票は残さない。残すと古い版が黙って刷られる。
+        if (response && response.ok && event.request.method === 'GET' && !isNoCacheRoute(url)) {
           const clone = response.clone();
           caches.open(STATIC_CACHE).then(cache => cache.put(event.request, clone)).catch(function(){});
         }
         return response;
       }).catch(() => {
+        // sw-no-report-cache-v1: ★帳票は古い控えを出さない。
+        //   古い様式で刷ってしまうくらいなら、刷れないほうがまだ良い。
+        if (isNoCacheRoute(url)) {
+          return new Response(
+            getOfflinePage(),
+            { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+          );
+        }
         return caches.match(event.request).then(cached => {
           return cached || caches.match('/top') || new Response(
             getOfflinePage(),

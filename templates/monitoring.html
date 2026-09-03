@@ -894,7 +894,9 @@ function buildReport(d){
     var sp=repSpark(vals);
     if(!sp) return '';
     var nums=vals.filter(function(x){return x!=null&&x!==''&&!isNaN(x);}).map(Number);
-    var trend=nums.length?(nums[0]+'→'+nums[nums.length-1]):'';
+    // report-values-v1: 途中の値も全部出す。前は最初と最後だけで、
+    //   線が跳ねている理由が読めなかった。
+    var trend=nums.length?nums.join('→'):'';
     return '<div class="rep-fit-card"><div class="rep-fit-card-h"><span>'+label+(unit?'('+unit+')':'')+'</span><b>'+trend+'</b></div>'+sp+'</div>';
   }
   var fitCards='';
@@ -902,7 +904,10 @@ function buildReport(d){
   // 体重（body_weights）
   var wv=wt.map(function(w){ return w.weight_kg; });
   var wsp=repSpark(wv);
-  var wcard = wsp ? '<div class="rep-fit-card"><div class="rep-fit-card-h"><span>体重(kg)</span><b>'+(wv.filter(function(x){return x!=null;}).length?(wv[0]+'→'+wv[wv.length-1]):'')+'</b></div>'+wsp+'</div>' : '';
+  // report-values-v1: 途中の値も全部出す。あわせて、空の値を数に入れて
+  //   wv[0] が null のまま出ていたのも直す（数えるのと出すのがずれていた）。
+  var wvn = wv.filter(function(x){ return x!=null && x!=='' && !isNaN(x); });
+  var wcard = wsp ? '<div class="rep-fit-card"><div class="rep-fit-card-h"><span>体重(kg)</span><b>'+(wvn.length?wvn.join('→'):'')+'</b></div>'+wsp+'</div>' : '';
   fitCards = wcard
     + metric('握力右','grip_right','kg')
     + metric('握力左','grip_left','kg')
@@ -911,7 +916,7 @@ function buildReport(d){
     + metric('5m歩行','walk_5m_sec','秒')
     + metric('立ち座り','sit_stand_30sec','回');
   var fitBlock = fitCards
-    ? '<div class="rep-fit-h"><span>体力測定の推移</span><span>直近6ヶ月・入力のある指標のみ</span></div><div class="rep-fit-grid">'+fitCards+'</div>'
+    ? '<div class="rep-fit-h"><span>体力測定の推移</span><span>直近3回・入力のある指標のみ</span></div><div class="rep-fit-grid">'+fitCards+'</div>'
     : '';
 
   // 新しい希望
