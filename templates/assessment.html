@@ -2321,7 +2321,14 @@ function evalCheckCareMismatch(savedCls) {
 }
 
 // eval-care-mismatch-v1: 案内のボタン。いままでと同じ確認ダイアログを通す。
-function evalFixCareMismatch() {
+// eval-care-mismatch-v2: ★このページのスクリプトは、まるごと (function(){ ... })() の中にある。
+//   中で普通に function と書いた関数は window に付かない。
+//   ボタンは HTML の onclick から evalFixCareMismatch() を呼ぶので、
+//   このままでは【呼べない】。押しても何も起きない。
+//   （v1でこれを踏んだ。DEVで typeof window.evalFixCareMismatch が undefined だった）
+//   ★onclick から呼ぶものは、このページの他の関数と同じく window に付けること。
+//     例: window.evalSelectCareClass / window.evalLoadExistingData
+window.evalFixCareMismatch = function () {
     const fromLevel = (evalState.initialCare || '').trim();
     if (!fromLevel) return;
     evalSelectCareClass(fromLevel, true);
@@ -2329,7 +2336,7 @@ function evalFixCareMismatch() {
         const box = document.getElementById('eval-care-mismatch');
         if (box) { box.style.display = 'none'; box.innerHTML = ''; }
     }
-}
+};
 
 function evalResetForm() {
     ['short_goal_function_new','short_goal_activity_new','short_goal_participation_new',
