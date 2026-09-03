@@ -31770,6 +31770,29 @@ def _mon_measure_end(year_month):
         return ""
 
 
+# mon-fitness-3points-v1 : 直近3ヶ月の「いちばん古い月の1日」を出す
+#   ★上限（対象月の末日）は _mon_measure_end。こちらは下限。
+#     両方と limit(3) を掛けて、点を最大3つにする（HIROさんの指示 2026-09-03）。
+#     ねらい: 3つの数値をグラフの下に全部書いて、形だけで読み違えないようにする。
+def _mon_measure_start(year_month, months=3):
+    """'YYYY-MM' から、対象月を含めて months ヶ月ぶんの
+    いちばん古い月の1日 'YYYY-MM-01' を返す。
+    例) '2026-08', 3 → '2026-06-01'
+    おかしな値なら '' を返す（呼ぶ側は '' のとき下限を足さない）。"""
+    try:
+        _p = str(year_month or "").split("-")
+        _y, _m = int(_p[0]), int(_p[1])
+        if not (1 <= _m <= 12):
+            return ""
+        _m -= (int(months) - 1)
+        while _m <= 0:
+            _m += 12
+            _y -= 1
+        return "%04d-%02d-01" % (_y, _m)
+    except Exception:
+        return ""
+
+
 @app.route('/api/monitoring_report_data')
 @login_required
 def api_monitoring_report_data():
@@ -31859,7 +31882,11 @@ def api_monitoring_report_data():
                 "user_name", user_name)
             if _mend:
                 _q = _q.lte("measured_date", _mend)
-            ft = _q.order("measured_date", desc=True).limit(6).execute()
+            # mon-fitness-3points-v1: 直近3ヶ月まで遡り、点は最大3つ
+            _mstart = _mon_measure_start(year_month)
+            if _mstart:
+                _q = _q.gte("measured_date", _mstart)
+            ft = _q.order("measured_date", desc=True).limit(3).execute()
             if ft.data:
                 fitness = list(reversed(ft.data))  # 古い順に
         except Exception:
@@ -31876,7 +31903,11 @@ def api_monitoring_report_data():
                 "user_name", user_name)
             if _mend:
                 _q = _q.lte("measured_date", _mend)
-            bw = _q.order("measured_date", desc=True).limit(6).execute()
+            # mon-fitness-3points-v1: 直近3ヶ月まで遡り、点は最大3つ
+            _mstart = _mon_measure_start(year_month)
+            if _mstart:
+                _q = _q.gte("measured_date", _mstart)
+            bw = _q.order("measured_date", desc=True).limit(3).execute()
             if bw.data:
                 weights = list(reversed(bw.data))
         except Exception:
@@ -33542,7 +33573,11 @@ def print_pdf():
                 "facility_code", f_code).eq("user_name", uname)
             if _mend:
                 _q = _q.lte("measured_date", _mend)
-            ft = _q.order("measured_date", desc=True).limit(6).execute()
+            # mon-fitness-3points-v1: 直近3ヶ月まで遡り、点は最大3つ
+            _mstart = _mon_measure_start(year_month)
+            if _mstart:
+                _q = _q.gte("measured_date", _mstart)
+            ft = _q.order("measured_date", desc=True).limit(3).execute()
             data["fitness"] = list(reversed(ft.data)) if ft.data else []
         except Exception:
             data["fitness"] = []
@@ -33551,7 +33586,11 @@ def print_pdf():
                 "facility_code", f_code).eq("user_name", uname)
             if _mend:
                 _q = _q.lte("measured_date", _mend)
-            bw = _q.order("measured_date", desc=True).limit(6).execute()
+            # mon-fitness-3points-v1: 直近3ヶ月まで遡り、点は最大3つ
+            _mstart = _mon_measure_start(year_month)
+            if _mstart:
+                _q = _q.gte("measured_date", _mstart)
+            bw = _q.order("measured_date", desc=True).limit(3).execute()
             data["weights"] = list(reversed(bw.data)) if bw.data else []
         except Exception:
             data["weights"] = []
@@ -33798,7 +33837,11 @@ def print_preview():
                 "facility_code", f_code).eq("user_name", uname)
             if _mend:
                 _q = _q.lte("measured_date", _mend)
-            ft = _q.order("measured_date", desc=True).limit(6).execute()
+            # mon-fitness-3points-v1: 直近3ヶ月まで遡り、点は最大3つ
+            _mstart = _mon_measure_start(year_month)
+            if _mstart:
+                _q = _q.gte("measured_date", _mstart)
+            ft = _q.order("measured_date", desc=True).limit(3).execute()
             data["fitness"] = list(reversed(ft.data)) if ft.data else []
         except Exception:
             data["fitness"] = []
@@ -33807,7 +33850,11 @@ def print_preview():
                 "facility_code", f_code).eq("user_name", uname)
             if _mend:
                 _q = _q.lte("measured_date", _mend)
-            bw = _q.order("measured_date", desc=True).limit(6).execute()
+            # mon-fitness-3points-v1: 直近3ヶ月まで遡り、点は最大3つ
+            _mstart = _mon_measure_start(year_month)
+            if _mstart:
+                _q = _q.gte("measured_date", _mstart)
+            bw = _q.order("measured_date", desc=True).limit(3).execute()
             data["weights"] = list(reversed(bw.data)) if bw.data else []
         except Exception:
             data["weights"] = []
