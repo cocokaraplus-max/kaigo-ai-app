@@ -31653,6 +31653,29 @@ def api_monitoring_report_pdf():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ============================================================
+# mon-fitness-asof-v1 : 報告書に載せる体力測定・体重を「対象月の末日まで」に絞る
+#   ★前は月をまったく見ておらず、ただの最新6件だった。
+#     そのため【過去の月を印刷し直すと、その月より後に測った値が載った】。
+#     DEVで確認: 2026年2月の報告書に 7月2日 の体重が入っていた。
+#   ★下限（何ヶ月前まで）は付けない（HIROさんの判断 2026-09-03）。
+#     付けると、いままで出ていた古いデータが消えて、
+#     測定の間隔が空いている方はグラフが1〜2点だけになる。
+# ============================================================
+def _mon_measure_end(year_month):
+    """'YYYY-MM' から、その月の末日 'YYYY-MM-DD' を返す。
+    おかしな値なら '' を返す（呼ぶ側は '' のとき絞り込みを足さない＝今までどおり）。"""
+    try:
+        import calendar as _cal
+        _p = str(year_month or "").split("-")
+        _y, _m = int(_p[0]), int(_p[1])
+        if not (1 <= _m <= 12):
+            return ""
+        return "%04d-%02d-%02d" % (_y, _m, _cal.monthrange(_y, _m)[1])
+    except Exception:
+        return ""
+
+
 @app.route('/api/monitoring_report_data')
 @login_required
 def api_monitoring_report_data():
@@ -31735,10 +31758,14 @@ def api_monitoring_report_data():
         # ---- 5. 体力測定の推移（fitness_tests 直近6ヶ月） ----
         fitness = []
         try:
-            ft = supabase.table("fitness_tests").select("*").eq(
+            # mon-fitness-asof-v1: 対象月の末日までに絞る（その月より後の測定は載せない）
+            _mend = _mon_measure_end(year_month)
+            _q = supabase.table("fitness_tests").select("*").eq(
                 "facility_code", f_code).eq(
-                "user_name", user_name).order(
-                "measured_date", desc=True).limit(6).execute()
+                "user_name", user_name)
+            if _mend:
+                _q = _q.lte("measured_date", _mend)
+            ft = _q.order("measured_date", desc=True).limit(6).execute()
             if ft.data:
                 fitness = list(reversed(ft.data))  # 古い順に
         except Exception:
@@ -31748,10 +31775,14 @@ def api_monitoring_report_data():
         # ---- 6. 体重の推移（body_weights 直近6ヶ月） ----
         weights = []
         try:
-            bw = supabase.table("body_weights").select("*").eq(
+            # mon-fitness-asof-v1: 対象月の末日までに絞る（その月より後の測定は載せない）
+            _mend = _mon_measure_end(year_month)
+            _q = supabase.table("body_weights").select("*").eq(
                 "facility_code", f_code).eq(
-                "user_name", user_name).order(
-                "measured_date", desc=True).limit(6).execute()
+                "user_name", user_name)
+            if _mend:
+                _q = _q.lte("measured_date", _mend)
+            bw = _q.order("measured_date", desc=True).limit(6).execute()
             if bw.data:
                 weights = list(reversed(bw.data))
         except Exception:
@@ -33410,17 +33441,23 @@ def print_pdf():
                                   if mr.data else {})  # mon-strip-read-v1
         except Exception:
             data["monitoring"] = {}
+        # mon-fitness-asof-v1: 対象月の末日までに絞る（その月より後の測定は載せない）
+        _mend = _mon_measure_end(year_month)
         try:
-            ft = supabase.table("fitness_tests").select("*").eq(
-                "facility_code", f_code).eq("user_name", uname).order(
-                "measured_date", desc=True).limit(6).execute()
+            _q = supabase.table("fitness_tests").select("*").eq(
+                "facility_code", f_code).eq("user_name", uname)
+            if _mend:
+                _q = _q.lte("measured_date", _mend)
+            ft = _q.order("measured_date", desc=True).limit(6).execute()
             data["fitness"] = list(reversed(ft.data)) if ft.data else []
         except Exception:
             data["fitness"] = []
         try:
-            bw = supabase.table("body_weights").select("*").eq(
-                "facility_code", f_code).eq("user_name", uname).order(
-                "measured_date", desc=True).limit(6).execute()
+            _q = supabase.table("body_weights").select("*").eq(
+                "facility_code", f_code).eq("user_name", uname)
+            if _mend:
+                _q = _q.lte("measured_date", _mend)
+            bw = _q.order("measured_date", desc=True).limit(6).execute()
             data["weights"] = list(reversed(bw.data)) if bw.data else []
         except Exception:
             data["weights"] = []
@@ -33660,17 +33697,23 @@ def print_preview():
                 data["monitoring_generating"] = True
         except Exception:
             data["monitoring"] = {}
+        # mon-fitness-asof-v1: 対象月の末日までに絞る（その月より後の測定は載せない）
+        _mend = _mon_measure_end(year_month)
         try:
-            ft = supabase.table("fitness_tests").select("*").eq(
-                "facility_code", f_code).eq("user_name", uname).order(
-                "measured_date", desc=True).limit(6).execute()
+            _q = supabase.table("fitness_tests").select("*").eq(
+                "facility_code", f_code).eq("user_name", uname)
+            if _mend:
+                _q = _q.lte("measured_date", _mend)
+            ft = _q.order("measured_date", desc=True).limit(6).execute()
             data["fitness"] = list(reversed(ft.data)) if ft.data else []
         except Exception:
             data["fitness"] = []
         try:
-            bw = supabase.table("body_weights").select("*").eq(
-                "facility_code", f_code).eq("user_name", uname).order(
-                "measured_date", desc=True).limit(6).execute()
+            _q = supabase.table("body_weights").select("*").eq(
+                "facility_code", f_code).eq("user_name", uname)
+            if _mend:
+                _q = _q.lte("measured_date", _mend)
+            bw = _q.order("measured_date", desc=True).limit(6).execute()
             data["weights"] = list(reversed(bw.data)) if bw.data else []
         except Exception:
             data["weights"] = []
