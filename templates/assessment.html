@@ -938,6 +938,11 @@
                     <div class="eval-field-help" id="eval-care-class-hint">
                         💡 利用者の介護度から自動セットされます。手動で変更可能。
                     </div>
+                    <!-- eval-care-mismatch-v1: 保存ずみの区分と、いまの介護度から出る区分が
+                         食い違っているときだけ出る。ふだんは非表示。 -->
+                    <div id="eval-care-mismatch" style="display:none;background:#fef7e0;
+                         border:1px solid #fdd663;border-radius:9px;padding:11px 13px;
+                         font-size:.82rem;color:#7a5200;line-height:1.7;margin-top:8px;"></div>
                 </div>
 
                 <!-- 要介護用: ICF 三軸 (短期 3 + 長期 3) -->
@@ -1917,6 +1922,9 @@ window.evalCheckExistingMonth = async function() {
 
         // 初期値セット(訓練目標、介護区分)
         const initial = data.initial_values || {};
+        // eval-care-mismatch-v1: 介護度（と介護度の履歴）から出た区分を控えておく。
+        //   保存ずみの評価を開いたとき、これと突き合わせて食い違いを知らせる。
+        evalState.initialCare = (initial.care_classification || '').trim();
         // 各軸の現在目標を表示エリアにセット
         evalSetGoalDisplay(initial);
         if (initial.care_classification && !evalState.careClass) {
@@ -2195,6 +2203,7 @@ function evalFillForm(ev) {
     document.getElementById('eval-new-requests-detail').value = ev.new_requests_detail || '';
 
     if (ev.care_classification) evalSelectCareClass(ev.care_classification);
+    evalCheckCareMismatch(ev.care_classification);  // eval-care-mismatch-v1
 
     // 各 segment を復元
     [['eval-new-requests-exist', ev.new_requests_exist],
@@ -2270,6 +2279,58 @@ function evalFillForm(ev) {
     evalUpdateStatus();
 }
 
+// eval-care-mismatch-v1: 保存ずみの評価の介護区分が、いまの介護度と食い違っていないか。
+//   ★黙って書き換えない。出して、ひと押しで直せるようにするだけ。
+//     介護区分は「この評価の中だけ手で変えられる」仕様なので、
+//     自動で上書きすると、手で変えた方の記録を壊す。
+//   ★食い違っていなければ何も出ない。
+function evalCheckCareMismatch(savedCls) {
+    const box = document.getElementById('eval-care-mismatch');
+    if (!box) return;
+    const saved = (savedCls || '').trim();
+    const fromLevel = (evalState.initialCare || '').trim();
+    const level = (evalState.selectedPatient && evalState.selectedPatient.care_level) || '';
+    if (!saved || !fromLevel || saved === fromLevel) {
+        box.style.display = 'none';
+        box.innerHTML = '';
+        return;
+    }
+    const esc = function (s) {
+        return String(s == null ? '' : s).replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    };
+    box.innerHTML =
+        '<b>⚠ 介護区分が、いまの介護度と食い違っています。</b>'
+        + '<div style="margin-top:6px;">利用者情報の介護度は <b>'
+        + esc(level || fromLevel) + '</b> ですが、この評価は <b>' + esc(saved)
+        + '</b> で保存されています。</div>'
+        + '<div style="margin-top:4px;">介護度が変わっても、'
+        + '<b>保存ずみの評価の区分は自動では変わりません。</b></div>'
+        + '<div style="margin-top:8px;">'
+        + '<button type="button" onclick="evalFixCareMismatch()" '
+        + 'style="background:#0F6E56;color:#fff;border:0;border-radius:7px;'
+        + 'padding:7px 14px;font-size:.82rem;font-weight:700;cursor:pointer;">'
+        + esc(fromLevel) + 'に切り替える</button></div>'
+        + '<div style="margin-top:6px;font-size:.76rem;">'
+        + '★切り替えても<b>利用者情報の介護度は変わりません</b>。この評価の中だけです。'
+        + (fromLevel === '要介護'
+            ? '<br>切り替えると、目標が「機能・活動・参加」の3つの欄になります。'
+            : '')
+        + '</div>';
+    box.style.display = '';
+}
+
+// eval-care-mismatch-v1: 案内のボタン。いままでと同じ確認ダイアログを通す。
+function evalFixCareMismatch() {
+    const fromLevel = (evalState.initialCare || '').trim();
+    if (!fromLevel) return;
+    evalSelectCareClass(fromLevel, true);
+    if (evalState.careClass === fromLevel) {
+        const box = document.getElementById('eval-care-mismatch');
+        if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+    }
+}
+
 function evalResetForm() {
     ['short_goal_function_new','short_goal_activity_new','short_goal_participation_new',
      'long_goal_function_new','long_goal_activity_new','long_goal_participation_new',
@@ -2300,6 +2361,10 @@ function evalResetForm() {
     document.getElementById('eval-status-empty').style.display = '';
 
     evalState.careClass = '';
+    // eval-care-mismatch-v1: 案内も消す（前の利用者のものが残らないように）
+    evalState.initialCare = '';
+    const _cmBox = document.getElementById('eval-care-mismatch');
+    if (_cmBox) { _cmBox.style.display = 'none'; _cmBox.innerHTML = ''; }
     evalUpdateStatus();
 }
 

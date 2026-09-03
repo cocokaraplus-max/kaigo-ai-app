@@ -604,7 +604,11 @@ async function a2Load(){
   }catch(e){ A2.ev = {}; A2.initial = {}; A2.evalId = null; }
 
   // 介護区分：保存ずみがあればそれ、無ければ利用者の介護度から
-  A2.cls = (A2.ev.care_classification || '').trim() || a2ClsFromLevel(A2.patient.care_level);
+  // eval-care-mismatch-v1: 保存ずみの区分と、いまの介護度から出る区分を両方おぼえておく。
+  //   食い違っていたら a2DrawGoals で知らせる。★黙って書き換えない。
+  A2.clsSaved = (A2.ev.care_classification || '').trim();
+  A2.clsFromLevel = a2ClsFromLevel(A2.patient.care_level);
+  A2.cls = A2.clsSaved || A2.clsFromLevel;
   a2DrawCls();
   a2FillForms();
   a2DrawStatus();
@@ -670,6 +674,35 @@ var A2_SIMPLE = [
   ['short_goal_simple','short_goal_status','short_goal_new','短期','短期目標'],
   ['long_goal_simple','long_goal_status','long_goal_new','長期','長期目標']
 ];
+// eval-care-mismatch-v1: 保存ずみの介護区分が、いまの介護度と食い違っていたら知らせる。
+//   ★黙って書き換えない。出して、ひと押しで直せるようにするだけ。
+//     介護区分は「この評価の中だけ手で変えられる」仕様なので、
+//     自動で上書きすると、手で変えた方の記録を壊す。
+function a2ClsMismatchHtml(){
+  var saved = (A2.clsSaved || '').trim();
+  var lvCls = (A2.clsFromLevel || '').trim();
+  if (!saved || !lvCls || saved === lvCls) return '';
+  if (A2.cls === lvCls) return '';   // すでに切り替えたあとは出さない
+  var lv = (A2.patient && A2.patient.care_level) || lvCls;
+  return '<div style="background:#fef7e0;border:1px solid #fdd663;border-radius:9px;'
+       + 'padding:11px 13px;font-size:.82rem;color:#7a5200;margin-bottom:12px;line-height:1.7;">'
+       + '<b>⚠ 介護区分が、いまの介護度と食い違っています。</b>'
+       + '<div style="margin-top:6px;">利用者情報の介護度は <b>' + esc(lv)
+       + '</b> ですが、この評価は <b>' + esc(saved) + '</b> で保存されています。</div>'
+       + '<div style="margin-top:4px;">介護度が変わっても、'
+       + '<b>保存ずみの評価の区分は自動では変わりません。</b></div>'
+       + '<div style="margin-top:8px;">'
+       + '<button type="button" onclick="a2SetCls(' + "'" + esc(lvCls) + "'" + ')" '
+       + 'style="background:#0F6E56;color:#fff;border:0;border-radius:7px;'
+       + 'padding:7px 14px;font-size:.82rem;font-weight:700;cursor:pointer;">'
+       + esc(lvCls) + 'に切り替える</button></div>'
+       + '<div style="margin-top:6px;font-size:.76rem;">'
+       + '★切り替えても<b>利用者情報の介護度は変わりません</b>。この評価の中だけです。'
+       + (lvCls === '要介護'
+           ? '<br>切り替えると、目標が「機能・活動・参加」の3つの欄になります。' : '')
+       + '</div></div>';
+}
+
 function a2DrawGoals(){
   var rows = (A2.cls === '要介護') ? A2_AXES : A2_SIMPLE;
   // a2-goal-axis-guide-v1: 要介護なのに、目標が【分ける前の欄】に入ったままの方がいる。
@@ -687,6 +720,7 @@ function a2DrawGoals(){
     needAxis = (!anyAxis && anySimple);
   }
   var h = '', term = '';
+  h += a2ClsMismatchHtml();  // eval-care-mismatch-v1
   if (needAxis) {
     var oldGoals = '';
     A2_SIMPLE.forEach(function (x) {
