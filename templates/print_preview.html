@@ -2658,12 +2658,23 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
     leftLabel  = leftLabel  || '左(破線)';
     var el = document.getElementById(elId);
     if (!el) return;
-    if (!fitness || fitness.length <= 1) return;
+    // report-values-v2: 1回だけでも数値は書きたいので、ここでは0件だけ弾く。
+    //   線が引けるかどうかは、系列を作ったあとで見る。
+    if (!fitness || !fitness.length) return;
     var rightData = rightKey ? fitness.map(function(f){ return f[rightKey]; }) : [];
     var leftData  = leftKey  ? fitness.map(function(f){ return f[leftKey]; }) : [];
     var hasRight = rightData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     var hasLeft  = leftData.some(function(v){ return v !== null && v !== undefined && v !== ''; });
     if (!hasRight && !hasLeft) return;
+    // report-values-v2: 数値を先に書く（1回だけの方でも出る）
+    try {
+        var _vs0 = [];
+        if (hasRight) _vs0.push({ name: String(rightLabel).replace(/[（(].*$/, ''), data: rightData });
+        if (hasLeft) _vs0.push({ name: String(leftLabel).replace(/[（(].*$/, ''), data: leftData });
+        _repWriteValues(el, labels, _vs0);
+    } catch (e) {}
+    // report-values-v2: 線が引けないときは、空のグラフの箱を消す
+    if (fitness.length <= 1) { el.style.display = 'none'; return; }
     var isMono = !isColor;
     var rightColor = isMono ? '#000' : '#1565c0';
     var leftColor  = isMono ? '#888' : '#c62828';
@@ -2699,14 +2710,7 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
         }
     });
     try { if (_bc) { _bc.options.aspectRatio = _ar; _bc.resize(); } } catch(e) {}  // chart-aspect-fix-v4
-    // report-values-v1: 点ごとの日付と値を数値欄に書く（描いた系列だけ）
-    //   凡例の「右(実線)」から括弧を落として「右」にする。
-    try {
-        var _vs = [];
-        if (hasRight) _vs.push({ name: String(rightLabel).replace(/[（(].*$/, ''), data: rightData });
-        if (hasLeft) _vs.push({ name: String(leftLabel).replace(/[（(].*$/, ''), data: leftData });
-        _repWriteValues(el, labels, _vs);
-    } catch (e) {}
+    // report-values-v2: 数値の書き込みは上（グラフを作る前）に移した
 }
 
 // 数値カードスタイル用: canvas非表示・値表示HTML挿入
@@ -2767,11 +2771,11 @@ var accent = getAccentColor();
 chartData.forEach(function(rd, idx) {
     var n = idx + 1;
     var metrics = [
-        { id: 'chart-weight-' + n, lowerIsBetter: false, getData: function() { return rd.weights && rd.weights.length > 1 ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
+        { id: 'chart-weight-' + n, lowerIsBetter: false, getData: function() { return rd.weights && rd.weights.length ? rd.weights.map(function(w){ return w.weight_kg; }) : null; },
           getLabels: function() { return rd.weights ? rd.weights.map(function(w){ return w.measured_date ? w.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-tug-' + n, lowerIsBetter: true, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
+        { id: 'chart-tug-' + n, lowerIsBetter: true, getData: function() { return rd.fitness && rd.fitness.length ? rd.fitness.map(function(f){ return f.tug_sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } },
-        { id: 'chart-cs30-' + n, lowerIsBetter: false, getData: function() { return rd.fitness && rd.fitness.length > 1 ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
+        { id: 'chart-cs30-' + n, lowerIsBetter: false, getData: function() { return rd.fitness && rd.fitness.length ? rd.fitness.map(function(f){ return f.sit_stand_30sec; }) : null; },
           getLabels: function() { return rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : []; } }
     ];
 
@@ -2781,6 +2785,12 @@ chartData.forEach(function(rd, idx) {
         var data = m.getData();
         if (!data) return;
         var labels = m.getLabels();
+        // report-values-v2: ★数値は【グラフを描く前に】書く。
+        //   1回しか測っていない方は線が引けずグラフを描かないが、
+        //   v1では数値もそこで書かれず、様式の古い文字
+        //   （「6.0→6.0」＝1件しかないのに2回あるように読める）が残っていた。
+        _repWriteValues(el, labels, [{ name: '', data: data }]);
+        if (data.length < 2) { el.style.display = 'none'; return; }
 
         if (chartStyle === 4) {
             // 数値カード: first/last表示
@@ -2798,8 +2808,7 @@ chartData.forEach(function(rd, idx) {
                 try { _mc5.options.aspectRatio = _ar5; _mc5.resize(); } catch(e) {}
             }
         }
-        // report-values-v1: 点ごとの日付と値を数値欄に書く
-        _repWriteValues(el, labels, [{ name: '', data: data }]);
+        // report-values-v2: 数値の書き込みは上（グラフを描く前）に移した
         // トレンドバッジ（chart-xxx-N → trend-xxx-N）
         drawTrendBadge(m.id.replace('chart-', 'trend-'), data, m.lowerIsBetter);
     });
