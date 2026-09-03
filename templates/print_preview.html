@@ -2439,13 +2439,23 @@ function _repYRange(series) {
     });
     if (all.length < 2) return null;
     var mn = Math.min.apply(null, all), mx = Math.max.apply(null, all);
-    var span = mx - mn;
-    if (span <= 0) {
-        var p = Math.abs(mn) * 0.05 || 1;
-        return { min: mn - p, max: mx + p };
-    }
+    // report-chart-fix-v2: ★縦軸の幅に【下限】を入れる。
+    //   v1 は実際の最大・最小にぴったり合わせていたので、
+    //   ほとんど動かない方のグラフが大きく上下して見えていた。
+    //   （本番 成田玲子さん 体重 45→46→45→45 が高さの77%を使って跳ねる。
+    //     表示は「45.0→45.0」なのに山に見える）
+    //   下限＝その人の平均値の20%。こうすると
+    //   「値に対して何%動いたか」が、そのまま線の大きさになる。
+    //     1kg / 45kg  →  8%だけ動く（ほぼ横ばい）
+    //    10.5kg/ 57kg → 72%動く（山と谷が見える）
+    //   ★全部同じ値のときは幅が下限だけになり、真ん中に水平な線が出る。
+    var mean = 0;
+    for (var _i = 0; _i < all.length; _i++) mean += all[_i];
+    mean = mean / all.length;
+    var span = Math.max(mx - mn, Math.abs(mean) * 0.20, 1e-6);
     var pad = span * 0.15;
-    return { min: mn - pad, max: mx + pad };
+    var mid = (mn + mx) / 2;
+    return { min: mid - span / 2 - pad, max: mid + span / 2 + pad };
 }
 
 // report-chart-fix-v1: 設定オブジェクトに縦軸の範囲を足す。
