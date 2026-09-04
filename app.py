@@ -22558,6 +22558,56 @@ def _pay_leaves_map(supabase, f_code, start_d, end_d):
     return m
 
 
+def _pay_leave_label(lv):  # pay-leave-rows-v1
+    """休暇の種類を、人が読む字にする。"""
+    if not lv:
+        return ""
+    return (_LEAVE_TYPES.get(lv, {}) or {}).get("label", lv)
+
+
+def _pay_merge_leave_rows(staff, leaves):  # pay-leave-rows-v1
+    """打刻のない休みの日を【表示用の行】として足す。
+
+    ★お金の計算には触らない。
+      足す行は minutes=None。_pay_compute_staff は
+
+          worked = (mn is not None and mn > 0)
+          if mn is None or mn <= 0: continue
+
+      と None の日をすべての集計から外すので、実働・時間外・深夜・
+      法定休日・勤務日数は1分も変わらない。週40時間の判定でも
+      「その週に働いた日」の集まりに入らない。
+
+    ★出力の元(_pay_build_monthly_range)は打刻のある日しか行を作らない。
+      そのため「給与計算用」は休暇区分の列があっても永久に空欄だった
+      （HIROさんの指摘 2026-09-03）。
+    """
+    by_name = {}
+    for key, lv in (leaves or {}).items():
+        try:
+            nm, ds = key
+        except (TypeError, ValueError):
+            continue
+        if nm and ds:
+            by_name.setdefault(nm, {})[str(ds)[:10]] = lv
+    for s in staff:
+        want = by_name.get(s.get("name"))
+        if not want:
+            continue
+        days = s.get("days") or []
+        have = set(d.get("date") for d in days)
+        add = []
+        for ds, lv in want.items():
+            if ds in have:
+                continue            # 打刻がある日は触らない（実績が正）
+            add.append({"date": ds, "minutes": None, "incomplete": False,
+                        "flags": [], "in": None, "out": None, "break_min": 0,
+                        "leave_only": True, "leave_type": lv})
+        if add:
+            s["days"] = sorted(days + add, key=lambda d: d.get("date") or "")
+    return staff
+
+
 def _pay_wd_label(dk):
     try:
         y, m, d = [int(x) for x in dk.split("-")]
@@ -22616,24 +22666,38 @@ def pay_export_simple_csv():
         s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
+        # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
+        leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
+        _pay_merge_leave_rows(staff, leaves)
 
         sio = _pay_io.StringIO()
         w = _pay_csv.writer(sio)
+        # pay-leave-rows-v1: 休暇区分の列を【いちばん右】に足す。
+        #   ★間に入れると、いま使っている取り込みの列がずれる。
         w.writerow(["\u8077\u54e1\u540d", "\u65e5\u4ed8", "\u66dc\u65e5", "\u51fa\u52e4", "\u9000\u52e4",
-                    "\u4f11\u61a9(\u5206)", "\u5b9f\u50cd(\u5206)", "\u5b9f\u50cd(\u6642\u9593)", "\u6253\u523b\u7570\u5e38"])
+                    "\u4f11\u61a9(\u5206)", "\u5b9f\u50cd(\u5206)", "\u5b9f\u50cd(\u6642\u9593)", "\u6253\u523b\u7570\u5e38",
+                    "\u4f11\u6687\u533a\u5206"])
         for s in staff:
             for d in s["days"]:
-                if d["incomplete"]:
+                _lv = _pay_leave_label(d.get("leave_type")
+                                       or leaves.get((s["name"], d["date"])))
+                if d.get("leave_only"):
+                    # pay-leave-rows-v1: 打刻のない休みの日。時刻の欄は空にする。
+                    #   ★空にしないと "--:--" や "—" が並んで、
+                    #     打刻し忘れた日と見分けがつかなくなる。
+                    w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
+                                "", "", "", "", "", "", _lv])
+                elif d["incomplete"]:
                     w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
                                 _tc_fmt_time_jst(d["in"]), _tc_fmt_time_jst(d["out"]),
-                                "", "", "", "/".join(d.get("flags") or [])])
+                                "", "", "", "/".join(d.get("flags") or []), _lv])
                 else:
                     w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
                                 _tc_fmt_time_jst(d["in"]), _tc_fmt_time_jst(d["out"]),
-                                d.get("break_min", 0), d["minutes"], _tc_fmt_hm(d["minutes"]), ""])
+                                d.get("break_min", 0), d["minutes"], _tc_fmt_hm(d["minutes"]), "", _lv])
             w.writerow([s["name"], "\u3010\u5408\u8a08\u3011", "", "", "", "",
                         s["total_minutes"], _tc_fmt_hm(s["total_minutes"]),
-                        f'{s["worked_days"]}\u65e5\u52e4\u52d9'])
+                        f'{s["worked_days"]}\u65e5\u52e4\u52d9', ""])
         data = sio.getvalue().encode("cp932", errors="replace")
         from flask import send_file as _send
         buf = _pay_io.BytesIO(data)
@@ -22664,6 +22728,9 @@ def pay_export_simple_excel():
         s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
+        # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
+        leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
+        _pay_merge_leave_rows(staff, leaves)
         fac_name = _pay_facility_name(supabase, f_code)
 
         import openpyxl as _xl
@@ -22676,7 +22743,9 @@ def pay_export_simple_excel():
         row = 1
         ws.cell(row=row, column=1, value=f"\u52e4\u6020\u96c6\u8a08\u8868\u3000{fac_name}\u3000{label}").font = _F(bold=True, size=14)
         row += 2
-        cols = ["\u8077\u54e1\u540d", "\u65e5\u4ed8", "\u66dc\u65e5", "\u51fa\u52e4", "\u9000\u52e4", "\u4f11\u61a9(\u5206)", "\u5b9f\u50cd", "\u6253\u523b\u7570\u5e38"]
+        # pay-leave-rows-v1: 休暇区分の列をいちばん右に足す
+        cols = ["\u8077\u54e1\u540d", "\u65e5\u4ed8", "\u66dc\u65e5", "\u51fa\u52e4", "\u9000\u52e4", "\u4f11\u61a9(\u5206)", "\u5b9f\u50cd", "\u6253\u523b\u7570\u5e38",
+                "\u4f11\u6687\u533a\u5206"]
         for s in staff:
             ws.cell(row=row, column=1, value=f'{s["name"]}').font = bold
             ws.cell(row=row, column=7, value=f'\u5408\u8a08 {_tc_fmt_hm(s["total_minutes"])}').font = bold
@@ -22687,20 +22756,28 @@ def pay_export_simple_excel():
                 c.fill = hdr_fill
             row += 1
             for d in s["days"]:
+                _lv = _pay_leave_label(d.get("leave_type")
+                                       or leaves.get((s["name"], d["date"])))
                 ws.cell(row=row, column=1, value=s["name"])
                 ws.cell(row=row, column=2, value=d["date"])
                 ws.cell(row=row, column=3, value=_pay_wd_label(d["date"]))
-                ws.cell(row=row, column=4, value=_tc_fmt_time_jst(d["in"]))
-                ws.cell(row=row, column=5, value=_tc_fmt_time_jst(d["out"]))
-                if d["incomplete"]:
-                    cc = ws.cell(row=row, column=8, value="\u26a0 " + "/".join(d.get("flags") or []))
-                    cc.font = _F(color="C0392B")
+                if d.get("leave_only"):
+                    # pay-leave-rows-v1: 打刻のない休みの日。時刻の欄は空のままにする。
+                    pass
                 else:
-                    ws.cell(row=row, column=6, value=d.get("break_min", 0))
-                    ws.cell(row=row, column=7, value=_tc_fmt_hm(d["minutes"]))
+                    ws.cell(row=row, column=4, value=_tc_fmt_time_jst(d["in"]))
+                    ws.cell(row=row, column=5, value=_tc_fmt_time_jst(d["out"]))
+                    if d["incomplete"]:
+                        cc = ws.cell(row=row, column=8, value="\u26a0 " + "/".join(d.get("flags") or []))
+                        cc.font = _F(color="C0392B")
+                    else:
+                        ws.cell(row=row, column=6, value=d.get("break_min", 0))
+                        ws.cell(row=row, column=7, value=_tc_fmt_hm(d["minutes"]))
+                if _lv:
+                    ws.cell(row=row, column=9, value=_lv).font = _F(color="C0392B")
                 row += 1
             row += 1
-        for col, wd in zip("ABCDEFGH", [16, 12, 6, 8, 8, 10, 12, 24]):
+        for col, wd in zip("ABCDEFGHI", [16, 12, 6, 8, 8, 10, 12, 24, 10]):
             ws.column_dimensions[col].width = wd
         buf = _pay_io.BytesIO()
         wb.save(buf)
@@ -22810,6 +22887,9 @@ def pay_export_payroll_csv():
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
         leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
+        # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
+        #   ★休暇区分の列は元からあるのに、行が無いので永久に空欄だった。
+        _pay_merge_leave_rows(staff, leaves)
         lt = _LEAVE_TYPES
 
         sio = _pay_io.StringIO()
@@ -22823,7 +22903,11 @@ def pay_export_payroll_csv():
             for d in comp["days"]:
                 lv = leaves.get((s["name"], d["date"]))
                 lv_label = (lt.get(lv, {}) or {}).get("label", lv) if lv else ""
-                if d["incomplete"]:
+                if d.get("leave_only"):
+                    # pay-leave-rows-v1: 打刻のない休みの日。時刻・時間の欄は空。
+                    w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
+                                "", "", "", "", "", "", "", "", lv_label, ""])
+                elif d["incomplete"]:
                     w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
                                 _tc_fmt_time_jst(d["in"]), _tc_fmt_time_jst(d["out"]),
                                 "", "", "", "", "", "", lv_label, "/".join(d.get("flags") or [])])
@@ -22868,6 +22952,9 @@ def pay_export_payroll_excel():
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
         leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
+        # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
+        #   ★休暇区分の列は元からあるのに、行が無いので永久に空欄だった。
+        _pay_merge_leave_rows(staff, leaves)
         lt = _LEAVE_TYPES
         fac_name = _pay_facility_name(supabase, f_code)
 
@@ -22900,9 +22987,15 @@ def pay_export_payroll_excel():
                 ws.cell(row=row, column=1, value=s["name"])
                 ws.cell(row=row, column=2, value=d["date"])
                 ws.cell(row=row, column=3, value=_pay_wd_label(d["date"]))
-                ws.cell(row=row, column=4, value=_tc_fmt_time_jst(d["in"]))
-                ws.cell(row=row, column=5, value=_tc_fmt_time_jst(d["out"]))
-                if d["incomplete"]:
+                # pay-leave-rows-v1: 打刻のない休みの日は、時刻・時間の欄を空のままにする。
+                #   ★ここは字下げを変えずに済むよう、書き込む所だけを避けている。
+                #     下の else（実働・時間外・深夜・法定休日）はそのまま。
+                if not d.get("leave_only"):
+                    ws.cell(row=row, column=4, value=_tc_fmt_time_jst(d["in"]))
+                    ws.cell(row=row, column=5, value=_tc_fmt_time_jst(d["out"]))
+                if d.get("leave_only"):
+                    pass
+                elif d["incomplete"]:
                     cc = ws.cell(row=row, column=12, value="\u26a0 " + "/".join(d.get("flags") or []))
                     cc.font = _F(color="C0392B")
                 else:
@@ -22952,6 +23045,9 @@ def pay_export_payroll_pdf():
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
         leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
+        # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
+        #   ★休暇区分の列は元からあるのに、行が無いので永久に空欄だった。
+        _pay_merge_leave_rows(staff, leaves)
         lt = _LEAVE_TYPES
         fac_name = _pay_facility_name(supabase, f_code)
 
@@ -22998,7 +23094,13 @@ def pay_export_payroll_pdf():
                 lv_label = (lt.get(lv, {}) or {}).get("label", lv) if lv else ""
                 dl = d["date"][8:10] + "\u65e5"
                 wl = _pay_wd_label(d["date"])
-                if d["incomplete"]:
+                if d.get("leave_only"):
+                    # pay-leave-rows-v1: 打刻のない休みの日。時刻・時間の欄は空。
+                    parts.append(f'<tr><td>{dl}</td><td>{wl}</td>'
+                                 f'<td></td><td></td><td></td><td></td>'
+                                 f'<td></td><td></td><td></td>'
+                                 f'<td class="lv">{_html.escape(lv_label)}</td><td></td></tr>')
+                elif d["incomplete"]:
                     flags = "/".join(d.get("flags") or [])
                     parts.append(f'<tr class="bad"><td>{dl}</td><td>{wl}</td>'
                                  f'<td>{_tc_fmt_time_jst(d["in"])}</td><td>{_tc_fmt_time_jst(d["out"])}</td>'
