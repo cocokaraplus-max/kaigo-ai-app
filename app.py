@@ -34569,6 +34569,7 @@ def api_jisseki_demographics_summary():  # jisseki-demog-v1
         _jin_w = dict((w, set()) for w in range(7))    # 曜日 -> 人の集まり
         _jin_s = dict((s, set()) for s in _JIS_SLOTS)  # 枠 -> 人の集まり
         _jin_all = set()
+        _unk = {}                        # jisseki-unknown-who-v1: pid -> 未設定だった日
         for pid, dates in visit_days.items():
             g = _jis_gender_key((pmap.get(pid) or {}).get("gender"))
             _gmap[pid] = g
@@ -34581,6 +34582,11 @@ def api_jisseki_demographics_summary():  # jisseki-demog-v1
                 slot = _jis_slot_of(vd.get("apd"), wd, ds,
                                     vd.get("half"), vd.get("full"))
                 _jis_add(wd_actual[wd][slot], g)
+                # jisseki-unknown-who-v1: 誰のどの日が「未設定」なのかを控える。
+                #   ★件数だけでは直しようがない。利用曜日の登録を直すには、
+                #     名前と日付が要る（HIROさんの現場そのもの）。
+                if slot == "unknown":
+                    _unk.setdefault(pid, []).append(ds)
                 _jin_ws.setdefault((wd, slot), set()).add(pid)
                 _jin_w[wd].add(pid)
                 _jin_s[slot].add(pid)
@@ -34631,6 +34637,15 @@ def api_jisseki_demographics_summary():  # jisseki-demog-v1
                            "jin_pct": _pct(v["jin"], g_jin),
                            "nobe_pct": _pct(v["nobe"], g_nobe)})
 
+        # jisseki-unknown-who-v1: 未設定の内訳を、件数の多い順にまとめる。
+        _unk_list = []
+        for _p, _ds in sorted(_unk.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:20]:
+            _unk_list.append({
+                "user_name": (pmap.get(_p) or {}).get("user_name") or "",
+                "dates": sorted(_ds),
+                "n": len(_ds),
+            })
+
         wd_rows = []
         for wd in _JIS_WD_ORDER:
             wd_rows.append({
@@ -34651,6 +34666,11 @@ def api_jisseki_demographics_summary():  # jisseki-demog-v1
             "actual_jin_sum": jin_sum,
             # ★未設定の合計。0でなければ、利用曜日の登録が足りていない合図。
             "unknown_actual": sum(wd_actual[w]["unknown"]["t"] for w in range(7)),
+            # jisseki-unknown-who-v1: 誰のどの日か。多い順。
+            #   ★20人まで。それ以上あるのは設定がまるごと抜けている状態で、
+            #     並べても読めない。残りは件数だけ伝える。
+            "unknown_list": _unk_list,
+            "unknown_people": len(_unk),
         })
     except Exception as e:
         print("api_jisseki_demographics_summary error: %s" % e, flush=True)
