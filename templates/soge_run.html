@@ -69,6 +69,24 @@
 /* 車が決まっていない枠。★黄色。黙って下に置かない。 */
 .sr-ac.un { border:1.5px solid #f9ab00; background:#fffdf5; }
 .sr-ac.un .sr-ac-h { background:#FEF7E0; }
+/* soge-run-only-v1: 開いた車の中の「この車だけ表示」。
+   ★見出し(.sr-ac-h)は button なので、その中には置けない。すぐ下に置く。 */
+.sr-ac-only { display:flex; align-items:center; gap:6px; padding:7px 12px 0; }
+.sr-only-b { display:inline-flex; align-items:center; justify-content:center;
+  width:38px; height:34px; padding:0; border:1.5px solid #C4CAD2; border-radius:9px;
+  background:#fff; color:#5f6368; cursor:pointer; }
+.sr-only-b:active { background:#E4EAF2; }
+.sr-only-b.on { border-color:#1a73e8; background:#E8F0FE; color:#1a73e8; }
+.sr-only-q { width:26px; height:26px; padding:0; border:1.5px solid #dadce0; border-radius:50%;
+  background:#fff; color:#5f6368; font-weight:800; font-size:0.8rem; line-height:1;
+  font-family:inherit; cursor:pointer; }
+/* 1台だけにしているときの帯。★黙って隠さない。戻る道を必ず出す。 */
+.sr-only-bar { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  background:#E8F0FE; border:1px solid #c9d6ea; border-radius:10px;
+  padding:8px 11px; margin-bottom:9px; font-size:0.78rem; font-weight:700; color:#0b57d0; }
+.sr-only-bar button { margin-left:auto; border:1px solid #1a73e8; background:#fff;
+  color:#1a73e8; border-radius:8px; padding:6px 11px; font-size:0.76rem; font-weight:800;
+  font-family:inherit; cursor:pointer; }
 
 /* soge-trip-pick-v1: 便を選ぶ札。★横に並べて、いま見ている便が常に見えるようにする。
    ★便は2〜3個しかない。押して開く形にすると、開くまで分からなくなる。
@@ -110,6 +128,16 @@
 
 /* ===== soge-run-list-v1: その日の全部を上から順に見る「一覧」 ===== */
 .sr-lg { margin-bottom:16px; }
+/* soge-list-type-v1: 一覧で「迎え」と「送り」を色で見分ける。
+   ★中間便は迎えと送りが混ざる。印が無いと、その人を迎えに行くのか
+     送り届けるのかが画面から読めない（現場の指摘 2026-09-04）。 */
+.sr-ty { flex:0 0 auto; font-size:0.66rem; font-weight:800; line-height:1;
+  padding:3px 5px; border-radius:5px; white-space:nowrap; }
+.sr-ty.pu { background:#e8f0fe; color:#1558d6; }   /* 迎え＝青 */
+.sr-ty.dp { background:#fdecec; color:#c0392b; }   /* 送り＝赤 */
+/* 休みの方は目立たせない。取り消し線と揃える。 */
+.sr-lr.off .sr-ty { background:#f1f3f4; color:#9aa0a6; }
+.sr-lg-h .sr-ty { font-size:0.7rem; padding:3px 6px; border-radius:6px; }
 /* 便の見出し。★便ごとに区切る。車ごとに区切ると、同じ車の迎えと送りが
    並んで「いま走っているのはどっちか」が読めなくなる。 */
 .sr-lg-h { display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:800;
@@ -636,7 +664,10 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
                 /* soge-trip-pick-v1: lsTrip='all' … 便は はじめ「すべて」。
                    ★便まで選ばせると、一覧を開いてから中身が出るまでが遠くなる。
                      便は常に見えているので、必要なときに押せばよい。 */
-                accOpen: false, lsCar: '', lsTrip: 'all' };
+                accOpen: false, lsCar: '', lsTrip: 'all',
+                /* soge-run-only-v1: 運転中に「この車だけ」を出しているときの車の鍵。
+                   ★空なら全部の車を出す。端末ごとに覚える。 */
+                onlyCar: '' };
 
   /* soge-view-v1: 選んだ見せ方は端末ごとに覚える。
      運転手はいつも「車両から」、送迎を組む人はいつも「便から」使うため、
@@ -650,6 +681,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     //   【何も出ない画面】になる。古い値は「運転中」に読み替える。
     if (_m === 'vehicle' || _m === 'trip') _m = 'drive';
     if (_m === 'drive' || _m === 'list') state.mode = _m;
+    /* soge-run-only-v1: 運転手はいつも同じ車なので、開くたびに押し直させない。
+       ★その日にその車がいなければ accHtml の中で全部に戻す。 */
+    state.onlyCar = localStorage.getItem('soge_run_only') || '';
   } catch (e) {}
 
   function $(id) { return document.getElementById(id); }
@@ -1702,6 +1736,30 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       row1.className = 'sr-acc';
       /* soge-run-pick-v1: はじめは全部閉じる。押した車だけ開く。 */
       row1.innerHTML = accHtml(vs, (state.accOpen ? state.tab : -1));
+      /* soge-run-only-v1: ハンドル＝この車だけ／もう一度で全部に戻す。
+         ★見出しの中ではないので、押しても開け閉めは起きない。 */
+      row1.querySelectorAll('[data-only]').forEach(function (el) {
+        el.onclick = function (ev) {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          var k = String(el.dataset.only || '');
+          state.onlyCar = (state.onlyCar === k) ? '' : k;
+          try { localStorage.setItem('soge_run_only', state.onlyCar); } catch (e) {}
+          render();
+        };
+      });
+      row1.querySelectorAll('[data-onlyq]').forEach(function (el) {
+        el.onclick = function (ev) {
+          if (ev && ev.stopPropagation) ev.stopPropagation();
+          srOnlyHelpOpen();
+        };
+      });
+      row1.querySelectorAll('[data-onlyoff]').forEach(function (el) {
+        el.onclick = function () {
+          state.onlyCar = '';
+          try { localStorage.setItem('soge_run_only', ''); } catch (e) {}
+          render();
+        };
+      });
       row1.querySelectorAll('[data-tab]').forEach(function (el) {
         // soge-trip-tab-v1: 車両タブを変えたら便タブも先頭に戻す
         el.onclick = function () {
@@ -1854,9 +1912,61 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     return { live: live, done: done, left: live - done, started: started };
   }
 
+  /* soge-run-only-v1: ハンドルの絵。★字は入れない（HIROさんの指示）。
+     色は currentColor にして、押している間だけ青くする。 */
+  var SR_WHEEL = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">'
+    + '<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/>'
+    + '<circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2"/>'
+    + '<path d="M12 15v6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+    + '<path d="M9.3 10.6 3.3 8.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+    + '<path d="M14.7 10.6l6-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+    + '</svg>';
+
+  /* soge-run-only-v1: ［？］の説明。押すと何が起きるか・戻し方を書く。
+     ★絵だけのボタンは、何をするものか分からない。必ず説明を添える。 */
+  function srOnlyHelpOpen() {
+    if (document.querySelector('.sr-help-back')) return;
+    var back = document.createElement('div');
+    back.className = 'sr-help-back';
+    back.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;'
+      + 'background:rgba(0,0,0,.45);z-index:10000;display:flex;'
+      + 'align-items:center;justify-content:center;padding:16px;';
+    back.innerHTML =
+      '<div style="background:#fff;border-radius:14px;width:100%;max-width:480px;'
+      + 'max-height:82vh;overflow:auto;padding:18px 18px 14px;'
+      + 'box-shadow:0 8px 28px rgba(0,0,0,.3);">'
+      + '<div style="font-weight:800;font-size:1.02rem;display:flex;align-items:center;gap:8px;">'
+      + '<span style="color:#1a73e8;">' + SR_WHEEL + '</span>この車だけを表示する</div>'
+      + '<div style="font-size:0.9rem;line-height:1.8;color:#202124;margin-top:10px;">'
+      + '<b>何が起きるか</b><br>'
+      + 'いま開いている車だけを画面に出し、ほかの車を隠します。'
+      + '運転中に自分の車だけを見たいときに使ってください。'
+      + '<div style="font-weight:800;margin:14px 0 4px;">戻し方</div>'
+      + 'もう一度ハンドルを押すか、上に出る<b>［すべての車］</b>を押すと、全部の車に戻ります。'
+      + '<div style="font-weight:800;margin:14px 0 4px;">覚えます</div>'
+      + 'この端末では、次に開いたときも同じ車だけが出ます。'
+      + 'その日にその車が走っていないときは、自動で全部の車に戻ります。'
+      + '<div style="font-weight:800;margin:14px 0 4px;">記録には影響しません</div>'
+      + '隠すだけです。打刻・出発・帰着は、これまでどおり残ります。'
+      + '</div>'
+      + '<div style="text-align:right;margin-top:16px;">'
+      + '<button type="button" class="sr-help-ok" style="padding:9px 22px;border:none;'
+      + 'border-radius:9px;background:#1a73e8;color:#fff;font-weight:700;'
+      + 'font-size:0.9rem;cursor:pointer;">閉じる</button></div></div>';
+    document.body.appendChild(back);
+    function close() { back.remove(); }
+    back.onclick = function (e) { if (e.target === back) close(); };
+    back.querySelector('.sr-help-ok').onclick = close;
+  }
+
   function accHtml(vs, active) {   // soge-run-acc-v1
-    return vs.map(function (v, i) {
+    // soge-run-only-v1: この車だけを出しているときは、ほかを飛ばす
+    var _only = state.onlyCar || '';
+    var _hidden = 0, _shown = 0;
+    var _html = vs.map(function (v, i) {
       var open = (i === active);
+      if (_only && String(v.key) !== _only) { _hidden += 1; return ''; }
+      _shown += 1;
       var un = !!v.unassigned;
       var c = accCount(v);
       var nx = accNext(v);
@@ -1876,8 +1986,19 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         + '<span class="cnt">' + cnt + '</span>'
         + '<span class="ar">' + (open ? '▲' : '▼') + '</span>'
         + '</button>';
+      /* soge-run-only-v1: 開いた車の中に「この車だけ表示」を置く。
+         ★見出し(.sr-ac-h)は button なので、その中にボタンは置けない。 */
+      var onlyRow = '<div class="sr-ac-only">'
+        + '<button type="button" class="sr-only-b'
+          + (_only === String(v.key) ? ' on' : '') + '"'
+          + ' data-only="' + escA(v.key) + '"'
+          + ' title="この車両のみを表示する" aria-label="この車両のみを表示する">'
+          + SR_WHEEL + '</button>'
+        + '<button type="button" class="sr-only-q" data-onlyq="1"'
+          + ' title="このボタンの説明" aria-label="このボタンの説明">？</button>'
+        + '</div>';
       var body = open
-        ? '<div class="sr-ac-b" id="srAccBody"></div>'
+        ? (onlyRow + '<div class="sr-ac-b" id="srAccBody"></div>')
         : ('<div class="sr-ac-n">'
             + (un
                 ? 'このままだと、この方は誰にも運ばれません。'
@@ -1889,6 +2010,20 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       return '<div class="sr-ac' + (open ? ' open' : '') + (un ? ' un' : '') + '">'
         + head + body + '</div>';
     }).join('');
+    /* soge-run-only-v1: 選んだ車がその日いない。黙って空の画面にしない。全部に戻す。 */
+    if (_only && !_shown) {
+      state.onlyCar = '';
+      try { localStorage.setItem('soge_run_only', ''); } catch (e) {}
+      return accHtml(vs, active);
+    }
+    /* soge-run-only-v1: 1台だけにしているときは、必ず戻る道を出す。
+       ★出さないと「他の車が消えた」と思われる。 */
+    if (_only && _hidden) {
+      _html = '<div class="sr-only-bar">'
+        + '<span>この車だけを表示しています（ほか ' + _hidden + ' 台は隠れています）</span>'
+        + '<button type="button" data-onlyoff="1">すべての車</button></div>' + _html;
+    }
+    return _html;
   }
 
   /* ===== soge-run-list-v1: その日の全部を上から順に見る「一覧」 =====
@@ -1910,6 +2045,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     else tm = '<span class="tm pl">' + (s.planned_at ? ('予定 ' + esc(s.planned_at)) : '—') + '</span>';
     return '<div class="sr-lr ' + cls + '">'
       + '<span class="no">' + (i + 1) + '</span>'
+      /* soge-list-type-v1: 迎えか送りかを色で出す。中間便は混ざるので必須。 */
+      + '<span class="sr-ty ' + (s.type === 'dropoff' ? 'dp' : 'pu') + '">'
+        + (s.type === 'dropoff' ? '送' : '迎') + '</span>'
       + '<span class="nm">' + esc(s.user_name) + '</span>'
       + (s.is_wheelchair ? '<span class="bg">車いす</span>' : '')
       + (s.is_leave ? '<span class="bg">休み連絡</span>' : (s.is_absent ? '<span class="bg">休み</span>' : ''))
@@ -2104,14 +2242,25 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
 
     var out = groups.map(function (g) {
       var nAll = 0, nDone = 0;
+      /* soge-list-type-v1: この便に迎えと送りがどれだけ混ざっているかを数える。
+         ★数え方は「◯名」と同じ（休みの方は数えない）。
+           別の数え方にすると、見出しの中で数が食い違って読めなくなる。 */
+      var nPu = 0, nDp = 0;
       g.cars.forEach(function (c) {
         (c.t.stops || []).forEach(function (s) {
           if (s.is_absent || s.is_leave) return;
           nAll++;
           if (s.arrived_at) nDone++;
+          if (s.type === 'dropoff') nDp++; else nPu++;
         });
       });
-      var head = '<div class="sr-lg-h"><span>' + esc(g.label) + '</span>'
+      /* soge-list-type-v1: 混ざっている便（中間便）は、両方の数を出す。 */
+      var kindTag = (nPu && nDp)
+        ? ('<span class="sr-ty pu">迎 ' + nPu + '</span>'
+           + '<span class="sr-ty dp">送 ' + nDp + '</span>')
+        : (nDp ? '<span class="sr-ty dp">送り</span>'
+               : (nPu ? '<span class="sr-ty pu">迎え</span>' : ''));
+      var head = '<div class="sr-lg-h"><span>' + esc(g.label) + '</span>' + kindTag
         + (g.depart ? '<span class="tm">' + esc(g.depart) + ' 出発</span>' : '')
         + '<span class="n">' + nAll + '名'
           + (nDone ? ('／到着 ' + nDone + '名') : '') + '</span></div>';
