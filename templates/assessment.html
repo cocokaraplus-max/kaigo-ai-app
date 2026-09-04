@@ -1162,6 +1162,10 @@
           <div class="eval-section-body" style="padding:12px 14px;">
             <div style="font-weight:700;font-size:.9rem;color:#1a73e8;margin-bottom:6px;">目標期間</div>
             <div style="font-size:.72rem;color:#80868b;margin-bottom:10px;line-height:1.6;">開始日を入れると終了日が自動で入ります（区分別の月数は利用者基本情報の⚙️で設定）。ここで設定した期間は基本情報に反映され、履歴に残ります。</div>
+            <!-- goal-period-carry-v1: 目標を書き換えたのに期間がそのままのときだけ出す。
+                 HIROさん 2026-09-04「目標を変更した場合には
+                 『目標期間も設定してください』と伝えよう」 -->
+            <div id="eval-period-need" style="display:none;background:#fef7e0;border:1px solid #f9dfa0;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:.78rem;color:#8a5b00;line-height:1.6;font-weight:700;">目標を変更しました。<u>目標期間も設定してください。</u></div>
             <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
               <span style="width:44px;font-size:.82rem;font-weight:700;">短期</span>
               <input type="date" id="eval-short-period-from" style="padding:7px;border:1px solid #d8d4cc;border-radius:8px;font-family:inherit;">
@@ -2372,6 +2376,8 @@ function evalResetForm() {
     evalState.initialCare = '';
     const _cmBox = document.getElementById('eval-care-mismatch');
     if (_cmBox) { _cmBox.style.display = 'none'; _cmBox.innerHTML = ''; }
+    /* goal-period-carry-v1: 目標の欄を空にしたので、期間の案内も消す。 */
+    if (window._evalPeriodNotice) window._evalPeriodNotice();
     evalUpdateStatus();
 }
 
@@ -2460,10 +2466,92 @@ function evalGoalPeriodMonths(kind){ var cat=evalGoalPeriodCat(); var cfg=(windo
 function evalSetupPeriodAuto(fromId,toId,kind){
   var fromEl=document.getElementById(fromId); if(!fromEl) return;
   function fill(){ if(!fromEl.value) return; var toEl=document.getElementById(toId); if(!toEl) return;
-    var months=evalGoalPeriodMonths(kind); var pr=fromEl.value.split('-'); var y=parseInt(pr[0]),mo=parseInt(pr[1]),d=parseInt(pr[2]);
-    var ny=y,nm=mo+months; while(nm>12){nm-=12;ny++;} var maxDay=new Date(ny,nm,0).getDate(); var sd=Math.min(d,maxDay);
-    var end=new Date(ny,nm-1,sd-1); toEl.value=end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')+'-'+String(end.getDate()).padStart(2,'0'); }
+    /* goal-period-endmonth-v1: 終了日は【開始月から数えて N か月目の月末】。
+       HIROさん 2026-09-04:
+         「月途中で目標変更して9月15日を開始日とした場合、11月末を終了日にする。
+           基本の期間は3ヶ月だが、途中の場合には1日から3ヶ月とみなした期間を設定する」
+       ★前は「開始日の N か月後の前日」だった。9/15開始なら12/14になり、
+         月の途中で終わるので、月ごとの報告の締めと合わなかった。
+       ★1日から始めたときは前と同じ結果になる（9/1 → 11/30）。
+       ★6か月・12か月の設定でも同じ決まりで動く。 */
+    /* goal-period-endrule-v1: 事業所の設定（管理者MENU）に従う。
+       ★利用者基本情報と【同じ形】。片方だけ直さないこと。 */
+    var v=_goalPeriodEnd(fromEl.value, evalGoalPeriodMonths(kind), _goalPeriodEndRule());
+    if(v) toEl.value=v; }
   fromEl.addEventListener('change',fill); fromEl.addEventListener('blur',fill);
+}
+/* goal-period-carry-v1: 目標期間まわりの共通部品。
+   ★ここまで、期間の欄の id は3か所にばらばらに書かれていた。
+     一つにまとめて、どこも同じものを見るようにする。 */
+var _EVP_MAP=[['short_goal_period_from','eval-short-period-from'],
+              ['short_goal_period_to','eval-short-period-to'],
+              ['long_goal_period_from','eval-long-period-from'],
+              ['long_goal_period_to','eval-long-period-to']];
+var _EVP_LABEL={short_goal_period_from:'短期目標期間（開始）',
+                short_goal_period_to:'短期目標期間（終了）',
+                long_goal_period_from:'長期目標期間（開始）',
+                long_goal_period_to:'長期目標期間（終了）'};
+var _EVG_NEW_IDS=['short_goal_new','long_goal_new',
+                  'short_goal_function_new','short_goal_activity_new','short_goal_participation_new',
+                  'long_goal_function_new','long_goal_activity_new','long_goal_participation_new'];
+/* 期間の欄が、開いたときから変わっているか。変わった項目の名前を返す。 */
+window._evalPeriodChanged = function(){
+  var b = window._evalPeriodBase || {};
+  var out = [];
+  _EVP_MAP.forEach(function(pp){
+    var el=document.getElementById(pp[1]);
+    var now=el?(el.value||'').trim():'';
+    var was=((b[pp[0]]==null?'':b[pp[0]])+'').trim();
+    if(now!==was) out.push(pp[0]);
+  });
+  return out;
+};
+/* 新しい目標が書かれているか。 */
+window._evalHasNewGoal = function(){
+  var yes=false;
+  _EVG_NEW_IDS.forEach(function(id){
+    var el=document.getElementById(id);
+    if(el && (el.value||'').trim()) yes=true;
+  });
+  return yes;
+};
+/* 「目標期間も設定してください」を出し入れする。
+   ★目標を書き換えたのに期間がそのままのときだけ出す。
+     いつも出していると読まれなくなる。 */
+window._evalPeriodNotice = function(){
+  var box=document.getElementById('eval-period-need');
+  if(!box) return;
+  var need = window._evalHasNewGoal() && (window._evalPeriodChanged().length === 0);
+  box.style.display = need ? '' : 'none';
+};
+/* goal-period-endrule-v1: 終了日の出し方。事業所の設定で2通り。
+     month_end  … 開始月から数えて N か月目の【月末】（9/15開始 → 11/30）
+     day_before … 開始日の N か月後の【前日】       （9/15開始 → 12/14）
+   ★1日から始めたときは、どちらでも同じ日になります。
+   ★この関数は【利用者基本情報】と【評価ページ】の2か所に、
+     同じ形で置いてあります。片方だけ直すと、初回に入れた終了日と
+     評価で入れ直した終了日が食い違います（2026-09-04 に実際そうなっていた）。 */
+function _goalPeriodEnd(fromValue, months, rule){
+  var pr=String(fromValue||'').split('-');
+  if(pr.length!==3) return '';
+  var y=parseInt(pr[0],10), mo=parseInt(pr[1],10), d=parseInt(pr[2],10);
+  if(!y||!mo||!d||!months) return '';
+  var end;
+  if(rule==='day_before'){
+    var ny=y, nm=mo+months; while(nm>12){nm-=12;ny++;}
+    var maxDay=new Date(ny,nm,0).getDate();
+    end=new Date(ny,nm-1,Math.min(d,maxDay)-1);
+  }else{
+    var my=y, mm=mo+months-1; while(mm>12){mm-=12;my++;}
+    end=new Date(my,mm,0);   /* 日に 0 を渡すと、その月の末日になる */
+  }
+  return end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')
+         +'-'+String(end.getDate()).padStart(2,'0');
+}
+/* 事業所の設定を読む。設定が無ければ month_end。 */
+function _goalPeriodEndRule(){
+  var r=(window._goalPeriodCfg||{}).end_rule;
+  return (r==='day_before')?'day_before':'month_end';
 }
 async function evalLoadGoalPeriodCfg(){ try{var r=await fetch('/api/goal_period_config');var j=await r.json(); if(j.status==='success') window._goalPeriodCfg=j.config;}catch(e){} }
 window.evalSetGoalDisplay = function(initial) {
@@ -2488,9 +2576,24 @@ window.evalSetGoalDisplay = function(initial) {
       evalSetupPeriodAuto('eval-short-period-from','eval-short-period-to','short');
       evalSetupPeriodAuto('eval-long-period-from','eval-long-period-to','long');
       evalLoadGoalPeriodCfg();
+      /* goal-period-carry-v1: 目標の欄と期間の欄を見張って、案内を出し入れする。 */
+      _EVG_NEW_IDS.forEach(function(id){
+        var el=document.getElementById(id);
+        if(el) el.addEventListener('input', function(){ window._evalPeriodNotice(); });
+      });
+      _EVP_MAP.forEach(function(pp){
+        var el=document.getElementById(pp[1]);
+        if(el) el.addEventListener('change', function(){ window._evalPeriodNotice(); });
+      });
     }
     var _pf={'eval-short-period-from':initial.short_goal_period_from,'eval-short-period-to':initial.short_goal_period_to,'eval-long-period-from':initial.long_goal_period_from,'eval-long-period-to':initial.long_goal_period_to};
     Object.keys(_pf).forEach(function(id){ var el=document.getElementById(id); if(el) el.value=_pf[id]||''; });
+    /* goal-period-carry-v1: 開いたときの期間を控えておく。
+       ★これが無いと「期間が変わったか」を見分けられない。
+         見分けられないと、毎回いちいち窓が出て邪魔になる。 */
+    window._evalPeriodBase = {};
+    _EVP_MAP.forEach(function(pp){ window._evalPeriodBase[pp[0]] = (_pf[pp[1]]||''); });
+    if (window._evalPeriodNotice) window._evalPeriodNotice();
 }
 function evalUpdateSectionBadges(data) {
     // 訓練目標バッジ（表示のみになったため判定スキップ）
@@ -2559,7 +2662,10 @@ window.evalSave = async function() {
         if (result.status === 'success') {
             const modeMsg = result.mode === 'insert' ? '保存しました' : '更新しました';
             showToast(modeMsg, 'success');
-            window._evalMaybeApplyGoals(data);  /* goal-link-history-v1 */
+            /* goal-period-carry-v1: 窓の返事を【待ってから】下の片づけに進む。
+               ★前はここで待たずに進んでいた。窓の後ろで利用者の選択が外れ、
+                 入れた新目標も消えるので、窓を見落とすと取り返せなかった。 */
+            await window._evalMaybeApplyGoals(data);  /* goal-link-history-v1 */
             evalState.lockAcquired = false;
             evalState.currentEvalId = null;
             // フォームをリセット + 利用者選択も解除
@@ -2603,42 +2709,88 @@ window._evalMaybeApplyGoals = function(data){
     var v=((data[m[0]]!=null?data[m[0]]:'')+'').trim();
     if(v){ goals[m[1]]=v; list.push({label:m[2], val:v}); }
   });
-  if(!list.length) return;
   // goal-period-config-v1: 期間も基本情報へ反映(履歴化)
-  [['short_goal_period_from','eval-short-period-from'],['short_goal_period_to','eval-short-period-to'],
-   ['long_goal_period_from','eval-long-period-from'],['long_goal_period_to','eval-long-period-to']].forEach(function(pp){
+  //   ★同じ値は /api/goal/apply が書き換えない作りなので、毎回送ってよい。
+  _EVP_MAP.forEach(function(pp){
     var el=document.getElementById(pp[1]); var v=el?(el.value||'').trim():''; if(v) goals[pp[0]]=v;
   });
+  /* goal-period-carry-v1: 【期間だけ変えたとき】もここで拾う。
+     ★これまでは、この少し上で「list が空なら何もせずに戻る」としていた。
+       list に入るのは【新しい目標の文】だけなので、
+       「目標は据え置きで期間だけ延ばす」は窓も出ず、保存もされなかった。
+       職員には成功したように見えていた（HIROさんの指摘 2026-09-04）。 */
+  var pchg = window._evalPeriodChanged ? window._evalPeriodChanged() : [];
+  /* goal-period-carry-v1: 空にした欄は、窓に出さない。
+     ★/api/goal/apply は【空の値では書き換えない】作り。
+       出しても消せないので、消せるかのように見せない。 */
+  pchg = pchg.filter(function(f){ return !!goals[f]; });
+  var pbase = window._evalPeriodBase || {};
+  var plist = pchg.map(function(f){
+    return {label:(_EVP_LABEL[f]||f),
+            val:(goals[f]||''),
+            old:((pbase[f]==null?'':pbase[f])+'').trim()};
+  });
+  if(!list.length && !plist.length) return;
+  var periodOnly = !list.length;
+
   function esc(x){return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
   var uname=data.user_name||'';
-  var ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:12000;display:flex;align-items:center;justify-content:center;padding:16px;';
-  var rows=list.map(function(g){
-    return '<div style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'
-      +'<div style="font-size:.7rem;color:#5f6368;font-weight:700;">'+esc(g.label)+'</div>'
-      +'<div style="font-size:.92rem;color:#1a73e8;margin-top:2px;line-height:1.5;">'+esc(g.val)+'</div></div>';
-  }).join('');
-  ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;padding:18px 18px 14px;box-shadow:0 10px 40px rgba(0,0,0,.3);">'
-    +'<div style="font-weight:800;font-size:1.02rem;margin-bottom:4px;">利用者基本情報の目標を書き換えますがよろしいですか？</div>'
-    +'<div style="font-size:.78rem;color:#5f6368;margin-bottom:10px;line-height:1.6;">'+esc(uname)+'さんの基本情報の目標を、今回入力した新しい目標に更新します。変更前の内容は履歴に残ります。</div>'
-    +'<div style="max-height:46vh;overflow:auto;margin-bottom:12px;">'+rows+'</div>'
-    +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
-    +'<button id="glNo" style="background:#fff;color:#5f6368;border:1px solid #dfe3e8;border-radius:9px;padding:9px 15px;font-weight:700;cursor:pointer;">いいえ</button>'
-    +'<button id="glYes" style="background:#1a73e8;color:#fff;border:none;border-radius:9px;padding:9px 18px;font-weight:800;cursor:pointer;">はい、書き換える</button>'
-    +'</div></div>';
-  document.body.appendChild(ov);
-  function close(){ ov.remove(); }
-  ov.querySelector('#glNo').onclick=close;
-  ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
-  ov.querySelector('#glYes').onclick=async function(){
-    var y=ov.querySelector('#glYes'); y.disabled=true; y.textContent='更新中…';
-    try{
-      var r=await fetch('/api/goal/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:uname,goals:goals,year_month:(data.year_month||'')})});
-      var d=await r.json(); close();
-      if(d&&d.status==='success') showToast('基本情報の目標を更新しました（'+(d.updated||0)+'件）','success');
-      else showToast((d&&d.message)||'目標の更新に失敗しました','error');
-    }catch(e){ close(); showToast('通信エラーが発生しました','error'); }
-  };
+  return new Promise(function(resolve){
+    var ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:12000;display:flex;align-items:center;justify-content:center;padding:16px;';
+    var rows=list.map(function(g){
+      return '<div style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'
+        +'<div style="font-size:.7rem;color:#5f6368;font-weight:700;">'+esc(g.label)+'</div>'
+        +'<div style="font-size:.92rem;color:#1a73e8;margin-top:2px;line-height:1.5;">'+esc(g.val)+'</div></div>';
+    }).join('');
+    /* goal-period-carry-v1: 期間は【前 → 後】で見せる。
+       ★日付だけ並べても、どこが変わったのか読めない。 */
+    rows += plist.map(function(p){
+      return '<div style="padding:8px 4px;border-bottom:1px solid #f0f0f0;">'
+        +'<div style="font-size:.7rem;color:#5f6368;font-weight:700;">'+esc(p.label)+'</div>'
+        +'<div style="font-size:.92rem;margin-top:2px;line-height:1.5;">'
+        +'<span style="color:#9aa0a6;text-decoration:line-through;">'+esc(p.old||'（未設定）')+'</span>'
+        +'<span style="color:#9aa0a6;"> → </span>'
+        +'<span style="color:#1a73e8;font-weight:700;">'+esc(p.val||'（空）')+'</span>'
+        +'</div></div>';
+    }).join('');
+    var title = periodOnly
+      ? '期間を繰越で変更しますか？'
+      : '利用者基本情報の目標を書き換えますがよろしいですか？';
+    var lead = periodOnly
+      ? (esc(uname)+'さんの目標はそのままで、<b>目標期間だけ</b>を変更します。変更前の期間は履歴に残ります。')
+      : (esc(uname)+'さんの基本情報の目標を、今回入力した新しい目標に更新します。変更前の内容は履歴に残ります。');
+    /* goal-period-carry-v1: 目標を書き換えるのに期間がそのままなら、ここでも伝える。 */
+    var warn = (!periodOnly && !plist.length)
+      ? '<div style="background:#fef7e0;border:1px solid #f9dfa0;border-radius:8px;padding:8px 10px;margin-bottom:10px;font-size:.76rem;color:#8a5b00;line-height:1.6;font-weight:700;">目標期間も設定してください。（今回は期間を変えていません）</div>'
+      : '';
+    var yesLabel = periodOnly ? 'はい、繰り越す' : 'はい、書き換える';
+    ov.innerHTML='<div style="background:#fff;border-radius:14px;max-width:460px;width:100%;padding:18px 18px 14px;box-shadow:0 10px 40px rgba(0,0,0,.3);">'
+      +'<div style="font-weight:800;font-size:1.02rem;margin-bottom:4px;">'+title+'</div>'
+      +'<div style="font-size:.78rem;color:#5f6368;margin-bottom:10px;line-height:1.6;">'+lead+'</div>'
+      +warn
+      +'<div style="max-height:46vh;overflow:auto;margin-bottom:12px;">'+rows+'</div>'
+      +'<div style="display:flex;gap:8px;justify-content:flex-end;">'
+      +'<button id="glNo" style="background:#fff;color:#5f6368;border:1px solid #dfe3e8;border-radius:9px;padding:9px 15px;font-weight:700;cursor:pointer;">いいえ</button>'
+      +'<button id="glYes" style="background:#1a73e8;color:#fff;border:none;border-radius:9px;padding:9px 18px;font-weight:800;cursor:pointer;">'+yesLabel+'</button>'
+      +'</div></div>';
+    document.body.appendChild(ov);
+    var done=false;
+    /* goal-period-carry-v1: 閉じたら必ず1回だけ返事を返す。
+       ★返さないと、呼んだ側の await がずっと止まり、保存後の画面が固まる。 */
+    function close(){ if(done) return; done=true; ov.remove(); resolve(); }
+    ov.querySelector('#glNo').onclick=close;
+    ov.addEventListener('click',function(e){ if(e.target===ov) close(); });
+    ov.querySelector('#glYes').onclick=async function(){
+      var y=ov.querySelector('#glYes'); y.disabled=true; y.textContent='更新中…';
+      try{
+        var r=await fetch('/api/goal/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_name:uname,goals:goals,year_month:(data.year_month||'')})});
+        var d=await r.json(); close();
+        if(d&&d.status==='success') showToast((periodOnly?'目標期間を変更しました（':'基本情報の目標を更新しました（')+(d.updated||0)+'件）','success');
+        else showToast((d&&d.message)||'目標の更新に失敗しました','error');
+      }catch(e){ close(); showToast('通信エラーが発生しました','error'); }
+    };
+  });
 };
 
 // goal-link-history-v1: 目標変更履歴を「現在の目標」下に表示

@@ -16079,6 +16079,12 @@ _GOAL_PERIOD_DEFAULT = {
 
 def _goal_period_config(supabase, f_code):
     cfg = {k: dict(v) for k, v in _GOAL_PERIOD_DEFAULT.items()}
+    # goal-period-endrule-v1: 終了日の決め方も、事業所ごとに選べるようにする。
+    #   month_end  … 開始月から数えて N か月目の【月末】（9/15開始 → 11/30）
+    #   day_before … 開始日の N か月後の【前日】       （9/15開始 → 12/14）
+    #   ★初期値は month_end（HIROさん判断 2026-09-04）。
+    #   ★同じ admin_settings の中身（JSON）に入れる。列も表も増やさない。
+    cfg["end_rule"] = "month_end"
     try:
         r = supabase.table("admin_settings").select("value").eq(
             "facility_code", f_code).eq("key", "goal_period_months").execute()
@@ -16086,7 +16092,12 @@ def _goal_period_config(supabase, f_code):
             import json as _j
             raw = r.data[0].get("value")
             data = _j.loads(raw) if isinstance(raw, str) else (raw or {})
-            for cat in cfg:
+            # goal-period-endrule-v1: end_rule が混ざるので、区分の一覧の方を回す。
+            #   ★cfg を回すと end_rule まで見にいく。いまは辞書かどうかで
+            #     はじけているが、あとで形が変わったときに壊れる。
+            if data.get("end_rule") in ("month_end", "day_before"):
+                cfg["end_rule"] = data["end_rule"]
+            for cat in _GOAL_PERIOD_DEFAULT:
                 if isinstance(data.get(cat), dict):
                     for k in ("short", "long"):
                         v = data[cat].get(k)
@@ -16190,6 +16201,9 @@ def api_goal_period_config_save():
         for cat in ("jigyou", "youshien", "yokaigo"):
             c = incoming.get(cat) or {}
             clean[cat] = {"short": _iv(c.get("short"), _GOAL_PERIOD_DEFAULT[cat]["short"]), "long": _iv(c.get("long"), _GOAL_PERIOD_DEFAULT[cat]["long"])}
+        # goal-period-endrule-v1: 終わり方。知らない値が来たら month_end に倒す。
+        _er = str(incoming.get("end_rule") or "").strip()
+        clean["end_rule"] = _er if _er in ("month_end", "day_before") else "month_end"
         supabase = get_supabase()
         val = _j.dumps(clean, ensure_ascii=False)
         ex = supabase.table("admin_settings").select("id").eq(
@@ -29606,6 +29620,160 @@ def _soge_month_range(ym):  # soge-print-v2
     return "%04d-%02d-01" % (y, m), "%04d-%02d-01" % (ny, nm)
 
 
+def _soge_month_plan_days(supabase, f_code, ym, have_dates, settings):  # soge-print-plan-v1
+    """まだ運行表が無い日を「予定」として組み立てる。★どこにも保存しない。
+
+    記録表は soge_days（当日の運行表）だけを見ている。当日の運行表は
+    運行画面をその日付で開いたときに作られるので、まだ誰も開いていない
+    先の日は行そのものが無い。HIROさんの指摘（2026-09-04、本番 9/7 月）。
+
+    ★先に作ってしまう手は採らない。過ぎた日の運行表は
+      「実際にどう走ったか」の記録で、作った瞬間に
+      「走ったことになる」データが増える。見るために書いてはいけない。
+
+    戻り値: (日の行のならび, 立ち寄り{day_id: [...]})
+            どちらも soge_days / soge_stops と同じ形。
+            記録表の組み立てをそのまま使えるようにしてある。
+    """
+    start, end = _soge_month_range(ym)
+    today = datetime.now(_soge_jst()).strftime("%Y-%m-%d")
+
+    # 出す日を先に決める。★過ぎた日は絶対に入れない。
+    from datetime import date as _pl_date, timedelta as _pl_td
+    try:
+        _sy, _sm, _sd = [int(x) for x in start.split("-")]
+        _ey, _em, _ed = [int(x) for x in end.split("-")]
+        _cur, _end = _pl_date(_sy, _sm, _sd), _pl_date(_ey, _em, _ed)
+    except Exception:
+        return [], {}
+    want = []
+    while _cur < _end:
+        _ds = _cur.isoformat()
+        if _ds >= today and _ds not in have_dates:
+            want.append(_ds)
+        _cur += _pl_td(days=1)
+    if not want:
+        return [], {}
+
+    # ★月ぶんをまとめて引く。日ごとに引くと31日分で100回を超え、
+    #   記録表を開くたびに待たされる。
+    # ★読めなかったら【何も出さない】。読めない＝配車が分からない、なので
+    #   間違った予定を出すより出さないほうが安全（fail closed）。
+    try:
+        _pr = (supabase.table("soge_date_plans").select("service_date")
+               .eq("facility_code", f_code)
+               .gte("service_date", start).lt("service_date", end).execute())
+        plan_dates = set(str(x.get("service_date"))[:10] for x in (_pr.data or []))
+    except Exception as e:
+        print("[soge-print-plan] その日の配車の宣言を読めませんでした: %s" % e, flush=True)
+        return [], {}
+    try:
+        _dr = (supabase.table("soge_date_routes").select("*")
+               .eq("facility_code", f_code)
+               .gte("service_date", start).lt("service_date", end).execute())
+        by_date = {}
+        for x in (_dr.data or []):
+            by_date.setdefault(str(x.get("service_date"))[:10], []).append(x)
+    except Exception as e:
+        print("[soge-print-plan] その日の配車を読めませんでした: %s" % e, flush=True)
+        return [], {}
+    try:
+        _wr = (supabase.table("soge_routes").select("*")
+               .eq("facility_code", f_code).execute())
+        by_wd = {}
+        for x in (_wr.data or []):
+            by_wd.setdefault(x.get("weekday"), []).append(x)
+    except Exception as e:
+        print("[soge-print-plan] 曜日の配車を読めませんでした: %s" % e, flush=True)
+        return [], {}
+
+    try:
+        pmap = dict((str(p["id"]), p) for p in get_patients(supabase, f_code))
+    except Exception as e:
+        print("[soge-print-plan] 利用者を読めませんでした: %s" % e, flush=True)
+        return [], {}
+    try:
+        _vr = (supabase.table("rec_cars").select("id,name,plate_no")
+               .eq("facility_code", f_code).execute())
+        vmap = dict((str(v["id"]), v) for v in (_vr.data or []))
+    except Exception:
+        vmap = {}
+
+    torder = dict((t["key"], i) for i, t in enumerate(settings["trips"]))
+    tname = dict((t["key"], t.get("name") or "") for t in settings["trips"])
+
+    days, stops_by = [], {}
+    for ds in want:
+        by_date_plan = ds in plan_dates
+        rows = (by_date.get(ds) if by_date_plan else by_wd.get(_soge_date_weekday(ds))) or []
+        if not rows:
+            continue
+        wk = visit_week_of_month(ds)
+
+        def _rsort(r):
+            try:
+                n = int(r.get("vehicle_no")) if r.get("vehicle_no") is not None else 1
+            except (TypeError, ValueError):
+                n = 1
+            return (torder.get(r.get("trip_key"), 99), n)
+
+        for r in sorted(rows, key=_rsort):
+            try:
+                vno = int(r.get("vehicle_no")) if r.get("vehicle_no") is not None else 1
+            except (TypeError, ValueError):
+                vno = 1
+            # ★いまの記録表と同じ規則。走る車だけを載せる。
+            #   0（まだ車が決まっていない人）・-1（送迎なし）は出さない。
+            if vno <= 0:
+                continue
+            slist = []
+            for s in (r.get("stop_order") or []):
+                pid = str(s.get("patient_id") or "")
+                prof = pmap.get(pid) or {}
+                is_guest = bool(s.get("guest"))
+                # patient-active-v1: 利用を中止した方は、その日には出さない
+                if prof and not is_guest and not patient_active_on(prof, ds):
+                    continue
+                # visit-nth-apply-v1: 曜日の配車には「第2火曜だけ」の人も
+                #   全部の火曜に入っている。その日に当たらない人は落とす。
+                #   ★その日だけの配車は日付を名指しで決めたものなので絞らない。
+                if not by_date_plan:
+                    _n = int(s.get("nth") or 0)
+                    if _n >= 1 and _n != wk:
+                        continue
+                slist.append({
+                    "id": None,                       # まだ記録ではないので id は無い
+                    "user_name": (prof.get("user_name") or s.get("name") or ""),
+                    "stop_type": s.get("type") or "pickup",
+                    "arrived_at": None,
+                    "is_absent": False,
+                    "seq": len(slist),
+                })
+            if not slist:
+                continue
+            v = vmap.get(str(r.get("vehicle_id"))) or {}
+            did = "plan-%s-%s-%s" % (ds, r.get("trip_key"), vno)
+            days.append({
+                "id": did,
+                "soge_print_plan_v1": True,
+                "is_plan": True,                      # ★予定の行の目印
+                "service_date": ds,
+                "trip_key": r.get("trip_key"),
+                "trip_name": tname.get(r.get("trip_key"), ""),
+                "vehicle_no": vno,
+                "vehicle_id": (str(r["vehicle_id"]) if r.get("vehicle_id") else None),
+                "vehicle_name": (v.get("name") or ("車 %s" % vno)),
+                "plate_no": v.get("plate_no") or "",
+                "driver_name": r.get("driver_name") or "",
+                "departed_at": None,
+                "returned_at": None,
+                "note": "",
+                "is_extra": False,
+            })
+            stops_by[did] = slist
+    return days, stops_by
+
+
 def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
     """その月の運行を車両ごとにまとめる。
 
@@ -29631,8 +29799,8 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
         return k > 0
 
     days = [d for d in days if _is_real_car(d)]
-    if not days:
-        return []
+    # soge-print-plan-v1: ここで戻らない。運行表がまだ1つも無い月でも、
+    #   これからの予定は出すため。空かどうかは、予定を足したあとで見る。
 
     sr = (supabase.table("soge_stops").select("*")
           .eq("facility_code", f_code)
@@ -29642,6 +29810,18 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
         by_day.setdefault(s.get("day_id"), []).append(s)
 
     settings = get_soge_settings(supabase, f_code)
+
+    # soge-print-plan-v1: まだ運行表が無い日を、予定として足す。
+    #   ★soge_days / soge_stops と同じ形で作るので、
+    #     この下の組み立て（並べ替え・色・休みの印）はそのまま使える。
+    _have = set(str(d.get("service_date"))[:10] for d in days)
+    _pdays, _pstops = _soge_month_plan_days(supabase, f_code, ym, _have, settings)
+    if _pdays:
+        days = days + _pdays
+        by_day.update(_pstops)
+    if not days:
+        return []
+
     torder = dict((t["key"], i) for i, t in enumerate(settings["trips"]))
     cmap = soge_color_map(supabase, f_code)      # soge-car-color-v1
 
@@ -29705,10 +29885,13 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
             } for x in days
                 if str(x.get("service_date"))[:10] == ds
                 and str(x["id"]) != str(d["id"])
-                and _is_real_car(x)],
+                and _is_real_car(x)
+                and not x.get("is_plan")],   # soge-print-plan-v1: 予定の行は移す先にしない
             # soge-past-admin-v1: 行ごとに「過ぎた日か」。記録表は1か月ぶんが
             #   1つの表に並ぶので、日ごとに分かれていないと出し分けられない。
             "past": (ds < datetime.now(_soge_jst()).strftime("%Y-%m-%d")),
+            # soge-print-plan-v1: まだ運行表が無い日。名前だけ並べて、時刻は空にする。
+            "is_plan": bool(d.get("is_plan")),
             "day_label": day_label,
             "day_first": (ds != last_date),
             "trip_name": d.get("trip_name") or "",

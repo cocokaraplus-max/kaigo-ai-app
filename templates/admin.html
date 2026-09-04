@@ -1054,6 +1054,52 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
     </button>
   </div>
 
+  {# ---- goal-period-endrule-v1: 目標期間の設定 ---- #}
+  <div class="section-box" id="goal-period-box">
+    <div class="section-box-title">
+      <span class="material-symbols-outlined">flag</span>目標期間の設定
+    </div>
+    <div style="font-size:0.78rem;color:#5f6368;margin-bottom:4px;line-height:1.7;">
+      利用者基本情報や評価ページで<b>開始日</b>を入れたときに、<b>終了日</b>が自動で入ります。その決まりをここで設定します。
+    </div>
+    <div style="font-size:0.74rem;color:#9aa0a6;margin-bottom:12px;line-height:1.7;">
+      ここを変えても、すでに保存されている目標期間は変わりません。これから入れる分の自動入力だけが変わります。
+    </div>
+
+    <div style="font-size:0.78rem;font-weight:700;color:#5f6368;margin:12px 0 6px;">終わり方</div>
+    <label style="display:flex;gap:8px;align-items:flex-start;padding:9px 10px;border:1px solid #e0e0e0;border-radius:9px;margin-bottom:6px;cursor:pointer;">
+      <input type="radio" name="gpr-rule" id="gpr-month-end" value="month_end" style="margin-top:3px;flex-shrink:0;">
+      <span style="font-size:0.84rem;line-height:1.6;"><b>月末に揃える</b><br>
+        <span style="color:#5f6368;font-size:0.76rem;">開始月から数えて◯か月目の月末まで。<br>例）3か月・9月15日から → <b>11月30日</b>まで</span></span>
+    </label>
+    <label style="display:flex;gap:8px;align-items:flex-start;padding:9px 10px;border:1px solid #e0e0e0;border-radius:9px;margin-bottom:6px;cursor:pointer;">
+      <input type="radio" name="gpr-rule" id="gpr-day-before" value="day_before" style="margin-top:3px;flex-shrink:0;">
+      <span style="font-size:0.84rem;line-height:1.6;"><b>開始日の前日まで</b><br>
+        <span style="color:#5f6368;font-size:0.76rem;">開始日から◯か月後の前日まで。<br>例）3か月・9月15日から → <b>12月14日</b>まで</span></span>
+    </label>
+
+    <div style="font-size:0.78rem;font-weight:700;color:#5f6368;margin:14px 0 6px;">区分ごとの月数</div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+      <span style="width:82px;font-size:0.82rem;font-weight:700;">事業対象者</span>
+      <label style="font-size:0.8rem;">短期 <input type="number" id="gpr-jigyou-short" min="1" max="60" style="width:62px;padding:6px;border:1px solid #d8d4cc;border-radius:7px;font-family:inherit;"> ヶ月</label>
+      <label style="font-size:0.8rem;">長期 <input type="number" id="gpr-jigyou-long" min="1" max="60" style="width:62px;padding:6px;border:1px solid #d8d4cc;border-radius:7px;font-family:inherit;"> ヶ月</label>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+      <span style="width:82px;font-size:0.82rem;font-weight:700;">要支援</span>
+      <label style="font-size:0.8rem;">短期 <input type="number" id="gpr-youshien-short" min="1" max="60" style="width:62px;padding:6px;border:1px solid #d8d4cc;border-radius:7px;font-family:inherit;"> ヶ月</label>
+      <label style="font-size:0.8rem;">長期 <input type="number" id="gpr-youshien-long" min="1" max="60" style="width:62px;padding:6px;border:1px solid #d8d4cc;border-radius:7px;font-family:inherit;"> ヶ月</label>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <span style="width:82px;font-size:0.82rem;font-weight:700;">要介護</span>
+      <label style="font-size:0.8rem;">短期 <input type="number" id="gpr-yokaigo-short" min="1" max="60" style="width:62px;padding:6px;border:1px solid #d8d4cc;border-radius:7px;font-family:inherit;"> ヶ月</label>
+      <label style="font-size:0.8rem;">長期 <input type="number" id="gpr-yokaigo-long" min="1" max="60" style="width:62px;padding:6px;border:1px solid #d8d4cc;border-radius:7px;font-family:inherit;"> ヶ月</label>
+    </div>
+
+    <button class="btn btn-primary" onclick="saveGoalPeriodAdmin()">
+      <span class="material-symbols-outlined">save</span>目標期間の設定を保存
+    </button>
+  </div>
+
   {# ---- 送迎設定 (soge-settings-v1) ---- #}
   <div class="section-box" id="soge-settings-box">
     <div class="section-box-title">
@@ -1462,9 +1508,52 @@ async function saveFacilityInfo() {
 document.addEventListener('DOMContentLoaded', function () {
   if (document.getElementById('fac-name')) loadFacilityInfo();
   if (document.getElementById('contract-card')) loadContractCard();
+  /* goal-period-endrule-v1: 設定タブの目標期間 */
+  if (document.getElementById('gpr-month-end')) loadGoalPeriodAdmin();
 });
 
 // 契約・お支払いカード (pricing-rebuild-v1)
+// ===== goal-period-endrule-v1 : 目標期間の設定（管理者MENU） =====
+//   ★ここまで、区分ごとの月数は【利用者基本情報の⚙️】でしか設定できなかった。
+//     事業所ごとの決まりなので、管理者MENUに一本化した（HIROさん 2026-09-04）。
+var _GPR_DEF = {jigyou:{short:6,long:12}, youshien:{short:3,long:6}, yokaigo:{short:3,long:6}};
+async function loadGoalPeriodAdmin() {
+  try {
+    var r = await fetch('/api/goal_period_config');
+    var j = await r.json();
+    if (j.status !== 'success') return;
+    var c = j.config || {};
+    var rule = (c.end_rule === 'day_before') ? 'day_before' : 'month_end';
+    var el = document.getElementById(rule === 'day_before' ? 'gpr-day-before' : 'gpr-month-end');
+    if (el) el.checked = true;
+    ['jigyou', 'youshien', 'yokaigo'].forEach(function (cat) {
+      var d = c[cat] || _GPR_DEF[cat];
+      var s = document.getElementById('gpr-' + cat + '-short');
+      if (s) s.value = (d.short != null ? d.short : _GPR_DEF[cat].short);
+      var l = document.getElementById('gpr-' + cat + '-long');
+      if (l) l.value = (d.long != null ? d.long : _GPR_DEF[cat].long);
+    });
+  } catch (e) {}
+}
+async function saveGoalPeriodAdmin() {
+  var cfg = {};
+  ['jigyou', 'youshien', 'yokaigo'].forEach(function (cat) {
+    var s = document.getElementById('gpr-' + cat + '-short');
+    var l = document.getElementById('gpr-' + cat + '-long');
+    cfg[cat] = {short: parseInt(s ? s.value : '', 10) || 0,
+                long: parseInt(l ? l.value : '', 10) || 0};
+  });
+  var db = document.getElementById('gpr-day-before');
+  cfg.end_rule = (db && db.checked) ? 'day_before' : 'month_end';
+  try {
+    var r = await fetch('/api/goal_period_config', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({config: cfg})});
+    var j = await r.json();
+    showAdminToast(j.status === 'success' ? '目標期間の設定を保存しました'
+                                          : (j.message || '保存に失敗しました'));
+  } catch (e) { showAdminToast('通信エラー'); }
+}
+
 async function loadContractCard() {
   var el = document.getElementById('contract-card');
   if (!el) return;
