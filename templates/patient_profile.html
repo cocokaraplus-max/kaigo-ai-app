@@ -534,11 +534,10 @@
       <div class="gpc-back" id="gpc-back">
   <div class="gpc">
     <h3>⚙️ 目標期間の自動入力設定</h3>
-    <div class="sub">開始日を入れた時に自動で入る終了日までの月数を、区分ごとに設定します（終了＝開始＋月数−1日）。この施設に保存されます。</div>
-    <div class="gpc-row"><span class="cat">事業対象者</span><label>短期<input type="number" id="gpc-jigyou-short" min="1" max="60">ヶ月</label><label>長期<input type="number" id="gpc-jigyou-long" min="1" max="60">ヶ月</label></div>
-    <div class="gpc-row"><span class="cat">要支援</span><label>短期<input type="number" id="gpc-youshien-short" min="1" max="60">ヶ月</label><label>長期<input type="number" id="gpc-youshien-long" min="1" max="60">ヶ月</label></div>
-    <div class="gpc-row"><span class="cat">要介護</span><label>短期<input type="number" id="gpc-yokaigo-short" min="1" max="60">ヶ月</label><label>長期<input type="number" id="gpc-yokaigo-long" min="1" max="60">ヶ月</label></div>
-    <div class="gpc-actions"><button type="button" onclick="closeGoalPeriodConfig()">閉じる</button><button type="button" class="save" id="gpc-save" onclick="saveGoalPeriodConfig()">保存</button></div>
+    <!-- goal-period-endrule-v1: 設定は管理者MENUに一本化した（HIROさん 2026-09-04）。
+         ★ここでも直せると、同じ決まりの入口が2つになって食い違う。 -->
+    <div class="sub">区分ごとの月数と、終了日の決め方（月末に揃える／開始日の前日まで）は<br><b>管理者MENU ＞ 設定 ＞ 目標期間の設定</b> にまとめました。</div>
+    <div class="gpc-actions"><button type="button" onclick="closeGoalPeriodConfig()">閉じる</button><a href="/admin" style="display:inline-flex;align-items:center;gap:6px;background:#1a73e8;color:#fff;border-radius:9px;padding:9px 16px;font-weight:800;text-decoration:none;font-size:0.86rem;">管理者MENUを開く</a></div>
   </div>
 </div>
 <div class="profile-section-header">🎯 目標設定</div>
@@ -1043,32 +1042,48 @@ function setupGoalPeriodAuto(fromId, toId, kind) {
   if (!fromEl) return;
   function autoFill() {
     if (!fromEl.value) return;
-    const months = goalPeriodMonths(kind);
     const toEl = document.getElementById(toId);
-    if (toEl) {
-      const parts = fromEl.value.split('-');
-      const y = parseInt(parts[0]);
-      const mo = parseInt(parts[1]);
-      const d = parseInt(parts[2]);
-      // N ヶ月後の前日 = 開始日 + N ヶ月 - 1日
-      let newYear = y;
-      let newMonth = mo + months;
-      while (newMonth > 12) { newMonth -= 12; newYear++; }
-      // まずN ヶ月後の同日を求め、1日引く
-      const maxDay = new Date(newYear, newMonth, 0).getDate();
-      const sameDay = Math.min(d, maxDay);
-      // 1日前
-      const endDate = new Date(newYear, newMonth - 1, sameDay - 1);
-      const yy = String(endDate.getFullYear());
-      const mm = String(endDate.getMonth() + 1).padStart(2, '0');
-      const dd = String(endDate.getDate()).padStart(2, '0');
-      toEl.value = `${yy}-${mm}-${dd}`;
-    }
+    if (!toEl) return;
+    /* goal-period-endrule-v1: 終了日の出し方を、評価ページと【同じ形】にした。
+       ★ここは「開始日の N か月後の前日」だけを書いていた。
+         評価ページ側だけ月末に直したので、そのままだと
+         初回に入れた終了日と評価で入れ直した終了日が食い違う。 */
+    const v = _goalPeriodEnd(fromEl.value, goalPeriodMonths(kind), _goalPeriodEndRule());
+    if (v) toEl.value = v;
   }
   fromEl.addEventListener('change', autoFill);
   fromEl.addEventListener('blur', autoFill);
 }
 
+/* goal-period-endrule-v1: 終了日の出し方。事業所の設定で2通り。
+     month_end  … 開始月から数えて N か月目の【月末】（9/15開始 → 11/30）
+     day_before … 開始日の N か月後の【前日】       （9/15開始 → 12/14）
+   ★1日から始めたときは、どちらでも同じ日になります。
+   ★この関数は【利用者基本情報】と【評価ページ】の2か所に、
+     同じ形で置いてあります。片方だけ直すと、初回に入れた終了日と
+     評価で入れ直した終了日が食い違います（2026-09-04 に実際そうなっていた）。 */
+function _goalPeriodEnd(fromValue, months, rule){
+  var pr=String(fromValue||'').split('-');
+  if(pr.length!==3) return '';
+  var y=parseInt(pr[0],10), mo=parseInt(pr[1],10), d=parseInt(pr[2],10);
+  if(!y||!mo||!d||!months) return '';
+  var end;
+  if(rule==='day_before'){
+    var ny=y, nm=mo+months; while(nm>12){nm-=12;ny++;}
+    var maxDay=new Date(ny,nm,0).getDate();
+    end=new Date(ny,nm-1,Math.min(d,maxDay)-1);
+  }else{
+    var my=y, mm=mo+months-1; while(mm>12){mm-=12;my++;}
+    end=new Date(my,mm,0);   /* 日に 0 を渡すと、その月の末日になる */
+  }
+  return end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')
+         +'-'+String(end.getDate()).padStart(2,'0');
+}
+/* 事業所の設定を読む。設定が無ければ month_end。 */
+function _goalPeriodEndRule(){
+  var r=(window._goalPeriodCfg||{}).end_rule;
+  return (r==='day_before')?'day_before':'month_end';
+}
 // goal-period-config-v1: 施設別の自動入力月数(区分別)
 var _GP_DEF = {jigyou:{short:6,long:12}, youshien:{short:3,long:6}, yokaigo:{short:3,long:6}};
 function goalPeriodCategory(){
@@ -1086,29 +1101,13 @@ function goalPeriodMonths(kind){
 async function loadGoalPeriodCfg(){
   try{ var r=await fetch('/api/goal_period_config'); var j=await r.json(); if(j.status==='success') window._goalPeriodCfg=j.config; }catch(e){}
 }
+/* goal-period-endrule-v1: 中で直せる欄をなくしたので、開くだけにする。
+   ★前は欄に今の値を入れていた。欄ごと消したので、
+     そのまま残すと開いた瞬間に止まる。 */
 window.openGoalPeriodConfig=function(){
-  var cfg=window._goalPeriodCfg||{};
-  ['jigyou','youshien','yokaigo'].forEach(function(cat){
-    var c=cfg[cat]||_GP_DEF[cat];
-    document.getElementById('gpc-'+cat+'-short').value=(c.short!=null?c.short:_GP_DEF[cat].short);
-    document.getElementById('gpc-'+cat+'-long').value=(c.long!=null?c.long:_GP_DEF[cat].long);
-  });
   document.getElementById('gpc-back').classList.add('show');
 };
 window.closeGoalPeriodConfig=function(){ document.getElementById('gpc-back').classList.remove('show'); };
-window.saveGoalPeriodConfig=async function(){
-  var cfg={};
-  ['jigyou','youshien','yokaigo'].forEach(function(cat){
-    cfg[cat]={short:parseInt(document.getElementById('gpc-'+cat+'-short').value,10)||0, long:parseInt(document.getElementById('gpc-'+cat+'-long').value,10)||0};
-  });
-  var btn=document.getElementById('gpc-save'); btn.disabled=true; var old=btn.textContent; btn.textContent='保存中…';
-  try{
-    var r=await fetch('/api/goal_period_config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({config:cfg})});
-    var j=await r.json();
-    if(j.status==='success'){ window._goalPeriodCfg=j.config; btn.textContent='保存しました'; setTimeout(function(){btn.textContent=old;btn.disabled=false;window.closeGoalPeriodConfig();},800); }
-    else { alert(j.message||'保存に失敗しました'); btn.textContent=old;btn.disabled=false; }
-  }catch(e){ alert('通信エラー'); btn.textContent=old;btn.disabled=false; }
-};
 
 // 利用者選択
 function loadPatient(id) {

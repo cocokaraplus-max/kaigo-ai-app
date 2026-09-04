@@ -2474,11 +2474,10 @@ function evalSetupPeriodAuto(fromId,toId,kind){
          月の途中で終わるので、月ごとの報告の締めと合わなかった。
        ★1日から始めたときは前と同じ結果になる（9/1 → 11/30）。
        ★6か月・12か月の設定でも同じ決まりで動く。 */
-    var months=evalGoalPeriodMonths(kind); var pr=fromEl.value.split('-');
-    var y=parseInt(pr[0]),mo=parseInt(pr[1]);
-    var ny=y,nm=mo+months-1; while(nm>12){nm-=12;ny++;}
-    var end=new Date(ny,nm,0);   /* 日に 0 を渡すと、その月の末日になる */
-    toEl.value=end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')+'-'+String(end.getDate()).padStart(2,'0'); }
+    /* goal-period-endrule-v1: 事業所の設定（管理者MENU）に従う。
+       ★利用者基本情報と【同じ形】。片方だけ直さないこと。 */
+    var v=_goalPeriodEnd(fromEl.value, evalGoalPeriodMonths(kind), _goalPeriodEndRule());
+    if(v) toEl.value=v; }
   fromEl.addEventListener('change',fill); fromEl.addEventListener('blur',fill);
 }
 /* goal-period-carry-v1: 目標期間まわりの共通部品。
@@ -2525,6 +2524,35 @@ window._evalPeriodNotice = function(){
   var need = window._evalHasNewGoal() && (window._evalPeriodChanged().length === 0);
   box.style.display = need ? '' : 'none';
 };
+/* goal-period-endrule-v1: 終了日の出し方。事業所の設定で2通り。
+     month_end  … 開始月から数えて N か月目の【月末】（9/15開始 → 11/30）
+     day_before … 開始日の N か月後の【前日】       （9/15開始 → 12/14）
+   ★1日から始めたときは、どちらでも同じ日になります。
+   ★この関数は【利用者基本情報】と【評価ページ】の2か所に、
+     同じ形で置いてあります。片方だけ直すと、初回に入れた終了日と
+     評価で入れ直した終了日が食い違います（2026-09-04 に実際そうなっていた）。 */
+function _goalPeriodEnd(fromValue, months, rule){
+  var pr=String(fromValue||'').split('-');
+  if(pr.length!==3) return '';
+  var y=parseInt(pr[0],10), mo=parseInt(pr[1],10), d=parseInt(pr[2],10);
+  if(!y||!mo||!d||!months) return '';
+  var end;
+  if(rule==='day_before'){
+    var ny=y, nm=mo+months; while(nm>12){nm-=12;ny++;}
+    var maxDay=new Date(ny,nm,0).getDate();
+    end=new Date(ny,nm-1,Math.min(d,maxDay)-1);
+  }else{
+    var my=y, mm=mo+months-1; while(mm>12){mm-=12;my++;}
+    end=new Date(my,mm,0);   /* 日に 0 を渡すと、その月の末日になる */
+  }
+  return end.getFullYear()+'-'+String(end.getMonth()+1).padStart(2,'0')
+         +'-'+String(end.getDate()).padStart(2,'0');
+}
+/* 事業所の設定を読む。設定が無ければ month_end。 */
+function _goalPeriodEndRule(){
+  var r=(window._goalPeriodCfg||{}).end_rule;
+  return (r==='day_before')?'day_before':'month_end';
+}
 async function evalLoadGoalPeriodCfg(){ try{var r=await fetch('/api/goal_period_config');var j=await r.json(); if(j.status==='success') window._goalPeriodCfg=j.config;}catch(e){} }
 window.evalSetGoalDisplay = function(initial) {
     if (!initial) return;

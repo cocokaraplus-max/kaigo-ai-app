@@ -16079,6 +16079,12 @@ _GOAL_PERIOD_DEFAULT = {
 
 def _goal_period_config(supabase, f_code):
     cfg = {k: dict(v) for k, v in _GOAL_PERIOD_DEFAULT.items()}
+    # goal-period-endrule-v1: 終了日の決め方も、事業所ごとに選べるようにする。
+    #   month_end  … 開始月から数えて N か月目の【月末】（9/15開始 → 11/30）
+    #   day_before … 開始日の N か月後の【前日】       （9/15開始 → 12/14）
+    #   ★初期値は month_end（HIROさん判断 2026-09-04）。
+    #   ★同じ admin_settings の中身（JSON）に入れる。列も表も増やさない。
+    cfg["end_rule"] = "month_end"
     try:
         r = supabase.table("admin_settings").select("value").eq(
             "facility_code", f_code).eq("key", "goal_period_months").execute()
@@ -16086,7 +16092,12 @@ def _goal_period_config(supabase, f_code):
             import json as _j
             raw = r.data[0].get("value")
             data = _j.loads(raw) if isinstance(raw, str) else (raw or {})
-            for cat in cfg:
+            # goal-period-endrule-v1: end_rule が混ざるので、区分の一覧の方を回す。
+            #   ★cfg を回すと end_rule まで見にいく。いまは辞書かどうかで
+            #     はじけているが、あとで形が変わったときに壊れる。
+            if data.get("end_rule") in ("month_end", "day_before"):
+                cfg["end_rule"] = data["end_rule"]
+            for cat in _GOAL_PERIOD_DEFAULT:
                 if isinstance(data.get(cat), dict):
                     for k in ("short", "long"):
                         v = data[cat].get(k)
@@ -16190,6 +16201,9 @@ def api_goal_period_config_save():
         for cat in ("jigyou", "youshien", "yokaigo"):
             c = incoming.get(cat) or {}
             clean[cat] = {"short": _iv(c.get("short"), _GOAL_PERIOD_DEFAULT[cat]["short"]), "long": _iv(c.get("long"), _GOAL_PERIOD_DEFAULT[cat]["long"])}
+        # goal-period-endrule-v1: 終わり方。知らない値が来たら month_end に倒す。
+        _er = str(incoming.get("end_rule") or "").strip()
+        clean["end_rule"] = _er if _er in ("month_end", "day_before") else "month_end"
         supabase = get_supabase()
         val = _j.dumps(clean, ensure_ascii=False)
         ex = supabase.table("admin_settings").select("id").eq(
