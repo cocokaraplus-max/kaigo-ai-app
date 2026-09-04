@@ -31,6 +31,11 @@
   .tcr-day .io{flex:1;color:#888;font-size:.8rem;font-variant-numeric:tabular-nums}
   .tcr-day .hrs{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap}
   .tcr-day.bad{background:#fff8ec;margin:0 -14px;padding:9px 14px}
+  /* timecard-allday-v1: 打刻も休みの登録も無い日。日付だけ薄く出す。
+     ★行ごと飛ばすと「見落としたのか、休みなのか」が読めない。
+       ただし記録のある日と同じ濃さで出すと、今度は何かあったように見える。 */
+  .tcr-day.tcr-none .d{color:#b4b2a9}
+  .tcr-day.tcr-none{background:#fcfcfb}
   .tcr-flag{color:#c77d12;font-size:.74rem;font-weight:700}
   /* timecard-leave-grid-v1 */
   .tcr-lv{display:inline-block;padding:1px 8px;border-radius:9px;font-size:.72rem;font-weight:700;margin-left:4px;vertical-align:middle}
@@ -406,8 +411,35 @@
         +'<span class="tot">'+fmtHM(s.total_minutes)+'<span class="sub">'+s.worked_days+'日勤務'+(s.incomplete_days?'・要確認'+s.incomplete_days+'日':'')+'</span></span></div><div class="tcr-days">';
       html+='<div class="tcr-addleave"><input type="date" class="tcr-al-date" min="'+mStart+'" max="'+mEnd+'" value="'+mStart+'"><button class="tcr-al-btn" data-al-staff="'+esc(s.name)+'">選んだ日を編集（打刻・休み登録）</button></div>';
       if(!s.days.length){ html+='<div class="tcr-empty" style="padding:12px 0">この月の記録はありません。上の日付を選んで休みを登録できます。</div>'; }
-      s.days.forEach(function(d){
+      /* timecard-allday-v1: その月を【1日から末日まで】並べる。
+         ★これまでは s.days（打刻のある日＋休みの登録がある日）だけを
+           並べていたので、何も無い日は行ごと飛んでいた。
+           2026年8月の 8/1(土) が出ない、というHIROさんの指摘（2026-09-04）。
+         ★飛んでいると「その日を見落としたのか、休みなのか」が読めない。
+         ★記録が1件も無い職員は、これまでどおり上の一文だけにする。
+           31行の空欄が並ぶと、かえって読めなくなるため。
+         ★サーバは触っていない。合計・勤務日数・要確認の数は変わらない。 */
+      var _dmap={};
+      s.days.forEach(function(d){ _dmap[d.date]=d; });
+      var _all=[];
+      if(s.days.length){
+        var _last=new Date(year,month,0).getDate();
+        for(var _i=1;_i<=_last;_i++){
+          var _ds=year+"-"+mm+"-"+String(_i).padStart(2,"0");
+          _all.push(_dmap[_ds]||{date:_ds,_none:true});
+        }
+      }
+      _all.forEach(function(d){
         var editBtn='<button class="tcr-edit" data-edit data-staff="'+esc(s.name)+'" data-date="'+d.date+'"><span class="material-symbols-outlined">edit</span></button>';
+        if(d._none){
+          /* timecard-allday-v1: 打刻も休みの登録も無い日。
+             ★「公休」とは書かない。公休なのか登録し忘れなのかは
+               データからは決められない。決めつけずに空欄で出し、
+               鉛筆からその場で登録できるようにする。 */
+          html+='<div class="tcr-day tcr-none"><span class="d">'+dayLabel(d.date)+'</span>'
+            +'<span class="io"></span><span class="hrs"></span>'+editBtn+'</div>';
+          return;
+        }
         var lv=d.leave, chip=lv?leaveChip(lv):"";
         var subref=(lv&&lv.substitute_for)?'<span class="tcr-subref">振替元 '+dayLabel(lv.substitute_for)+'</span>':"";
         var yxb=yxBtn(s.name,d);
@@ -427,7 +459,7 @@
             +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+' '+brk+chip+subref+'</span>'
             +'<span class="hrs">'+fmtHM(d.minutes)+'</span>'+dts+yxb+editBtn+'</div>';
         }
-      });
+      });   /* timecard-allday-v1: _all（月ぜんぶ）を回している */
       html+='</div></div>';
     });
     $("tcr-body").innerHTML=html;
