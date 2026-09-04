@@ -1290,6 +1290,72 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     root.insertBefore(note, root.firstChild);
   }
 
+  /* soge-lock-help-v1: 「確定」の説明。ボタンの右の【？】から開く。
+     ★HIROさんの指示 2026-09-04「使う人は多分どのタイミングで押すのか分からない」。
+     ★何も保存しない。開いて閉じるだけ。
+     ★中身はコードで裏を取ったことだけ。推測は書かない。 */
+  function srLockHelpOpen() {
+    if (document.querySelector('.sr-help-back')) return;
+    var back = document.createElement('div');
+    back.className = 'sr-help-back';
+    back.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;'
+      + 'background:rgba(0,0,0,.45);z-index:10000;display:flex;'
+      + 'align-items:center;justify-content:center;padding:16px;';
+    var t = ''
+      + '<div style="font-weight:800;margin:14px 0 4px;">いつ押すか</div>'
+      + 'その日の送迎が全部終わって、<b>記録表が埋まったのを確かめてから</b>押します。'
+      + '1日の締めくくりの操作です。'
+      + '<div style="font-weight:800;margin:14px 0 4px;">押すとどうなるか</div>'
+      + 'この日の運行表を、<b>配車表から作り直せなくなります。</b><br>'
+      + '「ゼロから作り直す」と「配車表を取り込む」が断られます。'
+      + '画面を開いたときに勝手に作り直されることもありません。'
+      + '<div style="font-weight:800;margin:14px 0 4px;">記録は直せます</div>'
+      + '到着時刻・お休み・車の移動は、<b>確定したあとでも直せます。</b>'
+      + 'そのとき「この日の記録を書き換えます」と確認が1回出ます。'
+      + '<div style="font-weight:800;margin:14px 0 4px;">間違えて押したら</div>'
+      + '「確定を解除する」で戻せます。'
+      + '<div style="font-weight:800;margin:14px 0 4px;">押さないとどうなるか</div>'
+      + '記録が消えることはありません。ただし配車表を直すと、'
+      + 'この画面を開いたときに<b>その内容が入ってくることがあります。</b>'
+      + '確定は「もう作り直さない」という念押しです。';
+    back.innerHTML =
+      '<div style="background:#fff;border-radius:14px;width:100%;max-width:520px;'
+      + 'max-height:82vh;overflow:auto;padding:18px 18px 14px;'
+      + 'box-shadow:0 8px 28px rgba(0,0,0,.3);">'
+      + '<div style="font-weight:800;font-size:1.02rem;">'
+      + '「この日を確定する」とは</div>'
+      + '<div style="font-size:0.9rem;line-height:1.8;color:#202124;">' + t + '</div>'
+      + '<div style="text-align:right;margin-top:16px;">'
+      + '<button type="button" class="sr-help-ok" style="padding:9px 22px;border:none;'
+      + 'border-radius:9px;background:#1a73e8;color:#fff;font-weight:700;'
+      + 'font-size:0.9rem;cursor:pointer;">閉じる</button></div></div>';
+    document.body.appendChild(back);
+    function close() { back.remove(); }
+    back.onclick = function (e) { if (e.target === back) close(); };
+    back.querySelector('.sr-help-ok').onclick = close;
+  }
+
+  /* soge-lock-help-v1: ？を、確定／解除ボタンの【すぐ右】に差し込む。
+     ★HTMLの文字列を書き換えずに、あとから入れる。
+       文言を1文字も触らずに済むので、取り違えが起きない。 */
+  function srAddLockHelp(box) {
+    if (!box || box.querySelector('.sr-help-btn')) return;
+    var anchor = box.querySelector('#srLockBtn') || box.querySelector('#srUnlock');
+    if (!anchor) return;                       // 過ぎた日・運転中は出さない
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sr-help-btn';
+    b.textContent = '？';
+    b.title = 'いつ押すのかの説明';
+    b.setAttribute('aria-label', 'いつ押すのかの説明');
+    b.style.cssText = 'width:28px;height:28px;padding:0;flex:0 0 auto;'
+      + 'border:1.5px solid #1a73e8;border-radius:50%;background:#fff;'
+      + 'color:#1a73e8;font-weight:800;font-size:0.88rem;line-height:1;'
+      + 'cursor:pointer;margin-left:2px;';
+    b.onclick = srLockHelpOpen;
+    anchor.parentNode.insertBefore(b, anchor.nextSibling);
+  }
+
   function renderLock() {
     var box = $('srLock');
     if (!box) return;
@@ -1369,6 +1435,7 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     }
     box.innerHTML = h;
 
+    srAddLockHelp(box);   // soge-lock-help-v1: ？をボタンの右に足す
     var b1 = $('srLockBtn');
     if (b1) b1.onclick = function () { setLock(true); };
     var b2 = $('srUnlock');
