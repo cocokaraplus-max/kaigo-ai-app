@@ -925,7 +925,14 @@
           (s.is_wheelchair ? '<span class="sg-tag wc">車いす</span>' : '') +
           (s.nth ? '<span class="sg-tag nth">第' + s.nth + '</span>' : '') +
         '</span>' +
-        '<span class="sg-plan">' + (s.planned_at || '') + '</span>' +
+        /* soge-plan-manual-ui-v1: 押すと直せる。手で入れたものは色を変えて見分ける。 */
+        '<span class="sg-plan" data-plan="' + ti + '_' + vi + '_' + si + '"' +
+          ' title="押すと到着予定時刻を直せます"' +
+          ' style="cursor:pointer;' +
+          (s.plan_manual ? 'color:#1a73e8;font-weight:800;' : 'color:#9aa0a6;') + '">' +
+          (s.planned_at || '--:--') +
+          (s.plan_manual ? '<span style="font-size:0.7em;margin-left:2px;">手</span>' : '') +
+        '</span>' +
         '<button class="sg-del" data-delstop="' + ti + '_' + vi + '_' + si + '" title="この便から外す">✕</button>' +
       '</div>';
     }).join('');
@@ -1013,6 +1020,10 @@
     root.querySelectorAll('[data-delstop]').forEach(function (el) {
       el.onclick = function () { delStop(el.dataset.delstop); };
     });
+    // soge-plan-manual-ui-v1: 予定時刻を押したら直せる
+    root.querySelectorAll('[data-plan]').forEach(function (el) {
+      el.onclick = function () { openPlanEdit(el.dataset.plan); };
+    });
     root.querySelectorAll('[data-addcar]').forEach(function (el) {
       el.onclick = function () { addCar(Number(el.dataset.addcar)); };
     });
@@ -1025,6 +1036,91 @@
   }
 
   // 便の中の車をまるごと外す。乗っていた人は残りの車の先頭へ移す（消さない）。
+  /* soge-plan-manual-ui-v1: 到着予定時刻の手入力。
+     ★手で入れた時刻は「その曜日の決まり」として保存され、翌週も同じ時刻で出る。
+       自動で計算した時刻は保存しない（たまたま出た値が固まってしまうため）。 */
+  function planClear(stops, force) {
+    /* force=true … 車が変わったので、手入力ごと自動に戻す
+       force=false … 並びが変わっただけ。手入力は残し、残した数を返す */
+    var kept = 0;
+    (stops || []).forEach(function (s) {
+      if (!force && s.plan_manual) { kept += 1; return; }
+      s.planned_at = null;
+      s.plan_manual = false;
+    });
+    return kept;
+  }
+  function planNotice(kept) {
+    /* ★消さずに知らせる。HIROさんの指示 2026-09-04
+       「順番を変えた後に時間を変える事を促すメッセージを出そう」 */
+    if (kept > 0) {
+      toast('順番が変わりました。手で入れた時刻（' + kept + '件）はそのままです。時刻も見直してください。');
+    }
+  }
+  function planStopAt(key) {
+    var a = String(key || '').split('_').map(Number);
+    var t = state.data && state.data.trips && state.data.trips[a[0]];
+    var v = t && t.vehicles && t.vehicles[a[1]];
+    return v && (v.stops || [])[a[2]];
+  }
+  function openPlanEdit(key) {
+    if (document.querySelector('.sg-plan-back')) return;
+    var s = planStopAt(key);
+    if (!s) return;
+    var back = document.createElement('div');
+    back.className = 'sg-plan-back';
+    back.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;'
+      + 'background:rgba(0,0,0,.45);z-index:10000;display:flex;'
+      + 'align-items:center;justify-content:center;padding:16px;';
+    back.innerHTML =
+      '<div style="background:#fff;border-radius:14px;width:100%;max-width:360px;'
+      + 'padding:18px;box-shadow:0 8px 28px rgba(0,0,0,.3);">'
+      + '<div style="font-weight:800;font-size:1rem;">'
+      + esc(s.user_name || '') + ' さんの到着予定時刻</div>'
+      + '<div style="font-size:0.82rem;color:#5f6368;margin-top:6px;line-height:1.7;">'
+      + 'ここで入れた時刻は<b>この曜日の決まり</b>として保存され、翌週も同じ時刻で出ます。<br>'
+      + '別の車へ移すと、自動の計算に戻ります。</div>'
+      + '<div style="margin-top:14px;">'
+      + '<input type="time" class="sg-plan-v" value="' + (s.planned_at || '') + '" '
+      + 'style="font-size:1.1rem;padding:9px 10px;border:1.5px solid #dadce0;'
+      + 'border-radius:9px;width:100%;box-sizing:border-box;"></div>'
+      + '<div style="display:flex;gap:8px;margin-top:16px;">'
+      + '<button type="button" class="sg-plan-ok" style="flex:1;padding:10px;border:none;'
+      + 'border-radius:9px;background:#1a73e8;color:#fff;font-weight:700;cursor:pointer;">決定</button>'
+      + '<button type="button" class="sg-plan-clr" style="padding:10px 12px;border:1px solid #dadce0;'
+      + 'border-radius:9px;background:#fff;color:#5f6368;cursor:pointer;">自動に戻す</button>'
+      + '<button type="button" class="sg-plan-no" style="padding:10px 12px;border:1px solid #dadce0;'
+      + 'border-radius:9px;background:#fff;color:#5f6368;cursor:pointer;">やめる</button>'
+      + '</div></div>';
+    document.body.appendChild(back);
+    var inp = back.querySelector('.sg-plan-v');
+    inp.focus();
+    function close() { back.remove(); }
+    back.onclick = function (e) { if (e.target === back) close(); };
+    back.querySelector('.sg-plan-no').onclick = close;
+    /* ★［決定］を押すまで確定しない。触っただけで決まらない
+       （運行画面で踏んだのと同じ穴を、ここで作らない）。 */
+    back.querySelector('.sg-plan-ok').onclick = function () {
+      var v = String(inp.value || '').trim().slice(0, 5);
+      if (!/^\d{2}:\d{2}$/.test(v)) {
+        toast('時刻を入れてください（やめるなら「やめる」、自動に戻すなら「自動に戻す」）', 'err');
+        return;
+      }
+      s.planned_at = v;
+      s.plan_manual = true;
+      state.dirty = true;
+      close();
+      keepScroll(render);
+      toast('「保存」を押すと、この曜日の決まりになります');
+    };
+    back.querySelector('.sg-plan-clr').onclick = function () {
+      s.planned_at = null;
+      s.plan_manual = false;
+      state.dirty = true;
+      close();
+      keepScroll(render);
+    };
+  }
   function delCar(key) {
     var a = key.split('_').map(Number);
     var trip = state.data.trips[a[0]];
@@ -1039,16 +1135,20 @@
     if (n) {
       // soge-unassigned-v1: 移す先は【本物の車】。未割当の箱へ流し込まない
       var dst = realCars(trip)[0];
+      // soge-plan-manual-ui-v1: 車が変わる人は、手入力を自動に戻す（HIROさんの指示）
+      planClear(v.stops, true);
       dst.stops = (dst.stops || []).concat(v.stops);
     }
     // ★番号の振り直しも本物の車だけ。特別枠(0/-1)を 1,2,3 に書き換えると
     //   ふつうの車に化けて、保存した瞬間に区別が消える。
     var no = 0;
+    var _pkept = 0;   // soge-plan-manual-ui-v1
     trip.vehicles.forEach(function (x) {
       if (!isSpecial(x)) x.vehicle_no = ++no;
       x.stale = true; x.minutes = null; x.distance_km = null; x.over_target = false;
-      (x.stops || []).forEach(function (s) { s.planned_at = null; });
+      _pkept += planClear(x.stops);   // soge-plan-manual-ui-v1: 手入力は残す
     });
+    planNotice(_pkept);
     state.dirty = true;
     keepScroll(render);
     toast(n ? '車を外し、' + n + '名を他の車へ移しました' : '車を外しました');
@@ -1106,11 +1206,11 @@
     } else {
       if (!confirm(s.user_name + ' さんは、この便では送迎しませんか？\n「送迎なし」へ移します。あとで車へ戻せます。')) return;
       v.stops.splice(a[2], 1);
-      s.planned_at = null;
+      planClear([s], true);   // soge-plan-manual-ui-v1: 枠が変わるので自動に戻す
       getBox(trip, VNO_NORIDE).stops.push(s);
     }
     v.stale = true; v.minutes = null; v.distance_km = null; v.over_target = false;
-    (v.stops || []).forEach(function (x) { x.planned_at = null; });
+    planNotice(planClear(v.stops));   // soge-plan-manual-ui-v1: 手入力は残す
     pruneBoxes(trip);
     state.dirty = true;
     keepScroll(render);
@@ -1305,12 +1405,13 @@
       }
 
       if (revive) {
-        revive.planned_at = null;
+        planClear([revive], true);   // soge-plan-manual-ui-v1: 枠が変わるので自動に戻す
         v.stops.push(revive);            // nth・車いすなど、元の情報を保つ
       } else {
         v.stops.push({
           patient_id: pid, user_name: nm, type: type, nth: 0,
-          is_wheelchair: false, guest: isGuest, planned_at: null
+          is_wheelchair: false, guest: isGuest, planned_at: null,
+          plan_manual: false   // soge-plan-manual-ui-v1
         });
       }
       v.stale = true; v.minutes = null; v.distance_km = null; v.over_target = false;
@@ -1503,11 +1604,15 @@
 
     // 順番も乗る車も変わったら、到着予定時刻と所要時間は当てにならない。
     // 保存すると Google の経路で再計算される。
+    // soge-plan-manual-ui-v1: 車が変わった人だけ自動に戻す。同じ車の中で動かしただけなら残す。
+    if (src !== dst) planClear([item], true);
+    var _pkept = 0;
     [src, dst].forEach(function (v) {
-      (v.stops || []).forEach(function (s) { s.planned_at = null; });
+      _pkept += planClear(v.stops);
       v.stale = true; v.minutes = null; v.distance_km = null; v.over_target = false;
       v.seats_used = seatsUsed(v);
     });
+    planNotice(_pkept);
 
     if (dst.seats != null && seatsUsed(dst) > dst.seats) {
       toast('席数を超えています（席 ' + seatsUsed(dst) + '/' + dst.seats + '）', 'err');
@@ -1544,18 +1649,32 @@
       });
       var j = await r.json();
       if (j.status !== 'success') { toast(j.message || '並べ替えできませんでした', 'err'); return; }
+      var _pkept = 0;   // soge-plan-manual-ui-v1
       (j.trips || []).forEach(function (nt, i) {
         var t = state.data.trips[i];
         if (!t) return;
         (nt.vehicles || []).forEach(function (nv, k) {
           var v = t.vehicles[k];
           if (!v) return;
+          /* soge-plan-manual-ui-v1: 並べ替えはサーバーに投げて、返った並びで置き換える。
+             ★返ってくる立ち寄りに「手入力の印」が残っている保証が無いので、
+               送る前に控えておいて、返ってきた並びに当て直す。 */
+          var _pm = {};
+          (v.stops || []).forEach(function (s) {
+            if (s.plan_manual && s.planned_at) _pm[s.patient_id + '|' + s.type] = s.planned_at;
+          });
           v.stops = nv.stops || [];
           // 順番が変わったら、到着予定と所要時間は当てにならない。保存すると再計算される。
-          v.stops.forEach(function (s) { s.planned_at = null; });
+          v.stops.forEach(function (s) {
+            var _k = s.patient_id + '|' + s.type;
+            if (_pm[_k]) { s.planned_at = _pm[_k]; s.plan_manual = true; }
+            else { s.planned_at = null; s.plan_manual = false; }
+          });
+          _pkept += Object.keys(_pm).length;   // soge-plan-manual-ui-v1
           v.stale = true; v.minutes = null; v.distance_km = null; v.over_target = false;
         });
       });
+      planNotice(_pkept);   // soge-plan-manual-ui-v1
       state.dirty = true;
       keepScroll(render);      // soge-keepscroll-v1
       toast('送りを先にして並べ替えました。よければ「保存」を押してください');
@@ -1585,7 +1704,11 @@
                     return {
                       patient_id: s.patient_id, type: s.type, nth: s.nth || 0,
                       // soge-guest-v1: 登録のない方は名前も一緒に保存する
-                      guest: !!s.guest, user_name: s.user_name || ''
+                      guest: !!s.guest, user_name: s.user_name || '',
+                      // soge-plan-manual-ui-v1: 手で入れた時刻だけを送る。
+                      //   ★自動で計算した時刻は送らない（サーバー側も受け取らない）。
+                      plan_manual: !!s.plan_manual,
+                      at: (s.plan_manual ? (s.planned_at || '') : '')
                     };
                   })
                 };

@@ -26242,6 +26242,11 @@ def _soge_rows_view(supabase, f_code, weekday, settings, rows):  # soge-date-pla
                     "dist_km": round((geo.get(pid) or {}).get("dist_km", 0.0), 2),
                     # 登録の無い方は住所が無いので、座標が無いのは当たり前。警告に混ぜない。
                     "no_geo": (pid not in geo) and not is_guest,
+                    # soge-plan-manual-v1: 手で入れた時刻を戻す。
+                    #   ★ここまで、保存された配車には時刻が1つも無かった。
+                    #     そのため翌週には何も残らなかった（HIROさんの指摘 2026-09-04）。
+                    "planned_at": (s.get("at") or None),
+                    "plan_manual": bool(s.get("at")),
                 })
                 if pid not in seen:
                     seen.append(pid)
@@ -26538,6 +26543,11 @@ def soge_build_week_keep(supabase, f_code, weekday, settings=None):  # soge-keep
             v["wheelchair_count"] = n_wc
             # 顔ぶれか順番が変わっているので、時刻は保存時に引き直す
             for s in (v.get("stops") or []):
+                # soge-plan-manual-v1: 手で入れた時刻は残す。
+                #   ★この処理は「新しく来る人を足して、来なくなった人を外す」もので、
+                #     すでにいる人の車は変わらない。ここで消すと、押すたびに入れ直しになる。
+                if s.get("plan_manual"):
+                    continue
                 s["planned_at"] = None
             v["stale"] = True
             v["minutes"] = None
@@ -26825,6 +26835,15 @@ def _soge_plan_rows(trips, base, my_name, now_iso):  # soge-date-plan-v1
                 if not pid or stype not in ("pickup", "dropoff"):
                     continue
                 row = {"patient_id": pid, "type": stype, "nth": int(s.get("nth") or 0)}
+                # soge-plan-manual-v1: 手で入れた到着予定時刻だけを覚える。
+                #   ★自動で計算した時刻は保存しない。
+                #     たまたま出た値が「決まり」として固まってしまうため。
+                #   ★stop_order は JSON の列なので、列は増やさない（SQL不要）。
+                _at = str(s.get("at") or "").strip()[:5]
+                if (s.get("plan_manual") and len(_at) == 5 and _at[2] == ":"
+                        and _at[:2].isdigit() and _at[3:].isdigit()
+                        and 0 <= int(_at[:2]) <= 23 and 0 <= int(_at[3:]) <= 59):
+                    row["at"] = _at
                 # soge-guest-v1: 登録の無い方（見学など）は名前も一緒に残す。
                 # 利用者マスタには書き込まない。送迎の中だけで完結させる。
                 if s.get("guest"):
