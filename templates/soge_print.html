@@ -239,11 +239,17 @@
         {% for row in v.rows %}
           {# soge-past-admin-v1: 過ぎた日の行は、管理者以外は触れない。
              ★印を付けるだけ。止めるのは下のJSで1か所にまとめる。 #}
-          <tr class="{% if row.day_first %}sp-day-first {% endif %}{% if row.past and not can_edit_past %}sp-ro{% endif %}">
+          {# soge-print-plan-v1: 予定の行（まだ運行表が無い日）は、
+             data-day / data-stop / data-note を【出さない】。
+             ★JSは data-* を目印に動くので、出さなければ押しても何も起きない。
+               「押せないようにする」処理を足すより、初めから渡さないほうが確か。 #}
+          <tr class="{% if row.day_first %}sp-day-first {% endif %}{% if row.is_plan %}sp-plan{% elif row.past and not can_edit_past %}sp-ro{% endif %}">
             <td class="fix1">{% if row.day_first %}{{ row.day_label }}{% endif %}</td>
             <td class="fix2">{{ row.trip_short }}</td>
             <td class="sp-drv">
-              {%- if row.driver_name -%}
+              {%- if row.is_plan -%}
+                {{ row.driver_name }}
+              {%- elif row.driver_name -%}
                 <span class="sp-drvn" data-drvday="{{ row.day_id }}"
                       data-drvnow="{{ row.driver_name }}"
                       title="押すと運転手を直せます">{{ row.driver_name }}</span>
@@ -253,14 +259,16 @@
               {%- endif -%}
             </td>
             <td class="tm">
-              {%- if row.departed_at -%}
+              {%- if row.is_plan -%}
+              {%- elif row.departed_at -%}
                 <span class="sp-time" data-day="{{ row.day_id }}" data-fld="departed">{{ row.departed_at }}</span>
               {%- else -%}
                 <button class="sp-tap" data-day="{{ row.day_id }}" data-fld="departed">入力</button>
               {%- endif -%}
             </td>
             <td class="tm">
-              {%- if row.returned_at -%}
+              {%- if row.is_plan -%}
+              {%- elif row.returned_at -%}
                 <span class="sp-time" data-day="{{ row.day_id }}" data-fld="returned">{{ row.returned_at }}</span>
               {%- else -%}
                 <button class="sp-tap" data-day="{{ row.day_id }}" data-fld="returned">入力</button>
@@ -270,18 +278,29 @@
               {# soge-print-admin-v1: 便ごとに順番を並べ替える。
                  ★人のマスに詰め込まない。順番は【便ぜんぶ】の話なので、
                    便の側に置くほうが意味が合う。 #}
+              {%- if not row.is_plan -%}
               <button class="sp-ord" data-ord="{{ row.day_id }}"
                       title="周る順番を変える">⇅ 順番</button>
+              {%- endif -%}
               <div class="grid">
               {%- for s in row.stops -%}
+                {%- if row.is_plan -%}
+                {# soge-print-plan-v1: 予定。名前だけ。時刻の欄は空にする。
+                   ★「—」は【打刻が無い】という意味で使っている字なので、
+                     まだ運行表が無い日に出すと意味が食い違う。 #}
+                <span class="sp-s {{ s.type }}{% if s.is_absent or s.is_leave %} absent{% endif %}"><span class="n">{{ loop.index }}</span><span class="nm">{{ s.user_name }}</span><span class="t">{% if s.is_absent or s.is_leave %}休{% endif %}</span></span>
+                {%- else -%}
                 {# soge-print-edit-v1: 押すと到着時刻を直せる。
                    ★過ぎた日の行では、下のJSが data-stop を外して押せなくする。 #}
                 <span class="sp-s sp-ed {{ s.type }}{% if s.is_absent or s.is_leave %} absent{% elif not s.arrived_at %} none{% endif %}" data-stop="{{ s.id }}" data-nm="{{ s.user_name }}" data-day="{{ row.day_label }}" data-tgt="{{ row.targets|tojson|forceescape }}" title="押すと到着時刻・車を直せます"><span class="n">{{ loop.index }}</span><span class="nm">{{ s.user_name }}</span><span class="t">{% if s.is_absent or s.is_leave %}休{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
+                {%- endif -%}
               {%- endfor -%}
               </div>
             </td>
             <td class="sp-note">
+              {%- if not row.is_plan -%}
               <input type="text" value="{{ row.note }}" data-note="{{ row.day_id }}" placeholder="">
+              {%- endif -%}
             </td>
           </tr>
         {% endfor %}
@@ -289,8 +308,10 @@
       </table>
     </div>
 
+    {# soge-print-plan-v1: 予定の行があることを、紙にも書いておく。
+       ★書かないと「走ったのに時刻が空のまま」と読まれる。 #}
     <div class="sp-legend">
-      丸数字＝周った順番／青＝迎え、緑＝送り／「欠」＝当日欠席、「—」＝打刻なし
+      丸数字＝周った順番／青＝迎え、緑＝送り／「欠」＝当日欠席、「—」＝打刻なし／うすい灰色の行＝これからの予定（配車表から作った見込みで、まだ運行の記録ではありません）
     </div>
   </div>
 {% endfor %}
@@ -352,6 +373,14 @@ td.sp-stops { position: relative; padding-right: 68px; }
 .sp-ep .cancel { flex: 1 1 100%; margin-top: 4px; }
 @media print { .sp-ep-back { display: none !important; } }
 
+/* soge-print-plan-v1: 予定の行（まだ運行表が無い日）。
+   ★記録と見分けがつかないと、走ったことになってしまう。
+     字をうすくして、押せる見た目にもしない。 */
+.sp-plan { background: #fbfbfa; }
+.sp-plan td { color: #9aa0a6; }
+.sp-plan .sp-s { opacity: 0.72; }
+.sp-plan .sp-s .t { color: #b4b2a9; }
+@media print { .sp-plan td { color: #777; } }
 /* soge-past-admin-v1: 直せない行の見た目 */
 .sp-ro input, .sp-ro .sp-tap { opacity: .5; cursor: not-allowed; }
 .sp-ro .sp-time { color: #9aa0a6; }
