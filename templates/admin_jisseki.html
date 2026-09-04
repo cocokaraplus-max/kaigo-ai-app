@@ -127,6 +127,18 @@
     <!-- jisseki-demog-v1 -->
     <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-gender" height="220"></canvas></div>
     <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-weekday" height="240"></canvas></div>
+    <!-- jisseki-demog-charts-v1 -->
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-weekday-plan" height="240"></canvas></div>
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-weekday-cmp" height="240"></canvas></div>
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;">
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:8px;flex-wrap:wrap;">
+        <button type="button" id="dg-g-total" onclick="setDemogGenderSlot('total')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #4a9d5b;background:#eef7f0;color:#2e7d32;cursor:pointer;">合計</button>
+        <button type="button" id="dg-g-am" onclick="setDemogGenderSlot('am')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">午前のみ</button>
+        <button type="button" id="dg-g-pm" onclick="setDemogGenderSlot('pm')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">午後のみ</button>
+        <button type="button" id="dg-g-all" onclick="setDemogGenderSlot('all')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">終日</button>
+      </div>
+      <canvas id="chart-weekday-gender" height="240"></canvas>
+    </div>
   </div>
 </div>
 
@@ -308,7 +320,10 @@
     html += dgCountTable('曜日別 延べ人数（実績）', 'event_available', rows, 'actual');
     html += dgCountTable('曜日別 人数（予定・利用曜日の登録）', 'event_note', rows, 'plan');
     html += '<div class="jis-note">「予定」は利用曜日の登録から数えた人数です。'
-      + '第N週だけの方も、その曜日に来る方として1人と数えます。</div>';
+      + '第N週だけの方も、その曜日に来る方として1人と数えます。'
+      /* jisseki-demog-charts-v1: グラフでは回数を掛けて延べに直しているので、そこも書いておく。 */
+      + 'グラフの「実績と予定」では、この人数に【その月にその曜日が何回あったか】を掛けて、'
+      + '実績の延べ人数と同じ土俵にそろえています。</div>';
 
     if (d.unknown_actual > 0) {
       html += '<div class="jis-note" style="color:#b85c00;">'
@@ -320,8 +335,12 @@
     html += dgGenderByWeekday(rows);
 
     document.getElementById('jis-demog-body').innerHTML = html;
+    _dgLast = d;                 /* jisseki-demog-charts-v1: 切り替えのために覚えておく */
     drawGenderChart(d);
     drawWeekdayChart(d);
+    drawWeekdayPlanChart(d);     /* jisseki-demog-charts-v1 */
+    drawWeekdayCmpChart(d);      /* jisseki-demog-charts-v1 */
+    drawWeekdayGenderChart(d);   /* jisseki-demog-charts-v1 */
   }
 
   window.loadDemog = function(){
@@ -473,6 +492,9 @@
   }
   // jisseki-demog-v1: グラフ2つ
   var _chartG = null, _chartW = null;
+  /* jisseki-demog-charts-v1: 足したグラフ3つ。切り替えのために、最後の数字も覚えておく。 */
+  var _chartWP = null, _chartWC = null, _chartWG = null;
+  var _dgLast = null, _dgGSlot = 'total';
   function drawGenderChart(d){
     if (typeof Chart === 'undefined') { setTimeout(function(){ drawGenderChart(d); }, 200); return; }
     var el = document.getElementById('chart-gender'); if (!el) return;
@@ -488,6 +510,108 @@
       options: { responsive: true, plugins: { legend: { position: 'right' }, title: { display: true, text: '男女比 実人数（構成比）' } } }
     });
   }
+  /* jisseki-demog-charts-v1: 曜日別（予定）。実績と同じ色・同じ積み方にする。
+     ★別の色にすると、並べたときに見比べられない。 */
+  function drawWeekdayPlanChart(d){
+    if (typeof Chart === 'undefined') { setTimeout(function(){ drawWeekdayPlanChart(d); }, 200); return; }
+    var el = document.getElementById('chart-weekday-plan'); if (!el) return;
+    var rows = d.weekday || [];
+    function pick(k){ return rows.map(function(r){ return ((r.plan||{})[k]||{}).t || 0; }); }
+    if (_chartWP) _chartWP.destroy();
+    _chartWP = new Chart(el, {
+      type: 'bar',
+      data: { labels: rows.map(function(r){ return r.label; }), datasets: [
+        { label: '午前のみ', data: pick('am'), backgroundColor: '#3b82a6' },
+        { label: '午後のみ', data: pick('pm'), backgroundColor: '#c79a3d' },
+        { label: '終日',     data: pick('all'), backgroundColor: '#4a9d5b' },
+        { label: '未設定',   data: pick('unknown'), backgroundColor: '#b0b6bf' }
+      ] },
+      options: { responsive: true,
+        plugins: { title: { display: true, text: '曜日別 人数（予定・利用曜日の登録）' } },
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  }
+
+  /* jisseki-demog-charts-v1: その月に、その曜日が何回あったか。
+     ★「予定」は週1回ぶんの顔ぶれ、「実績」はその月の延べ。
+       そのままでは桁が違って比べられないので、回数を掛けて揃える。 */
+  function dgWeekdayCounts(y, m){
+    var out = [0,0,0,0,0,0,0];
+    var last = new Date(y, m, 0).getDate();
+    for (var d = 1; d <= last; d++) out[new Date(y, m - 1, d).getDay()]++;
+    return out;
+  }
+
+  /* jisseki-demog-charts-v1: 実績と予定を横に並べる。
+     ★予定より実績が低い曜日＝その曜日に休みが多い、が一目で出る。 */
+  function drawWeekdayCmpChart(d){
+    if (typeof Chart === 'undefined') { setTimeout(function(){ drawWeekdayCmpChart(d); }, 200); return; }
+    var el = document.getElementById('chart-weekday-cmp'); if (!el) return;
+    var rows = d.weekday || [];
+    var cnt = dgWeekdayCounts(d.year, d.month);
+    function slots(w){ var o = w || {}; return (((o.am||{}).t||0) + ((o.pm||{}).t||0) + ((o.all||{}).t||0) + ((o.unknown||{}).t||0)); }
+    var actual = rows.map(function(r){ return slots(r.actual); });
+    var plan = rows.map(function(r){ return slots(r.plan) * (cnt[r.wd] || 0); });
+    if (_chartWC) _chartWC.destroy();
+    _chartWC = new Chart(el, {
+      type: 'bar',
+      data: { labels: rows.map(function(r){ return r.label; }), datasets: [
+        { label: '予定（登録×その曜日の回数）', data: plan, backgroundColor: '#c8d8e4' },
+        { label: '実績（延べ）', data: actual, backgroundColor: '#3b82a6' }
+      ] },
+      options: { responsive: true,
+        plugins: { title: { display: true, text: '曜日別 実績と予定（延べ人数）' } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  }
+
+  /* jisseki-demog-charts-v1: 曜日別の男女。午前／午後／終日／合計を切り替える。
+     ★4つ並べると棒が細くて読めない。いまある「円／棒」と同じ作りにした。 */
+  function dgGenderPick(w, slot, key){
+    var o = w || {};
+    if (slot !== 'total') return ((o[slot] || {})[key] || 0);
+    return ((o.am||{})[key]||0) + ((o.pm||{})[key]||0)
+         + ((o.all||{})[key]||0) + ((o.unknown||{})[key]||0);
+  }
+  function drawWeekdayGenderChart(d){
+    if (typeof Chart === 'undefined') { setTimeout(function(){ drawWeekdayGenderChart(d); }, 200); return; }
+    var el = document.getElementById('chart-weekday-gender'); if (!el) return;
+    var rows = d.weekday || [];
+    var slot = _dgGSlot;
+    var NAME = {total:'合計', am:'午前のみ', pm:'午後のみ', all:'終日'};
+    var sets = [
+      { label: '男性', data: rows.map(function(r){ return dgGenderPick(r.actual, slot, 'm'); }), backgroundColor: '#3b82a6' },
+      { label: '女性', data: rows.map(function(r){ return dgGenderPick(r.actual, slot, 'f'); }), backgroundColor: '#c0662d' }
+    ];
+    /* 未設定は0のときだけ出さない。0でないなら隠さない（登録が足りない合図なので） */
+    var un = rows.map(function(r){ return dgGenderPick(r.actual, slot, 'n'); });
+    if (un.some(function(v){ return v > 0; })) {
+      sets.push({ label: '未設定', data: un, backgroundColor: '#b0b6bf' });
+    }
+    if (_chartWG) _chartWG.destroy();
+    _chartWG = new Chart(el, {
+      type: 'bar',
+      data: { labels: rows.map(function(r){ return r.label; }), datasets: sets },
+      options: { responsive: true,
+        plugins: { title: { display: true, text: '曜日別 男女比（実績・延べ）— ' + (NAME[slot] || slot) } },
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  }
+  /* ★HTMLの onclick から呼ぶので window に付ける。
+     この画面ぜんぶが (function(){...})() の中にあるため、
+     ふつうの function だと押しても動かない。 */
+  window.setDemogGenderSlot = function(slot){
+    _dgGSlot = slot;
+    ['total','am','pm','all'].forEach(function(k){
+      var b = document.getElementById('dg-g-' + k); if (!b) return;
+      var on = (k === slot);
+      b.style.borderColor = on ? '#4a9d5b' : '#dadce0';
+      b.style.background  = on ? '#eef7f0' : '#fff';
+      b.style.color       = on ? '#2e7d32' : '#9aa0a6';
+    });
+    if (_dgLast) drawWeekdayGenderChart(_dgLast);
+  };
+
   function drawWeekdayChart(d){
     if (typeof Chart === 'undefined') { setTimeout(function(){ drawWeekdayChart(d); }, 200); return; }
     var el = document.getElementById('chart-weekday'); if (!el) return;
