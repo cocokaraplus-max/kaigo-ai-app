@@ -2478,24 +2478,27 @@ function _repWriteValues(canvasEl, labels, series) {
     var ok = (series || []).filter(function (s) { return s && s.data && s.data.length; });
     if (!ok.length) return;
     var dec = _repNeedsDec(ok.map(function (s) { return s.data; }));
-    var lines = [];
-    if (ok.length === 1) {
-        var vv = _repFmtList(ok[0].data, dec);
-        lines.push(ds.map(function (d, i) {
-            return d + ' ' + (vv[i] === undefined ? '—' : vv[i]);
-        }).join('\u3000'));
-    } else {
-        lines.push('<span style="color:#888;font-weight:600;">'
-                   + ds.join('\u3000') + '</span>');
-        ok.forEach(function (s) {
-            lines.push('<span style="color:#888;font-weight:600;">' + s.name + '</span> '
-                       + _repFmtList(s.data, dec).join('\u3000'));
-        });
-    }
+    // report-values-v3: 縦に1行ずつ並べる（HIROさんが実寸のモックを見て選んだ形）。
+    //   ★なぜ変えたか：カード1枚の幅は 28.5mm しかない。
+    //     横1行に3点ぶん入れると入りきらず、
+    //       「5/18 60.5　6/5」／「50.0　7/2 58.0」
+    //     のように【日付と値の間で折り返し】、どの数値がどの日か分からなくなる。
+    //     DEVの実物で実際に起きた。
+    //   ★縦に1行ずつなら、日付と値は絶対に離れない。
+    //     日付は灰色、値はテンプレートの色。色が違うので目で追える。
+    //   ★2本線のカードは「日付 1本目 2本目」。すぐ上の凡例と同じ並び。
+    //   ★小数を出すかどうか(_repNeedsDec)と整え方(_repFmtList)は、
+    //     いままでと【同じものをそのまま使う】。桁の揃え方は変えない。
+    var vs = ok.map(function (s) { return _repFmtList(s.data, dec); });
+    var lines = ds.map(function (d, i) {
+        return '<span style="color:#888;font-weight:600;">' + d + '</span> '
+             + vs.map(function (v) { return (v[i] === undefined ? '—' : v[i]); }).join(' ');
+    });
     el.innerHTML = lines.join('<br>');
-    el.style.fontSize = (lines.length > 1) ? '7pt' : '7.5pt';
+    el.style.fontSize = '7.5pt';
     el.style.lineHeight = '1.35';
-    el.style.whiteSpace = 'normal';
+    // ★1行の中では折り返させない。折り返すと縦に並べた意味が無くなる。
+    el.style.whiteSpace = 'nowrap';
 }
 
 function _repYRange(series) {

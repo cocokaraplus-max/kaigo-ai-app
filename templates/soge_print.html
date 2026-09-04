@@ -276,7 +276,7 @@
               {%- for s in row.stops -%}
                 {# soge-print-edit-v1: 押すと到着時刻を直せる。
                    ★過ぎた日の行では、下のJSが data-stop を外して押せなくする。 #}
-                <span class="sp-s sp-ed {{ s.type }}{% if s.is_absent %} absent{% elif not s.arrived_at %} none{% endif %}" data-stop="{{ s.id }}" data-nm="{{ s.user_name }}" data-day="{{ row.day_label }}" data-tgt="{{ row.targets|tojson|forceescape }}" title="押すと到着時刻・車を直せます"><span class="n">{{ loop.index }}</span><span class="nm">{{ s.user_name }}</span><span class="t">{% if s.is_absent %}欠{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
+                <span class="sp-s sp-ed {{ s.type }}{% if s.is_absent or s.is_leave %} absent{% elif not s.arrived_at %} none{% endif %}" data-stop="{{ s.id }}" data-nm="{{ s.user_name }}" data-day="{{ row.day_label }}" data-tgt="{{ row.targets|tojson|forceescape }}" title="押すと到着時刻・車を直せます"><span class="n">{{ loop.index }}</span><span class="nm">{{ s.user_name }}</span><span class="t">{% if s.is_absent or s.is_leave %}休{% elif s.arrived_at %}{{ s.arrived_at }}{% else %}—{% endif %}</span></span>
               {%- endfor -%}
               </div>
             </td>
@@ -593,7 +593,7 @@ td.sp-stops { position: relative; padding-right: 68px; }
       if (!confirm(nm + ' さんを「欠席」にします。\n入っている到着時刻は消えます。\nよろしいですか。')) return;
       busy(true);
       if (await saveStop(stopId, { absent: true })) {
-        paintStop(el, 'absent', '欠');
+        paintStop(el, 'absent', '休');   // soge-print-leave-v1: 字を「休」に揃えた
         toast(nm + ' さんを欠席にしました');
         close();
       } else { busy(false); }
