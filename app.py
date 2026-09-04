@@ -22608,6 +22608,49 @@ def _pay_merge_leave_rows(staff, leaves):  # pay-leave-rows-v1
     return staff
 
 
+def _pay_fill_all_days(staff, d_start, d_end):  # pay-allday-rows-v1
+    """出力の期間を、1日も飛ばさずに並べる。
+
+    ★足すのは【表示用の行】だけ。お金の計算には触らない。
+      minutes=None なので _pay_compute_staff はすべての集計から外す
+      （pay-leave-rows-v1 と同じ理由）。
+
+    ★目印は leave_only を使い回す。出力5本の出し分けはもうこれを見ているので、
+      5本を書き直さずに済む。書き直さないぶん、食い違いも起きない。
+      leave_type は付けないので、休暇区分の欄は空になる。
+
+    ★「公休」とは書かない。公休なのか登録し忘れなのかは、
+      データからは決められない（画面 timecard-allday-v1 と同じ考え）。
+
+    ★打刻も休みも1つも無い職員には足さない。
+      出力には職員マスタの全員が入るので、守らないと
+      働いていない人のぶんだけ空欄の紙が増える。
+    """
+    if not d_start or not d_end or d_end < d_start:
+        return staff
+    all_days = []
+    _c = d_start
+    while _c <= d_end:
+        all_days.append(_c.isoformat())
+        _c = _c + _pay_td(days=1)
+    # ★万一おかしな期間が来ても、紙を無限に増やさない歯止め
+    if len(all_days) > 62:
+        print("[pay-allday] 期間が %d 日と長すぎるので、日は足しませんでした"
+              % len(all_days), flush=True)
+        return staff
+    for s in staff:
+        days = s.get("days") or []
+        if not days:
+            continue                 # 記録が1つも無い職員には足さない
+        have = set(d.get("date") for d in days)
+        add = [{"date": ds, "minutes": None, "incomplete": False,
+                "flags": [], "in": None, "out": None, "break_min": 0,
+                "leave_only": True} for ds in all_days if ds not in have]
+        if add:
+            s["days"] = sorted(days + add, key=lambda d: d.get("date") or "")
+    return staff
+
+
 def _pay_wd_label(dk):
     try:
         y, m, d = [int(x) for x in dk.split("-")]
@@ -22669,6 +22712,8 @@ def pay_export_simple_csv():
         # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
         leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
         _pay_merge_leave_rows(staff, leaves)
+        # pay-allday-rows-v1: 何も無い日も、日付だけの行として並べる。
+        _pay_fill_all_days(staff, d_start, d_end)
 
         sio = _pay_io.StringIO()
         w = _pay_csv.writer(sio)
@@ -22731,6 +22776,8 @@ def pay_export_simple_excel():
         # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
         leaves = _pay_leaves_map(supabase, f_code, d_start, d_end)
         _pay_merge_leave_rows(staff, leaves)
+        # pay-allday-rows-v1: 何も無い日も、日付だけの行として並べる。
+        _pay_fill_all_days(staff, d_start, d_end)
         fac_name = _pay_facility_name(supabase, f_code)
 
         import openpyxl as _xl
@@ -22890,6 +22937,8 @@ def pay_export_payroll_csv():
         # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
         #   ★休暇区分の列は元からあるのに、行が無いので永久に空欄だった。
         _pay_merge_leave_rows(staff, leaves)
+        # pay-allday-rows-v1: 何も無い日も、日付だけの行として並べる。
+        _pay_fill_all_days(staff, d_start, d_end)
         lt = _LEAVE_TYPES
 
         sio = _pay_io.StringIO()
@@ -22955,6 +23004,8 @@ def pay_export_payroll_excel():
         # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
         #   ★休暇区分の列は元からあるのに、行が無いので永久に空欄だった。
         _pay_merge_leave_rows(staff, leaves)
+        # pay-allday-rows-v1: 何も無い日も、日付だけの行として並べる。
+        _pay_fill_all_days(staff, d_start, d_end)
         lt = _LEAVE_TYPES
         fac_name = _pay_facility_name(supabase, f_code)
 
@@ -23048,6 +23099,8 @@ def pay_export_payroll_pdf():
         # pay-leave-rows-v1: 打刻のない休みの日を、表示用の行として足す。
         #   ★休暇区分の列は元からあるのに、行が無いので永久に空欄だった。
         _pay_merge_leave_rows(staff, leaves)
+        # pay-allday-rows-v1: 何も無い日も、日付だけの行として並べる。
+        _pay_fill_all_days(staff, d_start, d_end)
         lt = _LEAVE_TYPES
         fac_name = _pay_facility_name(supabase, f_code)
 
