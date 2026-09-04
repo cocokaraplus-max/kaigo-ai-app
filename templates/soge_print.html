@@ -311,7 +311,7 @@
     {# soge-print-plan-v1: 予定の行があることを、紙にも書いておく。
        ★書かないと「走ったのに時刻が空のまま」と読まれる。 #}
     <div class="sp-legend">
-      丸数字＝周った順番／青＝迎え、緑＝送り／「欠」＝当日欠席、「—」＝打刻なし／うすい灰色の行＝これからの予定（配車表から作った見込みで、まだ運行の記録ではありません）
+      丸数字＝周った順番／青＝迎え、緑＝送り／「休」＝当日お休み、「—」＝打刻なし／うすい灰色の行＝これからの予定（配車表から作った見込みで、まだ運行の記録ではありません）
     </div>
   </div>
 {% endfor %}
@@ -573,7 +573,8 @@ td.sp-stops { position: relative; padding-right: 68px; }
       + '<div class="btns">'
       + '<button class="main ok">保存</button>'
       + '<button class="clr">空にする</button>'
-      + '<button class="warn abs">欠席にする</button>'
+      /* soge-print-word-v1: 表に出る字が「休」なので、ボタンも揃える。 */
+      + '<button class="warn abs">休みにする</button>'
       + '<button class="mv">車を移す</button>'          /* soge-print-admin-v1 */
       + '<button class="cancel no">やめる</button>'
       + '</div></div>';
@@ -619,11 +620,12 @@ td.sp-stops { position: relative; padding-right: 68px; }
     };
 
     back.querySelector('.abs').onclick = async function () {
-      if (!confirm(nm + ' さんを「欠席」にします。\n入っている到着時刻は消えます。\nよろしいですか。')) return;
+      /* soge-print-word-v1 */
+      if (!confirm(nm + ' さんを「休み」にします。\n入っている到着時刻は消えます。\nよろしいですか。')) return;
       busy(true);
       if (await saveStop(stopId, { absent: true })) {
         paintStop(el, 'absent', '休');   // soge-print-leave-v1: 字を「休」に揃えた
-        toast(nm + ' さんを欠席にしました');
+        toast(nm + ' さんを休みにしました');   /* soge-print-word-v1 */
         close();
       } else { busy(false); }
     };

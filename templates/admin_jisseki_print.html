@@ -96,6 +96,33 @@
         </div>
       </div>
       <div class="jihi-line" id="jihi-line" style="display:none;"></div>
+
+      <!-- jisseki-print-demog-v1: 画面に足したものを、紙にも同じ形で出す。
+           ★数字は同じ口から取る。ここで計算し直すと画面と食い違う。 -->
+      <div class="sec-label" style="margin-top:14px;">男女比</div>
+      <table class="jt" style="max-width:380px;">
+        <thead><tr><th>区分</th><th class="r">実人数</th><th class="r">延べ</th></tr></thead>
+        <tbody id="dg-gender-rows"></tbody>
+      </table>
+      <div id="dg-gender-note" class="note" style="display:none;"></div>
+
+      <div class="sec-label" style="margin-top:12px;">曜日別 利用者数（実績）　実人数（延べ）</div>
+      <table class="jt"><thead><tr><th>曜日</th><th class="r">午前のみ</th><th class="r">午後のみ</th><th class="r">終日</th><th class="r">未設定</th><th class="r">合計</th></tr></thead><tbody id="dg-wd-actual"></tbody></table>
+
+      <div class="sec-label" style="margin-top:12px;">曜日別 人数（予定・利用曜日の登録）</div>
+      <table class="jt"><thead><tr><th>曜日</th><th class="r">午前のみ</th><th class="r">午後のみ</th><th class="r">終日</th><th class="r">未設定</th><th class="r">合計</th></tr></thead><tbody id="dg-wd-plan"></tbody></table>
+
+      <div class="sec-label" style="margin-top:12px;">曜日別 男女比（実績・実人数）</div>
+      <table class="jt"><thead><tr><th>曜日</th><th class="r">午前のみ</th><th class="r">午後のみ</th><th class="r">終日</th><th class="r">合計</th></tr></thead><tbody id="dg-g-jin"></tbody></table>
+
+      <div class="sec-label" style="margin-top:12px;">曜日別 男女比（実績・延べ）</div>
+      <table class="jt"><thead><tr><th>曜日</th><th class="r">午前のみ</th><th class="r">午後のみ</th><th class="r">終日</th><th class="r">合計</th></tr></thead><tbody id="dg-g-nobe"></tbody></table>
+      <div class="note" style="color:#555;">
+        男／女 の順。実人数はその曜日に1回でも来た方を1人、延べは来た日ごとに数えます。
+        実人数の合計は、午前と午後の両方に来た方も1人として数えるので、各列の足し算にはなりません。
+      </div>
+
+      <div id="dg-unknown-note" class="note" style="display:none;"></div>
     </div>
 
     <!-- グラフエリア -->
@@ -108,6 +135,27 @@
         <div class="chart-box">
           <div class="cap">提供時間別 延べ人数</div>
           <canvas id="chart-sv" height="200"></canvas>
+        </div>
+      </div>
+      <!-- jisseki-print-demog-v1 -->
+      <div class="charts-row" style="margin-top:12px;">
+        <div class="chart-box">
+          <div class="cap">男女比 実人数</div>
+          <canvas id="chart-dg-gender" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <div class="cap">曜日別 延べ人数（実績）</div>
+          <canvas id="chart-dg-wd" height="200"></canvas>
+        </div>
+      </div>
+      <div class="charts-row" style="margin-top:12px;">
+        <div class="chart-box">
+          <div class="cap">曜日別 実績と予定（延べ）</div>
+          <canvas id="chart-dg-cmp" height="200"></canvas>
+        </div>
+        <div class="chart-box">
+          <div class="cap">曜日別 男女比（実人数）</div>
+          <canvas id="chart-dg-g" height="200"></canvas>
         </div>
       </div>
     </div>
@@ -190,6 +238,171 @@ function drawCharts(clData, svData){
   });
 }
 
+/* ===== jisseki-print-demog-v1 : 男女比 / 曜日別 ===== */
+/* ★名前をそのまま入れない。利用者の名前は手で入れるので記号が入りうる。 */
+function dgEsc(x){
+  return String(x == null ? '' : x)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+var DG_S = ['am','pm','all','unknown'];
+function dgT(b){ return (b && b.t) ? b.t : 0; }
+function dgG(b){
+  if (!b || !b.t) return '';
+  var s = b.m + ' / ' + b.f;
+  if (b.n) s += '（未' + b.n + '）';
+  return s;
+}
+/* 延べの合計は足し算でよい。★実人数は足し算にしない（両方の枠に入る方がいる）。 */
+function dgSum(w){
+  var o = w || {}, b = {m:0,f:0,n:0,t:0};
+  DG_S.forEach(function(k){ var x = o[k]||{}; b.m+=(x.m||0); b.f+=(x.f||0); b.n+=(x.n||0); b.t+=(x.t||0); });
+  return b;
+}
+function fillDemogTables(d){
+  /* 男女比 */
+  var g = d.gender || {rows:[], total:{jin:0,nobe:0}};
+  var gh = '', gnone = null;
+  (g.rows||[]).forEach(function(r){
+    if (r.key === 'none') { gnone = r; if (!r.jin) return; }
+    gh += '<tr><td>'+r.label+'</td><td class="r">'+r.jin+'（'+r.jin_pct+'%）</td>'
+        + '<td class="r">'+r.nobe+'（'+r.nobe_pct+'%）</td></tr>';
+  });
+  gh += '<tr class="sub-row"><td>合計</td><td class="r">'+(g.total||{}).jin+'</td>'
+      + '<td class="r">'+(g.total||{}).nobe+'</td></tr>';
+  document.getElementById('dg-gender-rows').innerHTML = gh;
+  if (gnone && gnone.jin > 0){
+    var gn = document.getElementById('dg-gender-note');
+    gn.style.display = 'block';
+    gn.textContent = '※ 性別が未設定の利用者が '+gnone.jin+'名（延べ'+gnone.nobe+'）あります。';
+  }
+
+  var rows = d.weekday || [];
+
+  /* 曜日別（実績）… 実人数（延べ）。★合計はサーバが数えた実人数を使う。 */
+  var ah = '', sum = {am:0,pm:0,all:0,unknown:0,t:0};
+  rows.forEach(function(r){
+    var w = r.actual||{}, wj = r.actual_jin||{}, tot = 0, tds = '';
+    DG_S.forEach(function(k){
+      var n = dgT(w[k]); tot += n; sum[k] += n;
+      tds += '<td class="r">'+(dgT(wj[k]) || n ? dgT(wj[k])+'（'+n+'）' : '')+'</td>';
+    });
+    sum.t += tot;
+    ah += '<tr><td>'+r.label+'</td>'+tds+'<td class="r">'+(dgT(wj.total)+'（'+tot+'）')+'</td></tr>';
+  });
+  var js_ = d.actual_jin_sum || {};
+  ah += '<tr class="sub-row"><td>合計</td>';
+  DG_S.forEach(function(k){ ah += '<td class="r">'+dgT(js_[k])+'（'+sum[k]+'）</td>'; });
+  ah += '<td class="r">'+dgT(js_.total)+'（'+sum.t+'）</td></tr>';
+  document.getElementById('dg-wd-actual').innerHTML = ah;
+
+  /* 曜日別（予定）… 登録なので、もともと実人数 */
+  var ph = '', psum = {am:0,pm:0,all:0,unknown:0,t:0};
+  rows.forEach(function(r){
+    var w = r.plan||{}, tot = 0, tds = '';
+    DG_S.forEach(function(k){ var n = dgT(w[k]); tot += n; psum[k] += n; tds += '<td class="r">'+(n||'')+'</td>'; });
+    psum.t += tot;
+    ph += '<tr><td>'+r.label+'</td>'+tds+'<td class="r">'+(tot||'')+'</td></tr>';
+  });
+  ph += '<tr class="sub-row"><td>合計</td>';
+  DG_S.forEach(function(k){ ph += '<td class="r">'+psum[k]+'</td>'; });
+  ph += '<td class="r">'+psum.t+'</td></tr>';
+  document.getElementById('dg-wd-plan').innerHTML = ph;
+
+  /* 曜日別 男女比… 実人数と延べ。★紙は押せないので、両方とも並べる。 */
+  function gtable(which){
+    var h = '';
+    rows.forEach(function(r){
+      var w = r[which]||{};
+      h += '<tr><td>'+r.label+'</td>'
+        + '<td class="r">'+dgG(w.am)+'</td>'
+        + '<td class="r">'+dgG(w.pm)+'</td>'
+        + '<td class="r">'+dgG(w.all)+'</td>'
+        + '<td class="r">'+dgG(which === 'actual_jin' ? w.total : dgSum(w))+'</td></tr>';
+    });
+    return h;
+  }
+  document.getElementById('dg-g-jin').innerHTML = gtable('actual_jin');
+  document.getElementById('dg-g-nobe').innerHTML = gtable('actual');
+
+  /* 未設定の内訳。★紙は開けないので、そのまま並べる。 */
+  if ((d.unknown_actual||0) > 0){
+    var ul = d.unknown_list || [];
+    var un = document.getElementById('dg-unknown-note');
+    un.style.display = 'block';
+    un.innerHTML = '※ 午前・午後が分からない来所が '+d.unknown_actual+'件あります'
+      + '（利用曜日の登録が無い日）。'
+      + (ul.length ? '<br>' + ul.map(function(u){
+            return dgEsc(u.user_name||'（名前なし）') + ' ' + u.n + '件（'
+                 + u.dates.map(function(x){ return x.slice(5).replace('-','/'); }).join('、') + '）';
+          }).join('　') : '')
+      + (((d.unknown_people||0) > ul.length) ? '　ほか '+((d.unknown_people||0)-ul.length)+'名' : '');
+  }
+}
+function dgWdCounts(y, m){
+  var out = [0,0,0,0,0,0,0];
+  var last = new Date(y, m, 0).getDate();
+  for (var i = 1; i <= last; i++) out[new Date(y, m - 1, i).getDay()]++;
+  return out;
+}
+function drawDemogCharts(d){
+  if (typeof Chart === 'undefined'){ setTimeout(function(){ drawDemogCharts(d); }, 200); return; }
+  var rows = d.weekday || [];
+  var labels = rows.map(function(r){ return r.label; });
+  var COL = {male:'#3b82a6', female:'#c0662d', none:'#b0b6bf'};
+
+  var gl=[], gv=[], gc=[];
+  ((d.gender||{}).rows||[]).forEach(function(r){
+    if (r.jin > 0){ gl.push(r.label); gv.push(r.jin); gc.push(COL[r.key]||'#9aa0a6'); }
+  });
+  new Chart(document.getElementById('chart-dg-gender'), {
+    type:'doughnut', data:{ labels:gl, datasets:[{ data:gv, backgroundColor:gc }] },
+    options:{ responsive:true, animation:false, plugins:{ legend:{ position:'right', labels:{ font:{ size:10 } } } } }
+  });
+
+  function pick(k){ return rows.map(function(r){ return dgT((r.actual||{})[k]); }); }
+  new Chart(document.getElementById('chart-dg-wd'), {
+    type:'bar',
+    data:{ labels:labels, datasets:[
+      { label:'午前のみ', data:pick('am'), backgroundColor:'#3b82a6' },
+      { label:'午後のみ', data:pick('pm'), backgroundColor:'#c79a3d' },
+      { label:'終日',     data:pick('all'), backgroundColor:'#4a9d5b' },
+      { label:'未設定',   data:pick('unknown'), backgroundColor:'#b0b6bf' }
+    ]},
+    options:{ responsive:true, animation:false, plugins:{ legend:{ labels:{ font:{ size:9 } } } },
+      scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true, ticks:{ precision:0 } } } }
+  });
+
+  /* ★予定は週1回ぶんの顔ぶれ。実績の延べと桁が違うので、
+       その月にその曜日が何回あったかを掛けて土俵をそろえる。 */
+  var cnt = dgWdCounts(d.year, d.month);
+  new Chart(document.getElementById('chart-dg-cmp'), {
+    type:'bar',
+    data:{ labels:labels, datasets:[
+      { label:'予定（登録×回数）', data:rows.map(function(r){ return dgSum(r.plan).t * (cnt[r.wd]||0); }), backgroundColor:'#c8d8e4' },
+      { label:'実績（延べ）', data:rows.map(function(r){ return dgSum(r.actual).t; }), backgroundColor:'#3b82a6' }
+    ]},
+    options:{ responsive:true, animation:false, plugins:{ legend:{ labels:{ font:{ size:9 } } } },
+      scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+  });
+
+  function gpick(key){
+    return rows.map(function(r){ return ((r.actual_jin||{}).total||{})[key] || 0; });
+  }
+  var gsets = [
+    { label:'男性', data:gpick('m'), backgroundColor:'#3b82a6' },
+    { label:'女性', data:gpick('f'), backgroundColor:'#c0662d' }
+  ];
+  var gu = gpick('n');
+  if (gu.some(function(v){ return v > 0; })) {
+    gsets.push({ label:'未設定', data:gu, backgroundColor:'#b0b6bf' });
+  }
+  new Chart(document.getElementById('chart-dg-g'), {
+    type:'bar', data:{ labels:labels, datasets:gsets },
+    options:{ responsive:true, animation:false, plugins:{ legend:{ labels:{ font:{ size:9 } } } },
+      scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true, ticks:{ precision:0 } } } }
+  });
+}
+
 (async function(){
   try {
     var cl = await fetch('/api/jisseki/care_level_summary?year='+YEAR+'&month='+MONTH).then(function(r){ return r.json(); });
@@ -198,6 +411,16 @@ function drawCharts(clData, svData){
     fillTables(cl);
     if (sv.status === 'success') fillSvcTables(sv);
     if (SCOPE !== 'tables') drawCharts(cl, (sv.status==='success'?sv:{kaigo:{},sogo:{}}));
+    /* jisseki-print-demog-v1: 男女比・曜日別。
+       ★取れなかったときは、この所だけ黙って飛ばす。
+         もとからある集計まで道連れにしない。 */
+    try {
+      var dg = await fetch('/api/jisseki/demographics_summary?year='+YEAR+'&month='+MONTH).then(function(r){ return r.json(); });
+      if (dg.status === 'success'){
+        fillDemogTables(dg);
+        if (SCOPE !== 'tables') drawDemogCharts(dg);
+      }
+    } catch(e2){ }
     document.getElementById('loading').style.display = 'none';
     document.getElementById('content').style.display = 'block';
     // 自動印刷はしない。ユーザーがボタンを押したときだけ印刷する。

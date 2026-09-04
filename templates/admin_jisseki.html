@@ -323,6 +323,12 @@
     return b;
   }
 
+  /* jisseki-unknown-who-v1: 名前をそのまま画面に入れない。
+     ★利用者の名前は人が手で入れるものなので、記号が入りうる。 */
+  function esc(x){
+    return String(x == null ? '' : x)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
   function renderDemog(d){
     var html = '';
 
@@ -361,9 +367,32 @@
       + '実績の延べ人数と同じ土俵にそろえています。</div>';
 
     if (d.unknown_actual > 0) {
+      /* jisseki-unknown-who-v1: 誰のどの日かを、押すと開く形で出す。
+         ★件数だけでは直しようがない。名前と日付が無いと登録を直せない。
+         ★出しっぱなしにすると警告そのものが長くて読み飛ばされるので、畳んでおく。 */
+      var ul = d.unknown_list || [];
+      var det = '';
+      if (ul.length) {
+        det = '<details style="margin-top:6px;"><summary style="cursor:pointer;font-weight:700;">'
+            + 'どなたのどの日か（' + (d.unknown_people || ul.length) + '名）</summary>'
+            + '<div style="margin-top:6px;line-height:1.9;">'
+            + ul.map(function(u){
+                return '<div><b>' + esc(u.user_name || '（名前なし）') + '</b>'
+                     + '<span style="color:#9aa0a6;"> ' + u.n + '件</span>　'
+                     + '<span style="color:#5f6368;">' + u.dates.map(function(x){
+                         return x.slice(5).replace('-', '/');
+                       }).join('、') + '</span></div>';
+              }).join('')
+            + '</div>'
+            + ((d.unknown_people || 0) > ul.length
+                ? '<div style="color:#9aa0a6;margin-top:4px;">ほか ' + ((d.unknown_people||0) - ul.length) + '名</div>'
+                : '')
+            + '</details>';
+      }
       html += '<div class="jis-note" style="color:#b85c00;">'
         + '⚠️ 午前・午後が分からない来所が ' + d.unknown_actual + '件あります。'
-        + '利用曜日（午前／午後／終日）の登録が無い日です。</div>';
+        + '利用者基本情報の利用曜日で、午前／午後／終日 を設定すると集計に入ります。'
+        + det + '</div>';
     }
 
     // 【4】曜日別 男女比 … jisseki-demog-jin-v1: 実人数と延べを分けて出す
