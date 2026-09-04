@@ -1227,7 +1227,25 @@
         cands.querySelectorAll('[data-i]').forEach(function (el) {
           el.addEventListener('mousedown', function (e) { e.preventDefault(); });
           el.addEventListener('click', function () { pick(list[Number(el.dataset.i)]); });
-          el.addEventListener('touchstart', function (e) { e.preventDefault(); pick(list[Number(el.dataset.i)]); });
+          // soge-tap-input-v1: ★touchstart で決めるのをやめた。
+          //   指が触れた瞬間に決まるため、候補を指でなぞって選ぼうとすると
+          //   【最初に触れた人が決まって】しまい、検索欄が隠れて入力が止まっていた。
+          //   （現場報告 2026-09-04）
+          //   これからは「指を離したとき」に、しかも「動いていないとき」だけ決める。
+          var _tx = 0, _ty = 0, _tmoved = false;
+          el.addEventListener('touchstart', function (e) {
+            var t = e.touches[0];
+            _tx = t.clientX; _ty = t.clientY; _tmoved = false;
+          }, { passive: true });
+          el.addEventListener('touchmove', function (e) {
+            var t = e.touches[0];
+            if (Math.abs(t.clientX - _tx) > 8 || Math.abs(t.clientY - _ty) > 8) _tmoved = true;
+          }, { passive: true });
+          el.addEventListener('touchend', function (e) {
+            if (_tmoved) return;          // なぞった＝選んでいない
+            e.preventDefault();           // ★このあとの click を止める（二重に選ばせない）
+            pick(list[Number(el.dataset.i)]);
+          });
         });
       }
       cands.classList.add('show');

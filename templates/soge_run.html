@@ -2598,7 +2598,28 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       inp.type = 'time';
       inp.className = 'sr-timeedit';
       inp.value = initial || '';
-      el.replaceWith(inp);
+      // soge-tap-input-v1: 入力欄だけを置くのをやめ、［決定］［やめる］と一緒に置く。
+      //   ★タブレットで input[type=time] を触ると時刻のホイールが出て、
+      //     端末によっては【その瞬間に入力欄からフォーカスが外れる】。
+      //     いままでは onblur で確定していたので、触っただけで確定扱いになり、
+      //     値が変わっていないため描き直しが走り、入力欄が消えていた。
+      //     （現場報告 2026-09-04「触れた瞬間に決定されて入力ができない」）
+      //   ★これからは【押すまで何も起きない】。
+      var wrap = document.createElement('span');
+      wrap.className = 'sr-timewrap';
+      wrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;';
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.textContent = '決定';
+      okBtn.style.cssText = 'padding:6px 10px;border:none;border-radius:8px;background:#1a73e8;color:#fff;font-weight:700;font-size:0.85rem;';
+      var ngBtn = document.createElement('button');
+      ngBtn.type = 'button';
+      ngBtn.textContent = 'やめる';
+      ngBtn.style.cssText = 'padding:6px 10px;border:1px solid #dadce0;border-radius:8px;background:#fff;color:#5f6368;font-size:0.85rem;';
+      wrap.appendChild(inp);
+      wrap.appendChild(okBtn);
+      wrap.appendChild(ngBtn);
+      el.replaceWith(wrap);
       inp.focus();
       var done = false, tmr = null;
       async function commit() {
@@ -2637,11 +2658,27 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         }
         keepScroll(render);
       }
-      /* soge-time-edit-v1: ★change ですぐ確定しない。
-         input[type=time] は「時」を選んだ時点でも change を投げる。
-         そこで確定すると「分」を選ぶ前に入力欄が消える（記録表で実際に起きた）。 */
-      inp.onchange = function () { clearTimeout(tmr); tmr = setTimeout(commit, 900); };
-      inp.onblur = commit;
+      /* soge-tap-input-v1: ★change でも blur でも確定しない。
+         input[type=time] は「時」を選んだ時点でも change を投げるうえ、
+         端末によってはホイールが開いた瞬間に blur が飛ぶ。
+         どちらで確定しても、分を選ぶ前に入力欄が消える。
+         （soge-time-edit-v1 の 900ms では足りなかった。現場報告 2026-09-04）
+         ★確定するのは【決定を押したときだけ】。 */
+      function stopOutside() { document.removeEventListener('click', outsideTap, true); }
+      function cancelEdit() {
+        if (done) return;
+        done = true;
+        clearTimeout(tmr);
+        stopOutside();
+        keepScroll(render);
+      }
+      okBtn.onclick = function () { stopOutside(); commit(); };
+      ngBtn.onclick = cancelEdit;
+      /* ★開いたまま忘れられると、画面の自動読み直しが止まる（.sr-timeedit の見張り）。
+         入力欄の外を押したら、保存せずに閉じる。
+         時刻のホイールは画面の外に出るので、これには当たらない。 */
+      function outsideTap(e) { if (!wrap.contains(e.target)) cancelEdit(); }
+      setTimeout(function () { document.addEventListener('click', outsideTap, true); }, 0);
     }
 
     // 記録した時刻をタップすると直せる
@@ -3057,7 +3094,25 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         cands.querySelectorAll('[data-i]').forEach(function (el) {
           el.addEventListener('mousedown', function (e) { e.preventDefault(); });
           el.addEventListener('click', function () { pick(list[Number(el.dataset.i)]); });
-          el.addEventListener('touchstart', function (e) { e.preventDefault(); pick(list[Number(el.dataset.i)]); });
+          // soge-tap-input-v1: ★touchstart で決めるのをやめた。
+          //   指が触れた瞬間に決まるため、候補を指でなぞって選ぼうとすると
+          //   【最初に触れた人が決まって】しまい、検索欄が隠れて入力が止まっていた。
+          //   （現場報告 2026-09-04）
+          //   これからは「指を離したとき」に、しかも「動いていないとき」だけ決める。
+          var _tx = 0, _ty = 0, _tmoved = false;
+          el.addEventListener('touchstart', function (e) {
+            var t = e.touches[0];
+            _tx = t.clientX; _ty = t.clientY; _tmoved = false;
+          }, { passive: true });
+          el.addEventListener('touchmove', function (e) {
+            var t = e.touches[0];
+            if (Math.abs(t.clientX - _tx) > 8 || Math.abs(t.clientY - _ty) > 8) _tmoved = true;
+          }, { passive: true });
+          el.addEventListener('touchend', function (e) {
+            if (_tmoved) return;          // なぞった＝選んでいない
+            e.preventDefault();           // ★このあとの click を止める（二重に選ばせない）
+            pick(list[Number(el.dataset.i)]);
+          });
         });
       }
       cands.classList.add('show');

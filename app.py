@@ -27809,23 +27809,31 @@ def _soge_clear_day(supabase, f_code, date_str):
         return False
 
 
-def _soge_leave_names(supabase, f_code, date_str):  # soge-leave-v1
-    """その日に「休み連絡」が入っている利用者名の集合。
+def _soge_leave_names_range(supabase, f_code, d_from, d_to):  # soge-print-leave-v1
+    """d_from〜d_to の【日ごと】に、「休み連絡」が入っている利用者名の集合を返す。
+
+        {'2026-09-04': {'板倉條麿', ...}, '2026-09-05': {...}, ...}
 
     ★飛び飛びの休みは、記録の start〜end を機械展開すると間の日まで休みになる。
       実際の休み日はカレンダー(calendar_events)が正。
       これは visit_records の月表示(leave-scattered-fix-v1)とまったく同じ規則。
       規則を2つに分けると、片方だけ直したときに食い違う。
+
+    ★判定の中身は【この関数だけ】に置く。
+      1日ぶんの _soge_leave_names は、これを1日切り出す薄い包みにしてある。
+      （soge-print-leave-v1 で、記録表が1か月ぶんを一度に要るため移した。
+        日ごとに呼ぶと 31日 × 2問い合わせ になり、印刷前に何秒も待たされる）
     """
-    names = set()
+    from datetime import datetime as _lv_dt, timedelta as _lv_td
+    out = {}
     try:
         lv = (supabase.table("records")
               .select("id,user_name,leave_date_start,leave_date_end")
               .eq("facility_code", f_code).eq("category", "休み連絡")
-              .lte("leave_date_start", date_str).execute())
+              .lte("leave_date_start", d_to).execute())
         rows = lv.data or []
         if not rows:
-            return names
+            return out
         ids = [r.get("id") for r in rows if r.get("id") is not None]
         ev_by_rec = {}
         if ids:
@@ -27838,12 +27846,30 @@ def _soge_leave_names(supabase, f_code, date_str):  # soge-leave-v1
             except Exception as ee:
                 print("soge leave cal fetch error: %s" % ee, flush=True)
 
-        def _covers(ds, de):
+        def _mark(ds, de, nm):
+            """ds〜de の各日に nm を足す。欲しい期間の外は切り捨てる。
+            ★もとの _covers は「ds <= その日 <= de」だった。ここも同じ。
+              de が ds より前という壊れた記録は、もとと同じく【数えない】。"""
             if not ds:
-                return False
-            ds = str(ds)[:10]
-            de = str(de or ds)[:10]
-            return ds <= date_str <= de
+                return
+            a = str(ds)[:10]
+            b = str(de or ds)[:10]
+            if b < a:
+                return
+            if b < d_from or a > d_to:
+                return
+            if a < d_from:
+                a = d_from
+            if b > d_to:
+                b = d_to
+            try:
+                cur = _lv_dt.strptime(a, "%Y-%m-%d")
+                end = _lv_dt.strptime(b, "%Y-%m-%d")
+            except Exception:
+                return
+            while cur <= end:
+                out.setdefault(cur.strftime("%Y-%m-%d"), set()).add(nm)
+                cur += _lv_td(days=1)
 
         for r in rows:
             nm = (r.get("user_name") or "").strip()
@@ -27852,17 +27878,23 @@ def _soge_leave_names(supabase, f_code, date_str):  # soge-leave-v1
             evs = ev_by_rec.get(r.get("id"))
             if evs:
                 # カレンダー連携済み＝飛び日は各日単独のイベントになっている
-                if any(_covers(e.get("event_date"), e.get("end_date")) for e in evs):
-                    names.add(nm)
+                for e in evs:
+                    _mark(e.get("event_date"), e.get("end_date"), nm)
             else:
                 # 旧データ（カレンダー未連携）だけ、記録の start〜end で見る
-                if _covers(r.get("leave_date_start"), r.get("leave_date_end")):
-                    names.add(nm)
+                _mark(r.get("leave_date_start"), r.get("leave_date_end"), nm)
     except Exception as e:
         print("soge leave names error: %s" % e, flush=True)
-    return names
+    return out
 
 
+def _soge_leave_names(supabase, f_code, date_str):  # soge-leave-v1
+    """その日に「休み連絡」が入っている利用者名の集合。
+    ★中身は _soge_leave_names_range に移した（soge-print-leave-v1）。
+      判定の規則は1か所だけ。ここは1日ぶんを切り出す包み。
+      呼び方も返す形も、これまでとまったく同じ（set）。
+    """
+    return _soge_leave_names_range(supabase, f_code, date_str, date_str).get(date_str, set())
 def _soge_week_for_day(supabase, f_code, date_str, settings):  # soge-day-merge-v1
     """その日に使う配車を1か所で決める。日付の配車がいちばん強い。
 
@@ -29600,6 +29632,17 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
                              torder.get(d.get("trip_key"), 99),
                              d.get("vehicle_no") or 1))
 
+    # soge-print-leave-v1: その月の休みを【1回だけ】引く。
+    #   ★日ごとに引くと 31日 × 2問い合わせ になり、印刷前に待たされる。
+    from datetime import datetime as _lvm_dt, timedelta as _lvm_td
+    _lv_from = ym + "-01"
+    try:
+        _lv_y, _lv_m = int(ym[:4]), int(ym[5:7])
+        _lv_ny, _lv_nm = (_lv_y + 1, 1) if _lv_m == 12 else (_lv_y, _lv_m + 1)
+        _lv_to = (_lvm_dt(_lv_ny, _lv_nm, 1) - _lvm_td(days=1)).strftime("%Y-%m-%d")
+    except Exception:
+        _lv_to = ym + "-31"
+    leave_map = _soge_leave_names_range(supabase, f_code, _lv_from, _lv_to)
     out, cur, last_date = [], None, None
     for d in days:
         key = str(d.get("vehicle_id") or d.get("vehicle_name") or d.get("vehicle_no"))
@@ -29663,6 +29706,10 @@ def _soge_month_payload(supabase, f_code, ym):  # soge-print-v2
                 "type": s.get("stop_type") or "pickup",
                 "arrived_at": _soge_hhmm(s.get("arrived_at")),
                 "is_absent": bool(s.get("is_absent")),
+                # soge-print-leave-v1: 休み連絡から来た「お休み」。
+                #   ★これを渡していなかったので、記録表では「—」のままだった。
+                #     運行画面のAPIだけが作っていた（現場報告 2026-09-04 板倉さん）。
+                "is_leave": bool((s.get("user_name") or "").strip() in leave_map.get(ds, set())),
             } for s in stops],
         })
         last_date = ds
