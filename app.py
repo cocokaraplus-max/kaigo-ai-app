@@ -34447,6 +34447,182 @@ def api_jisseki_care_level_summary():
 
 
 # ==========================================
+# jisseki-demog-v1: 男女比 / 曜日別（午前・午後・終日）
+# ==========================================
+_JIS_WD_LABEL = ["日", "月", "火", "水", "木", "金", "土"]
+_JIS_WD_ORDER = [1, 2, 3, 4, 5, 6, 0]      # 月〜日の順に出す
+_JIS_SLOTS = ["am", "pm", "all", "unknown"]
+
+
+def _jis_gender_key(v):  # jisseki-demog-v1
+    """性別の字を3つに寄せる。
+
+    ★入っている字は事業所によって違う（本番は「男性」「女性」、
+      取り込みでは「男」「女」になる）。字が含まれるかで見る。
+    """
+    s = str(v or "")
+    if "女" in s:
+        return "female"
+    if "男" in s:
+        return "male"
+    return "none"
+
+
+def _jis_slot_of(apd, wd, ds, half_start, full_start):  # jisseki-demog-v1
+    """その曜日が 午前のみ / 午後のみ / 終日 のどれか。
+
+    ★利用管理の画面(/api/visit/month)と【同じ判定】にそろえてある。
+      そろえないと、同じ月なのに画面ごとに人数が違うことになる。
+      1日型・半日型は開始日より前だと、まだその型ではない。
+    """
+    t = str((apd or {}).get(str(wd)) or "").strip().upper()
+    if t == "ALL":
+        return "all" if ((not full_start) or ds >= full_start) else "unknown"
+    if t in ("AM", "PM"):
+        if (not half_start) or ds >= half_start:
+            return t.lower()
+        return "unknown"
+    return "unknown"
+
+
+def _jis_box():  # jisseki-demog-v1
+    return {"m": 0, "f": 0, "n": 0, "t": 0}
+
+
+def _jis_add(box, g):  # jisseki-demog-v1
+    box["t"] += 1
+    box["m" if g == "male" else ("f" if g == "female" else "n")] += 1
+
+
+@app.route("/api/jisseki/demographics_summary", methods=["GET"])
+@login_required
+def api_jisseki_demographics_summary():  # jisseki-demog-v1
+    """対象月の 男女比 と 曜日別（午前・午後・終日）を返す。
+
+    実績 … 来所した日（vitals）。介護度別の表と同じ元。
+    予定 … 利用曜日の登録（patient_visit_days）。
+    """
+    f_code = session.get("f_code")
+    supabase = get_supabase()
+    try:
+        year = int(request.args.get("year"))
+        month = int(request.args.get("month"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "year/month必須"}), 400
+    try:
+        ndays = _jis_cal.monthrange(year, month)[1]
+        first = "%04d-%02d-01" % (year, month)
+        last = "%04d-%02d-%02d" % (year, month, ndays)
+
+        # 1) 来所日（介護度別の表と同じ引き方）
+        vit = (supabase.table("vitals").select("patient_id, measured_date")
+               .eq("facility_code", f_code)
+               .gte("measured_date", first).lte("measured_date", last).execute())
+        visit_days = {}
+        for r in (vit.data or []):
+            pid = r.get("patient_id")
+            md = (r.get("measured_date") or "")[:10]
+            if pid and md:
+                visit_days.setdefault(str(pid), set()).add(md)
+
+        # 2) 利用者（性別と、利用者番号との対応）
+        plist = get_patients(supabase, f_code)
+        pmap = dict((str(p["id"]), p) for p in plist)
+
+        # 3) 利用曜日の登録。★この表は利用者【番号】で引く。
+        #    来所の記録は UUID なので、番号→UUID に直してから使う。
+        vd_by_pid = {}
+        try:
+            _int2uuid = dict((str(p["patient_int_id"]), str(p["id"]))
+                             for p in plist if p.get("patient_int_id"))
+            vr = (supabase.table("patient_visit_days")
+                  .select("patient_id,weekdays,ampm_per_day,nth_per_day,"
+                          "half_start_date,full_start_date")
+                  .eq("facility_code", f_code).execute())
+            for r in (vr.data or []):
+                u = _int2uuid.get(str(r.get("patient_id")))
+                if not u:
+                    continue
+                _apd = r.get("ampm_per_day")
+                vd_by_pid[u] = {
+                    "apd": _apd if isinstance(_apd, dict) else {},
+                    "half": (str(r.get("half_start_date") or ""))[:10],
+                    "full": (str(r.get("full_start_date") or ""))[:10],
+                }
+        except Exception as e:
+            # ★黙って0にしない。取れなければ全部「未設定」に出る。
+            print("[jisseki-demog] 利用曜日を読めませんでした: %s" % e, flush=True)
+
+        # 4) 男女比 と 曜日別（実績）
+        gender = {"male": {"jin": 0, "nobe": 0},
+                  "female": {"jin": 0, "nobe": 0},
+                  "none": {"jin": 0, "nobe": 0}}
+        wd_actual = dict((w, dict((s, _jis_box()) for s in _JIS_SLOTS))
+                         for w in range(7))
+        for pid, dates in visit_days.items():
+            g = _jis_gender_key((pmap.get(pid) or {}).get("gender"))
+            gender[g]["jin"] += 1
+            gender[g]["nobe"] += len(dates)
+            vd = vd_by_pid.get(pid) or {}
+            for ds in dates:
+                wd = _visit_weekday_of(ds)
+                slot = _jis_slot_of(vd.get("apd"), wd, ds,
+                                    vd.get("half"), vd.get("full"))
+                _jis_add(wd_actual[wd][slot], g)
+
+        # 5) 曜日別（予定）。利用曜日の登録から数える。
+        #    ★第N週だけの方も「その曜日に来る人」として1人と数える。
+        #      月に何回来るかではなく、その曜日の顔ぶれを見る表なので。
+        wd_plan = dict((w, dict((s, _jis_box()) for s in _JIS_SLOTS))
+                       for w in range(7))
+        for pid, vd in vd_by_pid.items():
+            p = pmap.get(pid)
+            if not p or not patient_active_on(p, last):
+                continue
+            g = _jis_gender_key(p.get("gender"))
+            for wd in range(7):
+                t = str((vd.get("apd") or {}).get(str(wd)) or "").strip().upper()
+                if t in ("", "NONE"):
+                    continue
+                slot = _jis_slot_of(vd.get("apd"), wd, last,
+                                    vd.get("half"), vd.get("full"))
+                _jis_add(wd_plan[wd][slot], g)
+
+        def _pct(n, d):
+            return round((n * 100.0 / d), 1) if d else 0.0
+
+        g_jin = sum(v["jin"] for v in gender.values())
+        g_nobe = sum(v["nobe"] for v in gender.values())
+        g_rows = []
+        for key, label in (("male", "男性"), ("female", "女性"),
+                           ("none", "未設定")):
+            v = gender[key]
+            g_rows.append({"key": key, "label": label,
+                           "jin": v["jin"], "nobe": v["nobe"],
+                           "jin_pct": _pct(v["jin"], g_jin),
+                           "nobe_pct": _pct(v["nobe"], g_nobe)})
+
+        wd_rows = []
+        for wd in _JIS_WD_ORDER:
+            wd_rows.append({
+                "wd": wd, "label": _JIS_WD_LABEL[wd],
+                "actual": wd_actual[wd],
+                "plan": wd_plan[wd],
+            })
+
+        return jsonify({
+            "status": "success", "year": year, "month": month,
+            "gender": {"rows": g_rows, "total": {"jin": g_jin, "nobe": g_nobe}},
+            "weekday": wd_rows,
+            # ★未設定の合計。0でなければ、利用曜日の登録が足りていない合図。
+            "unknown_actual": sum(wd_actual[w]["unknown"]["t"] for w in range(7)),
+        })
+    except Exception as e:
+        print("api_jisseki_demographics_summary error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ==========================================
 # jisseki-page-v1: 実績集計 画面
 # ==========================================
 @app.route("/admin/jisseki")

@@ -117,11 +117,28 @@
 
   <!-- jisseki-svctime-sum-ui-v1 -->
   <div id="jis-svctime-body"></div>
+  <!-- jisseki-demog-v1: 男女比 / 曜日別（午前・午後・終日） -->
+  <div id="jis-demog-body"></div>
   <!-- jisseki-charts-v1 -->
   <div class="jis-charts" style="margin-top:18px;">
     <div class="jis-section-label">グラフ</div>
     <div style="background:#fff;border-radius:12px;padding:14px;margin-bottom:12px;"><div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:8px;"><button type="button" id="cl-type-doughnut" onclick="setCareLevelChartType('doughnut')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #4a9d5b;background:#eef7f0;color:#2e7d32;cursor:pointer;">円</button><button type="button" id="cl-type-bar" onclick="setCareLevelChartType('bar')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">棒</button></div><canvas id="chart-carelevel" height="220"></canvas></div>
     <div style="background:#fff;border-radius:12px;padding:14px;"><canvas id="chart-svctime" height="220"></canvas></div>
+    <!-- jisseki-demog-v1 -->
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-gender" height="220"></canvas></div>
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-weekday" height="240"></canvas></div>
+    <!-- jisseki-demog-charts-v1 -->
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-weekday-plan" height="240"></canvas></div>
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-weekday-cmp" height="240"></canvas></div>
+    <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;">
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:8px;flex-wrap:wrap;">
+        <button type="button" id="dg-g-total" onclick="setDemogGenderSlot('total')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #4a9d5b;background:#eef7f0;color:#2e7d32;cursor:pointer;">合計</button>
+        <button type="button" id="dg-g-am" onclick="setDemogGenderSlot('am')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">午前のみ</button>
+        <button type="button" id="dg-g-pm" onclick="setDemogGenderSlot('pm')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">午後のみ</button>
+        <button type="button" id="dg-g-all" onclick="setDemogGenderSlot('all')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">終日</button>
+      </div>
+      <canvas id="chart-weekday-gender" height="240"></canvas>
+    </div>
   </div>
 </div>
 
@@ -205,15 +222,137 @@
         if ((j.total||{}).jin === 0) {
           document.getElementById('jis-body').innerHTML = '<div class="jis-empty">この月の来所実績はまだありません。</div>';
           document.getElementById('jis-svctime-body').innerHTML = '';
+          document.getElementById('jis-demog-body').innerHTML = '';   /* jisseki-demog-v1 */
           return;
         }
         render(j);
         loadSvcTimeSummary();
+        loadDemog();   // jisseki-demog-v1
       })
       .catch(function(){
         document.getElementById('jis-body').innerHTML = '<div class="jis-empty">読み込みに失敗しました。</div>';
       });
   }
+
+  // ===== jisseki-demog-v1 : 男女比 / 曜日別（午前・午後・終日） =====
+  //   ★午前・午後は来所の記録には入っていない。利用曜日の登録が元。
+  //     登録が無い来所は「未設定」に出す。隠すと、0が並んでいる理由が読めない。
+  var DG_SLOTS = [['am','午前のみ'],['pm','午後のみ'],['all','終日'],['unknown','未設定']];
+
+  function dgCell(b){ return (b && b.t) ? b.t : 0; }
+
+  function dgCountTable(title, icon, rows, which){
+    var head = '<tr><th>曜日</th>';
+    DG_SLOTS.forEach(function(s){ head += '<th>'+s[1]+'</th>'; });
+    head += '<th>合計</th></tr>';
+    var body = '', sum = {am:0,pm:0,all:0,unknown:0,t:0};
+    rows.forEach(function(r){
+      var w = r[which] || {}, tot = 0;
+      var tds = '';
+      DG_SLOTS.forEach(function(s){
+        var n = dgCell(w[s[0]]); tot += n; sum[s[0]] += n;
+        tds += '<td>'+(n||'')+'</td>';
+      });
+      sum.t += tot;
+      body += '<tr><td>'+r.label+'</td>'+tds+'<td>'+(tot||'')+'</td></tr>';
+    });
+    var foot = '<tr><td>合計</td>';
+    DG_SLOTS.forEach(function(s){ foot += '<td>'+sum[s[0]]+'</td>'; });
+    foot += '<td>'+sum.t+'</td></tr>';
+    return '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">'+icon+'</span>'+title+'</div>'
+      + '<table class="jis-table"><thead>'+head+'</thead><tbody>'+body+'</tbody>'
+      + '<tfoot>'+foot+'</tfoot></table>';
+  }
+
+  function dgGenderCell(b){
+    if(!b || !b.t) return '';
+    var s = '<span style="color:#1558d6;font-weight:700;">' + b.m + '</span>'
+          + '<span style="color:#9aa0a6;"> / </span>'
+          + '<span style="color:#c0392b;font-weight:700;">' + b.f + '</span>';
+    if (b.n) s += '<span style="color:#9aa0a6;font-size:0.72rem;"> (未' + b.n + ')</span>';
+    return s;
+  }
+
+  function dgGenderByWeekday(rows){
+    var head = '<tr><th>曜日</th><th>午前のみ</th><th>午後のみ</th><th>終日</th></tr>';
+    var body = '';
+    rows.forEach(function(r){
+      var w = r.actual || {};
+      body += '<tr><td>'+r.label+'</td>'
+        + '<td>'+dgGenderCell(w.am)+'</td>'
+        + '<td>'+dgGenderCell(w.pm)+'</td>'
+        + '<td>'+dgGenderCell(w.all)+'</td></tr>';
+    });
+    return '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">wc</span>曜日別 男女比（実績・延べ）</div>'
+      + '<table class="jis-table"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>'
+      + '<div class="jis-note"><span style="color:#1558d6;font-weight:700;">青＝男性</span>'
+      + ' <span style="color:#9aa0a6;">/</span> <span style="color:#c0392b;font-weight:700;">赤＝女性</span>'
+      + '（（未◯）は性別が未設定の方）</div>';
+  }
+
+  function renderDemog(d){
+    var html = '';
+
+    // 【1】男女比
+    var g = d.gender || {rows:[],total:{jin:0,nobe:0}};
+    var gbody = '';
+    (g.rows||[]).forEach(function(r){
+      if (r.key === 'none' && !r.jin) return;   // 未設定が0なら行を出さない
+      gbody += '<tr><td>'+r.label+'</td>'
+        + '<td>'+r.jin+'<span class="pct"> ('+r.jin_pct+'%)</span></td>'
+        + '<td>'+r.nobe+'<span class="pct"> ('+r.nobe_pct+'%)</span></td></tr>';
+    });
+    html += '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">wc</span>男女比</div>'
+      + '<table class="jis-table"><thead><tr><th>区分</th><th>実人数（割合）</th><th>延べ人数（割合）</th></tr></thead>'
+      + '<tbody>'+gbody+'</tbody>'
+      + '<tfoot><tr><td>合計</td><td>'+(g.total||{}).jin+'</td><td>'+(g.total||{}).nobe+'</td></tr></tfoot></table>';
+
+    var gn = null;
+    (g.rows||[]).forEach(function(r){ if (r.key === 'none') gn = r; });
+    if (gn && gn.jin > 0) {
+      html += '<div class="jis-note" style="color:#b85c00;">'
+        + '⚠️ 性別が未設定の利用者が ' + gn.jin + '名（延べ' + gn.nobe + '）います。'
+        + '利用者基本情報で性別を入れると集計に反映されます。</div>';
+    }
+
+    // 【2】【3】曜日別（実績・予定）
+    var rows = d.weekday || [];
+    html += dgCountTable('曜日別 延べ人数（実績）', 'event_available', rows, 'actual');
+    html += dgCountTable('曜日別 人数（予定・利用曜日の登録）', 'event_note', rows, 'plan');
+    html += '<div class="jis-note">「予定」は利用曜日の登録から数えた人数です。'
+      + '第N週だけの方も、その曜日に来る方として1人と数えます。'
+      /* jisseki-demog-charts-v1: グラフでは回数を掛けて延べに直しているので、そこも書いておく。 */
+      + 'グラフの「実績と予定」では、この人数に【その月にその曜日が何回あったか】を掛けて、'
+      + '実績の延べ人数と同じ土俵にそろえています。</div>';
+
+    if (d.unknown_actual > 0) {
+      html += '<div class="jis-note" style="color:#b85c00;">'
+        + '⚠️ 午前・午後が分からない来所が ' + d.unknown_actual + '件あります。'
+        + '利用曜日（午前／午後／終日）の登録が無い日です。</div>';
+    }
+
+    // 【4】曜日別 男女比
+    html += dgGenderByWeekday(rows);
+
+    document.getElementById('jis-demog-body').innerHTML = html;
+    _dgLast = d;                 /* jisseki-demog-charts-v1: 切り替えのために覚えておく */
+    drawGenderChart(d);
+    drawWeekdayChart(d);
+    drawWeekdayPlanChart(d);     /* jisseki-demog-charts-v1 */
+    drawWeekdayCmpChart(d);      /* jisseki-demog-charts-v1 */
+    drawWeekdayGenderChart(d);   /* jisseki-demog-charts-v1 */
+  }
+
+  window.loadDemog = function(){
+    var y = ySel.value, m = mSel.value;
+    fetch('/api/jisseki/demographics_summary?year='+y+'&month='+m)
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        if (j.status === 'success') renderDemog(j);
+        else document.getElementById('jis-demog-body').innerHTML = '';
+      })
+      .catch(function(){ document.getElementById('jis-demog-body').innerHTML = ''; });
+  };
 
   // jisseki-svctime-ui-v1: 提供時間の曜日設定
   var WD_LABELS = ['日','月','火','水','木','金','土'];
@@ -350,6 +489,148 @@
         options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false }, title: { display: true, text: '介護度別 実人数' } }, scales: { x: { beginAtZero: true, ticks: { precision: 0 } } } }
       });
     }
+  }
+  // jisseki-demog-v1: グラフ2つ
+  var _chartG = null, _chartW = null;
+  /* jisseki-demog-charts-v1: 足したグラフ3つ。切り替えのために、最後の数字も覚えておく。 */
+  var _chartWP = null, _chartWC = null, _chartWG = null;
+  var _dgLast = null, _dgGSlot = 'total';
+  function drawGenderChart(d){
+    if (typeof Chart === 'undefined') { setTimeout(function(){ drawGenderChart(d); }, 200); return; }
+    var el = document.getElementById('chart-gender'); if (!el) return;
+    var labels = [], vals = [], colors = [];
+    var COL = {male:'#3b82a6', female:'#c0662d', none:'#b0b6bf'};
+    ((d.gender||{}).rows||[]).forEach(function(r){
+      if (r.jin > 0) { labels.push(r.label); vals.push(r.jin); colors.push(COL[r.key] || '#9aa0a6'); }
+    });
+    if (_chartG) _chartG.destroy();
+    _chartG = new Chart(el, {
+      type: 'doughnut',
+      data: { labels: labels, datasets: [{ data: vals, backgroundColor: colors }] },
+      options: { responsive: true, plugins: { legend: { position: 'right' }, title: { display: true, text: '男女比 実人数（構成比）' } } }
+    });
+  }
+  /* jisseki-demog-charts-v1: 曜日別（予定）。実績と同じ色・同じ積み方にする。
+     ★別の色にすると、並べたときに見比べられない。 */
+  function drawWeekdayPlanChart(d){
+    if (typeof Chart === 'undefined') { setTimeout(function(){ drawWeekdayPlanChart(d); }, 200); return; }
+    var el = document.getElementById('chart-weekday-plan'); if (!el) return;
+    var rows = d.weekday || [];
+    function pick(k){ return rows.map(function(r){ return ((r.plan||{})[k]||{}).t || 0; }); }
+    if (_chartWP) _chartWP.destroy();
+    _chartWP = new Chart(el, {
+      type: 'bar',
+      data: { labels: rows.map(function(r){ return r.label; }), datasets: [
+        { label: '午前のみ', data: pick('am'), backgroundColor: '#3b82a6' },
+        { label: '午後のみ', data: pick('pm'), backgroundColor: '#c79a3d' },
+        { label: '終日',     data: pick('all'), backgroundColor: '#4a9d5b' },
+        { label: '未設定',   data: pick('unknown'), backgroundColor: '#b0b6bf' }
+      ] },
+      options: { responsive: true,
+        plugins: { title: { display: true, text: '曜日別 人数（予定・利用曜日の登録）' } },
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  }
+
+  /* jisseki-demog-charts-v1: その月に、その曜日が何回あったか。
+     ★「予定」は週1回ぶんの顔ぶれ、「実績」はその月の延べ。
+       そのままでは桁が違って比べられないので、回数を掛けて揃える。 */
+  function dgWeekdayCounts(y, m){
+    var out = [0,0,0,0,0,0,0];
+    var last = new Date(y, m, 0).getDate();
+    for (var d = 1; d <= last; d++) out[new Date(y, m - 1, d).getDay()]++;
+    return out;
+  }
+
+  /* jisseki-demog-charts-v1: 実績と予定を横に並べる。
+     ★予定より実績が低い曜日＝その曜日に休みが多い、が一目で出る。 */
+  function drawWeekdayCmpChart(d){
+    if (typeof Chart === 'undefined') { setTimeout(function(){ drawWeekdayCmpChart(d); }, 200); return; }
+    var el = document.getElementById('chart-weekday-cmp'); if (!el) return;
+    var rows = d.weekday || [];
+    var cnt = dgWeekdayCounts(d.year, d.month);
+    function slots(w){ var o = w || {}; return (((o.am||{}).t||0) + ((o.pm||{}).t||0) + ((o.all||{}).t||0) + ((o.unknown||{}).t||0)); }
+    var actual = rows.map(function(r){ return slots(r.actual); });
+    var plan = rows.map(function(r){ return slots(r.plan) * (cnt[r.wd] || 0); });
+    if (_chartWC) _chartWC.destroy();
+    _chartWC = new Chart(el, {
+      type: 'bar',
+      data: { labels: rows.map(function(r){ return r.label; }), datasets: [
+        { label: '予定（登録×その曜日の回数）', data: plan, backgroundColor: '#c8d8e4' },
+        { label: '実績（延べ）', data: actual, backgroundColor: '#3b82a6' }
+      ] },
+      options: { responsive: true,
+        plugins: { title: { display: true, text: '曜日別 実績と予定（延べ人数）' } },
+        scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  }
+
+  /* jisseki-demog-charts-v1: 曜日別の男女。午前／午後／終日／合計を切り替える。
+     ★4つ並べると棒が細くて読めない。いまある「円／棒」と同じ作りにした。 */
+  function dgGenderPick(w, slot, key){
+    var o = w || {};
+    if (slot !== 'total') return ((o[slot] || {})[key] || 0);
+    return ((o.am||{})[key]||0) + ((o.pm||{})[key]||0)
+         + ((o.all||{})[key]||0) + ((o.unknown||{})[key]||0);
+  }
+  function drawWeekdayGenderChart(d){
+    if (typeof Chart === 'undefined') { setTimeout(function(){ drawWeekdayGenderChart(d); }, 200); return; }
+    var el = document.getElementById('chart-weekday-gender'); if (!el) return;
+    var rows = d.weekday || [];
+    var slot = _dgGSlot;
+    var NAME = {total:'合計', am:'午前のみ', pm:'午後のみ', all:'終日'};
+    var sets = [
+      { label: '男性', data: rows.map(function(r){ return dgGenderPick(r.actual, slot, 'm'); }), backgroundColor: '#3b82a6' },
+      { label: '女性', data: rows.map(function(r){ return dgGenderPick(r.actual, slot, 'f'); }), backgroundColor: '#c0662d' }
+    ];
+    /* 未設定は0のときだけ出さない。0でないなら隠さない（登録が足りない合図なので） */
+    var un = rows.map(function(r){ return dgGenderPick(r.actual, slot, 'n'); });
+    if (un.some(function(v){ return v > 0; })) {
+      sets.push({ label: '未設定', data: un, backgroundColor: '#b0b6bf' });
+    }
+    if (_chartWG) _chartWG.destroy();
+    _chartWG = new Chart(el, {
+      type: 'bar',
+      data: { labels: rows.map(function(r){ return r.label; }), datasets: sets },
+      options: { responsive: true,
+        plugins: { title: { display: true, text: '曜日別 男女比（実績・延べ）— ' + (NAME[slot] || slot) } },
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+  }
+  /* ★HTMLの onclick から呼ぶので window に付ける。
+     この画面ぜんぶが (function(){...})() の中にあるため、
+     ふつうの function だと押しても動かない。 */
+  window.setDemogGenderSlot = function(slot){
+    _dgGSlot = slot;
+    ['total','am','pm','all'].forEach(function(k){
+      var b = document.getElementById('dg-g-' + k); if (!b) return;
+      var on = (k === slot);
+      b.style.borderColor = on ? '#4a9d5b' : '#dadce0';
+      b.style.background  = on ? '#eef7f0' : '#fff';
+      b.style.color       = on ? '#2e7d32' : '#9aa0a6';
+    });
+    if (_dgLast) drawWeekdayGenderChart(_dgLast);
+  };
+
+  function drawWeekdayChart(d){
+    if (typeof Chart === 'undefined') { setTimeout(function(){ drawWeekdayChart(d); }, 200); return; }
+    var el = document.getElementById('chart-weekday'); if (!el) return;
+    var rows = d.weekday || [];
+    var labels = rows.map(function(r){ return r.label; });
+    function pick(k){ return rows.map(function(r){ return ((r.actual||{})[k]||{}).t || 0; }); }
+    if (_chartW) _chartW.destroy();
+    _chartW = new Chart(el, {
+      type: 'bar',
+      data: { labels: labels, datasets: [
+        { label: '午前のみ', data: pick('am'), backgroundColor: '#3b82a6' },
+        { label: '午後のみ', data: pick('pm'), backgroundColor: '#c79a3d' },
+        { label: '終日',     data: pick('all'), backgroundColor: '#4a9d5b' },
+        { label: '未設定',   data: pick('unknown'), backgroundColor: '#b0b6bf' }
+      ] },
+      options: { responsive: true,
+        plugins: { title: { display: true, text: '曜日別 延べ人数（実績）' } },
+        scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } }
+    });
   }
   function drawSvcTimeChart(j){
     if (typeof Chart === 'undefined') { /* jisseki-chart-initload-fix-v1 */ setTimeout(function(){ drawSvcTimeChart(j); }, 200); return; }
