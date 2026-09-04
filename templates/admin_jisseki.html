@@ -131,6 +131,11 @@
     <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-weekday-plan" height="240"></canvas></div>
     <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;"><canvas id="chart-weekday-cmp" height="240"></canvas></div>
     <div style="background:#fff;border-radius:12px;padding:14px;margin-top:12px;">
+      <!-- jisseki-demog-jin-v1: 実人数／延べ の切り替え -->
+      <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:6px;flex-wrap:wrap;">
+        <button type="button" id="dg-b-jin" onclick="setDemogGenderBase('jin')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #4a9d5b;background:#eef7f0;color:#2e7d32;cursor:pointer;">実人数</button>
+        <button type="button" id="dg-b-nobe" onclick="setDemogGenderBase('nobe')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">延べ</button>
+      </div>
       <div style="display:flex;gap:6px;justify-content:flex-end;margin-bottom:8px;flex-wrap:wrap;">
         <button type="button" id="dg-g-total" onclick="setDemogGenderSlot('total')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #4a9d5b;background:#eef7f0;color:#2e7d32;cursor:pointer;">合計</button>
         <button type="button" id="dg-g-am" onclick="setDemogGenderSlot('am')" style="font-size:0.72rem;font-weight:700;padding:5px 12px;border-radius:8px;border:1.5px solid #dadce0;background:#fff;color:#9aa0a6;cursor:pointer;">午前のみ</button>
@@ -241,24 +246,41 @@
 
   function dgCell(b){ return (b && b.t) ? b.t : 0; }
 
-  function dgCountTable(title, icon, rows, which){
+  /* jisseki-demog-jin-v1: 実人数と延べを1つの表に出す。
+     ★jinKey を渡したときだけ「実人数（延べ）」の形にする。
+       予定は登録された顔ぶれなので、もともと実人数。延べは無い。
+     ★実人数の合計は【足し算しない】。同じ方が午前と午後の両方に来ていれば
+       どちらにも1人として入るので、足すと合計が実人数より多くなる。
+       サーバが数えた actual_jin_sum を使う。 */
+  function dgCountTable(title, icon, rows, which, jinKey, jinSum){
     var head = '<tr><th>曜日</th>';
     DG_SLOTS.forEach(function(s){ head += '<th>'+s[1]+'</th>'; });
     head += '<th>合計</th></tr>';
+    function cell(n, j){
+      if (jinKey) {
+        if (!j && !n) return '<td></td>';
+        return '<td>'+j+'<span class="pct"> ('+n+')</span></td>';
+      }
+      return '<td>'+(n||'')+'</td>';
+    }
     var body = '', sum = {am:0,pm:0,all:0,unknown:0,t:0};
     rows.forEach(function(r){
-      var w = r[which] || {}, tot = 0;
-      var tds = '';
+      var w = r[which] || {}, wj = (jinKey ? (r[jinKey] || {}) : {});
+      var tot = 0, tds = '';
       DG_SLOTS.forEach(function(s){
         var n = dgCell(w[s[0]]); tot += n; sum[s[0]] += n;
-        tds += '<td>'+(n||'')+'</td>';
+        tds += cell(n, dgCell(wj[s[0]]));
       });
       sum.t += tot;
-      body += '<tr><td>'+r.label+'</td>'+tds+'<td>'+(tot||'')+'</td></tr>';
+      /* 曜日の合計も、実人数は枠をまたいで1人（サーバが数えた total を使う） */
+      body += '<tr><td>'+r.label+'</td>'+tds+cell(tot, dgCell(wj.total))+'</tr>';
     });
     var foot = '<tr><td>合計</td>';
-    DG_SLOTS.forEach(function(s){ foot += '<td>'+sum[s[0]]+'</td>'; });
-    foot += '<td>'+sum.t+'</td></tr>';
+    DG_SLOTS.forEach(function(s){
+      foot += (jinKey ? cell(sum[s[0]], dgCell((jinSum||{})[s[0]])) : '<td>'+sum[s[0]]+'</td>');
+    });
+    foot += (jinKey ? cell(sum.t, dgCell((jinSum||{}).total)) : '<td>'+sum.t+'</td>');
+    foot += '</tr>';
     return '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">'+icon+'</span>'+title+'</div>'
       + '<table class="jis-table"><thead>'+head+'</thead><tbody>'+body+'</tbody>'
       + '<tfoot>'+foot+'</tfoot></table>';
@@ -273,21 +295,32 @@
     return s;
   }
 
-  function dgGenderByWeekday(rows){
-    var head = '<tr><th>曜日</th><th>午前のみ</th><th>午後のみ</th><th>終日</th></tr>';
+  /* jisseki-demog-jin-v1: 実人数と延べを、別々の表にする。
+     ★HIROさんの指摘（2026-09-04）。他の表は両方出しているのに、
+       曜日別だけ延べしか出していなかった。 */
+  function dgGenderByWeekday(rows, which, title){
+    var head = '<tr><th>曜日</th><th>午前のみ</th><th>午後のみ</th><th>終日</th><th>合計</th></tr>';
     var body = '';
     rows.forEach(function(r){
-      var w = r.actual || {};
+      var w = r[which] || {};
       body += '<tr><td>'+r.label+'</td>'
         + '<td>'+dgGenderCell(w.am)+'</td>'
         + '<td>'+dgGenderCell(w.pm)+'</td>'
-        + '<td>'+dgGenderCell(w.all)+'</td></tr>';
+        + '<td>'+dgGenderCell(w.all)+'</td>'
+        + '<td>'+dgGenderCell(which === 'actual_jin' ? w.total : dgSumBox(w))+'</td></tr>';
     });
-    return '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">wc</span>曜日別 男女比（実績・延べ）</div>'
-      + '<table class="jis-table"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>'
-      + '<div class="jis-note"><span style="color:#1558d6;font-weight:700;">青＝男性</span>'
-      + ' <span style="color:#9aa0a6;">/</span> <span style="color:#c0392b;font-weight:700;">赤＝女性</span>'
-      + '（（未◯）は性別が未設定の方）</div>';
+    return '<div class="jis-section-label"><span class="material-symbols-outlined" style="font-size:18px;">wc</span>'+title+'</div>'
+      + '<table class="jis-table"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>';
+  }
+  /* 延べの合計は足し算でよい（来た日ごとに数えているため）。
+     ★実人数は足し算にしない。サーバが数えた total を使う。 */
+  function dgSumBox(w){
+    var o = w || {}, b = {m:0,f:0,n:0,t:0};
+    ['am','pm','all','unknown'].forEach(function(k){
+      var x = o[k] || {};
+      b.m += (x.m||0); b.f += (x.f||0); b.n += (x.n||0); b.t += (x.t||0);
+    });
+    return b;
   }
 
   function renderDemog(d){
@@ -317,7 +350,9 @@
 
     // 【2】【3】曜日別（実績・予定）
     var rows = d.weekday || [];
-    html += dgCountTable('曜日別 延べ人数（実績）', 'event_available', rows, 'actual');
+    /* jisseki-demog-jin-v1: 実績は「実人数（延べ）」の形で1つの表に出す。 */
+    html += dgCountTable('曜日別 利用者数（実績）　実人数（延べ）', 'event_available',
+                         rows, 'actual', 'actual_jin', d.actual_jin_sum);
     html += dgCountTable('曜日別 人数（予定・利用曜日の登録）', 'event_note', rows, 'plan');
     html += '<div class="jis-note">「予定」は利用曜日の登録から数えた人数です。'
       + '第N週だけの方も、その曜日に来る方として1人と数えます。'
@@ -331,8 +366,15 @@
         + '利用曜日（午前／午後／終日）の登録が無い日です。</div>';
     }
 
-    // 【4】曜日別 男女比
-    html += dgGenderByWeekday(rows);
+    // 【4】曜日別 男女比 … jisseki-demog-jin-v1: 実人数と延べを分けて出す
+    html += dgGenderByWeekday(rows, 'actual_jin', '曜日別 男女比（実績・実人数）');
+    html += dgGenderByWeekday(rows, 'actual', '曜日別 男女比（実績・延べ）');
+    html += '<div class="jis-note"><span style="color:#1558d6;font-weight:700;">青＝男性</span>'
+      + ' <span style="color:#9aa0a6;">/</span> <span style="color:#c0392b;font-weight:700;">赤＝女性</span>'
+      + '（（未◯）は性別が未設定の方）。'
+      + '<b>実人数</b>はその曜日に1回でも来た方を1人、<b>延べ</b>は来た日ごとに数えます。'
+      + '実人数の合計は、午前と午後の両方に来た方も1人として数えるので、'
+      + '各列の足し算にはなりません。</div>';
 
     document.getElementById('jis-demog-body').innerHTML = html;
     _dgLast = d;                 /* jisseki-demog-charts-v1: 切り替えのために覚えておく */
@@ -495,6 +537,7 @@
   /* jisseki-demog-charts-v1: 足したグラフ3つ。切り替えのために、最後の数字も覚えておく。 */
   var _chartWP = null, _chartWC = null, _chartWG = null;
   var _dgLast = null, _dgGSlot = 'total';
+  var _dgGBase = 'jin';   /* jisseki-demog-jin-v1: 実人数(jin) か 延べ(nobe) か */
   function drawGenderChart(d){
     if (typeof Chart === 'undefined') { setTimeout(function(){ drawGenderChart(d); }, 200); return; }
     var el = document.getElementById('chart-gender'); if (!el) return;
@@ -570,6 +613,9 @@
   function dgGenderPick(w, slot, key){
     var o = w || {};
     if (slot !== 'total') return ((o[slot] || {})[key] || 0);
+    /* jisseki-demog-jin-v1: 実人数のときは、サーバが数えた total を使う。
+       ★足し算にすると、午前と午後の両方に来た方を2人と数えてしまう。 */
+    if (o.total) return (o.total[key] || 0);
     return ((o.am||{})[key]||0) + ((o.pm||{})[key]||0)
          + ((o.all||{})[key]||0) + ((o.unknown||{})[key]||0);
   }
@@ -578,13 +624,16 @@
     var el = document.getElementById('chart-weekday-gender'); if (!el) return;
     var rows = d.weekday || [];
     var slot = _dgGSlot;
+    /* jisseki-demog-jin-v1: 実人数と延べを切り替える。 */
+    var which = (_dgGBase === 'nobe') ? 'actual' : 'actual_jin';
+    var BASE = (_dgGBase === 'nobe') ? '延べ' : '実人数';
     var NAME = {total:'合計', am:'午前のみ', pm:'午後のみ', all:'終日'};
     var sets = [
-      { label: '男性', data: rows.map(function(r){ return dgGenderPick(r.actual, slot, 'm'); }), backgroundColor: '#3b82a6' },
-      { label: '女性', data: rows.map(function(r){ return dgGenderPick(r.actual, slot, 'f'); }), backgroundColor: '#c0662d' }
+      { label: '男性', data: rows.map(function(r){ return dgGenderPick(r[which], slot, 'm'); }), backgroundColor: '#3b82a6' },
+      { label: '女性', data: rows.map(function(r){ return dgGenderPick(r[which], slot, 'f'); }), backgroundColor: '#c0662d' }
     ];
     /* 未設定は0のときだけ出さない。0でないなら隠さない（登録が足りない合図なので） */
-    var un = rows.map(function(r){ return dgGenderPick(r.actual, slot, 'n'); });
+    var un = rows.map(function(r){ return dgGenderPick(r[which], slot, 'n'); });
     if (un.some(function(v){ return v > 0; })) {
       sets.push({ label: '未設定', data: un, backgroundColor: '#b0b6bf' });
     }
@@ -593,13 +642,27 @@
       type: 'bar',
       data: { labels: rows.map(function(r){ return r.label; }), datasets: sets },
       options: { responsive: true,
-        plugins: { title: { display: true, text: '曜日別 男女比（実績・延べ）— ' + (NAME[slot] || slot) } },
+        plugins: { title: { display: true, text: '曜日別 男女比（実績・' + BASE + '）— ' + (NAME[slot] || slot) } },   /* jisseki-demog-jin-v1 */
         scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0 } } } }
     });
   }
   /* ★HTMLの onclick から呼ぶので window に付ける。
      この画面ぜんぶが (function(){...})() の中にあるため、
      ふつうの function だと押しても動かない。 */
+  /* jisseki-demog-jin-v1: 実人数／延べ の切り替え。
+     ★HTMLの onclick から呼ぶので window に付ける。
+       この画面ぜんぶが (function(){...})() の中にあるため。 */
+  window.setDemogGenderBase = function(base){
+    _dgGBase = base;
+    ['jin','nobe'].forEach(function(k){
+      var b = document.getElementById('dg-b-' + k); if (!b) return;
+      var on = (k === base);
+      b.style.borderColor = on ? '#4a9d5b' : '#dadce0';
+      b.style.background  = on ? '#eef7f0' : '#fff';
+      b.style.color       = on ? '#2e7d32' : '#9aa0a6';
+    });
+    if (_dgLast) drawWeekdayGenderChart(_dgLast);
+  };
   window.setDemogGenderSlot = function(slot){
     _dgGSlot = slot;
     ['total','am','pm','all'].forEach(function(k){

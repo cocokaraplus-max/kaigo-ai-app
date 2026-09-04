@@ -34559,16 +34559,45 @@ def api_jisseki_demographics_summary():  # jisseki-demog-v1
                   "none": {"jin": 0, "nobe": 0}}
         wd_actual = dict((w, dict((s, _jis_box()) for s in _JIS_SLOTS))
                          for w in range(7))
+        # jisseki-demog-jin-v1: 実人数も出す。
+        #   ★実人数は足し算では出せない。同じ方が月曜の午前と午後の両方に
+        #     来ていれば、午前にも午後にも1人として入る。合計はその方を1人だけ数える。
+        #     そのため【人の集まり】で持ってから、最後に数える。
+        #     足し算にすると、合計が実人数より多くなって黙って狂う。
+        _gmap = {}                       # pid -> 男/女/未設定
+        _jin_ws = {}                     # (曜日, 枠) -> 人の集まり
+        _jin_w = dict((w, set()) for w in range(7))    # 曜日 -> 人の集まり
+        _jin_s = dict((s, set()) for s in _JIS_SLOTS)  # 枠 -> 人の集まり
+        _jin_all = set()
         for pid, dates in visit_days.items():
             g = _jis_gender_key((pmap.get(pid) or {}).get("gender"))
+            _gmap[pid] = g
             gender[g]["jin"] += 1
             gender[g]["nobe"] += len(dates)
+            _jin_all.add(pid)
             vd = vd_by_pid.get(pid) or {}
             for ds in dates:
                 wd = _visit_weekday_of(ds)
                 slot = _jis_slot_of(vd.get("apd"), wd, ds,
                                     vd.get("half"), vd.get("full"))
                 _jis_add(wd_actual[wd][slot], g)
+                _jin_ws.setdefault((wd, slot), set()).add(pid)
+                _jin_w[wd].add(pid)
+                _jin_s[slot].add(pid)
+
+        def _jis_box_of(pids):  # jisseki-demog-jin-v1
+            b = _jis_box()
+            for _p in pids:
+                _jis_add(b, _gmap.get(_p, "none"))
+            return b
+
+        wd_jin = {}
+        for w in range(7):
+            wd_jin[w] = dict((s, _jis_box_of(_jin_ws.get((w, s), ())))
+                             for s in _JIS_SLOTS)
+            wd_jin[w]["total"] = _jis_box_of(_jin_w[w])
+        jin_sum = dict((s, _jis_box_of(_jin_s[s])) for s in _JIS_SLOTS)
+        jin_sum["total"] = _jis_box_of(_jin_all)
 
         # 5) 曜日別（予定）。利用曜日の登録から数える。
         #    ★第N週だけの方も「その曜日に来る人」として1人と数える。
@@ -34606,14 +34635,20 @@ def api_jisseki_demographics_summary():  # jisseki-demog-v1
         for wd in _JIS_WD_ORDER:
             wd_rows.append({
                 "wd": wd, "label": _JIS_WD_LABEL[wd],
-                "actual": wd_actual[wd],
-                "plan": wd_plan[wd],
+                "actual": wd_actual[wd],          # 延べ
+                # jisseki-demog-jin-v1: その曜日の実人数。
+                #   ★"total" は枠をまたいでも1人。枠の足し算とは合わない。
+                "actual_jin": wd_jin[wd],
+                "plan": wd_plan[wd],              # 予定は登録なので、もともと実人数
             })
 
         return jsonify({
             "status": "success", "year": year, "month": month,
             "gender": {"rows": g_rows, "total": {"jin": g_jin, "nobe": g_nobe}},
             "weekday": wd_rows,
+            # jisseki-demog-jin-v1: 月ぜんぶの実人数。表の合計欄に使う。
+            #   ★曜日の足し算ではない（同じ方が何曜日に来ても1人）。
+            "actual_jin_sum": jin_sum,
             # ★未設定の合計。0でなければ、利用曜日の登録が足りていない合図。
             "unknown_actual": sum(wd_actual[w]["unknown"]["t"] for w in range(7)),
         })
