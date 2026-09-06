@@ -627,6 +627,12 @@ async function rkLineOpen(){
       if(d.recipient_count>0){
         const names=(d.recipients||[]).map(r=>rkEsc(r.display_name)+'（…'+rkEsc(r.user_id_tail)+'）').join('、');
         recEl.innerHTML='<b>送信先（紐付け済み '+d.recipient_count+'名）：</b><br>'+names;
+      }else if(d.recipient_error){
+        /* renraku-line-items-v2 :
+           ★「いない」と「読めなかった」は別のこと。同じ文言にすると、
+             紐付けをやり直せば直る、と思わせてしまう。 */
+        recEl.innerHTML='<span style="color:#d93025;font-weight:700;">送信先を読めませんでした。このまま送らないでください。</span>'+
+          '<br><span style="color:#5f6368;font-size:0.78rem;">'+rkEsc(d.recipient_error)+'</span>';
       }else{
         recEl.innerHTML='<span style="color:#d93025;font-weight:700;">紐付け済みのご家族がいません。管理画面の「LINE友だち管理」で紐付けてください。</span>';
       }

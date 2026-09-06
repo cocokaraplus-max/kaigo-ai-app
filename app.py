@@ -756,7 +756,19 @@ def api_renraku_line_preview():
         if not note:
             return jsonify({'status': 'error', 'message': 'この日の連絡帳がまだありません'}), 400
         text = _renraku_to_line_text(note, vitals, pname)
-        recipients = _line_linked_recipients(supabase, f_code, patient_id)
+        # renraku-line-items-v2 :
+        #   ★文章は送信先と関係なく作れる。送信先が読めなくても文章だけは返す。
+        #     「文章をコピー」は送信しないので、送信先が無くても使えないと困る。
+        #   ★読めなかったことは recipient_error で伝える。
+        #     「送信先がいない」と「送信先が読めなかった」は別のことなので、
+        #     画面で言い分けられるようにしておく。
+        _recip_error = ''
+        try:
+            recipients = _line_linked_recipients(supabase, f_code, patient_id)
+        except Exception as _re1:
+            print(f'api_renraku_line_preview recipients error: {_re1}', flush=True)
+            recipients = []
+            _recip_error = str(_re1)
         recip_view = [{'display_name': r.get('display_name') or '(名前未取得)',
                         'user_id_tail': (r.get('line_user_id') or '')[-6:]} for r in recipients]
         _photo_count = len([u for u in ((note or {}).get('image_urls') or []) if u])  # renraku-line-photo-v1
@@ -764,6 +776,7 @@ def api_renraku_line_preview():
                         'patient_name': pname,
                         'recipient_count': len(recipients),
                         'recipients': recip_view,
+                        'recipient_error': _recip_error,   # renraku-line-items-v2
                         'photo_count': _photo_count})
     except Exception as e:
         print(f'api_renraku_line_preview error: {e}', flush=True)
