@@ -249,8 +249,15 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
             <label>出勤スタッフ（その日のタイムカードから自動取込）</label>
             <div class="rec-chips" id="recStaffChips"></div>
             <div style="display:flex;gap:6px;margin-top:6px;">
-              <input type="text" id="recStaffInput" class="rec-input" placeholder="スタッフ名を入力して Enter"
-                     onkeydown="if(event.key==='Enter'){event.preventDefault();recAddStaff();}">
+              <!-- rec-staff-pick-v1 :
+                   ★event.isComposing を見ること。見ないと【変換を確定するEnter】で
+                     登録されてしまい、名前を打ち終われない（2026-09-06 現場で発生）。
+                     keyCode 229 は古いブラウザ向けの保険。
+                   ★list= は候補を出すだけ。登録の無い臨時の方も手で入力できる。 -->
+              <input type="text" id="recStaffInput" class="rec-input" list="recStaffList"
+                     placeholder="スタッフ名を選ぶか入力"
+                     onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();recAddStaff();}">
+              <datalist id="recStaffList"></datalist>
               <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recAddStaff()">追加</button>
               <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recReloadStaff()">当日再取込</button>
             </div>
@@ -262,7 +269,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
             <div style="display:flex;gap:6px;margin-top:6px;">
               <input type="text" id="recPartSearch" class="rec-input" list="recPatientList"
                      placeholder="利用者を検索して追加（名前・カナ・番号）"
-                     onkeydown="if(event.key==='Enter'){event.preventDefault();recAddPart();}">
+                     onkeydown="if(event.key==='Enter'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();recAddPart();}">
               <datalist id="recPatientList"></datalist>
               <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recAddPart()">追加</button>
               <button class="rec-btn rec-btn-ghost rec-btn-sm" onclick="recReloadParticipants()">当日再取込</button>
@@ -334,6 +341,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
 
   var state = { id: null, participants: [], staff: [], places: [], cars: [], carExpenses: [],
                 patients: [], carMaster: [], config: { facility_address: '', maps_enabled: false },
+                staffNames: [],   // rec-staff-pick-v1 : 在籍中の職員名（候補に出すだけ）
                 isNew: false };
   var calcTimer = null;
   var openBreakdown = {};   // 請求内訳の開閉状態（利用者ごと）
@@ -526,6 +534,30 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
     Array.prototype.forEach.call($('recStaffChips').querySelectorAll('button'), function (b) {
       b.onclick = function () { state.staff.splice(Number(b.dataset.i), 1); renderStaff(); };
     });
+    renderStaffList();
+  }
+
+  // rec-staff-pick-v1 : 候補を作り直す。
+  //   ★すでに追加ずみの人は外す。同じ人を二度選べても仕方がないため。
+  //   ★候補が無い（読めなかった等）ときは空にするだけ。手入力の邪魔はしない。
+  function renderStaffList() {
+    var el = $('recStaffList');
+    if (!el) return;
+    el.innerHTML = state.staffNames
+      .filter(function (n) { return state.staff.indexOf(n) === -1; })
+      .map(function (n) { return '<option value="' + esc(n) + '">'; })
+      .join('');
+  }
+
+  // rec-staff-pick-v1 : 在籍中の職員名。議事録などと同じ口を使う（新しく作らない）。
+  async function loadStaffNames() {
+    try {
+      var r = await fetch('/api/staff_names');
+      var j = await r.json();
+      if (j.status !== 'success') return;
+      state.staffNames = (j.names || []).slice();
+      renderStaffList();
+    } catch (e) { /* 候補が出ないだけ。手入力はできるので止めない */ }
   }
   window.recAddStaff = function () {
     var v = $('recStaffInput').value.trim();
@@ -1288,6 +1320,7 @@ table.rec-mx tfoot .mx-total { background:#dbeafe; }
   $('recMonth').onchange = loadList;
   loadConfig();
   loadPatients();
+  loadStaffNames();   // rec-staff-pick-v1
   loadCarMaster();
   loadList();
 })();
