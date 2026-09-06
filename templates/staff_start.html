@@ -6,9 +6,10 @@
 <title>職員 利用開始 | TASUKARU</title>
 <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <style>
+  /* staff-join-ui-v1 */
   :root{
     --green:#2e7d32; --green-d:#1b5e20; --bg:#f5f7f6; --line:#d9e0dc;
-    --text:#233028; --sub:#6b7a70; --err:#c62828;
+    --text:#233028; --sub:#6b7a70; --err:#c62828; --line-green:#06c755;
   }
   *{box-sizing:border-box;}
   body{
@@ -18,30 +19,124 @@
   .wrap{max-width:440px; margin:0 auto; padding:20px 16px 48px;}
   .card{background:#fff; border:1px solid var(--line); border-radius:14px; padding:20px 18px; box-shadow:0 1px 3px rgba(0,0,0,.04);}
   h1{font-size:20px; margin:4px 0 6px; color:var(--green-d);}
-  .lead{font-size:13px; color:var(--sub); margin:0 0 18px; line-height:1.6;}
-  label{display:block; font-size:13px; font-weight:600; margin:14px 0 6px;}
+  .lead{font-size:13px; color:var(--sub); margin:0 0 18px; line-height:1.7;}
+  .fac{
+    background:#eaf5eb; border:1px solid #cfe6d1; border-radius:10px;
+    padding:12px 14px; margin:0 0 4px;
+  }
+  .fac .k{font-size:11px; color:var(--sub); margin:0 0 2px;}
+  .fac .v{font-size:17px; font-weight:700; color:var(--green-d); margin:0; line-height:1.4;}
+  label{display:block; font-size:13px; font-weight:600; margin:16px 0 6px;}
   input{
-    width:100%; padding:12px 12px; font-size:16px; border:1px solid var(--line);
+    width:100%; padding:13px 12px; font-size:16px; border:1px solid var(--line);
     border-radius:10px; background:#fbfdfc; color:var(--text);
   }
   input:focus{outline:none; border-color:var(--green); background:#fff;}
-  .hint{font-size:11px; color:var(--sub); margin:4px 0 0;}
+  .hint{font-size:11px; color:var(--sub); margin:5px 0 0; line-height:1.6;}
   .code-input{letter-spacing:.35em; text-align:center; font-weight:700;}
   button{
-    width:100%; margin-top:22px; padding:14px; font-size:16px; font-weight:700;
+    width:100%; margin-top:22px; padding:15px; font-size:16px; font-weight:700;
     color:#fff; background:var(--green); border:none; border-radius:10px; cursor:pointer;
   }
   button:disabled{background:#a8c3ab; cursor:default;}
-  .msg{margin-top:16px; font-size:13px; line-height:1.6; padding:12px 14px; border-radius:10px; display:none;}
+  button.friend{background:var(--line-green);}
+  .msg{margin-top:16px; font-size:13px; line-height:1.7; padding:12px 14px; border-radius:10px; display:none;}
   .msg.err{display:block; background:#fdecec; color:var(--err); border:1px solid #f6c9c9;}
   .msg.ok{display:block; background:#eaf5eb; color:var(--green-d); border:1px solid #cfe6d1;}
   .status{font-size:12px; color:var(--sub); margin-top:14px; text-align:center; min-height:16px;}
   a.setup-link{color:var(--green-d); font-weight:700; word-break:break-all;}
+  .done{text-align:center; padding:6px 0 2px;}
+  .done .mark{font-size:44px; line-height:1; color:var(--green); margin:0 0 10px;}
+  .done h2{font-size:18px; margin:0 0 10px; color:var(--green-d);}
+  .done p{font-size:14px; line-height:1.9; color:var(--text); margin:0 0 12px;}
+  .steps{
+    list-style:none; padding:0; margin:14px 0 0; font-size:13px; color:var(--sub);
+    line-height:1.9; text-align:left; background:#f7faf8; border-radius:10px; padding:12px 14px;
+  }
+  .steps li{padding-left:1.4em; text-indent:-1.4em;}
+  .switch{
+    margin-top:22px; padding-top:16px; border-top:1px dashed var(--line);
+    text-align:center; font-size:12px; color:var(--sub); line-height:1.8;
+  }
+  .switch a{color:var(--green-d); font-weight:700; cursor:pointer; text-decoration:underline;}
+  .hidden{display:none;}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="card">
+
+  <!-- ============ 参加申請（新） staff-join-ui-v1 ============ -->
+  <div class="card" id="joinCard">
+    <h1>職員の利用開始</h1>
+    <p class="lead">
+      お名前を送ると、事業所の管理者に承認のお願いが届きます。<br>
+      承認されると、パスワードを決めるご案内がLINEに届きます。
+    </p>
+
+    <div class="fac" id="facBox">
+      <p class="k">お勤め先</p>
+      <p class="v" id="facName">確認中…</p>
+    </div>
+
+    <div id="facInputBox" class="hidden">
+      <label for="join_facility_code">施設コード</label>
+      <input id="join_facility_code" type="text" autocomplete="off" placeholder="例）f0123456789">
+      <p class="hint">
+        事業所に貼ってあるQRコードから開くと、ここは入力しなくて済みます。<br>
+        施設コードが分からないときは、管理者にお尋ねください。
+      </p>
+      <button id="facBtn">この施設コードで進む</button>
+    </div>
+
+    <div id="friendBox" class="hidden">
+      <p class="lead" style="margin-top:14px">
+        承認のお知らせをLINEでお送りします。<br>
+        先に「TASUKARU」を友だち追加してください。
+      </p>
+      <button class="friend" id="friendBtn">LINEで友だち追加する</button>
+      <p class="hint" style="text-align:center">追加したら、この画面に戻って続けてください。</p>
+      <button id="friendDoneBtn">追加しました。次へ</button>
+    </div>
+
+    <div id="nameBox" class="hidden">
+      <label for="join_staff_name">お名前</label>
+      <input id="join_staff_name" type="text" autocomplete="name" placeholder="例）山田 太郎">
+      <p class="hint">
+        勤務表やシフトに載っているお名前を、姓名そろえてご記入ください。<br>
+        このお名前が、記録や勤怠に出るお名前になります。
+      </p>
+      <button id="joinBtn" disabled>参加を申し込む</button>
+    </div>
+
+    <div id="joinMsg" class="msg"></div>
+    <div id="joinStatus" class="status">LINEを確認中…</div>
+
+    <div class="switch" id="switchToCode">
+      管理者から6桁のコードを受け取っている方は<br>
+      <a id="toCodeLink">こちらから進んでください</a>
+    </div>
+  </div>
+
+  <!-- ============ 承認待ち staff-join-ui-v1 ============ -->
+  <div class="card hidden" id="doneCard">
+    <div class="done">
+      <p class="mark">✓</p>
+      <h2>お申し込みを受け付けました</h2>
+      <p id="doneName"></p>
+      <ul class="steps">
+        <li>① 事業所の管理者に、承認のお願いが届いています。</li>
+        <li>② 承認されると、TASUKARUのLINEにご案内が届きます。</li>
+        <li>③ そのリンクからパスワードを決めれば、お使いいただけます。</li>
+      </ul>
+      <p class="hint" style="margin-top:14px">
+        この画面は閉じていただいて大丈夫です。<br>
+        しばらく経っても届かないときは、管理者にお声がけください。
+      </p>
+    </div>
+  </div>
+
+  <!-- ============ 6桁コード（いまある道・当面のこす） ============ -->
+  <div class="card hidden" id="codeCard">
     <h1>職員の利用開始</h1>
     <p class="lead">
       施設コード・お名前・管理者から受け取った6桁コードを入力してください。<br>
@@ -67,47 +162,194 @@
 
     <div id="msg" class="msg"></div>
     <div id="status" class="status">LINEを確認中…</div>
+
+    <div class="switch">
+      6桁のコードをお持ちでない方は<br>
+      <a id="toJoinLink">こちらからお申し込みください</a>
+    </div>
   </div>
+
 </div>
 
 <script>
+  // staff-join-ui-v1
   // LIFF ID: LIFFアプリ作成後に実IDへ差し替えること
   var LIFF_ID = "2010588249-eVxq4tL5";
+  // TASUKARU公式LINE 友だち追加URL
+  var FRIEND_URL = "https://lin.ee/n1QCsdy";
 
   var lineUserId = null;
-  var elFacility = document.getElementById("facility_code");
-  var elName = document.getElementById("staff_name");
-  var elCode = document.getElementById("link_code");
-  var elBtn = document.getElementById("submitBtn");
-  var elMsg = document.getElementById("msg");
-  var elStatus = document.getElementById("status");
+  var lineDisplayName = "";
+  var facilityCode = "";
+  var facilityName = "";
+  var friendChecked = false;
+
+  var $ = function(id){ return document.getElementById(id); };
+  function show(el){ el.classList.remove("hidden"); }
+  function hide(el){ el.classList.add("hidden"); }
+
+  function qs(name){
+    var m = new RegExp("[?&]" + name + "=([^&#]*)").exec(window.location.search);
+    return m ? decodeURIComponent(m[1].replace(/\+/g, " ")) : "";
+  }
+
+  /* ---------------- 参加申請 ---------------- */
+
+  function joinMsg(text, type){
+    var el = $("joinMsg");
+    el.className = "msg " + (type || "err");
+    el.innerHTML = text;
+  }
+  function joinClear(){ $("joinMsg").className = "msg"; $("joinMsg").innerHTML = ""; }
+
+  // 施設コードから施設名を引く。完全一致でしか引けない（探す口ではない）。
+  function loadFacility(code){
+    return fetch("/api/staff/join_info?f=" + encodeURIComponent(code))
+      .then(function(res){ return res.json().then(function(d){ return {ok:res.ok, d:d}; }); })
+      .then(function(r){
+        if (!r.ok || !r.d || r.d.error || typeof r.d.facility_name !== "string"){
+          return false;
+        }
+        facilityCode = code;
+        facilityName = r.d.facility_name || "";
+        $("facName").textContent = facilityName || "(名称未設定)";
+        return true;
+      }).catch(function(){ return false; });
+  }
+
+  function askFacility(){
+    hide($("facBox"));
+    show($("facInputBox"));
+    $("joinStatus").textContent = "";
+  }
+
+  // 友だち追加ずみかを見る。分からないときは止めない（先へ進める）。
+  function checkFriend(){
+    if (friendChecked) return Promise.resolve(true);
+    if (typeof liff === "undefined" || !liff.getFriendship){
+      return Promise.resolve(true);
+    }
+    return liff.getFriendship().then(function(f){
+      if (f && f.friendFlag === false) return false;
+      return true;
+    }).catch(function(){ return true; });
+  }
+
+  function afterFacility(){
+    hide($("facInputBox"));
+    show($("facBox"));
+    checkFriend().then(function(isFriend){
+      if (!isFriend){
+        hide($("nameBox"));
+        show($("friendBox"));
+        $("joinStatus").textContent = "";
+        return;
+      }
+      hide($("friendBox"));
+      show($("nameBox"));
+      $("joinBtn").disabled = !lineUserId;
+      $("joinStatus").textContent = lineUserId
+        ? "お名前をご記入ください。"
+        : "LINEの確認ができませんでした。LINEアプリから開き直してください。";
+    });
+  }
+
+  $("facBtn").addEventListener("click", function(){
+    joinClear();
+    var code = ($("join_facility_code").value || "").trim();
+    if (!code){ joinMsg("施設コードをご記入ください。", "err"); return; }
+    $("facBtn").disabled = true;
+    loadFacility(code).then(function(okFac){
+      $("facBtn").disabled = false;
+      if (!okFac){
+        joinMsg("その施設コードの事業所が見つかりませんでした。<br>管理者にご確認ください。", "err");
+        return;
+      }
+      joinClear();
+      afterFacility();
+    });
+  });
+
+  $("friendBtn").addEventListener("click", function(){
+    window.open(FRIEND_URL, "_blank");
+  });
+
+  $("friendDoneBtn").addEventListener("click", function(){
+    friendChecked = true;
+    afterFacility();
+  });
+
+  $("joinBtn").addEventListener("click", function(){
+    joinClear();
+    var name = ($("join_staff_name").value || "").trim();
+    if (!name){ joinMsg("お名前をご記入ください。", "err"); return; }
+    if (name.length > 40){ joinMsg("お名前が長すぎます。", "err"); return; }
+    if (!lineUserId){
+      joinMsg("LINEの確認ができませんでした。LINEアプリから開き直してください。", "err");
+      return;
+    }
+    $("joinBtn").disabled = true;
+    $("joinBtn").textContent = "送信中…";
+
+    fetch("/api/staff/join_request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        facility_code: facilityCode,
+        staff_name: name,
+        line_user_id: lineUserId,
+        line_display_name: lineDisplayName
+      })
+    }).then(function(res){
+      return res.json().then(function(d){ return {ok:res.ok, d:d}; });
+    }).then(function(r){
+      $("joinBtn").disabled = false;
+      $("joinBtn").textContent = "参加を申し込む";
+      if (r.d && r.d.error === "already_linked"){
+        joinMsg(
+          "このLINEは、すでに " + (r.d.staff_name || "") + " さんとして登録ずみです。<br>" +
+          "パスワードが分からないときは、TASUKARUのトークに「パスワード」と送ってください。",
+          "ok");
+        return;
+      }
+      if (!r.ok || !r.d || r.d.error){
+        var em = (r.d && r.d.error) || "unknown";
+        var jp = {
+          "missing_fields": "入力に不足があります。",
+          "bad_name": "お名前が長すぎます。",
+          "no_facility": "事業所が見つかりませんでした。管理者にご確認ください。",
+          "server_error": "うまくいきませんでした。少し時間をおいてお試しください。"
+        };
+        joinMsg(jp[em] || ("エラー: " + em), "err");
+        return;
+      }
+      $("doneName").innerHTML = name + " さんとして、<br>" +
+        (facilityName || "") + " に参加をお申し込みしました。" +
+        (r.d.already ? "<br>（すでにお申し込みずみです）" : "");
+      hide($("joinCard"));
+      show($("doneCard"));
+      window.scrollTo(0, 0);
+    }).catch(function(){
+      $("joinBtn").disabled = false;
+      $("joinBtn").textContent = "参加を申し込む";
+      joinMsg("通信に失敗しました。電波の良いところで、もう一度お試しください。", "err");
+    });
+  });
+
+  /* ---------------- 6桁コード（いまある道） ---------------- */
+
+  var elFacility = $("facility_code");
+  var elName = $("staff_name");
+  var elCode = $("link_code");
+  var elBtn = $("submitBtn");
+  var elMsg = $("msg");
+  var elStatus = $("status");
 
   function showMsg(text, type){
     elMsg.className = "msg " + (type || "err");
     elMsg.innerHTML = text;
   }
   function clearMsg(){ elMsg.className = "msg"; elMsg.innerHTML = ""; }
-
-  function initLiff(){
-    if (typeof liff === "undefined"){
-      elStatus.textContent = "LIFF SDKの読み込みに失敗しました。";
-      return;
-    }
-    liff.init({ liffId: LIFF_ID }).then(function(){
-      if (!liff.isLoggedIn()){
-        liff.login();
-        return;
-      }
-      return liff.getProfile().then(function(profile){
-        lineUserId = profile.userId;
-        elStatus.textContent = "LINE確認OK。情報を入力してください。";
-        elBtn.disabled = false;
-      });
-    }).catch(function(err){
-      elStatus.textContent = "LINEの初期化に失敗しました。LINEアプリ内から開いてください。";
-      console.error("liff init error", err);
-    });
-  }
 
   elBtn.addEventListener("click", function(){
     clearMsg();
@@ -175,6 +417,61 @@
       elBtn.textContent = "確認して進む";
     });
   });
+
+  /* ---------------- 画面の切り替え ---------------- */
+
+  $("toCodeLink").addEventListener("click", function(){
+    hide($("joinCard"));
+    show($("codeCard"));
+    if (facilityCode) elFacility.value = facilityCode;
+    window.scrollTo(0, 0);
+  });
+  $("toJoinLink").addEventListener("click", function(){
+    hide($("codeCard"));
+    show($("joinCard"));
+    window.scrollTo(0, 0);
+  });
+
+  /* ---------------- LIFF ---------------- */
+
+  function startFlow(){
+    var code = qs("f");
+    if (!code){ askFacility(); return; }
+    $("joinStatus").textContent = "事業所を確認中…";
+    loadFacility(code).then(function(okFac){
+      if (!okFac){
+        joinMsg("QRコードの事業所が見つかりませんでした。<br>施設コードをご記入ください。", "err");
+        askFacility();
+        return;
+      }
+      afterFacility();
+    });
+  }
+
+  function initLiff(){
+    if (typeof liff === "undefined"){
+      $("joinStatus").textContent = "LINEの読み込みに失敗しました。";
+      elStatus.textContent = "LIFF SDKの読み込みに失敗しました。";
+      return;
+    }
+    liff.init({ liffId: LIFF_ID }).then(function(){
+      if (!liff.isLoggedIn()){
+        liff.login();
+        return;
+      }
+      return liff.getProfile().then(function(profile){
+        lineUserId = profile.userId;
+        lineDisplayName = profile.displayName || "";
+        elStatus.textContent = "LINE確認OK。情報を入力してください。";
+        elBtn.disabled = false;
+        startFlow();
+      });
+    }).catch(function(err){
+      $("joinStatus").textContent = "LINEの確認ができませんでした。LINEアプリから開いてください。";
+      elStatus.textContent = "LINEの初期化に失敗しました。LINEアプリ内から開いてください。";
+      console.error("liff init error", err);
+    });
+  }
 
   initLiff();
 </script>

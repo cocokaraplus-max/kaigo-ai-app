@@ -737,6 +737,57 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 {# ==================== 職員管理タブ ==================== #}
 <div class="tab-panel" id="tab-staff">
 
+
+  {# ---- staff-join-admin-v1 : 参加のお申し込み（承認待ち） ---- #}
+  <div class="section-box" id="sj-box" style="background:linear-gradient(135deg,#e8f5e9,#f1f8e9);border:1.5px solid #81c784;">
+    <div class="section-box-title" style="color:#2e7d32;">
+      <span class="material-symbols-outlined" style="color:#2e7d32;">how_to_reg</span>
+      参加のお申し込み
+      <span class="badge" id="sj-count" style="display:none;background:#c62828;color:#fff;">0</span>
+    </div>
+    <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.6;">
+      職員が参加QRから申し込むと、ここに出ます。承認すると、その方のLINEに
+      <b>パスワードを決めるご案内</b>が届きます。
+    </div>
+    <div id="sj-empty" style="font-size:0.85rem;color:#80868b;padding:10px 0;">読み込み中…</div>
+    <div id="sj-list"></div>
+  </div>
+
+  {# ---- staff-join-admin-v1 : 職員に配る参加QR ---- #}
+  <div class="accordion-block">
+    <div class="accordion-head" onclick="toggleAcc('sj-qr')">
+      <div class="acc-title">
+        <span class="material-symbols-outlined" style="color:#1a73e8;">qr_code_2</span>
+        職員に配る参加QR
+      </div>
+      <span class="material-symbols-outlined acc-arrow" id="acc-arrow-sj-qr">expand_more</span>
+    </div>
+    <div class="accordion-body" id="acc-body-sj-qr">
+      <div style="font-size:0.82rem;color:#5f6368;margin-bottom:12px;line-height:1.7;">
+        このQRを職員に読んでもらうと、<b>お名前だけ</b>で参加を申し込めます。<br>
+        施設コードも6桁コードも、こちらから伝える必要はありません。<br>
+        事務所に貼っておくか、印刷して新しい方にお渡しください。
+      </div>
+      <div style="text-align:center;">
+        <div style="display:inline-block;padding:16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+          <canvas id="sj-qr-canvas" width="240" height="240" style="display:block;"></canvas>
+          <div id="sj-qr-name" style="font-size:0.85rem;font-weight:700;color:#3c4043;margin-top:10px;"></div>
+        </div>
+      </div>
+      <div id="sj-qr-url" style="font-size:0.75rem;color:#80868b;margin-top:10px;word-break:break-all;text-align:center;"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn btn-sm" onclick="sjCopyUrl()" style="flex:1;">
+          <span class="material-symbols-outlined">content_copy</span>リンクをコピー
+        </button>
+        <button class="btn btn-primary" onclick="sjPrintQr()" style="flex:1;">
+          <span class="material-symbols-outlined">print</span>印刷する
+        </button>
+      </div>
+      <div id="sj-qr-msg" style="font-size:0.8rem;color:#2e7d32;margin-top:8px;text-align:center;min-height:18px;"></div>
+    </div>
+  </div>
+
+
   {# ---- staff-startcode-block-v1 : 利用開始コード発行 ---- #}
   <div class="section-box" style="background:linear-gradient(135deg,#e8f0fe,#f3e5f5);border:1.5px solid #90caf9;">
     <div class="section-box-title" style="color:#1a73e8;">
@@ -2657,5 +2708,592 @@ async function saveSogeSettings() {
 
 document.addEventListener('DOMContentLoaded', loadSogeSettings);
 if (document.readyState !== 'loading') loadSogeSettings();
+
+// staff-join-qr-v1 : 小さなQRコード生成（バイトモード・誤り訂正M・型番1〜10）
+// 外のサービスに頼らないために自前で持つ。
+function qrMatrix(text){
+  // ---- GF(256) ----
+  var EXP = new Array(512), LOG = new Array(256), x = 1;
+  for (var i = 0; i < 255; i++){
+    EXP[i] = x; LOG[x] = i;
+    x <<= 1; if (x & 0x100) x ^= 0x11d;
+  }
+  for (var i2 = 255; i2 < 512; i2++) EXP[i2] = EXP[i2 - 255];
+  function gmul(a, b){ return (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]]; }
+
+  // ---- BCH（形式情報・型番情報の誤り訂正）----
+  function bchDigit(d){ var n = 0; while (d !== 0){ n++; d >>>= 1; } return n; }
+  function bch(val, poly, shift){
+    var d = val << shift;
+    while (bchDigit(d) - bchDigit(poly) >= 0) d ^= (poly << (bchDigit(d) - bchDigit(poly)));
+    return (val << shift) | d;
+  }
+
+  // ---- 型番ごとの表（誤り訂正 M のみ）----
+  // [総コードワード, 1ブロックの誤り訂正数, [ [ブロック数, データ数], ... ] ]
+  var VER = {
+    1:  [26,  10, [[1, 16]]],
+    2:  [44,  16, [[1, 28]]],
+    3:  [70,  26, [[1, 44]]],
+    4:  [100, 18, [[2, 32]]],
+    5:  [134, 24, [[2, 43]]],
+    6:  [172, 16, [[4, 27]]],
+    7:  [196, 18, [[4, 31]]],
+    8:  [242, 22, [[2, 38], [2, 39]]],
+    9:  [292, 22, [[3, 36], [2, 37]]],
+    10: [346, 26, [[4, 43], [1, 44]]]
+  };
+  var ALIGN = {
+    1: [], 2: [6,18], 3: [6,22], 4: [6,26], 5: [6,30],
+    6: [6,34], 7: [6,22,38], 8: [6,24,42], 9: [6,26,46], 10: [6,28,50]
+  };
+
+  // ---- 文字をUTF-8のバイトに ----
+  var bytes = [];
+  var enc = unescape(encodeURIComponent(text));
+  for (var k = 0; k < enc.length; k++) bytes.push(enc.charCodeAt(k) & 0xff);
+
+  // ---- 入る型番を選ぶ ----
+  var ver = 0;
+  for (var v = 1; v <= 10; v++){
+    var t = VER[v], ecc = t[1], groups = t[2];
+    var dataCw = 0, nblk = 0;
+    for (var g = 0; g < groups.length; g++){ dataCw += groups[g][0] * groups[g][1]; nblk += groups[g][0]; }
+    var lenBits = (v <= 9) ? 8 : 16;
+    var need = 4 + lenBits + bytes.length * 8;
+    if (need <= dataCw * 8){ ver = v; break; }
+  }
+  if (!ver) return null;   // 長すぎる
+
+  var tv = VER[ver], ECN = tv[1], GROUPS = tv[2];
+  var DATA_CW = 0, NBLK = 0;
+  for (var g2 = 0; g2 < GROUPS.length; g2++){ DATA_CW += GROUPS[g2][0] * GROUPS[g2][1]; NBLK += GROUPS[g2][0]; }
+
+  // ---- ビット列を作る ----
+  var bits = [];
+  function put(val, n){ for (var b = n - 1; b >= 0; b--) bits.push((val >> b) & 1); }
+  put(4, 4);                                   // バイトモード
+  put(bytes.length, (ver <= 9) ? 8 : 16);
+  for (var m = 0; m < bytes.length; m++) put(bytes[m], 8);
+  var cap = DATA_CW * 8;
+  for (var t4 = 0; t4 < 4 && bits.length < cap; t4++) bits.push(0);   // 終端
+  while (bits.length % 8) bits.push(0);
+  var data = [];
+  for (var p = 0; p < bits.length; p += 8){
+    var byteV = 0;
+    for (var q = 0; q < 8; q++) byteV = (byteV << 1) | bits[p + q];
+    data.push(byteV);
+  }
+  var padTog = 0;
+  while (data.length < DATA_CW){ data.push(padTog ? 0x11 : 0xEC); padTog ^= 1; }
+
+  // ---- 誤り訂正（Reed-Solomon）----
+  var gen = [1];
+  for (var e = 0; e < ECN; e++){
+    var ng = new Array(gen.length + 1);
+    for (var z = 0; z < ng.length; z++) ng[z] = 0;
+    for (var j = 0; j < gen.length; j++){
+      ng[j] ^= gen[j];
+      ng[j + 1] ^= gmul(gen[j], EXP[e]);
+    }
+    gen = ng;
+  }
+  function rs(block){
+    var rem = block.slice();
+    for (var r = 0; r < ECN; r++) rem.push(0);
+    for (var i3 = 0; i3 < block.length; i3++){
+      var factor = rem[i3];
+      if (factor === 0) continue;
+      for (var j3 = 1; j3 < gen.length; j3++) rem[i3 + j3] ^= gmul(gen[j3], factor);
+    }
+    return rem.slice(block.length);
+  }
+
+  var dBlocks = [], eBlocks = [], off = 0;
+  for (var gi = 0; gi < GROUPS.length; gi++){
+    for (var bi = 0; bi < GROUPS[gi][0]; bi++){
+      var blk = data.slice(off, off + GROUPS[gi][1]);
+      off += GROUPS[gi][1];
+      dBlocks.push(blk);
+      eBlocks.push(rs(blk));
+    }
+  }
+  // ---- 交互に並べる ----
+  var final = [], maxD = 0;
+  for (var d1 = 0; d1 < dBlocks.length; d1++) if (dBlocks[d1].length > maxD) maxD = dBlocks[d1].length;
+  for (var c1 = 0; c1 < maxD; c1++)
+    for (var b1 = 0; b1 < dBlocks.length; b1++)
+      if (c1 < dBlocks[b1].length) final.push(dBlocks[b1][c1]);
+  for (var c2 = 0; c2 < ECN; c2++)
+    for (var b2 = 0; b2 < eBlocks.length; b2++)
+      final.push(eBlocks[b2][c2]);
+
+  // ---- 下地を置く ----
+  var N = ver * 4 + 17;
+  var mat = [], used = [];
+  for (var r1 = 0; r1 < N; r1++){
+    mat.push(new Array(N).fill(0));
+    used.push(new Array(N).fill(false));
+  }
+  function setF(r, c, val){ mat[r][c] = val; used[r][c] = true; }
+
+  function finder(r0, c0){
+    for (var dr = -1; dr <= 7; dr++){
+      for (var dc = -1; dc <= 7; dc++){
+        var r = r0 + dr, c = c0 + dc;
+        if (r < 0 || r >= N || c < 0 || c >= N) continue;
+        var on = (dr >= 0 && dr <= 6 && (dc === 0 || dc === 6)) ||
+                 (dc >= 0 && dc <= 6 && (dr === 0 || dr === 6)) ||
+                 (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4);
+        setF(r, c, on ? 1 : 0);
+      }
+    }
+  }
+  finder(0, 0); finder(0, N - 7); finder(N - 7, 0);
+
+  for (var t5 = 8; t5 < N - 8; t5++){
+    var bitv = (t5 % 2 === 0) ? 1 : 0;
+    setF(6, t5, bitv); setF(t5, 6, bitv);
+  }
+
+  var ac = ALIGN[ver];
+  for (var a1 = 0; a1 < ac.length; a1++){
+    for (var a2 = 0; a2 < ac.length; a2++){
+      var cr = ac[a1], cc = ac[a2];
+      if ((cr === 6 && cc === 6) || (cr === 6 && cc === N - 7) || (cr === N - 7 && cc === 6)) continue;
+      for (var dr2 = -2; dr2 <= 2; dr2++){
+        for (var dc2 = -2; dc2 <= 2; dc2++){
+          var on2 = (Math.abs(dr2) === 2 || Math.abs(dc2) === 2 || (dr2 === 0 && dc2 === 0));
+          setF(cr + dr2, cc + dc2, on2 ? 1 : 0);
+        }
+      }
+    }
+  }
+
+  setF(N - 8, 8, 1);   // 常に黒
+
+  // 形式情報の場所を先に押さえる
+  for (var f1 = 0; f1 <= 8; f1++){
+    if (!used[8][f1]) setF(8, f1, 0);
+    if (!used[f1][8]) setF(f1, 8, 0);
+  }
+  for (var f2 = 0; f2 < 8; f2++){
+    if (!used[8][N - 1 - f2]) setF(8, N - 1 - f2, 0);
+    if (!used[N - 1 - f2][8]) setF(N - 1 - f2, 8, 0);
+  }
+
+  // 型番情報（型番7以上）
+  if (ver >= 7){
+    var vd = bch(ver, 0x1f25, 12);
+    for (var vk = 0; vk < 18; vk++){
+      var vb = (vd >> vk) & 1;
+      setF(Math.floor(vk / 3), N - 11 + (vk % 3), vb);
+      setF(N - 11 + (vk % 3), Math.floor(vk / 3), vb);
+    }
+  }
+
+  // ---- データを置く ----
+  var di = 0, dbit = 7, dir = -1, row = N - 1;
+  for (var col = N - 1; col > 0; col -= 2){
+    if (col === 6) col--;
+    while (true){
+      for (var s = 0; s < 2; s++){
+        var cc2 = col - s;
+        if (!used[row][cc2]){
+          var bitVal = 0;
+          if (di < final.length) bitVal = (final[di] >> dbit) & 1;
+          mat[row][cc2] = bitVal;
+          dbit--;
+          if (dbit < 0){ dbit = 7; di++; }
+        }
+      }
+      row += dir;
+      if (row < 0 || row >= N){ row -= dir; dir = -dir; break; }
+    }
+  }
+
+  // ---- マスク ----
+  function maskFn(k, r, c){
+    switch (k){
+      case 0: return (r + c) % 2 === 0;
+      case 1: return r % 2 === 0;
+      case 2: return c % 3 === 0;
+      case 3: return (r + c) % 3 === 0;
+      case 4: return (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0;
+      case 5: return (r * c) % 2 + (r * c) % 3 === 0;
+      case 6: return ((r * c) % 2 + (r * c) % 3) % 2 === 0;
+      case 7: return ((r + c) % 2 + (r * c) % 3) % 2 === 0;
+    }
+    return false;
+  }
+  // 採点。よく使われている実装（Python の qrcode）と同じ数え方にしてある。
+  // ★同じ点の付け方にしないと、選ぶマスクがずれる。マスクがずれても
+  //   QRとしては正しいが、読み取り機によっては読みにくい模様を選んでしまう。
+  function penalty(g){
+    var lost = 0, r, c, len, prev, i;
+
+    // 規則1: 同じ色が5つ以上続く
+    var cont = new Array(N + 1).fill(0);
+    for (r = 0; r < N; r++){
+      prev = g[r][0]; len = 0;
+      for (c = 0; c < N; c++){
+        if (g[r][c] === prev) len++;
+        else { if (len >= 5) cont[len]++; len = 1; prev = g[r][c]; }
+      }
+      if (len >= 5) cont[len]++;
+    }
+    for (c = 0; c < N; c++){
+      prev = g[0][c]; len = 0;
+      for (r = 0; r < N; r++){
+        if (g[r][c] === prev) len++;
+        else { if (len >= 5) cont[len]++; len = 1; prev = g[r][c]; }
+      }
+      if (len >= 5) cont[len]++;
+    }
+    for (i = 5; i <= N; i++) lost += cont[i] * (i - 2);
+
+    // 規則2: 2x2の同色
+    for (r = 0; r < N - 1; r++){
+      c = 0;
+      while (c < N - 1){
+        var tr = g[r][c + 1];
+        if (tr !== g[r + 1][c + 1]){ c += 2; continue; }
+        if (tr !== g[r][c]){ c += 1; continue; }
+        if (tr !== g[r + 1][c]){ c += 1; continue; }
+        lost += 3; c += 1;
+      }
+    }
+
+    // 規則3: 1:1:3:1:1 の並び（前後に明るい4マス）
+    var lim = N - 10;
+    for (r = 0; r < N; r++){
+      var row = g[r];
+      c = 0;
+      while (c < lim){
+        if (!row[c+1] && row[c+4] && !row[c+5] && row[c+6] && !row[c+9] &&
+            ((row[c] && row[c+2] && row[c+3] && !row[c+7] && !row[c+8] && !row[c+10]) ||
+             (!row[c] && !row[c+2] && !row[c+3] && row[c+7] && row[c+8] && row[c+10]))) lost += 40;
+        c += row[c+10] ? 2 : 1;
+      }
+    }
+    for (c = 0; c < N; c++){
+      r = 0;
+      while (r < lim){
+        if (!g[r+1][c] && g[r+4][c] && !g[r+5][c] && g[r+6][c] && !g[r+9][c] &&
+            ((g[r][c] && g[r+2][c] && g[r+3][c] && !g[r+7][c] && !g[r+8][c] && !g[r+10][c]) ||
+             (!g[r][c] && !g[r+2][c] && !g[r+3][c] && g[r+7][c] && g[r+8][c] && g[r+10][c]))) lost += 40;
+        r += g[r+10][c] ? 2 : 1;
+      }
+    }
+
+    // 規則4: 黒の割合
+    var dark = 0;
+    for (r = 0; r < N; r++) for (c = 0; c < N; c++) dark += g[r][c];
+    lost += Math.floor(Math.abs(dark / (N * N) * 100 - 50) / 5) * 10;
+    return lost;
+  }
+
+  // 形式情報の場所（採点のときは、ここを全部「明るい」にして数える。
+  // 決まっていない値で点が動くのを避けるため。よく使われている実装と同じ扱い。）
+  function fmtCells(){
+    var out = [];
+    for (var i = 0; i < 15; i++){
+      if (i < 6) out.push([i, 8]);
+      else if (i < 8) out.push([i + 1, 8]);
+      else out.push([N - 15 + i, 8]);
+      if (i < 8) out.push([8, N - 1 - i]);
+      else if (i < 9) out.push([8, 15 - i - 1 + 1]);
+      else out.push([8, 15 - i - 1]);
+    }
+    out.push([N - 8, 8]);
+    // 型番情報（型番7以上）も、採点のときは「明るい」にして数える
+    if (ver >= 7){
+      for (var k2 = 0; k2 < 18; k2++){
+        out.push([Math.floor(k2 / 3), N - 11 + (k2 % 3)]);
+        out.push([N - 11 + (k2 % 3), Math.floor(k2 / 3)]);
+      }
+    }
+    return out;
+  }
+  var FCELLS = fmtCells();
+
+  var best = null, bestPen = Infinity, bestMask = 0;
+  for (var mk = 0; mk < 8; mk++){
+    var g3 = [];
+    for (var r3 = 0; r3 < N; r3++) g3.push(mat[r3].slice());
+    for (var r4 = 0; r4 < N; r4++)
+      for (var c4 = 0; c4 < N; c4++)
+        if (!used[r4][c4] && maskFn(mk, r4, c4)) g3[r4][c4] ^= 1;
+    for (var fc = 0; fc < FCELLS.length; fc++) g3[FCELLS[fc][0]][FCELLS[fc][1]] = 0;
+    var pn = penalty(g3);
+    if (pn < bestPen){ bestPen = pn; best = g3; bestMask = mk; }
+  }
+
+  // 決まったマスクの形式情報を入れる
+  var fv = (0 << 3) | bestMask;            // 誤り訂正 M = 00
+  var fmt = bch(fv, 0x537, 10) ^ 0x5412;
+  for (var fi = 0; fi < 15; fi++){
+    var fbit = (fmt >> fi) & 1;
+    if (fi < 6) best[fi][8] = fbit;
+    else if (fi < 8) best[fi + 1][8] = fbit;
+    else best[N - 15 + fi][8] = fbit;
+    if (fi < 8) best[8][N - 1 - fi] = fbit;
+    else if (fi < 9) best[8][15 - fi - 1 + 1] = fbit;
+    else best[8][15 - fi - 1] = fbit;
+  }
+  best[N - 8][8] = 1;   // 常に黒
+  if (ver >= 7){
+    var vd2 = bch(ver, 0x1f25, 12);
+    for (var vk2 = 0; vk2 < 18; vk2++){
+      var vb2 = (vd2 >> vk2) & 1;
+      best[Math.floor(vk2 / 3)][N - 11 + (vk2 % 3)] = vb2;
+      best[N - 11 + (vk2 % 3)][Math.floor(vk2 / 3)] = vb2;
+    }
+  }
+
+  return best;
+}
+
+
+/* ============================================================
+ * staff-join-admin-v1 : 参加のお申し込み（承認待ち）と 参加QR
+ *
+ *   ★同じお名前の職員は作らせない。staff_name は記録・勤怠・送迎
+ *     ぜんぶで人を指す鍵なので、重なるとどちらの記録か分からなくなる。
+ *     同名のときは「既にいる方に紐付ける」に回す。
+ *   ★QRは外のサービスに描かせない。施設コードが他社のサーバーに出る。
+ * ============================================================ */
+
+function sjEsc(s){
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+function sjWhen(iso){
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  return (d.getMonth() + 1) + '/' + d.getDate() + ' '
+       + String(d.getHours()).padStart(2, '0') + ':'
+       + String(d.getMinutes()).padStart(2, '0');
+}
+
+var _sjBusy = false;
+
+async function sjLoad(){
+  var list = document.getElementById('sj-list');
+  var empty = document.getElementById('sj-empty');
+  var badge = document.getElementById('sj-count');
+  if (!list) return;
+  try {
+    var r = await fetch('/api/admin/join_requests');
+    var j = await r.json();
+    if (j.status !== 'success'){
+      empty.textContent = j.message || '読み込めませんでした。';
+      empty.style.display = '';
+      list.innerHTML = '';
+      badge.style.display = 'none';
+      return;
+    }
+    var rows = j.requests || [];
+    badge.textContent = rows.length;
+    badge.style.display = rows.length ? '' : 'none';
+    if (!rows.length){
+      empty.textContent = 'いまは承認待ちのお申し込みはありません。';
+      empty.style.display = '';
+      list.innerHTML = '';
+      return;
+    }
+    empty.style.display = 'none';
+    list.innerHTML = rows.map(function(x){
+      var dup = !!x.dup;
+      return ''
+        + '<div class="staff-card" id="sj-row-' + x.id + '" style="display:block;background:#fff;margin-bottom:10px;">'
+        +   '<div style="font-weight:700;font-size:0.95rem;">' + sjEsc(x.staff_name) + '</div>'
+        +   '<div style="font-size:0.75rem;color:#80868b;margin-top:2px;">'
+        +     (x.line_display_name ? 'LINE: ' + sjEsc(x.line_display_name) + '　' : '')
+        +     '申込 ' + sjWhen(x.created_at)
+        +   '</div>'
+        +   (dup
+              ? '<div style="font-size:0.78rem;color:#c62828;background:#fdecec;border:1px solid #f6c9c9;'
+                + 'border-radius:8px;padding:8px 10px;margin-top:8px;line-height:1.6;">'
+                + '同じお名前の職員がすでにいます。<br>'
+                + '<b>同じ方なら</b>「既にいる方に紐付ける」を押してください。<br>'
+                + '<b>別の方なら</b>、お名前を分けてから出し直していただいてください。'
+                + '</div>'
+              : '')
+        +   '<div id="sj-act-' + x.id + '" style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">'
+        +     (dup
+                ? '<button class="btn btn-primary" style="flex:1;min-width:150px;" '
+                  + 'onclick="sjDecide(' + x.id + ',\'link\')">既にいる方に紐付ける</button>'
+                : '<button class="btn btn-primary" style="flex:1;min-width:120px;" '
+                  + 'onclick="sjDecide(' + x.id + ',\'approve\')">承認する</button>')
+        +     '<button class="btn btn-sm" style="flex:0 0 auto;" '
+        +       'onclick="sjAskReject(' + x.id + ')">断る</button>'
+        +   '</div>'
+        +   '<div id="sj-msg-' + x.id + '" style="font-size:0.8rem;margin-top:8px;line-height:1.6;"></div>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    empty.textContent = '読み込めませんでした。';
+    empty.style.display = '';
+  }
+}
+
+/* 断るときは、押しまちがいを拾うために一度おさえる（ダイアログは出さない） */
+function sjAskReject(id){
+  var act = document.getElementById('sj-act-' + id);
+  if (!act) return;
+  act.innerHTML = ''
+    + '<div style="font-size:0.82rem;color:#c62828;width:100%;margin-bottom:6px;">'
+    +   'このお申し込みを断ります。理由は相手に伝わりません。'
+    + '</div>'
+    + '<button class="btn btn-sm" style="flex:1;" onclick="sjLoad()">やっぱりやめる</button>'
+    + '<button class="btn btn-danger" style="flex:1;" onclick="sjDecide(' + id + ',\'reject\')">はい、断ります</button>';
+}
+
+async function sjDecide(id, action){
+  if (_sjBusy) return;
+  _sjBusy = true;
+  var msg = document.getElementById('sj-msg-' + id);
+  var act = document.getElementById('sj-act-' + id);
+  if (act) act.style.opacity = '0.5';
+  try {
+    var r = await fetch('/api/admin/join_decide', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, action: action })
+    });
+    var j = await r.json();
+    if (j.status !== 'success'){
+      if (msg){
+        msg.style.color = '#c62828';
+        msg.innerHTML = sjEsc(j.message || 'うまくいきませんでした。');
+        /* 同じ名前だったときは、その場で紐付けに回れるようにする */
+        if (j.code === 'duplicate_name' && act){
+          act.style.opacity = '1';
+          act.innerHTML = ''
+            + '<button class="btn btn-primary" style="flex:1;min-width:150px;" '
+            +   'onclick="sjDecide(' + id + ',\'link\')">既にいる方に紐付ける</button>'
+            + '<button class="btn btn-sm" style="flex:0 0 auto;" '
+            +   'onclick="sjAskReject(' + id + ')">断る</button>';
+          _sjBusy = false;
+          return;
+        }
+      }
+      if (act) act.style.opacity = '1';
+      _sjBusy = false;
+      return;
+    }
+    if (msg){
+      msg.style.color = '#2e7d32';
+      msg.textContent = (action === 'reject')
+        ? '断りました。'
+        : sjEsc(j.staff_name || '') + ' さんのLINEに、パスワードを決めるご案内を送りました。';
+    }
+    if (act) act.innerHTML = '';
+    _sjBusy = false;
+    setTimeout(sjLoad, 1500);
+  } catch (e) {
+    if (msg){ msg.style.color = '#c62828'; msg.textContent = '通信に失敗しました。'; }
+    if (act) act.style.opacity = '1';
+    _sjBusy = false;
+  }
+}
+
+/* ---- 参加QR ---- */
+
+function sjJoinUrl(){
+  return window.location.origin + '/staff_start?f=' + encodeURIComponent(FACILITY_CODE);
+}
+
+function sjDrawQr(){
+  var cv = document.getElementById('sj-qr-canvas');
+  if (!cv || typeof qrMatrix !== 'function') return;
+  var url = sjJoinUrl();
+  var m = qrMatrix(url);
+  var ctx = cv.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, cv.width, cv.height);
+  if (!m){
+    ctx.fillStyle = '#c62828';
+    ctx.font = '13px sans-serif';
+    ctx.fillText('QRを作れませんでした', 10, 30);
+    return;
+  }
+  var quiet = 4;                                   /* 白フチ4マスは規格上の決まり */
+  var n = m.length;
+  var cell = Math.floor(cv.width / (n + quiet * 2));
+  var off = Math.floor((cv.width - cell * n) / 2);
+  ctx.fillStyle = '#000';
+  for (var r = 0; r < n; r++)
+    for (var c = 0; c < n; c++)
+      if (m[r][c]) ctx.fillRect(off + c * cell, off + r * cell, cell, cell);
+  var u = document.getElementById('sj-qr-url');
+  if (u) u.textContent = url;
+}
+
+async function sjQrName(){
+  var el = document.getElementById('sj-qr-name');
+  if (!el) return;
+  try {
+    var r = await fetch('/api/staff/join_info?f=' + encodeURIComponent(FACILITY_CODE));
+    var j = await r.json();
+    el.textContent = j.facility_name || '';
+  } catch (e) { el.textContent = ''; }
+}
+
+function sjCopyUrl(){
+  var msg = document.getElementById('sj-qr-msg');
+  var url = sjJoinUrl();
+  var done = function(){ if (msg) msg.textContent = 'コピーしました。'; };
+  var fail = function(){ if (msg) msg.textContent = 'コピーできませんでした。下のリンクを長押しで選んでください。'; };
+  if (navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(url).then(done).catch(fail);
+  } else { fail(); }
+}
+
+function sjPrintQr(){
+  var cv = document.getElementById('sj-qr-canvas');
+  if (!cv) return;
+  var name = (document.getElementById('sj-qr-name') || {}).textContent || '';
+  var img = cv.toDataURL('image/png');
+  var w = window.open('', '_blank');
+  if (!w){
+    var msg = document.getElementById('sj-qr-msg');
+    if (msg) msg.textContent = '新しい窓を開けませんでした。ブラウザの設定をご確認ください。';
+    return;
+  }
+  w.document.write(''
+    + '<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">'
+    + '<title>TASUKARU 参加QR</title><style>'
+    + 'body{margin:0;padding:40px 24px;font-family:-apple-system,BlinkMacSystemFont,'
+    + '"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;text-align:center;color:#233028;}'
+    + 'h1{font-size:22px;margin:0 0 6px;}h2{font-size:16px;font-weight:600;color:#5f6368;margin:0 0 28px;}'
+    + 'img{width:320px;height:320px;image-rendering:pixelated;}'
+    + 'ol{display:inline-block;text-align:left;font-size:15px;line-height:2.1;margin:28px 0 0;padding-left:1.3em;}'
+    + '</style></head><body>'
+    + '<h1>TASUKARU をはじめる</h1>'
+    + '<h2>' + sjEsc(name) + '</h2>'
+    + '<img src="' + img + '" alt="参加QR">'
+    + '<ol>'
+    +   '<li>スマホのカメラでこのQRを読みます</li>'
+    +   '<li>「TASUKARU」を友だち追加します</li>'
+    +   '<li>お名前を入れて、申し込みます</li>'
+    +   '<li>管理者が承認すると、LINEにご案内が届きます</li>'
+    + '</ol>'
+    + '</body></html>');
+  w.document.close();
+  setTimeout(function(){ try { w.print(); } catch (e) {} }, 400);
+}
+
+function sjInit(){
+  sjLoad();
+  sjDrawQr();
+  sjQrName();
+}
+document.addEventListener('DOMContentLoaded', sjInit);
+if (document.readyState !== 'loading') sjInit();
 </script>
 {% endblock %}
