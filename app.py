@@ -608,40 +608,110 @@ def _line_push_chunked(token, to_user_id, messages):
     return ok and any_sent
 
 
-def _renraku_to_line_text(note, vitals, patient_name):
-    """連絡帳を家族向けテキストに整形する。"""
+def _renraku_visible_for(supabase, f_code, patient_id):
+    """表示項目(個別→施設既定→全表示)を解決する。renraku-line-toggle-v1
+
+    ★印刷(/renraku/print)と同じ決まりにしてある。
+      個別の設定があればそれ、無ければ施設の既定、それも無ければ全部表示。
+    ★読めなかったときは【全表示】に倒す。
+      いままで(トグルを見ていなかった頃)と同じ振る舞いなので、
+      いきなり項目が消えて驚かせることがない。
+    """
+    try:
+        pat = _renraku_patient_visible(supabase, f_code, patient_id)
+        if pat is not None:
+            return pat
+        return _renraku_facility_visible(supabase, f_code) or {}
+    except Exception as e:
+        print(f'_renraku_visible_for error: {e}', flush=True)
+        return {}
+
+
+def _renraku_to_line_text(note, vitals, patient_name, visible=None):
+    """連絡帳を家族向けテキストに整形する。
+
+    renraku-line-toggle-v1 :
+      ★表示項目の設定(visible)を見る。オフにした項目は書かない。
+        印刷は前から見ていたのに、ここだけ見ていなかった。
+      ★visible を渡さないときは全部出す(前と同じ)。
+    """
     items = (note or {}).get('items') or {}
     lines = []
 
+    # renraku-line-toggle-v1 :
+    #   ★決まりは印刷の isVisible と同じ。「false のときだけ出さない」。
+    #     設定が無い項目は出す(新しい項目を足したときに消えないように)。
+    _vis = visible if isinstance(visible, dict) else {}
+
+    def _on(key):
+        return _vis.get(key) is not False
+
+    # 送迎(時刻)  renraku-line-items-v1
+    #   ★画面にも印刷にも出ているのに、ここだけ読んでいなかった。
+    pu = _rk_chips_text(items.get('pickup'))
+    do = _rk_chips_text(items.get('dropoff'))
+    if _on('transport') and (pu or do):
+        _t = []
+        if pu: _t.append(f'迎え {pu}')
+        if do: _t.append(f'送り {do}')
+        lines.append('【送迎】' + ' / '.join(_t))
     # 行った場所
     places = _rk_chips_text(items.get('places'))
-    if places:
+    if _on('places') and places:
         lines.append(f'【行った場所】{places}')
     # 食事量
-    mm = _rk_chips_text(items.get('meal_main'))
-    ms = _rk_chips_text(items.get('meal_side'))
+    #   ★主食と副食は別のトグル。片方だけ消せる。
+    mm = _rk_chips_text(items.get('meal_main')) if _on('meal_main') else ''
+    ms = _rk_chips_text(items.get('meal_side')) if _on('meal_side') else ''
     if mm or ms:
         parts = []
         if mm: parts.append(f'主食 {mm}')
         if ms: parts.append(f'副食 {ms}')
         lines.append('【お食事】' + '、'.join(parts))
     water = _rk_chips_text(items.get('water'))
-    if water:
+    if _on('water') and water:
         lines.append(f'【水分】{water}')
     # 入浴
     bath = _rk_chips_text(items.get('bath'))
-    if bath:
+    if _on('bath') and bath:
         lines.append(f'【入浴】{bath}')
     # 排泄
     toilet = _rk_chips_text(items.get('toilet'))
-    if toilet:
+    if _on('toilet') and toilet:
         lines.append(f'【排泄】{toilet}')
-    # 機能訓練
+    # 機能訓練  renraku-line-items-v1
+    #   ★いままで状態(実施/一部/見学/なし)だけだった。種目・分・メモも入れる。
+    #     並べ方は印刷と同じ「種目 / 分 / メモ」。
+    #   ★トグルは状態と中身で1つ。印刷も分けていないのでそろえる。
     training = _rk_chips_text(items.get('training'))
-    if training:
-        lines.append(f'【機能訓練・運動】{training}')
+    _td = items.get('training_details')
+    if not isinstance(_td, list):
+        _td = []
+    _td_lines = []
+    for _t1 in _td:
+        if not isinstance(_t1, dict):
+            continue
+        _seg = []
+        _nm = str(_t1.get('name') or '').strip()
+        if _nm: _seg.append(_nm)
+        _mi = _t1.get('minutes')
+        _mi = '' if _mi is None else str(_mi).strip()
+        if _mi: _seg.append(f'{_mi}分')
+        _me = str(_t1.get('memo') or '').strip()
+        if _me: _seg.append(_me)
+        if _seg:
+            _td_lines.append('・' + ' / '.join(_seg))
+    if _on('training') and (training or _td_lines):
+        #  ★状態が空でも中身があれば「実施」とする。印刷と同じ扱い。
+        lines.append(f'【機能訓練・運動】{training or "実施"}')
+        lines.extend(_td_lines)
+    # レク・活動  renraku-line-items-v1
+    rec = _rk_chips_text(items.get('rec'))
+    if _on('rec') and rec:
+        lines.append(f'【レク・活動】{rec}')
 
     # バイタル(数値テキスト) — 体温は各行、血圧(＋脈拍・SpO2)は各行で縦に並べる
+    #   ★バイタルにはトグルがない(画面にも設定が無い)。前と同じで、あれば出す。
     if vitals:
         temp_lines = []
         other_lines = []
@@ -665,20 +735,20 @@ def _renraku_to_line_text(note, vitals, patient_name):
 
     # 特記事項
     special = (note or {}).get('special_note') or ''
-    if special.strip():
+    if _on('special_note') and special.strip():
         lines.append('')
         lines.append('【連絡事項】')
         lines.append(special.strip())
 
     # ご家族へのメッセージ
     fam = (note or {}).get('family_message') or ''
-    if fam.strip():
+    if _on('family_message') and fam.strip():
         lines.append('')
         lines.append(fam.strip())
 
     # 次回
     nv = (note or {}).get('next_visit') or ''
-    if nv.strip():
+    if _on('next_visit') and nv.strip():
         lines.append('')
         lines.append(f'【次回ご利用】{nv.strip()}')
 
@@ -721,8 +791,23 @@ def api_renraku_line_preview():
         note, vitals, pname = _renraku_fetch_for_line(supabase, f_code, patient_id, note_date)
         if not note:
             return jsonify({'status': 'error', 'message': 'この日の連絡帳がまだありません'}), 400
-        text = _renraku_to_line_text(note, vitals, pname)
-        recipients = _line_linked_recipients(supabase, f_code, patient_id)
+        # renraku-line-toggle-v1 :
+        #   ★表示項目の設定を渡す。オフの項目は文章に書かない（印刷と同じ）。
+        _visible = _renraku_visible_for(supabase, f_code, patient_id)
+        text = _renraku_to_line_text(note, vitals, pname, _visible)
+        # renraku-line-items-v2 :
+        #   ★文章は送信先と関係なく作れる。送信先が読めなくても文章だけは返す。
+        #     「文章をコピー」は送信しないので、送信先が無くても使えないと困る。
+        #   ★読めなかったことは recipient_error で伝える。
+        #     「送信先がいない」と「送信先が読めなかった」は別のことなので、
+        #     画面で言い分けられるようにしておく。
+        _recip_error = ''
+        try:
+            recipients = _line_linked_recipients(supabase, f_code, patient_id)
+        except Exception as _re1:
+            print(f'api_renraku_line_preview recipients error: {_re1}', flush=True)
+            recipients = []
+            _recip_error = str(_re1)
         recip_view = [{'display_name': r.get('display_name') or '(名前未取得)',
                         'user_id_tail': (r.get('line_user_id') or '')[-6:]} for r in recipients]
         _photo_count = len([u for u in ((note or {}).get('image_urls') or []) if u])  # renraku-line-photo-v1
@@ -730,6 +815,7 @@ def api_renraku_line_preview():
                         'patient_name': pname,
                         'recipient_count': len(recipients),
                         'recipients': recip_view,
+                        'recipient_error': _recip_error,   # renraku-line-items-v2
                         'photo_count': _photo_count})
     except Exception as e:
         print(f'api_renraku_line_preview error: {e}', flush=True)

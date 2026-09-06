@@ -183,6 +183,10 @@
       <button onclick="rkPrintOne()" style="flex:1;padding:11px;border:1.5px solid #1a73e8;background:#fff;color:#1a73e8;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:18px;">print</span>印刷</button>
       <button onclick="rkLineOpen()" style="flex:2;padding:11px;border:none;background:#06c755;color:#fff;border-radius:10px;font-weight:800;font-size:0.9rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:18px;">send</span>LINEで送る</button>
     </div>
+    <!-- renraku-line-items-v1 :
+         ★LINEを入れていない事業所向け。文章を作るだけで、ここからは送信しない。
+           紙の連絡帳に貼るために使う。 -->
+    <button onclick="rkCopyOpen()" style="width:100%;margin-top:8px;padding:11px;border:1.5px solid #5f6368;background:#fff;color:#3c4043;border-radius:10px;font-weight:700;font-size:0.9rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:4px;"><span class="material-symbols-outlined" style="font-size:18px;">content_copy</span>この内容の文章をコピー</button>
   </div>
 </div>
 
@@ -505,7 +509,9 @@ async function rkPhotoSelected(input){
 }
 
 async function rkSave(){
-  if(!RK_PATIENT) return;
+  if(!RK_PATIENT) return false;   /* renraku-line-items-v1 */
+  /* renraku-line-items-v1 : ★保存できたかを返す。コピーの前に保存するのに使う。 */
+  let _rk_ok=false;
   const btn=document.getElementById('rk-save'); btn.disabled=true; btn.textContent='保存中...';
   const gv=function(id){ const el=document.getElementById(id); return el?el.value:''; };
   RK_ITEMS.pickup=gv('rk-pickup'); RK_ITEMS.dropoff=gv('rk-dropoff'); RK_ITEMS.rec=gv('rk-rec');
@@ -518,10 +524,12 @@ async function rkSave(){
   try{
     const res=await fetch('/api/renraku/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const data=await res.json();
-    if(data.status==='success'){ const t=document.getElementById('rk-toast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1600); }
+    if(data.status==='success'){ _rk_ok=true;   /* renraku-line-items-v1 */
+      const t=document.getElementById('rk-toast'); t.classList.add('show'); setTimeout(function(){t.classList.remove('show');},1600); }
     else { alert('保存に失敗しました：'+(data.message||'不明なエラー')); }
   }catch(e){ alert('保存に失敗しました：'+e); }
   finally{ btn.disabled=false; btn.textContent='連絡帳を保存'; }
+  return _rk_ok;   /* renraku-line-items-v1 */
 }
 
 // renraku-print-link-v1 : 印刷導線
@@ -619,6 +627,12 @@ async function rkLineOpen(){
       if(d.recipient_count>0){
         const names=(d.recipients||[]).map(r=>rkEsc(r.display_name)+'（…'+rkEsc(r.user_id_tail)+'）').join('、');
         recEl.innerHTML='<b>送信先（紐付け済み '+d.recipient_count+'名）：</b><br>'+names;
+      }else if(d.recipient_error){
+        /* renraku-line-items-v2 :
+           ★「いない」と「読めなかった」は別のこと。同じ文言にすると、
+             紐付けをやり直せば直る、と思わせてしまう。 */
+        recEl.innerHTML='<span style="color:#d93025;font-weight:700;">送信先を読めませんでした。このまま送らないでください。</span>'+
+          '<br><span style="color:#5f6368;font-size:0.78rem;">'+rkEsc(d.recipient_error)+'</span>';
       }else{
         recEl.innerHTML='<span style="color:#d93025;font-weight:700;">紐付け済みのご家族がいません。管理画面の「LINE友だち管理」で紐付けてください。</span>';
       }
@@ -648,6 +662,72 @@ async function rkLineSend(){
     }
   }catch(e){ console.error('rkLineSend',e); if(msg){msg.style.color='#d93025';msg.textContent='通信エラー';} }
   finally{ if(btn) btn.disabled=false; }
+}
+</script>
+
+<!-- ===== renraku-line-items-v1 : 文章をコピー =====
+     ★ここには送信ボタンを置かない。作るだけ。
+       LINEの設定が無い事業所でも使えるようにするため。 -->
+<div id="rk-copy-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;">
+  <div style="background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:calc(88vh - var(--rk-nav-h, 137px));overflow:auto;padding:18px;margin-bottom:var(--rk-nav-h, 137px);box-sizing:border-box;">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      <span class="material-symbols-outlined" style="color:#5f6368;">content_copy</span>
+      <div style="font-weight:800;font-size:1.02rem;">文章をコピー</div>
+      <button onclick="rkCopyClose()" style="margin-left:auto;border:none;background:#f1f3f4;border-radius:8px;width:32px;height:32px;cursor:pointer;">✕</button>
+    </div>
+    <div style="font-size:0.85rem;color:#5f6368;background:#f8f9fa;border-radius:10px;padding:10px;margin-bottom:10px;line-height:1.7;">
+      LINEで送るのと同じ文章です。<b>ここからは送信しません。</b><br>
+      コピーして、紙の連絡帳などに貼り付けてお使いください。
+    </div>
+    <div style="font-size:0.8rem;color:#9aa0a6;margin-bottom:4px;">この内容（コピーする前に直せます）</div>
+    <textarea id="rk-copy-text" style="width:100%;min-height:220px;border:1.5px solid #e0e0e0;border-radius:10px;padding:12px;box-sizing:border-box;font-size:0.9rem;line-height:1.6;font-family:inherit;"></textarea>
+    <div id="rk-copy-msg" style="font-size:0.82rem;text-align:center;margin:8px 0;min-height:18px;"></div>
+    <div style="display:flex;gap:10px;margin-top:8px;">
+      <button onclick="rkCopyClose()" style="flex:1;padding:12px;border:1.5px solid #e0e0e0;background:#fff;border-radius:10px;cursor:pointer;font-weight:700;color:#5f6368;">閉じる</button>
+      <button id="rk-copy-btn" onclick="rkCopyDo()" style="flex:2;padding:12px;border:none;background:#3c4043;color:#fff;border-radius:10px;cursor:pointer;font-weight:800;">コピーする</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ===== renraku-line-items-v1 : 文章をコピー ===== */
+async function rkCopyOpen(){
+  if(!RK_PATIENT || !RK_PATIENT.patient_id){ alert('利用者が選択されていません。'); return; }
+  /* ★先に保存する。文章は保存した中身から作るので、保存しないと今の入力が入らない。 */
+  const saved=await rkSave();
+  if(saved===false) return;
+  const txtEl=document.getElementById('rk-copy-text');
+  const msg=document.getElementById('rk-copy-msg');
+  if(msg) msg.textContent='';
+  if(txtEl) txtEl.value='';
+  document.getElementById('rk-copy-modal').style.display='flex';
+  try{
+    const d=await fetch('/api/renraku/line_preview',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE})}).then(r=>r.json());
+    if(d.status!=='success'){ if(msg){msg.style.color='#d93025';msg.textContent=d.message||'文章を作れませんでした';} return; }
+    if(txtEl) txtEl.value=d.text||'';
+  }catch(e){ console.error('rkCopyOpen',e); if(msg){msg.style.color='#d93025';msg.textContent='通信エラー';} }
+}
+
+function rkCopyClose(){ document.getElementById('rk-copy-modal').style.display='none'; }
+
+async function rkCopyDo(){
+  const txtEl=document.getElementById('rk-copy-text');
+  const msg=document.getElementById('rk-copy-msg');
+  const text=(txtEl?txtEl.value:'');
+  if(!text.trim()){ if(msg){msg.style.color='#d93025';msg.textContent='コピーする文章がありません';} return; }
+  let ok=false;
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ await navigator.clipboard.writeText(text); ok=true; }
+  }catch(e){ ok=false; }
+  if(!ok){
+    /* ★古い端末向けの逃げ道。選んでからコピーする昔のやり方。 */
+    try{ txtEl.focus(); txtEl.select(); ok=document.execCommand('copy'); }catch(e){ ok=false; }
+  }
+  if(msg){
+    if(ok){ msg.style.color='#188038'; msg.textContent='コピーしました。連絡帳に貼り付けてください。'; }
+    else { msg.style.color='#d93025'; msg.textContent='コピーできませんでした。文章を長押しして選び、コピーしてください。'; }
+  }
 }
 </script>
 
