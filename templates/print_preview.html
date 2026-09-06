@@ -2820,22 +2820,38 @@ function drawTrendBadge(badgeId, values, lowerIsBetter) {
     var increased = last > first;
     var improved = lowerIsBetter ? !increased : increased;
     var isMono = !isColor;
-    // 改善=グリーン系 / 低下=コーラル系。モノクロ時は黒/グレー
-    var circleFill = isMono ? (improved ? '#e0e0e0' : '#f5f5f5') : (improved ? '#E1F5EE' : '#FAECE7');
-    var arrowColor = isMono ? (improved ? '#000' : '#888') : (improved ? '#0F6E56' : '#993C1D');
-    // report-chart-fix-v1: ★矢印の向きは【実際の増減】に合わせる。
-    //   前は「改善なら上向き」だった。TUGや5m歩行のように【下がるほど良い】
-    //   指標では、線が下がっているのに矢印が上を向く。
-    //   「減っているのにグラフが上昇している」と見えるのはこれ。
-    //   （DEMO001で確認：TUG 19→6秒 なのに aria-label="向上"＝上向き矢印）
-    //   改善／悪化は今までどおり【色】で表す。向きと色で別のことを言う。
-    var arrowPath = increased
+    // trend-arrow-v2 : ★矢印の向きは【良くなったかどうか】で決める。上向き＝良くなった。
+    //
+    //   ここは一度わざと逆にした所です。3回目をやらないために経過を残します。
+    //     最初                    改善なら上向き
+    //     report-chart-fix-v1     実際の増減に合わせる（線と矢印をそろえるため）
+    //     trend-arrow-v2（今回）  また【良くなったかどうか】に戻す
+    //
+    //   戻した理由は2つ。前回はどちらも見ていませんでした。
+    //   【1】★白黒で刷ると、色だけでは改善／低下が消える。
+    //        14px の丸の中の #000 と #888 は、紙の上では見分けられない。
+    //        現場で刷るのは白黒のことが多い。
+    //        → 向きと【形】でも分ける。塗りと枠を逆にする（下）。
+    //   【2】増えたか減ったかは、すぐ下の数値欄に日付つきで出ている。
+    //        向きで増減を言うと同じことを2回言うだけ。
+    //        バッジにしか言えないのは【それが良いことなのか】のほう。
+    //
+    //   ★次にここを触りたくなったら、上の2つが変わったかを先に確かめること。
+    //     変わっていないなら、戻さないでください。
+    var arrowPath = improved
         ? 'M5.5 10 L10.5 6 M10.5 6 L10.5 9 M10.5 6 L7.5 6'
         : 'M5.5 6 L10.5 10 M10.5 10 L10.5 7 M10.5 10 L7.5 10';
-    var _trendLbl = (increased ? '増加' : '減少') + '（' + (improved ? '改善' : '低下') + '）';
+    // 白黒では、塗りと枠を逆にして形で分ける（色が消えても分かるように）
+    //   改善 … 黒い丸に白い矢印 ／ 低下 … 白い丸（黒枠）に黒い矢印
+    var circleFill = isMono ? (improved ? '#000' : '#fff') : (improved ? '#E1F5EE' : '#FAECE7');
+    var circleStroke = isMono ? '#000' : 'none';
+    var arrowColor = isMono ? (improved ? '#fff' : '#000') : (improved ? '#0F6E56' : '#993C1D');
+    // 読み上げ用には、良し悪しと実際の増減の【両方】を入れる
+    var _trendLbl = (improved ? '改善' : '低下')
+        + '（' + first + '→' + last + ' に' + (increased ? '増加' : '減少') + '）';
     badge.innerHTML =
         '<svg width="14" height="14" viewBox="0 0 16 16" role="img" aria-label="' + _trendLbl + '">' +
-        '<circle cx="8" cy="8" r="7" fill="' + circleFill + '"/>' +
+        '<circle cx="8" cy="8" r="7" fill="' + circleFill + '" stroke="' + circleStroke + '" stroke-width="1"/>' +
         '<path d="' + arrowPath + '" fill="none" stroke="' + arrowColor + '" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>' +
         '</svg>';
 }
