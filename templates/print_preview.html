@@ -932,6 +932,32 @@ body.mono .rep-legend-item { color: #333; }
 body.mono .rep-legend-solid { border-top-color: #000; }
 body.mono .rep-legend-dashed { border-top-color: #888; }
 
+/* rl-color-v1 : 線が2本のカード(握力・片脚立位)で、下の数字の左右を分ける。
+   ★色だけに頼らないこと。白黒で刷ると色は消える(下の body.mono)。
+     現場で刷るのは白黒のことが多いので、「右手」「左手」と字でも書く。
+     色は凡例の線と同じもの(実線=青 / 破線=赤)を使う。
+     別の色にすると、線と数字が別のものに見える。 */
+.rep-fitness-chart-value .rl-r,
+.tmpl4-graph-value .rl-r { color: #1565c0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.rep-fitness-chart-value .rl-l,
+.tmpl4-graph-value .rl-l { color: #c62828; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+/* 「右手」「左手」の字。いちばん小さい設定でもはみ出さない大きさ。
+   合わなければ、ここの font-size だけ動かせばよい。 */
+.rl-side { font-size: 0.72em; font-weight: 700; margin-right: 0.5px; }
+.rl-sep { color: #bbb; font-weight: 400; margin: 0 2px; }
+body.mono .rep-fitness-chart-value .rl-r,
+body.mono .rep-fitness-chart-value .rl-l,
+body.mono .tmpl4-graph-value .rl-r,
+body.mono .tmpl4-graph-value .rl-l { color: #000 !important; }
+body.mono .rl-sep { color: #888; }
+/* rl-color-v1 : JSが書く数値欄の表。見出しの字と数字の桁をそろえるためだけの表。
+   そろっていないと「右手」の見出しがどの列のことか分からない。 */
+.rep-fitness-chart-value .rl-tbl { width: 100%; border-collapse: collapse; }
+.rep-fitness-chart-value .rl-tbl td { padding: 0; text-align: right; }
+.rep-fitness-chart-value .rl-tbl td.rl-d { text-align: left; color: #888; font-weight: 600; padding-right: 2px; }
+.rep-fitness-chart-value .rl-tbl td.rl-h { font-size: 0.8em; font-weight: 700; }
+body.mono .rep-fitness-chart-value .rl-tbl td.rl-d { color: #555; }
+
 body.mono .rep-fitness-chart-box { background: #f5f5f5 !important; border-color: #ccc !important; }
 body.mono .ach-cont { color: #000 !important; font-weight: 900; }
 body.mono .ach-done { color: #000 !important; }
@@ -1176,11 +1202,11 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">握力(kg)<span class="rep-fitness-trend" id="trend-grip-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-grip-{{ idx }}"></canvas>
-            <div class="rep-legend">  <!-- legend-html-v1 -->
-                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右(実線)</span>
-                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左(破線)</span>
+            <div class="rep-legend">  <!-- legend-html-v1 / rl-color-v1 -->
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右手(実線)</span>
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左手(破線)</span>
             </div>
-            <div class="rep-fitness-chart-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</div>
+            <div class="rep-fitness-chart-value"><!-- rl-color-v1 --><span class="rl-r"><span class="rl-side">右手</span>{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %}</span><span class="rl-sep">/</span><span class="rl-l"><span class="rl-side">左手</span>{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</span></div>
         </div>
         {% endif %}
         {% if show_tug_final %}
@@ -1212,11 +1238,11 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <div class="rep-fitness-chart-box">
             <div class="rep-fitness-chart-label">片脚立位(秒)<span class="rep-fitness-trend" id="trend-balance-{{ idx }}"></span></div>
             <canvas class="mini-chart" id="chart-balance-{{ idx }}"></canvas>
-            <div class="rep-legend">  <!-- legend-html-v1 -->
-                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右(実線)</span>
-                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左(破線)</span>
+            <div class="rep-legend">  <!-- legend-html-v1 / rl-color-v1 -->
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右脚(実線)</span>
+                <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左脚(破線)</span>
             </div>
-            <div class="rep-fitness-chart-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</div>
+            <div class="rep-fitness-chart-value"><!-- rl-color-v1 --><span class="rl-r"><span class="rl-side">右脚</span>{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %}</span><span class="rl-sep">/</span><span class="rl-l"><span class="rl-side">左脚</span>{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</span></div>
         </div>
         {% endif %}
         {% endif %}
@@ -1408,12 +1434,12 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <div class="tmpl4-graph-item">
           <div class="tmpl4-graph-header">
             <span class="tmpl4-graph-label">握力(kg)</span>
-            <span class="tmpl4-graph-value">右{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %} / 左{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</span>
+            <span class="tmpl4-graph-value"><!-- rl-color-v1 --><span class="rl-r"><span class="rl-side">右手</span>{% if last_fit.grip_right %}{{ last_fit.grip_right }}{% else %}-{% endif %}</span><span class="rl-sep">/</span><span class="rl-l"><span class="rl-side">左手</span>{% if last_fit.grip_left %}{{ last_fit.grip_left }}{% else %}-{% endif %}</span></span>
           </div>
           <canvas class="mini-chart" id="tmpl4-chart-grip-{{ loop.index }}"></canvas>
-          <div class="rep-legend">  <!-- tmpl4-chart-v1 -->
-              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右(実線)</span>
-              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左(破線)</span>
+          <div class="rep-legend">  <!-- tmpl4-chart-v1 / rl-color-v1 -->
+              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右手(実線)</span>
+              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左手(破線)</span>
           </div>
         </div>
         {% endif %}
@@ -1457,12 +1483,12 @@ body.mono .tmpl4-sidebar { background: #333 !important; }
         <div class="tmpl4-graph-item">
           <div class="tmpl4-graph-header">
             <span class="tmpl4-graph-label">片脚立位(秒)</span>
-            <span class="tmpl4-graph-value">右{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %} / 左{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</span>
+            <span class="tmpl4-graph-value"><!-- rl-color-v1 --><span class="rl-r"><span class="rl-side">右脚</span>{% if last_fit.standing_balance_right %}{{ last_fit.standing_balance_right }}{% else %}-{% endif %}</span><span class="rl-sep">/</span><span class="rl-l"><span class="rl-side">左脚</span>{% if last_fit.standing_balance_left %}{{ last_fit.standing_balance_left }}{% else %}-{% endif %}</span></span>
           </div>
           <canvas class="mini-chart" id="tmpl4-chart-balance-{{ loop.index }}"></canvas>
-          <div class="rep-legend">  <!-- tmpl4-chart-v1 -->
-              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右(実線)</span>
-              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左(破線)</span>
+          <div class="rep-legend">  <!-- tmpl4-chart-v1 / rl-color-v1 -->
+              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-solid"></span>右脚(実線)</span>
+              <span class="rep-legend-item"><span class="rep-legend-line rep-legend-dashed"></span>左脚(破線)</span>
           </div>
         </div>
         {% endif %}
@@ -2468,6 +2494,12 @@ function _repShortDate(lb) {
 //   series: [{name:'', data:[...]}] … 名前が空なら日付と値を1行にまとめる
 //           [{name:'右',...},{name:'左',...}] … 日付1行＋系列ごとに1行
 //   ★数値欄が見つからないカード（テンプレート4のグラフ列など）では何もしない。
+// rl-color-v1 : 表に入れる字を逃がす。日付はサーバーから来た値なので、そのまま入れない。
+function _repEsc(s) {
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 function _repWriteValues(canvasEl, labels, series) {
     if (!canvasEl || !canvasEl.closest) return;
     var box = canvasEl.closest('.rep-fitness-chart-box');
@@ -2490,6 +2522,31 @@ function _repWriteValues(canvasEl, labels, series) {
     //   ★小数を出すかどうか(_repNeedsDec)と整え方(_repFmtList)は、
     //     いままでと【同じものをそのまま使う】。桁の揃え方は変えない。
     var vs = ok.map(function (s) { return _repFmtList(s.data, dec); });
+    // rl-color-v1 : 系列が2本のとき（握力=右手/左手、片脚立位=右脚/左脚、
+    //   5m歩行=通常/最大）は、見出しの行を付けて【縦にそろえる】。
+    //   ★前は「5/18 22.0 20.7」で、どちらが右手か分からなかった。
+    //     色を付けても白黒で刷ると消える（現場で刷るのは白黒が多い）。
+    //     だから字の見出しを付ける。そのためには桁がそろっている必要があるので、
+    //     ここだけ表にする。ずれていると見出しが役に立たない。
+    if (ok.length >= 2) {
+        var _cls = ['rl-r', 'rl-l'];
+        var _head = '<tr><td class="rl-d"></td>'
+            + ok.map(function (s, k) {
+                return '<td class="' + (_cls[k] || '') + ' rl-h">' + _repEsc(s.name || '') + '</td>';
+            }).join('') + '</tr>';
+        var _body = ds.map(function (d, i) {
+            return '<tr><td class="rl-d">' + _repEsc(d) + '</td>'
+                + vs.map(function (v, k) {
+                    return '<td class="' + (_cls[k] || '') + '">'
+                         + (v[i] === undefined ? '—' : v[i]) + '</td>';
+                }).join('') + '</tr>';
+        }).join('');
+        el.innerHTML = '<table class="rl-tbl">' + _head + _body + '</table>';
+        el.style.fontSize = '7.5pt';
+        el.style.lineHeight = '1.35';
+        el.style.whiteSpace = 'nowrap';
+        return;
+    }
     var lines = ds.map(function (d, i) {
         return '<span style="color:#888;font-weight:600;">' + d + '</span> '
              + vs.map(function (v) { return (v[i] === undefined ? '—' : v[i]); }).join(' ');
@@ -2657,8 +2714,8 @@ function drawBalanceChart(elId, fitness, labels, rightKey, leftKey, rightLabel, 
     // 引数未指定(undefined)のみデフォルト適用。null明示は「その系列を描かない」意図として尊重
     if (rightKey === undefined) rightKey = 'standing_balance_right';
     if (leftKey === undefined)  leftKey  = 'standing_balance_left';
-    rightLabel = rightLabel || '右(実線)';
-    leftLabel  = leftLabel  || '左(破線)';
+    rightLabel = rightLabel || '右脚(実線)';   // rl-color-v1
+    leftLabel  = leftLabel  || '左脚(破線)';   // rl-color-v1
     var el = document.getElementById(elId);
     if (!el) return;
     // report-values-v2: 1回だけでも数値は書きたいので、ここでは0件だけ弾く。
@@ -2818,12 +2875,12 @@ chartData.forEach(function(rd, idx) {
 
     // --- 握力(左右2系列) rep版 ---
     var gripLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
-    drawBalanceChart('chart-grip-' + n, rd.fitness, gripLabels, 'grip_right', 'grip_left');
+    drawBalanceChart('chart-grip-' + n, rd.fitness, gripLabels, 'grip_right', 'grip_left', '右手(実線)', '左手(破線)');  // rl-color-v1
     // 握力トレンド(右側で判定・大きいほど良い)
     drawTrendBadge('trend-grip-' + n, rd.fitness ? rd.fitness.map(function(f){ return f.grip_right; }) : [], false);
     // --- 片脚立位(左右2系列) rep版 ---
     var balLabels = rd.fitness ? rd.fitness.map(function(f){ return f.measured_date ? f.measured_date.slice(5) : ''; }) : [];
-    drawBalanceChart('chart-balance-' + n, rd.fitness, balLabels);
+    drawBalanceChart('chart-balance-' + n, rd.fitness, balLabels, undefined, undefined, '右脚(実線)', '左脚(破線)');  // rl-color-v1
     // 片脚立位トレンド(右側で判定・大きいほど良い)
     drawTrendBadge('trend-balance-' + n, rd.fitness ? rd.fitness.map(function(f){ return f.standing_balance_right; }) : [], false);
     // --- 5m歩行(通常/最大の2系列。トグルOFFの系列は描かない) rep版 ---
@@ -2894,9 +2951,9 @@ if (document.body.classList.contains('tmpl-4')) {
                 }
             });
             // --- 握力(左右2系列) tmpl4版 ---
-            drawBalanceChart('tmpl4-chart-grip-' + n, rd.fitness, fitLabels, 'grip_right', 'grip_left');
+            drawBalanceChart('tmpl4-chart-grip-' + n, rd.fitness, fitLabels, 'grip_right', 'grip_left', '右手(実線)', '左手(破線)');  // rl-color-v1
             // --- 片脚立位(左右2系列) tmpl4版 ---
-            drawBalanceChart('tmpl4-chart-balance-' + n, rd.fitness, fitLabels);
+            drawBalanceChart('tmpl4-chart-balance-' + n, rd.fitness, fitLabels, undefined, undefined, '右脚(実線)', '左脚(破線)');  // rl-color-v1
         }
     });
 }
