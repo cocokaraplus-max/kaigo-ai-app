@@ -768,12 +768,21 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
         施設コードも6桁コードも、こちらから伝える必要はありません。<br>
         事務所に貼っておくか、印刷して新しい方にお渡しください。
       </div>
-      <!-- staff-join-linecam-v1 -->
-      <div style="font-size:0.8rem;color:#8a6d1a;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:9px 11px;margin-bottom:12px;line-height:1.8;">
-        <b>読むときは「LINEアプリのQRコードリーダー」で。</b><br>
-        LINE ＞ ホーム ＞ 右上の人型＋のマーク ＞ 「QRコード」<br>
-        スマホのカメラで読むとLINEの外で開いてしまい、<b>承認のお知らせが届かない</b>ことがあります。
-        （印刷する貼り紙にも、この手順が入っています）
+      <!-- staff-join-linecam-v1 / staff-join-linecam-v2 -->
+      <!-- ★ここを外すと、申し込みは通るのに承認のお知らせが届かない。
+           現場でいちばん起きやすい詰まり方なので、赤で強く出す。
+           （貼り紙のほうは白黒で刷られるので、色ではなく枠と太字で強調している） -->
+      <div style="border:2px solid #e53935;border-radius:10px;margin-bottom:14px;overflow:hidden;">
+        <div style="background:#e53935;color:#fff;font-size:0.86rem;font-weight:700;padding:7px 11px;line-height:1.5;">
+          <span class="material-symbols-outlined" style="font-size:17px;vertical-align:-3px;color:#fff;">error</span>
+          読むときは必ず「LINEアプリのQRコードリーダー」で
+        </div>
+        <div style="font-size:0.82rem;color:#b71c1c;background:#fff5f5;padding:10px 11px;line-height:1.9;">
+          <b style="font-size:0.88rem;">LINE ＞ ホーム ＞ 右上の人型＋のマーク ＞ 「QRコード」</b><br>
+          <b>スマホのカメラで読むと、LINEの外で開いてしまいます。</b><br>
+          そうなると<b>承認のお知らせがLINEに届きません。</b><br>
+          <span style="color:#7f6f6f;">（印刷する貼り紙にも、この手順が入っています）</span>
+        </div>
       </div>
       <div style="text-align:center;">
         <div style="display:inline-block;padding:16px;background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
@@ -3281,7 +3290,11 @@ function sjPrintQr(){
     + 'img{width:320px;height:320px;image-rendering:pixelated;}'
     + 'ol{display:inline-block;text-align:left;font-size:15px;line-height:2.1;margin:28px 0 0;padding-left:1.3em;}'
     + 'ol b{background:#fff3cd;padding:0 2px;}'
-    + '.cam{display:block;font-size:12.5px;color:#5f6368;line-height:1.7;margin:2px 0 6px;}'
+    /* staff-join-linecam-v2 : ★紙は白黒で刷られる。色で強調しても消える。
+       だから枠と太字で目立たせる。 */
+    + '.cam{display:block;font-size:13px;color:#233028;line-height:1.75;margin:5px 0 8px;'
+    +   'border:1.5px solid #233028;border-radius:6px;padding:6px 8px;}'
+    + '.cam .must{font-weight:700;}'
     + '.foot{font-size:12.5px;color:#5f6368;margin:26px 0 0;line-height:1.8;}'
     + '</style></head><body>'
     + '<h1>TASUKARU をはじめる</h1>'
@@ -3291,9 +3304,10 @@ function sjPrintQr(){
     /* staff-join-linecam-v1 : ★カメラで読むとLINEの外のブラウザで開く。
        そうすると友だち追加を確かめられず、承認のお知らせも届かない。
        だから読み方から書く。 */
-    +   '<li><b>LINEアプリ</b>でこのQRを読みます'
-    +     '<span class="cam">ホーム画面 ＞ 右上の人型＋のマーク ＞ 「QRコード」<br>'
-    +     '※スマホのカメラで読むと、うまくいかないことがあります</span></li>'
+    +   '<li>必ず<b>LINEアプリ</b>でこのQRを読みます'
+    +     '<span class="cam"><span class="must">LINE ＞ ホーム ＞ 右上の人型＋のマーク ＞ 「QRコード」</span><br>'
+    +     '<span class="must">スマホのカメラで読むと、LINEの外で開いてしまいます。</span><br>'
+    +     'そうなると、承認のお知らせがLINEに届きません。</span></li>'
     +   '<li>「TASUKARU」を<b>友だち追加</b>します</li>'
     +   '<li>お名前を入れて、申し込みます</li>'
     +   '<li>管理者が承認すると、LINEにご案内が届きます</li>'
