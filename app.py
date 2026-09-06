@@ -1206,6 +1206,345 @@ def api_staff_start_link():
         return jsonify({"error": "server_error"}), 500
 
 
+# ============================================================
+# staff-join-v1 : 職員の参加申請（本人が申し込み → 管理者が承認）
+#
+#   なぜこの形にしたか（半年後の自分へ）
+#   * 管理者が先に名前を登録する形だと、本人が入力する名前と
+#     【完全一致】しないと通らない。現場で必ず詰まる（2026-09-04 に実際に詰まった）。
+#     本人が自分で名前を入れれば、その食い違いは起きない。
+#   * 承認したら【そのままパスワード設定のリンク】を送る。
+#     コードを挟んでも、届け先はもう本人のLINEなので本人確認になっていない。
+#     手間だけ増える。
+#   * お勤め先は【施設のQR】で決まる。だから「施設名で探す」口は作らない。
+#     作ると、ログイン前に誰でも他社の事業所名を総当たりで確かめられる。
+# ============================================================
+_SJ_PENDING = "pending"
+
+
+def _sj_facility_name(supabase, f_code):  # staff-join-v1
+    """施設コードから施設名を返す。無い／止まっている施設は None。"""
+    if not f_code:
+        return None
+    try:
+        r = (supabase.table("facilities").select("facility_name,is_active")
+             .eq("facility_code", f_code).limit(1).execute())
+        rows = r.data or []
+        if not rows:
+            return None
+        if rows[0].get("is_active") is False:
+            return None
+        return rows[0].get("facility_name") or ""
+    except Exception as e:
+        print("[staff-join] 施設の確認に失敗: %s" % e, flush=True)
+        return None
+
+
+def _sj_admin_line_ids(supabase, f_code):  # staff-join-v1
+    """その施設の管理者のうち、LINEが紐付いている人の userId。"""
+    out = []
+    try:
+        names = get_admin_managers(supabase, f_code) or []
+        if not names:
+            return out
+        r = (supabase.table("staffs").select("staff_name,line_user_id")
+             .eq("facility_code", f_code).eq("is_active", True).execute())
+        for s in (r.data or []):
+            if s.get("staff_name") in names and s.get("line_user_id"):
+                out.append(s["line_user_id"])
+    except Exception as e:
+        print("[staff-join] 管理者のLINEを引けませんでした: %s" % e, flush=True)
+    return out
+
+
+def _sj_notify_admins(supabase, f_code, fac_name, staff_name):  # staff-join-v1
+    """管理者へ「承認待ちが来た」を送る。
+
+    ★ここが失敗しても申し込みは通す。
+      LINEが送れないことと、申し込みが届かないことは別。
+      管理者MENUには承認待ちが出るので、取りこぼしにはならない。
+    """
+    ids = _sj_admin_line_ids(supabase, f_code)
+    if not ids:
+        print("[staff-join] %s: LINE紐付けずみの管理者がいないので通知は飛ばしました"
+              % f_code, flush=True)
+        return
+    msg = [{"type": "text", "text": "\n".join([
+        "【承認待ち 1件】",
+        "",
+        staff_name + " さんから",
+        (fac_name or "") + " への参加申請が届きました。",
+        "",
+        "管理者MENU ＞ 職員管理 から承認してください。",
+    ])}]
+    for uid in ids:
+        try:
+            line_send_message(uid, msg)
+        except Exception as e:
+            print("[staff-join] 管理者への通知に失敗 (%s): %s" % (uid[:6] + "…", e), flush=True)
+
+
+def _sj_send_setup_link(supabase, staff_id, staff_name, fac_name, uid):  # staff-join-v1
+    """本人へ「承認しました」＋パスワード設定のリンクを送る。
+
+    ★リンクは24時間で切れる。切れても「パスワード」と送れば出し直せる
+      （webhook 側にその道がある）ので、行き止まりにはならない。
+    """
+    import secrets as _sj_secrets
+    from datetime import datetime as _sj_dt, timezone as _sj_tz, timedelta as _sj_td
+    token = _sj_secrets.token_urlsafe(32)
+    exp = (_sj_dt.now(_sj_tz.utc) + _sj_td(hours=24)).isoformat()
+    try:
+        supabase.table("staffs").update({
+            "setup_token": token, "setup_token_expires": exp,
+        }).eq("id", staff_id).execute()
+    except Exception as e:
+        print("[staff-join] 設定リンクを作れませんでした: %s" % e, flush=True)
+        return False
+    base_url = request.host_url.rstrip("/").replace("http://", "https://")
+    setup_url = base_url + "/setup?token=" + token
+    try:
+        line_send_message(uid, [{"type": "text", "text": "\n".join([
+            staff_name + " さん",
+            "",
+            (fac_name or "") + " への参加が承認されました。",
+            "",
+            "下のリンクから、パスワードを決めてください（8文字以上）。",
+            setup_url,
+            "",
+            "このリンクは24時間で切れます。切れたときは「パスワード」と送ってください。",
+        ])}])
+    except Exception as e:
+        print("[staff-join] 本人への連絡に失敗: %s" % e, flush=True)
+    return True
+
+
+@app.route('/api/staff/join_info', methods=['GET'])
+def api_staff_join_info():  # staff-join-v1
+    """参加QRの画面に出す施設名を返す。
+
+    ★ログイン前に誰でも叩ける口。施設コードの【完全一致でしか受けない】。
+      「名前で探す」「一覧を返す」は絶対に足さないこと。
+      足すと、他社の事業所名が実在するかを総当たりで確かめられる。
+    """
+    f_code = (request.args.get("f") or "").strip()
+    if not f_code:
+        return jsonify({"error": "no_facility"}), 400
+    name = _sj_facility_name(get_supabase(), f_code)
+    if name is None:
+        return jsonify({"error": "no_facility"}), 404
+    return jsonify({"status": "ok", "facility_name": name})
+
+
+@app.route('/api/staff/join_request', methods=['POST'])
+def api_staff_join_request():  # staff-join-v1
+    """本人からの申し込みを受ける。"""
+    data = request.get_json(silent=True) or {}
+    f_code = (data.get("facility_code") or "").strip()
+    name = (data.get("staff_name") or "").strip()
+    uid = (data.get("line_user_id") or "").strip()
+    disp = (data.get("line_display_name") or "").strip() or None
+    if not f_code or not name or not uid:
+        return jsonify({"error": "missing_fields"}), 400
+    if len(name) > 40:
+        return jsonify({"error": "bad_name"}), 400
+    supabase = get_supabase()
+    fac_name = _sj_facility_name(supabase, f_code)
+    if fac_name is None:
+        return jsonify({"error": "no_facility"}), 404
+
+    # すでにこのLINEが職員に紐付いているなら、申し込みは要らない
+    try:
+        ex = (supabase.table("staffs").select("staff_name")
+              .eq("facility_code", f_code).eq("line_user_id", uid)
+              .eq("is_active", True).limit(1).execute())
+        if ex.data:
+            return jsonify({"error": "already_linked",
+                            "staff_name": ex.data[0].get("staff_name") or ""}), 409
+    except Exception as e:
+        print("[staff-join] 既存の紐付けを確認できませんでした: %s" % e, flush=True)
+        return jsonify({"error": "server_error"}), 500
+
+    # すでに承認待ちがあるなら、そのまま返す（連打されても増やさない）
+    try:
+        pr = (supabase.table("staff_join_requests").select("id")
+              .eq("facility_code", f_code).eq("line_user_id", uid)
+              .eq("status", _SJ_PENDING).limit(1).execute())
+        if pr.data:
+            return jsonify({"status": "pending", "already": True,
+                            "facility_name": fac_name})
+    except Exception as e:
+        print("[staff-join] 承認待ちを確認できませんでした: %s" % e, flush=True)
+        return jsonify({"error": "server_error"}), 500
+
+    try:
+        supabase.table("staff_join_requests").insert({
+            "facility_code": f_code, "staff_name": name,
+            "line_user_id": uid, "line_display_name": disp,
+            "status": _SJ_PENDING,
+        }).execute()
+    except Exception as e:
+        # ★同時に2回押されて索引に弾かれた場合。すでに1つ入っているので承認待ち扱い。
+        print("[staff-join] 申し込みを入れられませんでした（重複の可能性）: %s" % e, flush=True)
+        return jsonify({"status": "pending", "already": True,
+                        "facility_name": fac_name})
+
+    _sj_notify_admins(supabase, f_code, fac_name, name)
+    return jsonify({"status": "pending", "already": False, "facility_name": fac_name})
+
+
+@app.route('/api/admin/join_requests', methods=['GET'])
+@login_required
+def api_admin_join_requests():  # staff-join-v1
+    """承認待ちの一覧。同じ名前の職員が既にいるかも一緒に返す。"""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    if not is_admin_user(supabase, f_code, session.get("my_name", "")):
+        return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+    try:
+        r = (supabase.table("staff_join_requests").select("*")
+             .eq("facility_code", f_code).eq("status", _SJ_PENDING)
+             .order("created_at", desc=False).execute())
+        rows = r.data or []
+        names = set()
+        try:
+            sr = (supabase.table("staffs").select("staff_name")
+                  .eq("facility_code", f_code).eq("is_active", True).execute())
+            names = set((s.get("staff_name") or "") for s in (sr.data or []))
+        except Exception as e:
+            print("[staff-join] 既存の職員名を引けませんでした: %s" % e, flush=True)
+        out = []
+        for x in rows:
+            out.append({
+                "id": x.get("id"),
+                "staff_name": x.get("staff_name") or "",
+                "line_display_name": x.get("line_display_name") or "",
+                "created_at": x.get("created_at") or "",
+                # ★同じ名前が既にいる＝そのまま作ると人を指す鍵がぶつかる
+                "dup": (x.get("staff_name") or "") in names,
+            })
+        return jsonify({"status": "success", "requests": out})
+    except Exception as e:
+        print("api_admin_join_requests error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/api/admin/join_decide', methods=['POST'])
+@login_required
+def api_admin_join_decide():  # staff-join-v1
+    """承認／既存に紐付け／却下。
+
+    action = approve … 新しい職員として作り、LINEを紐付けて設定リンクを送る
+             link    … 【既に同じ名前でいる職員】にLINEを紐付けて設定リンクを送る
+             reject  … 却下（理由は書かない）
+    """
+    import hashlib as _sj_hash
+    import secrets as _sj_sec
+    from datetime import datetime as _sj_dt2, timezone as _sj_tz2
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    if not is_admin_user(supabase, f_code, my_name):
+        return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+    data = request.get_json(silent=True) or {}
+    rid = data.get("id")
+    action = (data.get("action") or "").strip()
+    if rid is None or action not in ("approve", "link", "reject"):
+        return jsonify({"status": "error", "message": "パラメータ不正"}), 400
+    try:
+        r = (supabase.table("staff_join_requests").select("*")
+             .eq("id", rid).eq("facility_code", f_code).limit(1).execute())
+        rows = r.data or []
+        if not rows:
+            return jsonify({"status": "error", "message": "申し込みが見つかりません"}), 404
+        req = rows[0]
+        if req.get("status") != _SJ_PENDING:
+            return jsonify({"status": "error", "message": "この申し込みはもう処理されています"}), 409
+
+        name = req.get("staff_name") or ""
+        uid = req.get("line_user_id") or ""
+        fac_name = _sj_facility_name(supabase, f_code) or ""
+        now_iso = _sj_dt2.now(_sj_tz2.utc).isoformat()
+
+        def _close(st):
+            supabase.table("staff_join_requests").update({
+                "status": st, "decided_at": now_iso, "decided_by": my_name,
+            }).eq("id", rid).eq("facility_code", f_code).execute()
+
+        if action == "reject":
+            _close("rejected")
+            try:
+                line_send_message(uid, [{"type": "text", "text": "\n".join([
+                    "申し訳ありません。",
+                    "今回のお申し込みは承認されませんでした。",
+                    "",
+                    "お心当たりのないときは、お勤め先の管理者にご確認ください。",
+                ])}])
+            except Exception as e:
+                print("[staff-join] 却下の連絡に失敗: %s" % e, flush=True)
+            return jsonify({"status": "success", "action": "reject"})
+
+        # 同じ名前の職員がいるか
+        try:
+            ex = (supabase.table("staffs").select("id,staff_name,line_user_id")
+                  .eq("facility_code", f_code).eq("staff_name", name)
+                  .eq("is_active", True).limit(1).execute())
+            same = (ex.data or [None])[0]
+        except Exception as e:
+            print("[staff-join] 同じ名前の確認に失敗: %s" % e, flush=True)
+            return jsonify({"status": "error", "message": "確認に失敗しました"}), 500
+
+        if action == "approve":
+            # ★同じ名前を2つ作らせない。staff_name は記録・勤怠・送迎ぜんぶで
+            #   人を指す鍵なので、重なるとどちらの記録か分からなくなる。
+            if same:
+                return jsonify({"status": "error", "code": "duplicate_name",
+                                "message": "同じお名前の職員がすでにいます。"
+                                           "同じ方なら「既にいる方に紐付ける」を、"
+                                           "別の方ならお名前を分けてから承認してください。"}), 409
+            # ★パスワードは空にしない。誰にも当てられない値を入れておく。
+            #   本人が /setup で決めると上書きされる。
+            _dummy = _sj_hash.sha256(_sj_sec.token_urlsafe(32).encode()).hexdigest()
+            _ins = {
+                "facility_code": f_code, "staff_name": name,
+                "password_hash": _dummy, "is_active": True,
+                "line_user_id": uid,
+            }
+            _jt = (data.get("job_title") or "").strip()
+            _et = (data.get("employment_type") or "").strip()
+            if _jt:
+                _ins["job_title"] = _jt
+            if _et:
+                _ins["employment_type"] = _et
+            try:
+                ins = supabase.table("staffs").insert(_ins).execute()
+                new_id = (ins.data or [{}])[0].get("id")
+            except Exception as e:
+                print("[staff-join] 職員を作れませんでした: %s" % e, flush=True)
+                return jsonify({"status": "error", "message": "職員の作成に失敗しました"}), 500
+            _close("approved")
+            _sj_send_setup_link(supabase, new_id, name, fac_name, uid)
+            return jsonify({"status": "success", "action": "approve", "staff_name": name})
+
+        # action == "link" : 既にいる職員にLINEを紐付ける
+        if not same:
+            return jsonify({"status": "error",
+                            "message": "同じお名前の職員が見つかりません。"
+                                       "「承認する」で新しく作ってください。"}), 404
+        try:
+            supabase.table("staffs").update({"line_user_id": uid}) \
+                .eq("id", same["id"]).eq("facility_code", f_code).execute()
+        except Exception as e:
+            print("[staff-join] LINEの紐付けに失敗: %s" % e, flush=True)
+            return jsonify({"status": "error", "message": "紐付けに失敗しました"}), 500
+        _close("approved")
+        _sj_send_setup_link(supabase, same["id"], name, fac_name, uid)
+        return jsonify({"status": "success", "action": "link", "staff_name": name})
+    except Exception as e:
+        print("api_admin_join_decide error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @app.route('/staff_start')
 def staff_start_page():
     """職員利用開始 LIFF 画面の器"""
