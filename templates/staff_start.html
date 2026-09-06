@@ -60,6 +60,14 @@
   }
   .switch a{color:var(--green-d); font-weight:700; cursor:pointer; text-decoration:underline;}
   .hidden{display:none;}
+  /* staff-join-linecam-v1 : 友だち追加ずみか【分からない】ときだけ出す念押し。
+     カメラでQRを読むとLINEの外で開き、確かめられなくなる。
+     ★止めない。確かめられないだけの人まで進めなくなるため。 */
+  .warn{
+    margin-top:16px; padding:12px 14px; border-radius:10px; line-height:1.8;
+    background:#fff8e1; border:1px solid #ffe082; color:#8a6d1a; font-size:13px;
+  }
+  .warn button{margin-top:12px;}
 </style>
 </head>
 <body>
@@ -96,6 +104,13 @@
       <button class="friend" id="friendBtn">LINEで友だち追加する</button>
       <p class="hint" style="text-align:center">追加したら、この画面に戻って続けてください。</p>
       <button id="friendDoneBtn">追加しました。次へ</button>
+    </div>
+
+    <div id="friendWarn" class="hidden warn">
+      <b>「TASUKARU」を友だち追加してありますか？</b><br>
+      追加していないと、承認のお知らせがLINEに届きません。<br>
+      まだの方は、先に追加してください。
+      <button class="friend" id="friendWarnBtn">LINEで友だち追加する</button>
     </div>
 
     <div id="nameBox" class="hidden">
@@ -223,29 +238,38 @@
     $("joinStatus").textContent = "";
   }
 
-  // 友だち追加ずみかを見る。分からないときは止めない（先へ進める）。
+  // 友だち追加ずみかを見る。staff-join-linecam-v1 で3つの答えに分けた。
+  //   "yes"     … 友だち。そのまま進む
+  //   "no"      … 友だちでない。先に追加してもらう
+  //   "unknown" … 分からない（カメラでQRを読んでLINEの外で開いた等）
+  // ★"unknown" でも止めない。確かめられないだけの人まで進めなくなる。
+  //   代わりに、念押しと友だち追加の入り口だけ出す。
   function checkFriend(){
-    if (friendChecked) return Promise.resolve(true);
+    if (friendChecked) return Promise.resolve("yes");
     if (typeof liff === "undefined" || !liff.getFriendship){
-      return Promise.resolve(true);
+      return Promise.resolve("unknown");
     }
     return liff.getFriendship().then(function(f){
-      if (f && f.friendFlag === false) return false;
-      return true;
-    }).catch(function(){ return true; });
+      if (f && f.friendFlag === false) return "no";
+      if (f && f.friendFlag === true) return "yes";
+      return "unknown";
+    }).catch(function(){ return "unknown"; });
   }
 
   function afterFacility(){
     hide($("facInputBox"));
     show($("facBox"));
-    checkFriend().then(function(isFriend){
-      if (!isFriend){
+    checkFriend().then(function(fs){
+      if (fs === "no"){
         hide($("nameBox"));
+        hide($("friendWarn"));
         show($("friendBox"));
         $("joinStatus").textContent = "";
         return;
       }
       hide($("friendBox"));
+      // staff-join-linecam-v1 : 分からないときだけ念押しを出す
+      if (fs === "unknown") show($("friendWarn")); else hide($("friendWarn"));
       show($("nameBox"));
       $("joinBtn").disabled = !lineUserId;
       $("joinStatus").textContent = lineUserId
@@ -271,6 +295,11 @@
   });
 
   $("friendBtn").addEventListener("click", function(){
+    window.open(FRIEND_URL, "_blank");
+  });
+
+  // staff-join-linecam-v1
+  $("friendWarnBtn").addEventListener("click", function(){
     window.open(FRIEND_URL, "_blank");
   });
 
