@@ -1023,8 +1023,19 @@ def line_webhook_tasukaru():
             if not uid:
                 continue
             if etype == "follow":
-                line_send_message(uid, [{"type": "text", "text":
-                    "TASUKARUです。職員アカウントとの連携をご希望の場合は、管理者から渡された6桁のコードを送信してください。"}])
+                # staff-join-msg-v1 : 参加QRの貼り紙と同じ言い方にそろえる
+                line_send_message(uid, [{"type": "text", "text": "\n".join([
+                    "TASUKARUです。友だち追加ありがとうございます。",
+                    "",
+                    "お勤め先に貼ってある【参加QR】を読み取って、",
+                    "お名前を送ってお申し込みください。",
+                    "管理者が承認すると、パスワードを決めるご案内が",
+                    "このトークに届きます。",
+                    "",
+                    "いま参加の画面を開いている方は、その画面に戻って続けてください。",
+                    "",
+                    "パスワードを忘れたときは「パスワード」と送ってください。",
+                ])}])
                 continue
             if etype != "message":
                 continue
@@ -1073,8 +1084,14 @@ def line_webhook_tasukaru():
                 ).eq("line_user_id", uid).eq("is_active", True).execute()
                 rows = res.data or []
                 if not rows:
-                    line_send_message(uid, [{"type": "text", "text":
-                        "このLINEはまだ職員アカウントと連携されていません。管理者から6桁コードを受け取り、先に連携してください。"}])
+                    # staff-join-msg-v1
+                    line_send_message(uid, [{"type": "text", "text": "\n".join([
+                        "このLINEは、まだ職員として登録されていません。",
+                        "",
+                        "お勤め先に貼ってある【参加QR】から、",
+                        "お名前を送ってお申し込みください。",
+                        "管理者が承認すると、パスワードを決めるご案内が届きます。",
+                    ])}])
                     continue
                 st = rows[0]
                 token = _sc.token_urlsafe(32)
@@ -1101,9 +1118,13 @@ def line_webhook_tasukaru():
                     ])}])
                 continue
             # 3) それ以外 → 使い方ガイド
-            line_send_message(uid, [{"type": "text", "text":
-                "パスワードを再発行するには「パスワード」と送ってください。\n"
-                "初めての方は、管理者から渡された6桁コードを送信して連携してください。"}])
+            # staff-join-msg-v1
+            line_send_message(uid, [{"type": "text", "text": "\n".join([
+                "パスワードを決め直すときは「パスワード」と送ってください。",
+                "",
+                "はじめての方は、お勤め先に貼ってある【参加QR】から、",
+                "お名前を送ってお申し込みください。",
+            ])}])
         return "ok", 200
     except Exception as e:
         print(f"line_webhook_tasukaru error: {e}", flush=True)
