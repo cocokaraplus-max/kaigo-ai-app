@@ -126,10 +126,6 @@
     <div id="joinMsg" class="msg"></div>
     <div id="joinStatus" class="status">LINEを確認中…</div>
 
-    <div class="switch" id="switchToCode">
-      管理者から6桁のコードを受け取っている方は<br>
-      <a id="toCodeLink">こちらから進んでください</a>
-    </div>
   </div>
 
   <!-- ============ 承認待ち staff-join-ui-v1 ============ -->
@@ -147,40 +143,6 @@
         この画面は閉じていただいて大丈夫です。<br>
         しばらく経っても届かないときは、管理者にお声がけください。
       </p>
-    </div>
-  </div>
-
-  <!-- ============ 6桁コード（いまある道・当面のこす） ============ -->
-  <div class="card hidden" id="codeCard">
-    <h1>職員の利用開始</h1>
-    <p class="lead">
-      施設コード・お名前・管理者から受け取った6桁コードを入力してください。<br>
-      確認後、パスワード設定画面のリンクをご案内します。
-    </p>
-
-    <label for="facility_code">施設コード</label>
-    <input id="facility_code" type="text" autocomplete="off" inputmode="text"
-           placeholder="例）f0123456789">
-    <p class="hint">管理者から共有された施設コードを入力してください。</p>
-
-    <label for="staff_name">お名前</label>
-    <input id="staff_name" type="text" autocomplete="off"
-           placeholder="例）山田 太郎">
-    <p class="hint">職員登録されているお名前（フルネーム）を入力してください。</p>
-
-    <label for="link_code">6桁コード</label>
-    <input id="link_code" class="code-input" type="tel" inputmode="numeric"
-           maxlength="6" autocomplete="one-time-code" placeholder="______">
-    <p class="hint">管理者が発行した6桁の数字コード（24時間有効）。</p>
-
-    <button id="submitBtn" disabled>確認して進む</button>
-
-    <div id="msg" class="msg"></div>
-    <div id="status" class="status">LINEを確認中…</div>
-
-    <div class="switch">
-      6桁のコードをお持ちでない方は<br>
-      <a id="toJoinLink">こちらからお申し込みください</a>
     </div>
   </div>
 
@@ -365,102 +327,6 @@
     });
   });
 
-  /* ---------------- 6桁コード（いまある道） ---------------- */
-
-  var elFacility = $("facility_code");
-  var elName = $("staff_name");
-  var elCode = $("link_code");
-  var elBtn = $("submitBtn");
-  var elMsg = $("msg");
-  var elStatus = $("status");
-
-  function showMsg(text, type){
-    elMsg.className = "msg " + (type || "err");
-    elMsg.innerHTML = text;
-  }
-  function clearMsg(){ elMsg.className = "msg"; elMsg.innerHTML = ""; }
-
-  elBtn.addEventListener("click", function(){
-    clearMsg();
-    var facility_code = (elFacility.value || "").trim();
-    var staff_name = (elName.value || "").trim();
-    var link_code = (elCode.value || "").trim();
-
-    if (!facility_code || !staff_name || !link_code){
-      showMsg("すべての項目を入力してください。", "err");
-      return;
-    }
-    if (!/^[0-9]{6}$/.test(link_code)){
-      showMsg("6桁コードは数字6桁で入力してください。", "err");
-      return;
-    }
-    if (!lineUserId){
-      showMsg("LINE情報が取得できていません。LINEアプリ内から開き直してください。", "err");
-      return;
-    }
-
-    elBtn.disabled = true;
-    elBtn.textContent = "確認中…";
-
-    fetch("/api/staff/start_link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        facility_code: facility_code,
-        staff_name: staff_name,
-        link_code: link_code,
-        line_user_id: lineUserId
-      })
-    }).then(function(res){
-      return res.json().then(function(data){ return { ok: res.ok, data: data }; });
-    }).then(function(r){
-      if (!r.ok || r.data.error){
-        var em = r.data.error || "unknown";
-        var jp = {
-          "missing_fields": "入力に不足があります。",
-          "bad_code": "6桁コードの形式が正しくありません。",
-          "no_line_user": "LINE情報が取得できませんでした。",
-          "no_match": "施設コード・お名前・6桁コードが一致しません。ご確認ください。",
-          "expired": "6桁コードの有効期限が切れています。管理者に再発行を依頼してください。",
-          "server_error": "サーバーエラーが発生しました。時間をおいてお試しください。"
-        };
-        showMsg(jp[em] || ("エラー: " + em), "err");
-        elBtn.disabled = false;
-        elBtn.textContent = "確認して進む";
-        return;
-      }
-      var url = r.data.setup_url;
-      var name = r.data.staff_name || "";
-      showMsg(
-        name + " さんの確認ができました。<br>下のリンクからパスワードを設定してください。<br><br>" +
-        '<a class="setup-link" href="' + url + '">' + url + '</a>',
-        "ok"
-      );
-      elStatus.textContent = "";
-      // 1.2秒後に自動遷移
-      setTimeout(function(){ window.location.href = url; }, 1200);
-    }).catch(function(err){
-      console.error(err);
-      showMsg("通信に失敗しました。電波状況をご確認のうえ再度お試しください。", "err");
-      elBtn.disabled = false;
-      elBtn.textContent = "確認して進む";
-    });
-  });
-
-  /* ---------------- 画面の切り替え ---------------- */
-
-  $("toCodeLink").addEventListener("click", function(){
-    hide($("joinCard"));
-    show($("codeCard"));
-    if (facilityCode) elFacility.value = facilityCode;
-    window.scrollTo(0, 0);
-  });
-  $("toJoinLink").addEventListener("click", function(){
-    hide($("codeCard"));
-    show($("joinCard"));
-    window.scrollTo(0, 0);
-  });
-
   /* ---------------- LIFF ---------------- */
 
   function startFlow(){
@@ -477,10 +343,10 @@
     });
   }
 
+  // staff-join-fold-v1 : 6桁の画面を畳んだので、そちら向けの表示は外した（2026-09-06）。
   function initLiff(){
     if (typeof liff === "undefined"){
       $("joinStatus").textContent = "LINEの読み込みに失敗しました。";
-      elStatus.textContent = "LIFF SDKの読み込みに失敗しました。";
       return;
     }
     liff.init({ liffId: LIFF_ID }).then(function(){
@@ -491,17 +357,13 @@
       return liff.getProfile().then(function(profile){
         lineUserId = profile.userId;
         lineDisplayName = profile.displayName || "";
-        elStatus.textContent = "LINE確認OK。情報を入力してください。";
-        elBtn.disabled = false;
         startFlow();
       });
     }).catch(function(err){
       $("joinStatus").textContent = "LINEの確認ができませんでした。LINEアプリから開いてください。";
-      elStatus.textContent = "LINEの初期化に失敗しました。LINEアプリ内から開いてください。";
       console.error("liff init error", err);
     });
   }
-
   initLiff();
 </script>
 </body>

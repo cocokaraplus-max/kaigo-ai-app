@@ -1043,40 +1043,14 @@ def line_webhook_tasukaru():
             if msg.get("type") != "text":
                 continue
             text = (msg.get("text") or "").strip()
-            # 1) 6桁数字 → 紐付けコード照合
-            if _re.fullmatch(r"[0-9]{6}", text):
-                now_iso = _dt.now(_tz.utc).isoformat()
-                res = supabase.table("staffs").select(
-                    "id,staff_name,facility_code,link_code,link_code_expires,is_active"
-                ).eq("link_code", text).eq("is_active", True).execute()
-                rows = res.data or []
-                matched = None
-                for r in rows:
-                    exp = r.get("link_code_expires")
-                    if not exp:
-                        continue
-                    try:
-                        ed = _dt.fromisoformat(str(exp).replace("Z", "+00:00"))
-                        if ed.tzinfo is None:
-                            ed = ed.replace(tzinfo=_tz.utc)
-                        if _dt.now(_tz.utc) <= ed:
-                            matched = r
-                            break
-                    except Exception:
-                        continue
-                if not matched:
-                    line_send_message(uid, [{"type": "text", "text":
-                        "コードが無効か、有効期限が切れています。管理者に再発行を依頼してください。"}])
-                    continue
-                supabase.table("staffs").update({
-                    "line_user_id": uid,
-                    "link_code": None,
-                    "link_code_expires": None,
-                }).eq("id", matched["id"]).execute()
-                line_send_message(uid, [{"type": "text", "text":
-                    matched.get("staff_name", "") + " さんのアカウントと連携しました。\n"
-                    "パスワードを忘れたときは「パスワード」と送ってください。再設定用のリンクをお送りします。"}])
-                continue
+            # staff-join-fold-v1 : 6桁コードで連携する道は畳んだ（2026-09-06）。
+            #   参加QR → お名前 → 管理者が承認、に一本化した。
+            #   ★畳む前に、本番で未使用の link_code が0件なのを確かめている
+            #     （link_code_expires > now() の行が無いこと）。24時間で切れるので、
+            #     その時点で「持っている人」はいなかった。
+            #   ★staffs.link_code / link_code_expires の【列は残してある】。
+            #     列を消すのは戻せない操作で、残しても誰も困らないため。
+            #   6桁を送られても、下の使い方の案内に落ちる。
             # 2) 「パスワード」を含む → 紐付け済みなら再発行
             if "パスワード" in text or "ぱすわーど" in text:
                 res = supabase.table("staffs").select(
@@ -1131,100 +1105,13 @@ def line_webhook_tasukaru():
         return "ok", 200
 
 
-# staff-linkcode-api-v1 : 管理者が対象職員のLINE紐付けコード(6桁)を発行
-@app.route('/api/admin/issue_link_code', methods=['POST'])
-def api_issue_link_code():
-    import random as _rnd
-    from datetime import datetime as _dt2, timezone as _tz2, timedelta as _td2
-    f_code = session.get("f_code")
-    if not f_code:
-        return jsonify({"error": "not logged in"}), 401
-    data = request.get_json(silent=True) or {}
-    staff_name = (data.get("staff_name") or "").strip()
-    if not staff_name:
-        return jsonify({"error": "staff_name required"}), 400
-    try:
-        supabase = get_supabase()
-        res = supabase.table("staffs").select("id,staff_name").eq(
-            "facility_code", f_code).eq("staff_name", staff_name).eq("is_active", True).execute()
-        rows = res.data or []
-        if not rows:
-            return jsonify({"error": "staff not found"}), 404
-        code = "".join([str(_rnd.randint(0, 9)) for _ in range(6)])
-        exp = (_dt2.now(_tz2.utc) + _td2(hours=24)).isoformat()
-        supabase.table("staffs").update({
-            "link_code": code,
-            "link_code_expires": exp,
-        }).eq("id", rows[0]["id"]).execute()
-        return jsonify({"status": "ok", "code": code, "staff_name": staff_name})
-    except Exception as e:
-        print(f"issue_link_code error: {e}", flush=True)
-        return jsonify({"error": str(e)}), 500
-
-
-# staff-start-link-v1 : 職員利用開始 3点照合API + LIFF器
-@app.route('/api/staff/start_link', methods=['POST'])
-def api_staff_start_link():
-    """職員利用開始: 施設コード + 職員名 + 6桁コード + userId の3点(+userId)照合。
-    一致で line_user_id 紐付け -> setup_token 発行 -> /setup リンク返却。"""
-    import hashlib as _ss_hashlib  # noqa: F401 (未使用でも将来用)
-    import secrets as _ss_secrets
-    from datetime import datetime as _ss_dt, timezone as _ss_tz, timedelta as _ss_td
-    data = request.get_json(silent=True) or {}
-    facility_code = (data.get("facility_code") or "").strip()
-    staff_name = (data.get("staff_name") or "").strip()
-    link_code = (data.get("link_code") or "").strip()
-    line_user_id = (data.get("line_user_id") or "").strip()
-    if not facility_code or not staff_name or not link_code:
-        return jsonify({"error": "missing_fields"}), 400
-    if not re.fullmatch(r"[0-9]{6}", link_code):
-        return jsonify({"error": "bad_code"}), 400
-    if not line_user_id:
-        return jsonify({"error": "no_line_user"}), 400
-    try:
-        supabase = get_supabase()
-        # 3点照合: facility_code + staff_name + link_code (is_active)
-        res = supabase.table("staffs").select(
-            "id,staff_name,facility_code,link_code,link_code_expires,is_active"
-        ).eq("facility_code", facility_code).eq(
-            "staff_name", staff_name).eq(
-            "link_code", link_code).eq("is_active", True).execute()
-        rows = res.data or []
-        if not rows:
-            return jsonify({"error": "no_match"}), 404
-        st = rows[0]
-        # 有効期限チェック
-        exp = st.get("link_code_expires")
-        if not exp:
-            return jsonify({"error": "expired"}), 400
-        try:
-            ed = _ss_dt.fromisoformat(str(exp).replace("Z", "+00:00"))
-            if ed.tzinfo is None:
-                ed = ed.replace(tzinfo=_ss_tz.utc)
-            if _ss_dt.now(_ss_tz.utc) > ed:
-                return jsonify({"error": "expired"}), 400
-        except Exception:
-            return jsonify({"error": "expired"}), 400
-        # setup_token 発行
-        token = _ss_secrets.token_urlsafe(32)
-        token_exp = (_ss_dt.now(_ss_tz.utc) + _ss_td(hours=24)).isoformat()
-        # line_user_id 紐付け + setup_token 発行 + 6桁コード消費
-        supabase.table("staffs").update({
-            "line_user_id": line_user_id,
-            "setup_token": token,
-            "setup_token_expires": token_exp,
-            "link_code": None,
-            "link_code_expires": None,
-        }).eq("id", st["id"]).execute()
-        setup_url = request.host_url.rstrip("/") + "/setup?token=" + token
-        return jsonify({
-            "status": "ok",
-            "staff_name": st.get("staff_name", ""),
-            "setup_url": setup_url,
-        })
-    except Exception as e:
-        print(f"staff_start_link error: {e}", flush=True)
-        return jsonify({"error": "server_error"}), 500
+# staff-join-fold-v1 : 6桁の発行（issue_link_code）と
+#   3点照合（start_link）は畳んだ（2026-09-06）。
+#   参加申請（join_request → join_decide）に一本化。
+#   ★戻したくなったら git log で staff-join-fold-v1 を探すこと。消しただけなので戻せる。
+#   ★staffs.link_code / link_code_expires の列は残してある（消すのは戻せないため）。
+#   ★「パスワード」と送るとリンクが届く道は【残っている】。これは6桁とは別物で、
+#     パスワードを忘れた人の逃げ道。
 
 
 # ============================================================
