@@ -613,6 +613,15 @@ def _renraku_to_line_text(note, vitals, patient_name):
     items = (note or {}).get('items') or {}
     lines = []
 
+    # 送迎(時刻)  renraku-line-items-v1
+    #   ★画面にも印刷にも出ているのに、ここだけ読んでいなかった。
+    pu = _rk_chips_text(items.get('pickup'))
+    do = _rk_chips_text(items.get('dropoff'))
+    if pu or do:
+        _t = []
+        if pu: _t.append(f'迎え {pu}')
+        if do: _t.append(f'送り {do}')
+        lines.append('【送迎】' + ' / '.join(_t))
     # 行った場所
     places = _rk_chips_text(items.get('places'))
     if places:
@@ -636,10 +645,35 @@ def _renraku_to_line_text(note, vitals, patient_name):
     toilet = _rk_chips_text(items.get('toilet'))
     if toilet:
         lines.append(f'【排泄】{toilet}')
-    # 機能訓練
+    # 機能訓練  renraku-line-items-v1
+    #   ★いままで状態(実施/一部/見学/なし)だけだった。種目・分・メモも入れる。
+    #     並べ方は印刷と同じ「種目 / 分 / メモ」。
     training = _rk_chips_text(items.get('training'))
-    if training:
-        lines.append(f'【機能訓練・運動】{training}')
+    _td = items.get('training_details')
+    if not isinstance(_td, list):
+        _td = []
+    _td_lines = []
+    for _t1 in _td:
+        if not isinstance(_t1, dict):
+            continue
+        _seg = []
+        _nm = str(_t1.get('name') or '').strip()
+        if _nm: _seg.append(_nm)
+        _mi = _t1.get('minutes')
+        _mi = '' if _mi is None else str(_mi).strip()
+        if _mi: _seg.append(f'{_mi}分')
+        _me = str(_t1.get('memo') or '').strip()
+        if _me: _seg.append(_me)
+        if _seg:
+            _td_lines.append('・' + ' / '.join(_seg))
+    if training or _td_lines:
+        #  ★状態が空でも中身があれば「実施」とする。印刷と同じ扱い。
+        lines.append(f'【機能訓練・運動】{training or "実施"}')
+        lines.extend(_td_lines)
+    # レク・活動  renraku-line-items-v1
+    rec = _rk_chips_text(items.get('rec'))
+    if rec:
+        lines.append(f'【レク・活動】{rec}')
 
     # バイタル(数値テキスト) — 体温は各行、血圧(＋脈拍・SpO2)は各行で縦に並べる
     if vitals:
