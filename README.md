@@ -3061,14 +3061,32 @@ where vd.facility_code = 'cocokaraplus-5526' and p.id is null;
 ### ★ 確定した値（次回のために必ず参照）
 | 項目 | 値 |
 |---|---|
-| **Team ID（法人）** | **`6AX82WT38B`** ※契約書PDFのファイル名から判明 |
+| **Team ID（法人）** | **`7K32S58TZG`** ★2026-09-06 訂正（teamid-fix-v1）。Appleの画面と開発用証明書の両方で確認 |
+| ~~Team ID（誤り）~~ | ~~`6AX82WT38B`~~ ★**これは間違い。** 契約書PDFのファイル名から推測して書いてしまった値。<br>この値で `DEVELOPMENT_TEAM` を設定しても署名は通らない。**値の出どころにファイル名を使わないこと。** |
 | Team ID（旧・無料Apple IDの個人チーム） | `BB7M7M88HC` ※Xcodeプロジェクトに設定済み。**法人チームへ切替が必要** |
 | 登録ID（Enrollment ID） | `WAVNW2S5G6` |
 | D-U-N-S番号 | `692505882` |
 | 法人名 | `LIFE PLUS, LIMITED LIABILITY COMPANY` |
+| 登録タイプ | 組織（Organization） |
 | 勤務先メール（Apple IDではない） | `hiro@lifeplusllc.com`（Zoho / mail.zoho.jp） |
 | Bundle ID | `jp.lifeplus.tasukaru` |
-| **Apple ID（アカウント責任者）** | ★未記録。`developer.apple.com/account` →「プロファイル」で確認して追記すること |
+| 会社の電話番号（Appleに登録・D-U-N-Sと同じ） | `81-565272837`（＝0565-27-2837）。**Appleからの確認の電話はここに来る** |
+| アカウント責任者 | Hiroyuki Kishimoto（表示名）|
+| **Apple ID（アカウント責任者のメール）** | ★まだ未記録。`developer.apple.com/account` →「プロファイル」で確認して追記すること |
+| 年会費 | ¥12,980／年（自動更新） |
+| **次の更新日** | **2027年8月19日** ※デバイスのリセット日も同じ |
+
+### 開発用証明書（2026-08-18 発行）
+| 項目 | 値 |
+|---|---|
+| 種類 | **Apple Development**（開発用。iOS＋macOS） |
+| 名義 | Apple Development: Hiroyuki Kishimoto |
+| 有効期限 | **2027年8月18日** |
+| できること | 登録した実機に入れて動かす |
+| できないこと | 配布（Unlisted / Custom App）。それには **Apple Distribution** の証明書が別に要る |
+
+★`.cer` ファイル単体では署名できない。**対になる秘密鍵は、証明書要求(CSR)を作ったMacのキーチェーンの中**にある。
+　別のMacで使うときは、そのMacのキーチェーンアクセスから **.p12 で書き出す**こと。
 
 ### 注意点
 - **支払い後もD-U-N-S登録の電話番号にAppleから確認の電話が来ることがある。** 取り逃すと止まる。
@@ -3079,12 +3097,13 @@ where vd.facility_code = 'cocokaraplus-5526' and p.id is null;
 ### 次にやること（順番）
 1. アカウントが有効になったことを `developer.apple.com/account` で確認（メンバーシップが表示される）。
 2. **Xcodeの署名を法人チームへ切替**：`tasukaru-app/ios/App/App.xcodeproj` の
-   `DEVELOPMENT_TEAM` を `BB7M7M88HC` → `6AX82WT38B` に変更（Xcode の Signing & Capabilities から選び直す）。
+   `DEVELOPMENT_TEAM` を `BB7M7M88HC` → **`7K32S58TZG`** に変更（Xcode の Signing & Capabilities から選び直す）。
+   ※ここは 2026-09-06 まで `6AX82WT38B` と書いてあったが**間違い**（teamid-fix-v1）。
 3. **App ID(Bundle ID `jp.lifeplus.tasukaru`)を Certificates, Identifiers & Profiles で登録**し、
    **Push Notifications capability を有効化**。
 4. **APNs認証キー（`.p8`）を発行**（Keys → 新規 → Apple Push Notifications service）。
    - **`.p8` は1度しかダウンロードできない。** 紛失したら再発行になるので確実に保管する。
-   - Key ID と Team ID (`6AX82WT38B`) も控える。**`.p8` の中身はチャット等に貼らない。**
+   - Key ID と Team ID (**`7K32S58TZG`**) も控える。**`.p8` の中身はチャット等に貼らない。**
 5. 再検査アラームのプッシュ通知実装へ。
 6. その後、非公開App配信(Unlisted)またはCustom App Distributionで施設スタッフへ配布。
 
