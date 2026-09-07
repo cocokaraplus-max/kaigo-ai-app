@@ -929,10 +929,18 @@ def api_renraku_line_preview():
             _recip_error = str(_re1)
         recip_view = [{'display_name': r.get('display_name') or '(名前未取得)',
                         'user_id_tail': (r.get('line_user_id') or '')[-6:]} for r in recipients]
-        _photo_count = len([u for u in ((note or {}).get('image_urls') or []) if u])  # renraku-line-photo-v1
+        # renraku-line-vis-media-v1 :
+        #   ★押す前に見せる数からも、トグルで消えるものを消す。
+        #     送信のときと同じ決まりにしておかないと、
+        #     「3枚と出ていたのに1枚も届かない」が起きる。
+        _photo_hidden = (_visible.get('image_urls') is False)
+        _video_hidden = (_visible.get('video_urls') is False)
+        _photo_count = 0 if _photo_hidden else \
+            len([u for u in ((note or {}).get('image_urls') or []) if u])  # renraku-line-photo-v1
         # video-srv-v1 : 動画の件数と、送れないものの件数を先に見せる。
         #   ★押してから「送れませんでした」と言われるより、押す前に分かるほうがよい。
-        _vitems = ((note or {}).get('items') or {}).get('video_urls') or []
+        _vitems = [] if _video_hidden else \
+            (((note or {}).get('items') or {}).get('video_urls') or [])
         _vmsgs2, _vskip2 = _line_video_messages(_vitems if isinstance(_vitems, list) else [])
         _video_count = len(_vmsgs2)
         _video_skipped = _vskip2
@@ -943,7 +951,10 @@ def api_renraku_line_preview():
                         'recipient_error': _recip_error,   # renraku-line-items-v2
                         'photo_count': _photo_count,
                         'video_count': _video_count,          # video-srv-v1
-                        'video_skipped': _video_skipped})     # video-srv-v1
+                        'video_skipped': _video_skipped,     # video-srv-v1
+                        # renraku-line-vis-media-v1 : トグルで送らないもの
+                        'photo_hidden': _photo_hidden,
+                        'video_hidden': _video_hidden})
     except Exception as e:
         print(f'api_renraku_line_preview error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -959,11 +970,38 @@ def api_renraku_line_send():
         patient_id = str(data.get('patient_id') or '')
         note_date = data.get('note_date')
         text = (data.get('text') or '').strip()
-        _image_urls = data.get('image_urls') or []  # renraku-line-photo-v1
-        _video_items = data.get('video_urls') or []  # video-srv-v1
+        # renraku-line-vis-media-v1 :
+        #   ★写真と動画を画面から受け取るのをやめた。下で【保存した中身】から取る。
+        #     （画面はまだ送ってくるかもしれないが、読まない）
 
         if not patient_id or not note_date or not text:
             return jsonify({'status': 'error', 'message': 'patient_id / note_date / text が必要です'}), 400
+        # renraku-line-vis-media-v1 :
+        #   ★写真と動画は【保存した中身】から取る。文章と同じ出どころにする。
+        #   ★そのうえで表示項目のトグルを見る。オフなら送らない。
+        #     トグルは利用者ごとに設定できる。「この方は写真を送らないで」を
+        #     印刷では守れていて、LINEでは守れていなかった。
+        #   ★読めなかったときは【送らない】に倒す。文章は送れる。
+        #     送ってよいか分からないまま写真を送るほうが困る。
+        _image_urls = []
+        _video_items = []
+        _photo_hidden = False
+        _video_hidden = False
+        try:
+            _note_db, _v_ignore, _p_ignore = _renraku_fetch_for_line(
+                supabase, f_code, patient_id, note_date)
+            _vis_media = _renraku_visible_for(supabase, f_code, patient_id)
+            _photo_hidden = (_vis_media.get('image_urls') is False)
+            _video_hidden = (_vis_media.get('video_urls') is False)
+            if _note_db and not _photo_hidden:
+                _image_urls = [u for u in (_note_db.get('image_urls') or []) if u]
+            if _note_db and not _video_hidden:
+                _vraw = (_note_db.get('items') or {}).get('video_urls') or []
+                _video_items = _vraw if isinstance(_vraw, list) else []
+        except Exception as _media_e:
+            print(f'renraku line media resolve error: {_media_e}', flush=True)
+            _image_urls = []
+            _video_items = []
         # 施設のLINE設定(有効・トークン)
         s = get_line_settings(supabase, f_code)
         if not s or not s.get('enabled') or not s.get('channel_access_token'):
@@ -998,7 +1036,11 @@ def api_renraku_line_send():
                 failed += 1
         return jsonify({'status': 'success', 'sent': sent, 'failed': failed,
                         'recipient_count': len(recipients),
-                        'video_skipped': _vid_skipped})   # video-srv-v1
+                        'video_skipped': _vid_skipped,   # video-srv-v1
+                        # renraku-line-vis-media-v1 : 何を送ったかを返す
+                        'photo_sent': len(_image_urls),
+                        'photo_hidden': _photo_hidden,
+                        'video_hidden': _video_hidden})
     except Exception as e:
         print(f'api_renraku_line_send error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500

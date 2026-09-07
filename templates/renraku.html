@@ -1073,10 +1073,19 @@ async function rkLineOpen(){
       body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE})}).then(r=>r.json());
     if(d.status!=='success'){ if(recEl) recEl.textContent=''; if(msg){msg.style.color='#d93025';msg.textContent=d.message||'取得失敗';} return; }
     if(txtEl) txtEl.value=d.text||'';
-    /* video-renraku-ui-v1 : 送れない動画があることを、押す前に見せる */
-    if(msg && d.video_skipped && d.video_skipped.length){
-      msg.style.color='#b06000';
-      msg.textContent='動画 '+d.video_skipped.length+'本はLINEに送れません（mp4でない、または1コマ目の画像がありません）。文章と写真は送られます。';
+    /* video-renraku-ui-v1 / renraku-line-vis-media-v1 :
+       ★一緒に送るもの・送らないものを、押す前にまとめて見せる。 */
+    if(msg){
+      const _w=[];
+      if(d.photo_hidden) _w.push('この利用者は「写真」が表示項目でオフのため、写真は送りません');
+      if(d.video_hidden) _w.push('この利用者は「動画」が表示項目でオフのため、動画は送りません');
+      if(d.video_skipped && d.video_skipped.length)
+        _w.push('動画 '+d.video_skipped.length+'本はLINEに送れません（mp4でない、または1コマ目の画像がありません）');
+      const _n=[];
+      if(d.photo_count>0) _n.push('写真 '+d.photo_count+'枚');
+      if(d.video_count>0) _n.push('動画 '+d.video_count+'本');
+      if(_w.length){ msg.style.color='#b06000'; msg.textContent=_w.join('。')+'。'; }
+      else if(_n.length){ msg.style.color='#5f6368'; msg.textContent='文章と'+_n.join('・')+'を一緒に送ります。'; }
     }
     if(recEl){
       if(d.recipient_count>0){
@@ -1108,7 +1117,7 @@ async function rkLineSend(){
   if(msg){msg.style.color='#5f6368';msg.textContent='送信中...';}
   try{
     const d=await fetch('/api/renraku/line_send',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text, image_urls:RK_IMAGES, video_urls:RK_VIDEOS})}).then(r=>r.json());  /* renraku-line-send-images-v1 / video-renraku-ui-v1 */
+      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text})}).then(r=>r.json());  /* renraku-line-send-images-v1 / video-renraku-ui-v1 */
     if(d.status==='success'){
       if(msg){msg.style.color='#188038';msg.textContent='送信しました（成功 '+d.sent+'件'+(d.failed?' / 失敗 '+d.failed+'件':'')+'）';}
       setTimeout(rkLineClose, 1500);
