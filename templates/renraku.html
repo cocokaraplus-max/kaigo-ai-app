@@ -12,6 +12,19 @@
 .rk-datenav button:active { transform:scale(0.95); }
 .rk-date-input { border:1px solid #dadce0; border-radius:8px; padding:6px 8px; font-size:0.9rem; }
 .rk-bulk-link { display:inline-flex; align-items:center; gap:4px; font-size:0.78rem; color:#1a73e8; background:none; border:none; cursor:pointer; padding:4px; }
+/* renraku-shared-ui-v1 : 全利用者様の共通入力欄 */
+.rk-sh-link { display:inline-flex; align-items:center; gap:4px; font-size:0.78rem; color:#1a73e8;
+  background:#e8f0fe; border:1.5px solid #1a73e8; border-radius:8px; cursor:pointer; padding:5px 10px; font-weight:800; }
+.rk-sh-note { font-size:0.8rem; color:#5f6368; background:#f8f9fa; border-radius:9px; padding:9px 11px; margin-bottom:14px; line-height:1.7; }
+.rk-seg { display:inline-flex; border:1px solid #dadce0; border-radius:8px; overflow:hidden; font-size:0.72rem; }
+.rk-seg button { padding:4px 9px; background:#fff; color:#5f6368; font-weight:700; border:none; cursor:pointer; font-family:inherit; font-size:0.72rem; }
+.rk-seg button.on { background:#1a73e8; color:#fff; }
+/* ★共通を使っているときに出す読み取り専用の表示。
+     何が家族に届くのかを、その場で見えるようにするため。 */
+.rk-sh-ro { background:#f5f7fa; border:1px dashed #b6c6dd; border-radius:8px; padding:8px 10px;
+  font-size:0.85rem; color:#3c4043; line-height:1.7; }
+.rk-sh-ro .src { font-size:0.72rem; color:#7c8794; margin-left:4px; }
+.rk-sh-ro .none { color:#9aa0a6; }
 .rk-empty { text-align:center; color:#9aa0a6; font-size:0.9rem; padding:40px 16px; line-height:1.7; }
 .rk-card { background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:14px 16px; margin-bottom:10px; cursor:pointer; display:flex; align-items:center; gap:12px; transition:box-shadow .15s; }
 .rk-card:active { box-shadow:0 2px 8px rgba(0,0,0,0.1); }
@@ -105,10 +118,43 @@
       <button onclick="rkShiftDate(1)">›</button>
     </div>
     <div style="text-align:right;margin-bottom:8px;">
+      <button class="rk-sh-link" onclick="rkShOpen()"><span class="material-symbols-outlined" style="font-size:16px;">groups</span>全利用者様の共通入力欄</button>  <!-- renraku-shared-ui-v1 -->
       <button class="rk-bulk-link" onclick="rkPrintAll()"><span class="material-symbols-outlined" style="font-size:16px;">print</span>まとめて印刷</button>  <!-- renraku-print-link-v1 -->
       <button class="rk-bulk-link" onclick="rkOpenBulk()"><span class="material-symbols-outlined" style="font-size:16px;">tune</span>表示項目の一括設定</button>
     </div>
     <div id="rk-list"><div class="rk-empty">読み込み中...</div></div>
+  </div>
+
+  <!-- renraku-shared-ui-v1 : 全利用者様の共通入力欄 -->
+  <div id="rk-shared-view" style="display:none;">
+    <div class="rk-detail-head">
+      <button class="rk-back" onclick="rkShClose()"><span class="material-symbols-outlined">arrow_back_ios</span>戻る</button>
+      <div style="flex:1;"><div class="rk-detail-name">全利用者様の共通入力欄</div>
+        <div class="rk-detail-sub" id="rk-sh-sub"></div></div>
+    </div>
+    <div class="rk-section">
+      <div class="rk-sh-note" id="rk-sh-info">読み込み中...</div>
+      <div class="rk-field">
+        <div class="rk-field-head"><span class="rk-field-label">行った場所</span></div>
+        <div id="rk-sh-place-rows"></div>
+        <button type="button" class="rk-place-add" onclick="rkShPlaceAdd()"><span class="material-symbols-outlined" style="font-size:16px;">add</span>場所を追加</button>
+      </div>
+      <div class="rk-field">
+        <div class="rk-field-head"><span class="rk-field-label">レク・活動</span></div>
+        <input type="text" class="rk-input" id="rk-sh-rec" placeholder="例：午前 ボール体操 ／ 午後 ぬり絵">
+      </div>
+      <div class="rk-field">
+        <div class="rk-field-head"><span class="rk-field-label">機能訓練・運動</span></div>
+        <input type="text" class="rk-input" id="rk-sh-training" placeholder="例：全体体操 15分">
+        <div style="font-size:0.72rem;color:#9aa0a6;margin-top:3px;">※ 種目・分・メモを一人ずつ書きたいときは、その方の連絡帳で「この方だけ」にしてください。</div>
+      </div>
+      <div class="rk-field">
+        <div class="rk-field-head"><span class="rk-field-label">特記事項</span></div>
+        <textarea class="rk-textarea" id="rk-sh-special" placeholder="全員にお伝えすることがあれば"></textarea>
+      </div>
+      <div id="rk-sh-msg" style="font-size:0.82rem;text-align:center;margin:6px 0;min-height:18px;"></div>
+      <button class="rk-save-btn" id="rk-sh-save" onclick="rkShSave()" style="width:100%;">共通入力欄を保存</button>
+    </div>
   </div>
 
   <div id="rk-detail-view" style="display:none;">
@@ -133,9 +179,19 @@
     <div class="rk-section" id="rk-sec-special">
       <div class="rk-section-title" style="justify-content:space-between;display:flex;">
         <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">edit_note</span>特記事項</span>
-        <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="special_note" onchange="rkToggleVisible('special_note',this.checked)"><span class="rk-slider"></span></label>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <!-- renraku-shared-ui-v1 : 共通に中身があるときだけ出る -->
+          <span class="rk-seg" data-segfor="special_note" style="display:none;">
+            <button type="button" data-v="1" onclick="rkSetUseShared('special_note',true)">共通を使う</button>
+            <button type="button" data-v="0" onclick="rkSetUseShared('special_note',false)">この方だけ</button>
+          </span>
+          <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="special_note" onchange="rkToggleVisible('special_note',this.checked)"><span class="rk-slider"></span></label>
+        </span>
       </div>
-      <div class="rk-field-body" data-bodyfor="special_note"><textarea class="rk-textarea" id="rk-special" placeholder="その日の体調・気づいたことなど"></textarea></div>
+      <div class="rk-field-body" data-bodyfor="special_note">
+        <div class="rk-sh-ro" data-shfor="special_note" style="display:none;"></div>
+        <div data-ownfor="special_note"><textarea class="rk-textarea" id="rk-special" placeholder="その日の体調・気づいたことなど"></textarea></div>
+      </div>
     </div>
 
     <div class="rk-section" id="rk-sec-family">
@@ -232,6 +288,21 @@ let RK_DATE='', RK_PATIENT=null, RK_ITEMS={}, RK_VISIBLE={}, RK_FACILITY_VIS={},
 let RK_IMAGES=[];  /* renraku-photo-ui-v1 : 写真公開URL配列 */
 let RK_LIST=[];  // renraku-print-link-v1
 let RK_TRAIN=[], RK_PLACES=[];
+/* renraku-shared-ui-v1 : 全利用者様の共通入力欄 */
+const RK_SH_KEYS=['places','rec','training','special_note'];   // 共通で持つ項目
+let RK_SHARED={};        // その日の共通の中身
+let RK_USE_SHARED={};    // 項目ごとに「共通を使う」か
+let RK_SH_PLACES=[];     // 共通入力欄の「行った場所」の行
+
+/* ★サーバーの _rk_shared_empty と同じ決まり。ここがずれると画面と文章が食い違う。 */
+function rkShEmpty(v){
+  if(v===null||v===undefined) return true;
+  if(Array.isArray(v)) return v.filter(function(x){ return String(x==null?'':x).trim(); }).length===0;
+  return String(v).trim()==='';
+}
+function rkShText(v){ return Array.isArray(v)? v.filter(function(x){return String(x==null?'':x).trim();}).join('、') : String(v==null?'':v).trim(); }
+/* その方が自分で書いた中身。特記事項だけ items の外にある。 */
+function rkOwnValue(note,key){ return key==='special_note' ? ((note&&note.special_note)||'') : RK_ITEMS[key]; }
 
 function rkTodayStr(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function rkFmtDate(s){ const [y,m,d]=s.split('-'); const wd=['日','月','火','水','木','金','土'][new Date(s+'T00:00:00').getDay()]; return y+'年'+Number(m)+'月'+Number(d)+'日（'+wd+'）'; }
@@ -277,10 +348,22 @@ function rkBuildFields(){
     } else if(f.type==='text'){
       body='<input type="text" class="rk-input" id="rk-'+f.key+'" placeholder="'+rkEsc(f.placeholder||'')+'">';
     }
+    /* renraku-shared-ui-v1 :
+       ★切替は共通で持つ項目にだけ置く。置いても、共通が空なら出さない（rkApplyShared）。
+       ★入力そのものは data-ownfor で包むだけ。中身は消さない。隠すだけ。 */
+    const seg = (RK_SH_KEYS.indexOf(f.key)>=0)
+      ? '<span class="rk-seg" data-segfor="'+f.key+'" style="display:none;">'
+        +'<button type="button" data-v="1" onclick="rkSetUseShared(\''+f.key+'\',true)">共通を使う</button>'
+        +'<button type="button" data-v="0" onclick="rkSetUseShared(\''+f.key+'\',false)">この方だけ</button></span>'
+      : '';
     return '<div class="rk-field">'
       +'<div class="rk-field-head"><span class="rk-field-label">'+rkEsc(f.label)+'</span>'
-      +'<label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="'+f.key+'" onchange="rkToggleVisible(\''+f.key+'\',this.checked)"><span class="rk-slider"></span></label></div>'
-      +'<div class="rk-field-body" data-bodyfor="'+f.key+'">'+body+'</div></div>';
+      +'<span style="display:flex;align-items:center;gap:8px;">'+seg
+      +'<label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="'+f.key+'" onchange="rkToggleVisible(\''+f.key+'\',this.checked)"><span class="rk-slider"></span></label></span></div>'
+      +'<div class="rk-field-body" data-bodyfor="'+f.key+'">'
+      +  '<div class="rk-sh-ro" data-shfor="'+f.key+'" style="display:none;"></div>'
+      +  '<div data-ownfor="'+f.key+'">'+body+'</div>'
+      +'</div></div>';
   }).join('');
 }
 
@@ -291,6 +374,7 @@ async function rkOpenDetail(pid){
     if(data.status!=='success'){ alert('読み込みエラー'); return; }
     RK_PATIENT=data.patient;
     RK_VISIBLE=Object.assign({}, data.visible||{});
+    RK_SHARED=(data.shared&&typeof data.shared==='object')?Object.assign({},data.shared):{};   // renraku-shared-ui-v1
     document.getElementById('rk-list-view').style.display='none';
     document.getElementById('rk-detail-view').style.display='block';
     document.getElementById('rk-save-bar').style.display='block';
@@ -300,13 +384,124 @@ async function rkOpenDetail(pid){
     rkBuildFields();
     rkBuildChips();
     rkFillForm(data.note);
+    rkApplyShared();   // renraku-shared-ui-v1
     rkApplyVisible();
     rkApplyAiVisibility();
     window.scrollTo(0,0);
   }catch(e){ alert('読み込みエラー'); }
 }
 
+/* ===== renraku-shared-ui-v1 : 全利用者様の共通入力欄 ===== */
+
+/* 共通に中身があるか（その項目に切替を出してよいか） */
+function rkShHas(key){ return !rkShEmpty(RK_SHARED[key]); }
+
+/* 画面に反映する。★中身は消さない。出し入れするだけ。 */
+function rkApplyShared(){
+  RK_SH_KEYS.forEach(function(k){
+    const has=rkShHas(k);
+    const use=has && (RK_USE_SHARED[k]===true);
+    const seg=document.querySelector('[data-segfor="'+k+'"]');
+    if(seg){
+      seg.style.display=has?'inline-flex':'none';
+      seg.querySelectorAll('button').forEach(function(b){
+        b.classList.toggle('on', (b.dataset.v==='1')===use);
+      });
+    }
+    const ro=document.querySelector('[data-shfor="'+k+'"]');
+    if(ro){
+      ro.style.display=use?'block':'none';
+      ro.innerHTML=rkEsc(rkShText(RK_SHARED[k]))+'<span class="src">（共通入力欄より）</span>';
+    }
+    const own=document.querySelector('[data-ownfor="'+k+'"]');
+    if(own) own.style.display=use?'none':'block';
+  });
+}
+
+function rkSetUseShared(key,val){
+  RK_USE_SHARED[key]=(val===true);
+  rkApplyShared();
+}
+
+/* ---- 共通入力欄の画面 ---- */
+function rkShRenderPlaces(){
+  const box=document.getElementById('rk-sh-place-rows'); if(!box) return;
+  box.innerHTML=RK_SH_PLACES.map(function(p,i){
+    return '<div class="rk-place-row"><input type="text" class="rk-input" placeholder="例：近隣公園・〇〇神社" value="'+rkEsc(p)+'" oninput="rkShPlaceSet('+i+',this.value)"><button type="button" class="rk-place-del" onclick="rkShPlaceDel('+i+')" title="削除">×</button></div>';
+  }).join('');
+}
+function rkShPlaceAdd(){ RK_SH_PLACES.push(''); rkShRenderPlaces(); }
+function rkShPlaceDel(i){ RK_SH_PLACES.splice(i,1); rkShRenderPlaces(); }
+function rkShPlaceSet(i,v){ RK_SH_PLACES[i]=v; }
+
+async function rkShOpen(){
+  document.getElementById('rk-list-view').style.display='none';
+  document.getElementById('rk-detail-view').style.display='none';
+  document.getElementById('rk-save-bar').style.display='none';
+  document.getElementById('rk-shared-view').style.display='block';
+  document.getElementById('rk-sh-sub').textContent=rkFmtDate(RK_DATE);
+  const msg=document.getElementById('rk-sh-msg'); if(msg) msg.textContent='';
+  const info=document.getElementById('rk-sh-info');
+  if(info) info.textContent='読み込み中...';
+  window.scrollTo(0,0);
+  try{
+    const d=await fetch('/api/renraku/shared?date='+encodeURIComponent(RK_DATE)).then(r=>r.json());
+    const it=(d.status==='success'&&d.items&&typeof d.items==='object')?d.items:{};
+    RK_SHARED=Object.assign({},it);
+    RK_SH_PLACES=Array.isArray(it.places)?it.places.slice():[];
+    document.getElementById('rk-sh-rec').value=it.rec||'';
+    document.getElementById('rk-sh-training').value=it.training||'';
+    document.getElementById('rk-sh-special').value=it.special_note||'';
+    rkShRenderPlaces();
+    if(window.rkGrowAll) window.rkGrowAll();
+    if(info){
+      /* ★対象は「その日に来た人」。一覧と同じ範囲であることを、その場で見せる。 */
+      const n=(RK_LIST||[]).length;
+      info.innerHTML='ここに入れた内容は、この日に来られた<b>'+n+'名</b>の連絡帳で使えます。<br>'
+        +'その方だけ違うときは、その方の連絡帳で「この方だけ」に切り替えて書いてください。<br>'
+        +'<b>その方が書いた中身を上書きすることはありません。</b>';
+    }
+  }catch(e){
+    console.error('rkShOpen',e);
+    if(info) info.textContent='読み込みに失敗しました。';
+  }
+}
+
+function rkShClose(){
+  document.getElementById('rk-shared-view').style.display='none';
+  document.getElementById('rk-list-view').style.display='block';
+  rkLoadList();
+}
+
+async function rkShSave(){
+  const btn=document.getElementById('rk-sh-save');
+  const msg=document.getElementById('rk-sh-msg');
+  const items={
+    places: RK_SH_PLACES.map(function(p){return (p||'').trim();}).filter(function(p){return p;}),
+    rec: document.getElementById('rk-sh-rec').value||'',
+    training: document.getElementById('rk-sh-training').value||'',
+    special_note: document.getElementById('rk-sh-special').value||'',
+  };
+  btn.disabled=true; btn.textContent='保存中...';
+  if(msg){ msg.style.color='#5f6368'; msg.textContent=''; }
+  try{
+    const d=await fetch('/api/renraku/shared',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({note_date:RK_DATE, items:items})}).then(r=>r.json());
+    if(d.status==='success'){
+      RK_SHARED=Object.assign({},items);
+      if(msg){ msg.style.color='#188038'; msg.textContent='保存しました'; }
+      setTimeout(rkShClose, 900);
+    }else{
+      if(msg){ msg.style.color='#d93025'; msg.textContent='保存に失敗しました：'+(d.message||'不明'); }
+    }
+  }catch(e){
+    console.error('rkShSave',e);
+    if(msg){ msg.style.color='#d93025'; msg.textContent='通信エラー'; }
+  }finally{ btn.disabled=false; btn.textContent='共通入力欄を保存'; }
+}
+
 function rkBackToList(){
+  document.getElementById('rk-shared-view').style.display='none';   // renraku-shared-ui-v1
   document.getElementById('rk-detail-view').style.display='none';
   document.getElementById('rk-save-bar').style.display='none';
   document.getElementById('rk-list-view').style.display='block';
@@ -455,6 +650,17 @@ function rkFillForm(note){
   rkRenderPhotos();
   RK_TRAIN=(RK_ITEMS.training_details&&Array.isArray(RK_ITEMS.training_details))?RK_ITEMS.training_details.map(function(t){return {name:t.name||'',minutes:t.minutes||'',memo:t.memo||''};}):[];
   RK_PLACES=(RK_ITEMS.places&&Array.isArray(RK_ITEMS.places))?RK_ITEMS.places.slice():[];
+  /* renraku-shared-ui-v1 : どちらを使うか。
+       ★決まりはサーバーとまったく同じ。
+         1. 前に選んであればそのとおり
+         2. 選んでいなくて、その方の欄が空なら → 共通
+         3. 選んでいなくて、書いてあれば     → この方だけ
+       3 があるので、いままで入れた分が共通に置き換わらない。 */
+  const _us=(RK_ITEMS.use_shared&&typeof RK_ITEMS.use_shared==='object')?RK_ITEMS.use_shared:{};
+  RK_USE_SHARED={};
+  RK_SH_KEYS.forEach(function(k){
+    RK_USE_SHARED[k] = (k in _us) ? (_us[k]===true) : rkShEmpty(rkOwnValue(note,k));
+  });
   rkRenderTrain(); rkUpdateTrainVisibility(); rkRenderPlaces();
   if(window.rkGrowAll) window.rkGrowAll();
 }
@@ -519,6 +725,14 @@ async function rkSave(){
     RK_ITEMS.training_details=RK_TRAIN.filter(function(t){ return (t.name||'').trim()||(t.minutes||'').toString().trim()||(t.memo||'').trim(); });
   } else { RK_ITEMS.training_details=[]; }
   RK_ITEMS.places=RK_PLACES.map(function(p){return (p||'').trim();}).filter(function(p){return p;});
+  /* renraku-shared-ui-v1 : どちらを使うかの印。
+       ★共通に中身がある項目だけ書く。
+         共通が空の項目まで書くと、あとで共通を入れたときに
+         こちらが決めた覚えのない選択が効いてしまう。
+       ★前の印は消さない（Object.assign で足すだけ）。 */
+  const _usOut=Object.assign({}, (RK_ITEMS.use_shared&&typeof RK_ITEMS.use_shared==='object')?RK_ITEMS.use_shared:{});
+  RK_SH_KEYS.forEach(function(k){ if(!rkShEmpty(RK_SHARED[k])) _usOut[k]=(RK_USE_SHARED[k]===true); });
+  if(Object.keys(_usOut).length) RK_ITEMS.use_shared=_usOut;
   const payload={ patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, items:RK_ITEMS,
     special_note:gv('rk-special'), family_message:gv('rk-family'), next_visit:gv('rk-next'), image_urls:RK_IMAGES };  /* renraku-photo-ui-v1 */
   try{

@@ -608,6 +608,88 @@ def _line_push_chunked(token, to_user_id, messages):
     return ok and any_sent
 
 
+# ===== renraku-shared-v1 : 全利用者様の共通入力欄 =====
+#   その日・その施設で1件だけ持つ（表 renraku_shared_notes）。
+#   ★利用者ごとの renraku_notes には【書き込まない】。
+#     上書きの事故を起こさないため。個人が書いた中身は必ず残る。
+
+RK_SHARED_KEYS = ('places', 'rec', 'training', 'special_note')
+
+
+def _rk_shared_empty(v):
+    """中身が「空」かどうか。配列は中身のある要素が無ければ空とみなす。"""
+    if v is None:
+        return True
+    if isinstance(v, (list, tuple)):
+        return len([x for x in v if str(x).strip()]) == 0
+    return str(v).strip() == ''
+
+
+def _renraku_shared_items(supabase, f_code, note_date):
+    """その日の共通入力欄の中身。無ければ {}。renraku-shared-v1
+
+    ★読めなかったときも {} に倒す。
+      共通が無い＝いままでどおり、その方の分だけが出る。
+    """
+    try:
+        res = (supabase.table('renraku_shared_notes').select('items')
+               .eq('facility_code', f_code).eq('note_date', note_date).execute())
+        if res.data and isinstance(res.data[0].get('items'), dict):
+            return res.data[0]['items']
+    except Exception as e:
+        print(f'_renraku_shared_items error: {e}', flush=True)
+    return {}
+
+
+def _rk_own_value(note, key):
+    """その方が自分で書いた中身。特記事項だけ items の外にある。"""
+    if key == 'special_note':
+        return (note or {}).get('special_note')
+    return ((note or {}).get('items') or {}).get(key)
+
+
+def _rk_use_shared(note, key):
+    """共通を使うか、その方の分を使うか。renraku-shared-v1
+
+    ★決まりは3つだけ。
+        1. 画面で切り替えてあれば、そのとおり
+        2. 決めていなくて、その方の欄が【空】なら   → 共通
+        3. 決めていなくて、【書いてあれば】         → その方の分
+      3 があるので、いままで入れた分が共通に置き換わることがない。
+    """
+    flag = ((note or {}).get('items') or {}).get('use_shared')
+    if isinstance(flag, dict) and key in flag:
+        return flag[key] is True
+    return _rk_shared_empty(_rk_own_value(note, key))
+
+
+def _renraku_merge_shared(note, shared):
+    """共通入力欄をあてはめた note を【新しく作って】返す。renraku-shared-v1
+
+    ★もとの note は変えない。DBにも書かない。見せるためだけの合成。
+    ★機能訓練は、共通を使うときは共通の文だけにする。
+      その方の種目・分・メモは出さない。混ざると読めなくなるため。
+    """
+    if not note or not isinstance(shared, dict) or not shared:
+        return note
+    out = dict(note)
+    items = dict((note.get('items') or {}))
+    for key in RK_SHARED_KEYS:
+        sv = shared.get(key)
+        if _rk_shared_empty(sv):
+            continue
+        if not _rk_use_shared(note, key):
+            continue
+        if key == 'special_note':
+            out['special_note'] = sv
+        else:
+            items[key] = sv
+            if key == 'training':
+                items['training_details'] = []
+    out['items'] = items
+    return out
+
+
 def _renraku_visible_for(supabase, f_code, patient_id):
     """表示項目(個別→施設既定→全表示)を解決する。renraku-line-toggle-v1
 
@@ -794,6 +876,11 @@ def api_renraku_line_preview():
         # renraku-line-toggle-v1 :
         #   ★表示項目の設定を渡す。オフの項目は文章に書かない（印刷と同じ）。
         _visible = _renraku_visible_for(supabase, f_code, patient_id)
+        # renraku-shared-v1 :
+        #   ★共通入力欄をあてはめてから文章にする。印刷とまったく同じ手順。
+        #     ここで作った合成は返すだけで、DBには書かない。
+        _shared = _renraku_shared_items(supabase, f_code, note_date)
+        note = _renraku_merge_shared(note, _shared)
         text = _renraku_to_line_text(note, vitals, pname, _visible)
         # renraku-line-items-v2 :
         #   ★文章は送信先と関係なく作れる。送信先が読めなくても文章だけは返す。
@@ -5628,6 +5715,8 @@ def renraku_print_page():
         ids = [s.strip() for s in ids_raw.split(',') if s.strip()]
         plist = get_patients(supabase, f_code)
         fac_vis = _renraku_facility_visible(supabase, f_code)
+        # renraku-shared-v1 : その日の共通入力欄。1回だけ読んで全員に使う。
+        _shared = _renraku_shared_items(supabase, f_code, date)
         out = []
         for pid in ids:
             nres = (supabase.table('renraku_notes').select('*')
@@ -5641,6 +5730,8 @@ def renraku_print_page():
             prof = next((p for p in plist if str(p['id']) == str(pid)), None)
             pat_vis = _renraku_patient_visible(supabase, f_code, pid)
             visible = pat_vis if pat_vis is not None else (fac_vis or {})
+            # renraku-shared-v1 : 印刷も文章と同じ解決を通す（中身がずれないように）
+            note = _renraku_merge_shared(note, _shared)
             out.append({
                 'patient': {
                     'patient_id': pid,
@@ -5772,6 +5863,10 @@ def api_renraku_get():
             'vitals': vitals,
             'visible': _visible,
             'visible_source': _vis_src,
+            # renraku-shared-v1 :
+            #   ★ここでは【あてはめない】。画面では「共通を使う/この方だけ」を
+            #     選ぶために、共通とその方の分の【両方】が要るから。
+            'shared': _renraku_shared_items(supabase, f_code, date),
         })
     except Exception as e:
         print(f"renraku get error: {e}", flush=True)
@@ -5816,6 +5911,67 @@ def api_renraku_save():
         return jsonify({'status': 'success', 'id': rid})
     except Exception as e:
         print(f"renraku save error: {e}", flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===== renraku-shared-v1 : 全利用者様の共通入力欄の読み書き =====
+
+@app.route('/api/renraku/shared', methods=['GET'])  # renraku-shared-v1
+@login_required
+def api_renraku_shared_get():
+    """その日の共通入力欄を返す。無ければ空。"""
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        date = request.args.get('date') or datetime.now(tokyo_tz).strftime('%Y-%m-%d')
+        res = (supabase.table('renraku_shared_notes').select('items,staff_name,updated_at')
+               .eq('facility_code', f_code).eq('note_date', date).execute())
+        row = res.data[0] if res.data else None
+        return jsonify({'status': 'success', 'date': date,
+                        'items': (row or {}).get('items') or {},
+                        'staff_name': (row or {}).get('staff_name') or '',
+                        'updated_at': (row or {}).get('updated_at') or ''})
+    except Exception as e:
+        print(f'renraku shared get error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@app.route('/api/renraku/shared', methods=['POST'])  # renraku-shared-v1
+@login_required
+def api_renraku_shared_save():
+    """共通入力欄を upsert(facility_code + note_date)。
+
+    ★利用者ごとの連絡帳(renraku_notes)には1行も書き込まない。
+      共通は共通の場所にだけ置く。だから上書きの事故が起きない。
+    """
+    try:
+        f_code = session['f_code']
+        my_name = session.get('my_name') or ''
+        supabase = get_supabase()
+        data = request.json or {}
+        note_date = data.get('note_date')
+        if not note_date:
+            return jsonify({'status': 'error', 'message': 'note_date は必須です'}), 400
+        src = data.get('items') or {}
+        # ★受け取るのは決めた4つだけ。知らないものは捨てる。
+        items = {}
+        for key in RK_SHARED_KEYS:
+            if key in src:
+                items[key] = src[key]
+        now_iso = datetime.now(timezone.utc).isoformat()
+        payload = {'facility_code': f_code, 'note_date': note_date,
+                   'items': items, 'staff_name': my_name, 'updated_at': now_iso}
+        existing = (supabase.table('renraku_shared_notes').select('id')
+                    .eq('facility_code', f_code).eq('note_date', note_date).execute())
+        if existing.data:
+            rid = existing.data[0]['id']
+            supabase.table('renraku_shared_notes').update(payload).eq('id', rid).execute()
+        else:
+            res = supabase.table('renraku_shared_notes').insert(payload).execute()
+            rid = res.data[0]['id'] if res.data else None
+        return jsonify({'status': 'success', 'id': rid})
+    except Exception as e:
+        print(f'renraku shared save error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
