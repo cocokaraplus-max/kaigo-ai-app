@@ -942,9 +942,12 @@ async function rkSave(){
   const _usOut=Object.assign({}, (RK_ITEMS.use_shared&&typeof RK_ITEMS.use_shared==='object')?RK_ITEMS.use_shared:{});
   RK_SH_KEYS.forEach(function(k){ if(!rkShEmpty(RK_SHARED[k])) _usOut[k]=(RK_USE_SHARED[k]===true); });
   if(Object.keys(_usOut).length) RK_ITEMS.use_shared=_usOut;
+  RK_ITEMS.video_urls=RK_VIDEOS;  /* video-renraku-ui-v1 : 動画は items の中に入れる（列は増やさない） */
+  /* renraku-save-before-v1 : ★この1行は payload を組む【前】に置く。
+       RK_ITEMS は payload と同じ物を指しているので後ろでも入るが、
+       読んだ人が「入っていない」と思って直しにかかると壊れる。 */
   const payload={ patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, items:RK_ITEMS,
     special_note:gv('rk-special'), family_message:gv('rk-family'), next_visit:gv('rk-next'), image_urls:RK_IMAGES };  /* renraku-photo-ui-v1 */
-  RK_ITEMS.video_urls=RK_VIDEOS;  /* video-renraku-ui-v1 : 動画は items の中に入れる（列は増やさない） */
   try{
     const res=await fetch('/api/renraku/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const data=await res.json();
@@ -960,7 +963,24 @@ async function rkSave(){
 function rkPrintOne(){
   if(!RK_PATIENT || !RK_PATIENT.patient_id){ alert('印刷対象の利用者が選択されていません。'); return; }
   var url='/renraku/print?date='+encodeURIComponent(RK_DATE)+'&ids='+encodeURIComponent(RK_PATIENT.patient_id);
-  window.open(url, '_blank');
+  /* renraku-save-before-v1 :
+     紙も【保存した中身】から作るので、先に保存する。
+     ★ただし「保存を待ってから window.open」にしてはいけない。
+       押した操作から離れてしまい、iPhone/Safari がポップアップとして止める。
+       → 先に空のタブを開き、保存できてから行き先を入れる。 */
+  var w = window.open('', '_blank');
+  try{ if(w && w.document) w.document.write(
+    '<p style="font-family:sans-serif;padding:16px;color:#5f6368;">保存しています…</p>'); }catch(e){}
+  rkSave().then(function(saved){
+    if(saved===false){ if(w) w.close(); return; }   /* 保存できなければ刷らない */
+    if(w){ w.location.href = url; return; }
+    /* タブを開けなかったとき（ポップアップが止められている）。
+       保存は済んでいるので、もう一度だけ開いてみて、駄目なら知らせる。 */
+    if(!window.open(url, '_blank')){
+      alert('印刷用の画面を開けませんでした。保存は済んでいます。\n'
+          + 'ブラウザのポップアップの設定をご確認のうえ、もう一度「印刷」を押してください。');
+    }
+  }).catch(function(e){ if(w) w.close(); console.error('rkPrintOne', e); });
 }
 function rkPrintAll(){
   var ids=(RK_LIST||[]).filter(function(p){ return p.noted; }).map(function(p){ return p.patient_id; });
@@ -1036,6 +1056,12 @@ document.addEventListener('DOMContentLoaded',function(){
 // ===== renraku-line-ui-v1 : 連絡帳 LINE送信 =====
 async function rkLineOpen(){
   if(!RK_PATIENT || !RK_PATIENT.patient_id){ alert('送信対象の利用者が選択されていません。'); return; }
+  /* renraku-save-before-v1 :
+     ★先に保存する。送る文章は【保存した中身】から作るので、
+       保存しないと、いま画面に書いた分が入らないまま送ってしまう。
+       保存に失敗したら開かない（古い中身で送らせない）。 */
+  const saved=await rkSave();
+  if(saved===false) return;
   const msg=document.getElementById('rk-line-msg'); if(msg) msg.textContent='';
   const recEl=document.getElementById('rk-line-recipients');
   const txtEl=document.getElementById('rk-line-text');
@@ -1047,10 +1073,34 @@ async function rkLineOpen(){
       body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE})}).then(r=>r.json());
     if(d.status!=='success'){ if(recEl) recEl.textContent=''; if(msg){msg.style.color='#d93025';msg.textContent=d.message||'取得失敗';} return; }
     if(txtEl) txtEl.value=d.text||'';
-    /* video-renraku-ui-v1 : 送れない動画があることを、押す前に見せる */
-    if(msg && d.video_skipped && d.video_skipped.length){
-      msg.style.color='#b06000';
-      msg.textContent='動画 '+d.video_skipped.length+'本はLINEに送れません（mp4でない、または1コマ目の画像がありません）。文章と写真は送られます。';
+    /* video-renraku-ui-v1 / renraku-line-vis-media-v1 / renraku-line-vis-media-v2 :
+       ★一緒に送るもの・送らないものを、押す前に【両方】見せる。 */
+    if(msg){
+      const _w=[];
+      if(d.photo_hidden) _w.push('この利用者は「写真」が表示項目でオフのため、写真は送りません');
+      if(d.video_hidden) _w.push('この利用者は「動画」が表示項目でオフのため、動画は送りません');
+      if(d.video_skipped && d.video_skipped.length)
+        _w.push('動画 '+d.video_skipped.length+'本はLINEに送れません（mp4でない、または1コマ目の画像がありません）');
+      const _n=[];
+      if(d.photo_count>0) _n.push('写真 '+d.photo_count+'枚');
+      if(d.video_count>0) _n.push('動画 '+d.video_count+'本');
+      /* renraku-line-vis-media-v2 :
+         ★送るものと送らないものは別の話。**両方出す。**
+           v1 は送らないものがあると送るものを消していたので、
+           「動画は送りません」だけが出て、写真が送られることが分からなかった。
+         ★送るものを上、送らないものを下に置く。 */
+      const _ln=[];
+      if(_n.length){
+        _ln.push('<span style="color:#5f6368;">文章と'+rkEsc(_n.join('・'))+'を一緒に送ります。</span>');
+      } else if(_w.length){
+        /* 送るものが無くても、文章は送られる。黙っていると全部止まったと思わせる。 */
+        _ln.push('<span style="color:#5f6368;">文章だけを送ります。</span>');
+      }
+      if(_w.length){
+        _ln.push('<span style="color:#b06000;font-weight:700;">'+rkEsc(_w.join('。'))+'。</span>');
+      }
+      msg.style.color='';   /* 色は行ごとに付けるので、前の色を残さない */
+      msg.innerHTML=_ln.join('<br>');
     }
     if(recEl){
       if(d.recipient_count>0){
@@ -1082,7 +1132,7 @@ async function rkLineSend(){
   if(msg){msg.style.color='#5f6368';msg.textContent='送信中...';}
   try{
     const d=await fetch('/api/renraku/line_send',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text, image_urls:RK_IMAGES, video_urls:RK_VIDEOS})}).then(r=>r.json());  /* renraku-line-send-images-v1 / video-renraku-ui-v1 */
+      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text})}).then(r=>r.json());  /* renraku-line-send-images-v1 / video-renraku-ui-v1 */
     if(d.status==='success'){
       if(msg){msg.style.color='#188038';msg.textContent='送信しました（成功 '+d.sent+'件'+(d.failed?' / 失敗 '+d.failed+'件':'')+'）';}
       setTimeout(rkLineClose, 1500);

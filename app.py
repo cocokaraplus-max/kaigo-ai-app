@@ -929,10 +929,18 @@ def api_renraku_line_preview():
             _recip_error = str(_re1)
         recip_view = [{'display_name': r.get('display_name') or '(名前未取得)',
                         'user_id_tail': (r.get('line_user_id') or '')[-6:]} for r in recipients]
-        _photo_count = len([u for u in ((note or {}).get('image_urls') or []) if u])  # renraku-line-photo-v1
+        # renraku-line-vis-media-v1 :
+        #   ★押す前に見せる数からも、トグルで消えるものを消す。
+        #     送信のときと同じ決まりにしておかないと、
+        #     「3枚と出ていたのに1枚も届かない」が起きる。
+        _photo_hidden = (_visible.get('image_urls') is False)
+        _video_hidden = (_visible.get('video_urls') is False)
+        _photo_count = 0 if _photo_hidden else \
+            len([u for u in ((note or {}).get('image_urls') or []) if u])  # renraku-line-photo-v1
         # video-srv-v1 : 動画の件数と、送れないものの件数を先に見せる。
         #   ★押してから「送れませんでした」と言われるより、押す前に分かるほうがよい。
-        _vitems = ((note or {}).get('items') or {}).get('video_urls') or []
+        _vitems = [] if _video_hidden else \
+            (((note or {}).get('items') or {}).get('video_urls') or [])
         _vmsgs2, _vskip2 = _line_video_messages(_vitems if isinstance(_vitems, list) else [])
         _video_count = len(_vmsgs2)
         _video_skipped = _vskip2
@@ -943,7 +951,10 @@ def api_renraku_line_preview():
                         'recipient_error': _recip_error,   # renraku-line-items-v2
                         'photo_count': _photo_count,
                         'video_count': _video_count,          # video-srv-v1
-                        'video_skipped': _video_skipped})     # video-srv-v1
+                        'video_skipped': _video_skipped,     # video-srv-v1
+                        # renraku-line-vis-media-v1 : トグルで送らないもの
+                        'photo_hidden': _photo_hidden,
+                        'video_hidden': _video_hidden})
     except Exception as e:
         print(f'api_renraku_line_preview error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -959,11 +970,38 @@ def api_renraku_line_send():
         patient_id = str(data.get('patient_id') or '')
         note_date = data.get('note_date')
         text = (data.get('text') or '').strip()
-        _image_urls = data.get('image_urls') or []  # renraku-line-photo-v1
-        _video_items = data.get('video_urls') or []  # video-srv-v1
+        # renraku-line-vis-media-v1 :
+        #   ★写真と動画を画面から受け取るのをやめた。下で【保存した中身】から取る。
+        #     （画面はまだ送ってくるかもしれないが、読まない）
 
         if not patient_id or not note_date or not text:
             return jsonify({'status': 'error', 'message': 'patient_id / note_date / text が必要です'}), 400
+        # renraku-line-vis-media-v1 :
+        #   ★写真と動画は【保存した中身】から取る。文章と同じ出どころにする。
+        #   ★そのうえで表示項目のトグルを見る。オフなら送らない。
+        #     トグルは利用者ごとに設定できる。「この方は写真を送らないで」を
+        #     印刷では守れていて、LINEでは守れていなかった。
+        #   ★読めなかったときは【送らない】に倒す。文章は送れる。
+        #     送ってよいか分からないまま写真を送るほうが困る。
+        _image_urls = []
+        _video_items = []
+        _photo_hidden = False
+        _video_hidden = False
+        try:
+            _note_db, _v_ignore, _p_ignore = _renraku_fetch_for_line(
+                supabase, f_code, patient_id, note_date)
+            _vis_media = _renraku_visible_for(supabase, f_code, patient_id)
+            _photo_hidden = (_vis_media.get('image_urls') is False)
+            _video_hidden = (_vis_media.get('video_urls') is False)
+            if _note_db and not _photo_hidden:
+                _image_urls = [u for u in (_note_db.get('image_urls') or []) if u]
+            if _note_db and not _video_hidden:
+                _vraw = (_note_db.get('items') or {}).get('video_urls') or []
+                _video_items = _vraw if isinstance(_vraw, list) else []
+        except Exception as _media_e:
+            print(f'renraku line media resolve error: {_media_e}', flush=True)
+            _image_urls = []
+            _video_items = []
         # 施設のLINE設定(有効・トークン)
         s = get_line_settings(supabase, f_code)
         if not s or not s.get('enabled') or not s.get('channel_access_token'):
@@ -998,7 +1036,11 @@ def api_renraku_line_send():
                 failed += 1
         return jsonify({'status': 'success', 'sent': sent, 'failed': failed,
                         'recipient_count': len(recipients),
-                        'video_skipped': _vid_skipped})   # video-srv-v1
+                        'video_skipped': _vid_skipped,   # video-srv-v1
+                        # renraku-line-vis-media-v1 : 何を送ったかを返す
+                        'photo_sent': len(_image_urls),
+                        'photo_hidden': _photo_hidden,
+                        'video_hidden': _video_hidden})
     except Exception as e:
         print(f'api_renraku_line_send error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -21028,6 +21070,10 @@ def _tc_compute_day(punches):
     cur_in = None
     cur_break = None
     incomplete = False
+    # pay-verify-v1 : 中抜け（退勤してから、また出勤するまで）
+    #   ★これを出さないと、CSVの 退勤−出勤−休憩 が実働と合わない。
+    gap_min = 0
+    last_out = None
 
     for p in punches:
         t = p.get("punch_type")
@@ -21038,6 +21084,9 @@ def _tc_compute_day(punches):
             if cur_in is not None:
                 flags.append("二重出勤")
                 incomplete = True
+            # pay-verify-v1 : 前に退勤していれば、そこからここまでが中抜け
+            if cur_in is None and last_out is not None:
+                gap_min += int((at - last_out).total_seconds() // 60)
             cur_in = at
             if in_t is None:
                 in_t = at
@@ -21053,6 +21102,7 @@ def _tc_compute_day(punches):
                     cur_break = None
                 work_min += int((at - cur_in).total_seconds() // 60)
                 cur_in = None
+                last_out = at   # pay-verify-v1 : 中抜けを測る起点
             out_t = at
         elif t == "break_start":
             if cur_in is None:
@@ -21086,10 +21136,15 @@ def _tc_compute_day(punches):
         if fl not in seen:
             seen.add(fl)
             uniq.append(fl)
+    # pay-verify-v1 :
+    #   stay_min = 勤務時間帯の合計（休憩を含む）＝「在席」
+    #   ★minutes = stay_min - break_min。これは【いつでもぴったり】成り立つ。
+    #     社労士さんはこの1本で検算できる。
     return {"minutes": minutes, "incomplete": incomplete, "flags": uniq,
             "in": in_t.isoformat() if in_t else None,
             "out": out_t.isoformat() if out_t else None,
-            "break_min": break_min}
+            "break_min": break_min,
+            "gap_min": gap_min, "stay_min": work_min}
 
 
 # youshiki-exclude-v1: 様式（実績）に出力しない日の管理
@@ -21555,7 +21610,10 @@ def _tc_build_monthly_data(supabase, f_code, year, month):
             days.append({"date": dk, "minutes": comp["minutes"],
                          "incomplete": comp["incomplete"], "flags": comp["flags"],
                          "in": comp["in"], "out": comp["out"],
-                         "break_min": comp["break_min"]})
+                         "break_min": comp["break_min"],
+                         # pay-verify-v1 : 中抜けと在席も渡す
+                         "gap_min": comp.get("gap_min", 0),
+                         "stay_min": comp.get("stay_min", 0)})
         result.append({"name": sn, "emoji": emoji_map.get(sn, ""),
                        "days": days, "total_minutes": total_min,
                        "worked_days": worked_days,
@@ -21571,6 +21629,18 @@ def _tc_fmt_hm(minutes):
     h = minutes // 60
     m = minutes % 60
     return f"{h}時間" + (f"{m}分" if m else "")
+
+
+def _tc_fmt_time_jst_sec(iso):
+    """pay-verify-v1 : 秒まで出す。
+    ★実働は秒まで見て計算しているので、時:分だけ見せると引き算が合わない。
+      社労士さんが検算できるように、打刻実績の出力では秒まで出す。"""
+    if not iso:
+        return "--:--:--"
+    dt = _tc_parse_iso(iso)
+    if dt is None:
+        return "--:--:--"
+    return dt.astimezone(_TC_JST).strftime("%H:%M:%S")
 
 
 def _tc_fmt_time_jst(iso):
@@ -22984,7 +23054,10 @@ def _pay_build_monthly_range(supabase, f_code, start_iso, end_iso):
             days.append({"date": dk, "minutes": comp["minutes"],
                          "incomplete": comp["incomplete"], "flags": comp["flags"],
                          "in": comp["in"], "out": comp["out"],
-                         "break_min": comp["break_min"]})
+                         "break_min": comp["break_min"],
+                         # pay-verify-v1 : 中抜けと在席も渡す
+                         "gap_min": comp.get("gap_min", 0),
+                         "stay_min": comp.get("stay_min", 0)})
         result.append({"name": sn, "emoji": emoji_map.get(sn, ""),
                        "days": days, "total_minutes": total_min,
                        "worked_days": worked_days,
@@ -23303,9 +23376,12 @@ def pay_export_simple_csv():
         w = _pay_csv.writer(sio)
         # pay-leave-rows-v1: 休暇区分の列を【いちばん右】に足す。
         #   ★間に入れると、いま使っている取り込みの列がずれる。
+        # pay-verify-v1 : 途中退出・在席の列を【いちばん右】に足す。
+        #   ★在席 − 休憩 = 実働 が、いつでもぴったり成り立つ。
         w.writerow(["\u8077\u54e1\u540d", "\u65e5\u4ed8", "\u66dc\u65e5", "\u51fa\u52e4", "\u9000\u52e4",
                     "\u4f11\u61a9(\u5206)", "\u5b9f\u50cd(\u5206)", "\u5b9f\u50cd(\u6642\u9593)", "\u6253\u523b\u7570\u5e38",
-                    "\u4f11\u6687\u533a\u5206"])
+                    "\u4f11\u6687\u533a\u5206",
+                    "\u9014\u4e2d\u9000\u51fa(\u5206)", "\u5728\u5e2d(\u5206)"])
         for s in staff:
             for d in s["days"]:
                 _lv = _pay_leave_label(d.get("leave_type")
@@ -23315,18 +23391,36 @@ def pay_export_simple_csv():
                     #   ★空にしないと "--:--" や "—" が並んで、
                     #     打刻し忘れた日と見分けがつかなくなる。
                     w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
-                                "", "", "", "", "", "", _lv])
+                                "", "", "", "", "", "", _lv, "", ""])
                 elif d["incomplete"]:
+                    # pay-verify-v1 : 実働が空＝【合計に入っていない】日。
+                    #   ★時刻は出るので、足せる日に見えてしまう。印を強くする。
                     w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
-                                _tc_fmt_time_jst(d["in"]), _tc_fmt_time_jst(d["out"]),
-                                "", "", "", "/".join(d.get("flags") or []), _lv])
+                                _tc_fmt_time_jst_sec(d["in"]), _tc_fmt_time_jst_sec(d["out"]),
+                                "", "", "",
+                                "\u26a0\u5408\u8a08\u306b\u5165\u3063\u3066\u3044\u307e\u305b\u3093 / "
+                                + "/".join(d.get("flags") or []), _lv, "", ""])
                 else:
                     w.writerow([s["name"], d["date"], _pay_wd_label(d["date"]),
-                                _tc_fmt_time_jst(d["in"]), _tc_fmt_time_jst(d["out"]),
-                                d.get("break_min", 0), d["minutes"], _tc_fmt_hm(d["minutes"]), "", _lv])
-            w.writerow([s["name"], "\u3010\u5408\u8a08\u3011", "", "", "", "",
+                                _tc_fmt_time_jst_sec(d["in"]), _tc_fmt_time_jst_sec(d["out"]),
+                                d.get("break_min", 0), d["minutes"], _tc_fmt_hm(d["minutes"]), "", _lv,
+                                d.get("gap_min", 0), d.get("stay_min", 0)])
+            # pay-verify-v1 : 合計行にも、休憩・途中退出・在席の合計を出す。
+            #   ★在席の合計 − 休憩の合計 = 実働の合計。ここでも検算できる。
+            _ok = [d for d in s["days"]
+                   if (not d.get("leave_only")) and (not d["incomplete"])
+                   and d.get("minutes") is not None]
+            _brk = sum(d.get("break_min", 0) for d in _ok)
+            _gap = sum(d.get("gap_min", 0) for d in _ok)
+            _stay = sum(d.get("stay_min", 0) for d in _ok)
+            _note = f'{s["worked_days"]}\u65e5\u52e4\u52d9'
+            if s.get("incomplete_days"):
+                # ★合計に入っていない日があることを、はっきり書く。
+                _note += (f' / \u6253\u523b\u7570\u5e38 {s["incomplete_days"]}\u65e5'
+                          f'\uff08\u5b9f\u50cd\u306f\u5408\u8a08\u306b\u5165\u3063\u3066\u3044\u307e\u305b\u3093\uff09')
+            w.writerow([s["name"], "\u3010\u5408\u8a08\u3011", "", "", "", _brk,
                         s["total_minutes"], _tc_fmt_hm(s["total_minutes"]),
-                        f'{s["worked_days"]}\u65e5\u52e4\u52d9', ""])
+                        _note, "", _gap, _stay])
         data = sio.getvalue().encode("cp932", errors="replace")
         from flask import send_file as _send
         buf = _pay_io.BytesIO(data)
@@ -23375,11 +23469,18 @@ def pay_export_simple_excel():
         ws.cell(row=row, column=1, value=f"\u52e4\u6020\u96c6\u8a08\u8868\u3000{fac_name}\u3000{label}").font = _F(bold=True, size=14)
         row += 2
         # pay-leave-rows-v1: 休暇区分の列をいちばん右に足す
+        # pay-verify-v1 : 途中退出・在席をいちばん右に足す（CSVと同じ並び）
         cols = ["\u8077\u54e1\u540d", "\u65e5\u4ed8", "\u66dc\u65e5", "\u51fa\u52e4", "\u9000\u52e4", "\u4f11\u61a9(\u5206)", "\u5b9f\u50cd", "\u6253\u523b\u7570\u5e38",
-                "\u4f11\u6687\u533a\u5206"]
+                "\u4f11\u6687\u533a\u5206", "\u9014\u4e2d\u9000\u51fa(\u5206)", "\u5728\u5e2d(\u5206)"]
         for s in staff:
             ws.cell(row=row, column=1, value=f'{s["name"]}').font = bold
             ws.cell(row=row, column=7, value=f'\u5408\u8a08 {_tc_fmt_hm(s["total_minutes"])}').font = bold
+            # pay-verify-v1 : 合計に入っていない日があることを、はっきり書く。
+            if s.get("incomplete_days"):
+                _wc = ws.cell(row=row, column=8,
+                              value=f'\u6253\u523b\u7570\u5e38 {s["incomplete_days"]}\u65e5'
+                                    f'\uff08\u5b9f\u50cd\u306f\u5408\u8a08\u306b\u5165\u3063\u3066\u3044\u307e\u305b\u3093\uff09')
+                _wc.font = _F(bold=True, color="C0392B")
             row += 1
             for ci, cn in enumerate(cols, start=1):
                 c = ws.cell(row=row, column=ci, value=cn)
@@ -23396,19 +23497,26 @@ def pay_export_simple_excel():
                     # pay-leave-rows-v1: 打刻のない休みの日。時刻の欄は空のままにする。
                     pass
                 else:
-                    ws.cell(row=row, column=4, value=_tc_fmt_time_jst(d["in"]))
-                    ws.cell(row=row, column=5, value=_tc_fmt_time_jst(d["out"]))
+                    # pay-verify-v1 : 秒まで出す
+                    ws.cell(row=row, column=4, value=_tc_fmt_time_jst_sec(d["in"]))
+                    ws.cell(row=row, column=5, value=_tc_fmt_time_jst_sec(d["out"]))
                     if d["incomplete"]:
-                        cc = ws.cell(row=row, column=8, value="\u26a0 " + "/".join(d.get("flags") or []))
+                        cc = ws.cell(row=row, column=8,
+                                     value="\u26a0\u5408\u8a08\u306b\u5165\u3063\u3066\u3044\u307e\u305b\u3093 / "
+                                           + "/".join(d.get("flags") or []))
                         cc.font = _F(color="C0392B")
                     else:
                         ws.cell(row=row, column=6, value=d.get("break_min", 0))
                         ws.cell(row=row, column=7, value=_tc_fmt_hm(d["minutes"]))
+                        # pay-verify-v1 : 途中退出・在席
+                        ws.cell(row=row, column=10, value=d.get("gap_min", 0))
+                        ws.cell(row=row, column=11, value=d.get("stay_min", 0))
                 if _lv:
                     ws.cell(row=row, column=9, value=_lv).font = _F(color="C0392B")
                 row += 1
             row += 1
-        for col, wd in zip("ABCDEFGHI", [16, 12, 6, 8, 8, 10, 12, 24, 10]):
+        # pay-verify-v1 : 足した2列の幅も見る（秒が入るので出勤・退勤も広げる）
+        for col, wd in zip("ABCDEFGHIJK", [16, 12, 6, 10, 10, 10, 12, 30, 10, 12, 10]):
             ws.column_dimensions[col].width = wd
         buf = _pay_io.BytesIO()
         wb.save(buf)
