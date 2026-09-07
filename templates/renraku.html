@@ -1073,8 +1073,8 @@ async function rkLineOpen(){
       body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE})}).then(r=>r.json());
     if(d.status!=='success'){ if(recEl) recEl.textContent=''; if(msg){msg.style.color='#d93025';msg.textContent=d.message||'取得失敗';} return; }
     if(txtEl) txtEl.value=d.text||'';
-    /* video-renraku-ui-v1 / renraku-line-vis-media-v1 :
-       ★一緒に送るもの・送らないものを、押す前にまとめて見せる。 */
+    /* video-renraku-ui-v1 / renraku-line-vis-media-v1 / renraku-line-vis-media-v2 :
+       ★一緒に送るもの・送らないものを、押す前に【両方】見せる。 */
     if(msg){
       const _w=[];
       if(d.photo_hidden) _w.push('この利用者は「写真」が表示項目でオフのため、写真は送りません');
@@ -1084,8 +1084,23 @@ async function rkLineOpen(){
       const _n=[];
       if(d.photo_count>0) _n.push('写真 '+d.photo_count+'枚');
       if(d.video_count>0) _n.push('動画 '+d.video_count+'本');
-      if(_w.length){ msg.style.color='#b06000'; msg.textContent=_w.join('。')+'。'; }
-      else if(_n.length){ msg.style.color='#5f6368'; msg.textContent='文章と'+_n.join('・')+'を一緒に送ります。'; }
+      /* renraku-line-vis-media-v2 :
+         ★送るものと送らないものは別の話。**両方出す。**
+           v1 は送らないものがあると送るものを消していたので、
+           「動画は送りません」だけが出て、写真が送られることが分からなかった。
+         ★送るものを上、送らないものを下に置く。 */
+      const _ln=[];
+      if(_n.length){
+        _ln.push('<span style="color:#5f6368;">文章と'+rkEsc(_n.join('・'))+'を一緒に送ります。</span>');
+      } else if(_w.length){
+        /* 送るものが無くても、文章は送られる。黙っていると全部止まったと思わせる。 */
+        _ln.push('<span style="color:#5f6368;">文章だけを送ります。</span>');
+      }
+      if(_w.length){
+        _ln.push('<span style="color:#b06000;font-weight:700;">'+rkEsc(_w.join('。'))+'。</span>');
+      }
+      msg.style.color='';   /* 色は行ごとに付けるので、前の色を残さない */
+      msg.innerHTML=_ln.join('<br>');
     }
     if(recEl){
       if(d.recipient_count>0){
