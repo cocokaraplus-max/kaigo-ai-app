@@ -82,6 +82,30 @@
   padding:18px 12px; cursor:pointer; font-weight:800; font-size:0.86rem; font-family:inherit; }
 .rk-photo-zone .material-symbols-outlined { font-size:28px; }
 .rk-photo-zone small { color:#7c8794; font-weight:600; font-size:0.74rem; }
+/* video-renraku-ui-v1 : 動画。見た目は写真とそろえる（迷わせない） */
+.rk-video-zone { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
+  width:100%; border:2px dashed #a8c0e8; border-radius:11px; background:#f7faff; color:#1a73e8;
+  padding:18px 12px; cursor:pointer; font-weight:800; font-size:0.86rem; font-family:inherit; }
+.rk-video-zone .material-symbols-outlined { font-size:28px; }
+.rk-video-zone small { color:#7c8794; font-weight:600; font-size:0.74rem; }
+.rk-video-add { display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; color:#1a73e8;
+  background:#e8f0fe; border:1.5px solid #a8c0e8; border-radius:9px; padding:8px 13px;
+  cursor:pointer; font-weight:800; font-family:inherit; }
+.rk-video-thumb { position:relative; width:104px; height:84px; border-radius:8px; overflow:hidden;
+  border:1px solid #e0e0e0; background:#233028; }
+.rk-video-thumb img { width:100%; height:100%; object-fit:cover; cursor:pointer; }
+.rk-video-thumb .noimg { width:100%; height:100%; display:flex; align-items:center; justify-content:center;
+  color:#cfd8dc; font-size:26px; cursor:pointer; }
+.rk-video-thumb .play { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:30px; height:30px; border-radius:50%; background:rgba(0,0,0,0.55); color:#fff;
+  display:flex; align-items:center; justify-content:center; pointer-events:none; }
+.rk-video-thumb .play .material-symbols-outlined { font-size:19px; }
+.rk-video-thumb .del { position:absolute; top:2px; right:2px; width:20px; height:20px; border:none;
+  border-radius:50%; background:rgba(0,0,0,0.6); color:#fff; font-size:13px; line-height:20px;
+  cursor:pointer; padding:0; }
+/* ★LINEに送れないものは、押す前に分かるようにする（黙って落とさない） */
+.rk-video-thumb .noline { position:absolute; left:0; bottom:0; right:0; background:rgba(197,34,31,0.88);
+  color:#fff; font-size:0.62rem; font-weight:700; text-align:center; padding:1px 0; }
 .rk-photo-add { display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; color:#1a73e8;
   background:#e8f0fe; border:1.5px solid #a8c0e8; border-radius:9px; padding:8px 13px;
   cursor:pointer; font-weight:800; font-family:inherit; }
@@ -243,6 +267,26 @@
       </div>
     </div>
 
+    <!-- video-renraku-ui-v1 : 動画。写真のすぐ下に置く -->
+    <div class="rk-section" id="rk-sec-video">
+      <div class="rk-section-title" style="justify-content:space-between;display:flex;">
+        <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">movie</span>動画</span>
+        <label class="rk-toggle rk-toggle-mini"><input type="checkbox" data-vis="video_urls" onchange="rkToggleVisible('video_urls',this.checked)"><span class="rk-slider"></span></label>
+      </div>
+      <div class="rk-field-body" data-bodyfor="video_urls">
+        <div id="rk-video-thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;"></div>
+        <input type="file" id="rk-video-input" accept="video/*" style="display:none;" onchange="rkVideoSelected(this)">
+        <button type="button" class="rk-video-zone" id="rk-video-zone" onclick="rkVideoPick()">
+          <span class="material-symbols-outlined">videocam</span>
+          <span>動画を追加</span>
+          <small>1本ずつ・20MBまで（およそ15〜25秒）</small></button>
+        <button type="button" class="rk-video-add" id="rk-video-add-btn" onclick="rkVideoPick()" style="display:none;">
+          <span class="material-symbols-outlined" style="font-size:17px;">videocam</span>動画を追加</button>
+        <span id="rk-video-count" style="margin-left:8px;font-size:0.82rem;color:#5f6368;"></span>
+        <div id="rk-video-status" style="font-size:0.85rem;color:#5f6368;margin-top:6px;min-height:18px;"></div>
+      </div>
+    </div>
+
     <div class="rk-section" id="rk-sec-next">
       <div class="rk-section-title" style="justify-content:space-between;display:flex;">
         <span style="display:flex;align-items:center;gap:6px;"><span class="material-symbols-outlined">event</span>次回利用日</span>
@@ -304,9 +348,13 @@ const RK_DYN_FIELDS = [
   {key:'rec',       label:'レク・活動', type:'text', placeholder:'例：午後 体操・ぬり絵'},
   {key:'places',    label:'行った場所', type:'places'},
 ];
-const RK_ALL_FIELDS = RK_DYN_FIELDS.map(f=>[f.key,f.label]).concat([['special_note','特記事項'],['family_message','ご家族へのメッセージ'],['image_urls','写真'],['next_visit','次回利用日']]);  /* renraku-photo-ui-v1 */
+const RK_ALL_FIELDS = RK_DYN_FIELDS.map(f=>[f.key,f.label]).concat([['special_note','特記事項'],['family_message','ご家族へのメッセージ'],['image_urls','写真'],['video_urls','動画'],['next_visit','次回利用日']]);  /* video-renraku-ui-v1 */  /* renraku-photo-ui-v1 */
 let RK_DATE='', RK_PATIENT=null, RK_ITEMS={}, RK_VISIBLE={}, RK_FACILITY_VIS={}, RK_AI_ENABLED=false;
 let RK_IMAGES=[];  /* renraku-photo-ui-v1 : 写真公開URL配列 */
+/* video-renraku-ui-v1 : 動画。[{url, poster, ext}] の配列。
+   ★写真(文字列の配列)と形が違う。LINEにはプレビュー画像が要るので、対で持つ。 */
+let RK_VIDEOS=[];
+const RK_VIDEO_MAX = 20 * 1024 * 1024;   /* サーバーの VIDEO_MAX_BYTES と同じ値 */
 let RK_LIST=[];  // renraku-print-link-v1
 let RK_TRAIN=[], RK_PLACES=[];
 /* renraku-shared-ui-v1 : 全利用者様の共通入力欄 */
@@ -669,6 +717,12 @@ function rkFillForm(note){
   if(gv('rk-next')) gv('rk-next').value=(note&&note.next_visit)||'';
   RK_IMAGES=(note&&Array.isArray(note.image_urls))?note.image_urls.slice():[];  /* renraku-photo-ui-v1 */
   rkRenderPhotos();
+  /* video-renraku-ui-v1 : 動画は items の中。こわれた値でも落ちないように選り分ける。 */
+  RK_VIDEOS=(RK_ITEMS.video_urls&&Array.isArray(RK_ITEMS.video_urls))
+    ? RK_ITEMS.video_urls.filter(function(v){ return v&&typeof v==='object'&&v.url; })
+        .map(function(v){ return {url:v.url, poster:v.poster||'', ext:v.ext||''}; })
+    : [];
+  rkRenderVideos();
   RK_TRAIN=(RK_ITEMS.training_details&&Array.isArray(RK_ITEMS.training_details))?RK_ITEMS.training_details.map(function(t){return {name:t.name||'',minutes:t.minutes||'',memo:t.memo||''};}):[];
   RK_PLACES=(RK_ITEMS.places&&Array.isArray(RK_ITEMS.places))?RK_ITEMS.places.slice():[];
   /* renraku-shared-ui-v1 : どちらを使うか。
@@ -727,6 +781,127 @@ function rkPhotoPick(){
   if(el) el.click();
 }
 function rkRemovePhoto(i){ RK_IMAGES.splice(i,1); rkRenderPhotos(); }
+
+/* ===== video-renraku-ui-v1 : 動画 ===== */
+
+/* LINEに送れるか（mp4 とプレビュー画像がそろっているか）。
+   ★サーバーの _line_video_messages と同じ決まり。ここがずれると画面と結果が食い違う。 */
+function rkVideoOkForLine(v){
+  var u=String((v&&v.url)||'').toLowerCase();
+  return (u.endsWith('.mp4')||u.endsWith('.m4v')) && !!(v&&v.poster);
+}
+
+function rkRenderVideos(){
+  var wrap=document.getElementById('rk-video-thumbs');
+  if(wrap){
+    wrap.innerHTML=(RK_VIDEOS||[]).map(function(v,i){
+      var img = v.poster
+        ? '<img src="'+rkEsc(v.poster)+'" onclick="window.open(\''+rkEsc(v.url)+'\',\'_blank\')">'
+        : '<div class="noimg" onclick="window.open(\''+rkEsc(v.url)+'\',\'_blank\')"><span class="material-symbols-outlined">movie</span></div>';
+      /* ★LINEに送れないものは札で見せる。押してから知るのでは遅い。 */
+      var bad = rkVideoOkForLine(v) ? '' : '<div class="noline">LINE×</div>';
+      return '<div class="rk-video-thumb">'+img
+        +'<div class="play"><span class="material-symbols-outlined">play_arrow</span></div>'
+        +bad
+        +'<button type="button" class="del" onclick="rkRemoveVideo('+i+')" title="削除">×</button></div>';
+    }).join('');
+  }
+  var n=(RK_VIDEOS||[]).length;
+  var zone=document.getElementById('rk-video-zone');
+  var add=document.getElementById('rk-video-add-btn');
+  var cnt=document.getElementById('rk-video-count');
+  if(zone) zone.style.display=n?'none':'flex';
+  if(add) add.style.display=n?'inline-flex':'none';
+  if(cnt) cnt.textContent=n?(n+'本'):'';
+}
+
+function rkRemoveVideo(i){ RK_VIDEOS.splice(i,1); rkRenderVideos(); }
+
+function rkVideoPick(){
+  var el=document.getElementById('rk-video-input');
+  if(el) el.click();
+}
+
+/* 1コマ目を切り出す。★できなくても null を返すだけ（動画は保存する）。 */
+function rkVideoPoster(file){
+  return new Promise(function(resolve){
+    var done=false, url=null, v=null;
+    var fin=function(b){
+      if(done) return; done=true;
+      try{ if(url) URL.revokeObjectURL(url); }catch(e){}
+      resolve(b||null);
+    };
+    try{
+      url=URL.createObjectURL(file);
+      v=document.createElement('video');
+      v.preload='metadata'; v.muted=true; v.playsInline=true;
+      v.setAttribute('playsinline','');
+      var draw=function(){
+        try{
+          var w=v.videoWidth||0, h=v.videoHeight||0;
+          if(!w||!h){ fin(null); return; }
+          var m=Math.min(1, 480/Math.max(w,h));
+          var c=document.createElement('canvas');
+          c.width=Math.round(w*m); c.height=Math.round(h*m);
+          c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+          c.toBlob(function(b){ fin(b); }, 'image/jpeg', 0.8);
+        }catch(e){ fin(null); }
+      };
+      v.onloadedmetadata=function(){
+        /* ★0秒ちょうどは真っ黒なことがあるので、少しだけ進める */
+        try{ v.currentTime=Math.min(0.2,(v.duration||1)/4); }catch(e){ draw(); }
+      };
+      v.onseeked=draw;
+      v.onloadeddata=function(){ if(v.currentTime>0) draw(); };
+      v.onerror=function(){ fin(null); };
+      /* ★待ちすぎない。作れなくても先へ進む。 */
+      setTimeout(function(){ fin(null); }, 8000);
+      v.src=url;
+    }catch(e){ fin(null); }
+  });
+}
+
+async function rkVideoSelected(input){
+  var st=document.getElementById('rk-video-status');
+  var file=(input&&input.files&&input.files[0])||null;
+  if(!file){ return; }
+  try{
+    /* ★上げる前に大きさを見る。上げてから断られると待ち時間が丸ごと無駄になる。 */
+    if(file.size>RK_VIDEO_MAX){
+      if(st){ st.style.color='#d93025';
+        st.textContent='この動画は'+(file.size/1024/1024).toFixed(1)+'MBです。20MBまでにしてください（短く撮り直すか、トリミングしてください）'; }
+      return;
+    }
+    if(st){ st.style.color='#5f6368'; st.textContent='準備中...'; }
+    var poster=await rkVideoPoster(file);
+    if(st) st.textContent='アップロード中...';
+    var fd=new FormData();
+    fd.append('video', file);
+    if(poster) fd.append('poster', new File([poster],'poster.jpg',{type:'image/jpeg'}));
+    var d=await fetch('/api/upload_video',{method:'POST',body:fd}).then(r=>r.json());
+    if(d.status!=='success'){
+      if(st){ st.style.color='#d93025'; st.textContent='アップロードに失敗しました：'+(d.message||'不明'); }
+      return;
+    }
+    RK_VIDEOS.push({url:d.url, poster:d.poster||'', ext:d.ext||''});
+    rkRenderVideos();
+    if(st){
+      /* ★実際の形を出す。現場の端末が何を作るのか、ここで分かる。 */
+      if(d.is_mp4 && d.poster){
+        st.style.color='#188038'; st.textContent='追加しました（'+(d.ext||'')+'）';
+      }else if(!d.is_mp4){
+        st.style.color='#b06000';
+        st.textContent='追加しました（'+(d.ext||'')+'）。この形はLINEには送れません。画面と記録には残ります。';
+      }else{
+        st.style.color='#b06000';
+        st.textContent='追加しました。1コマ目の画像が作れなかったので、LINEには送れません。';
+      }
+    }
+  }catch(e){
+    console.error('rkVideoSelected',e);
+    if(st){ st.style.color='#d93025'; st.textContent='通信エラー'; }
+  }finally{ if(input) input.value=''; }
+}
 async function rkPhotoSelected(input){
   if(!input.files||!input.files.length) return;
   var statusEl=document.getElementById('rk-photo-status');
@@ -769,6 +944,7 @@ async function rkSave(){
   if(Object.keys(_usOut).length) RK_ITEMS.use_shared=_usOut;
   const payload={ patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, items:RK_ITEMS,
     special_note:gv('rk-special'), family_message:gv('rk-family'), next_visit:gv('rk-next'), image_urls:RK_IMAGES };  /* renraku-photo-ui-v1 */
+  RK_ITEMS.video_urls=RK_VIDEOS;  /* video-renraku-ui-v1 : 動画は items の中に入れる（列は増やさない） */
   try{
     const res=await fetch('/api/renraku/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     const data=await res.json();
@@ -871,6 +1047,11 @@ async function rkLineOpen(){
       body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE})}).then(r=>r.json());
     if(d.status!=='success'){ if(recEl) recEl.textContent=''; if(msg){msg.style.color='#d93025';msg.textContent=d.message||'取得失敗';} return; }
     if(txtEl) txtEl.value=d.text||'';
+    /* video-renraku-ui-v1 : 送れない動画があることを、押す前に見せる */
+    if(msg && d.video_skipped && d.video_skipped.length){
+      msg.style.color='#b06000';
+      msg.textContent='動画 '+d.video_skipped.length+'本はLINEに送れません（mp4でない、または1コマ目の画像がありません）。文章と写真は送られます。';
+    }
     if(recEl){
       if(d.recipient_count>0){
         const names=(d.recipients||[]).map(r=>rkEsc(r.display_name)+'（…'+rkEsc(r.user_id_tail)+'）').join('、');
@@ -901,7 +1082,7 @@ async function rkLineSend(){
   if(msg){msg.style.color='#5f6368';msg.textContent='送信中...';}
   try{
     const d=await fetch('/api/renraku/line_send',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text, image_urls:RK_IMAGES})}).then(r=>r.json());  /* renraku-line-send-images-v1 */
+      body:JSON.stringify({patient_id:RK_PATIENT.patient_id, note_date:RK_DATE, text:text, image_urls:RK_IMAGES, video_urls:RK_VIDEOS})}).then(r=>r.json());  /* renraku-line-send-images-v1 / video-renraku-ui-v1 */
     if(d.status==='success'){
       if(msg){msg.style.color='#188038';msg.textContent='送信しました（成功 '+d.sent+'件'+(d.failed?' / 失敗 '+d.failed+'件':'')+'）';}
       setTimeout(rkLineClose, 1500);
