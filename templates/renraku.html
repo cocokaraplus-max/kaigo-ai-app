@@ -74,6 +74,17 @@
 .rk-place-row .rk-input { flex:1; }
 .rk-place-del { background:none; border:none; color:#c5221f; cursor:pointer; font-size:1.1rem; padding:0 4px; flex-shrink:0; }
 /* AI生成ボタン */
+/* renraku-photo-btn-v1 : 写真を追加
+   ★空のときは大きな枠、入ったら小さなボタン。
+     色だけに頼らず、枠と字で分かるようにしてある（白黒でも読める）。 */
+.rk-photo-zone { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
+  width:100%; border:2px dashed #a8c0e8; border-radius:11px; background:#f7faff; color:#1a73e8;
+  padding:18px 12px; cursor:pointer; font-weight:800; font-size:0.86rem; font-family:inherit; }
+.rk-photo-zone .material-symbols-outlined { font-size:28px; }
+.rk-photo-zone small { color:#7c8794; font-weight:600; font-size:0.74rem; }
+.rk-photo-add { display:inline-flex; align-items:center; gap:6px; font-size:0.82rem; color:#1a73e8;
+  background:#e8f0fe; border:1.5px solid #a8c0e8; border-radius:9px; padding:8px 13px;
+  cursor:pointer; font-weight:800; font-family:inherit; }
 .rk-ai-btn { display:inline-flex; align-items:center; gap:5px; font-size:0.8rem; color:#1a73e8; background:#e8f0fe; border:none; border-radius:8px; padding:8px 14px; cursor:pointer; margin-bottom:8px; font-weight:700; }
 .rk-ai-btn:disabled { opacity:0.6; }
 .rk-ai-note { font-size:0.68rem; color:#9aa0a6; margin-bottom:8px; line-height:1.5; }
@@ -216,8 +227,18 @@
       <div class="rk-field-body" data-bodyfor="image_urls">
         <div id="rk-photo-thumbs" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;"></div>
         <input type="file" id="rk-photo-input" accept="image/*" multiple style="display:none;" onchange="rkPhotoSelected(this)">
-        <button type="button" class="rk-ai-btn" id="rk-photo-add-btn" onclick="document.getElementById('rk-photo-input').click()" style="background:#1a73e8;">
-          <span class="material-symbols-outlined" style="font-size:16px;">add_a_photo</span>写真を追加</button>
+        <!-- renraku-photo-btn-v1 :
+             ★前は「青い字」の class に「青い背景」を上書きしていたので、
+               青地に青い字になり、何のボタンか読めなかった。
+             ★写真が無いときは大きな枠、入ったら小さなボタンに変える。
+               写真は入れ忘れやすいので、空のときにいちばん目に入るように。 -->
+        <button type="button" class="rk-photo-zone" id="rk-photo-zone" onclick="rkPhotoPick()">
+          <span class="material-symbols-outlined">add_a_photo</span>
+          <span>写真を追加</span>
+          <small>タップして選びます（何枚でも）</small></button>
+        <button type="button" class="rk-photo-add" id="rk-photo-add-btn" onclick="rkPhotoPick()" style="display:none;">
+          <span class="material-symbols-outlined" style="font-size:17px;">add_a_photo</span>写真を追加</button>
+        <span id="rk-photo-count" style="margin-left:8px;font-size:0.82rem;color:#5f6368;"></span>
         <span id="rk-photo-status" style="margin-left:8px;font-size:0.85rem;color:#5f6368;"></span>
       </div>
     </div>
@@ -691,6 +712,19 @@ function rkRenderPhotos(){
       +'<button type="button" onclick="rkRemovePhoto('+i+')" style="position:absolute;top:2px;right:2px;width:20px;height:20px;border:none;border-radius:50%;background:rgba(0,0,0,0.6);color:#fff;font-size:13px;line-height:20px;cursor:pointer;padding:0;">×</button>'
       +'</div>';
   }).join('');
+  /* renraku-photo-btn-v1 : 0枚なら大きな枠、1枚以上なら小さなボタン＋枚数 */
+  var _n=(RK_IMAGES||[]).length;
+  var _zone=document.getElementById('rk-photo-zone');
+  var _add=document.getElementById('rk-photo-add-btn');
+  var _cnt=document.getElementById('rk-photo-count');
+  if(_zone) _zone.style.display=_n?'none':'flex';
+  if(_add) _add.style.display=_n?'inline-flex':'none';
+  if(_cnt) _cnt.textContent=_n?(_n+'枚'):'';
+}
+/* renraku-photo-btn-v1 : 押す所は2つあるので、開き方は1か所にまとめる。 */
+function rkPhotoPick(){
+  var el=document.getElementById('rk-photo-input');
+  if(el) el.click();
 }
 function rkRemovePhoto(i){ RK_IMAGES.splice(i,1); rkRenderPhotos(); }
 async function rkPhotoSelected(input){
