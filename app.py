@@ -594,6 +594,38 @@ def _line_image_messages(image_urls):
     return msgs
 
 
+def _line_video_messages(video_items):
+    """動画からLINEの videoMessage を作る。video-srv-v1
+
+    返り: (messages, skipped)
+      skipped = 送れなかった理由の一覧（画面に出して、黙って落とさない）
+
+    ★LINEの動画メッセージは【動画のURL】と【プレビュー画像のURL】の両方が要る。
+    ★mp4 以外（iPhoneの .mov など）は送れない。勝手に変換もしない。
+      送らなかったことを必ず返して、現場が気づけるようにする。
+    """
+    msgs = []
+    skipped = []
+    if not isinstance(video_items, list):
+        #  ★配列でないものが来ても落ちない。呼ぶ側の守りに頼らない。
+        video_items = []
+    for v in video_items:
+        if not isinstance(v, dict):
+            continue
+        u = str(v.get('url') or '')
+        p = str(v.get('poster') or '')
+        if not u.startswith('https://'):
+            continue
+        if not u.lower().endswith(('.mp4', '.m4v')):
+            skipped.append('mp4ではない動画が1件（LINEには送れません）')
+            continue
+        if not p.startswith('https://'):
+            skipped.append('プレビュー画像が無い動画が1件（LINEには送れません）')
+            continue
+        msgs.append({'type': 'video', 'originalContentUrl': u, 'previewImageUrl': p})
+    return msgs, skipped
+
+
 def _line_push_chunked(token, to_user_id, messages):
     """messages を 5件ずつに分割して順に push。全部成功で True。renraku-line-photo-v1"""
     ok = True
@@ -898,12 +930,20 @@ def api_renraku_line_preview():
         recip_view = [{'display_name': r.get('display_name') or '(名前未取得)',
                         'user_id_tail': (r.get('line_user_id') or '')[-6:]} for r in recipients]
         _photo_count = len([u for u in ((note or {}).get('image_urls') or []) if u])  # renraku-line-photo-v1
+        # video-srv-v1 : 動画の件数と、送れないものの件数を先に見せる。
+        #   ★押してから「送れませんでした」と言われるより、押す前に分かるほうがよい。
+        _vitems = ((note or {}).get('items') or {}).get('video_urls') or []
+        _vmsgs2, _vskip2 = _line_video_messages(_vitems if isinstance(_vitems, list) else [])
+        _video_count = len(_vmsgs2)
+        _video_skipped = _vskip2
         return jsonify({'status': 'success', 'text': text,
                         'patient_name': pname,
                         'recipient_count': len(recipients),
                         'recipients': recip_view,
                         'recipient_error': _recip_error,   # renraku-line-items-v2
-                        'photo_count': _photo_count})
+                        'photo_count': _photo_count,
+                        'video_count': _video_count,          # video-srv-v1
+                        'video_skipped': _video_skipped})     # video-srv-v1
     except Exception as e:
         print(f'api_renraku_line_preview error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -920,6 +960,7 @@ def api_renraku_line_send():
         note_date = data.get('note_date')
         text = (data.get('text') or '').strip()
         _image_urls = data.get('image_urls') or []  # renraku-line-photo-v1
+        _video_items = data.get('video_urls') or []  # video-srv-v1
 
         if not patient_id or not note_date or not text:
             return jsonify({'status': 'error', 'message': 'patient_id / note_date / text が必要です'}), 400
@@ -937,6 +978,14 @@ def api_renraku_line_send():
             messages += _line_image_messages(_image_urls)  # renraku-line-photo-v1
         except Exception as _img_e:
             print(f'line image msg build error: {_img_e}', flush=True)
+        # video-srv-v1 : 動画。mp4 とプレビュー画像がそろっているものだけ送る。
+        #   ★送れなかったものは skipped に入れて返す。黙って落とさない。
+        _vid_skipped = []
+        try:
+            _vmsgs, _vid_skipped = _line_video_messages(_video_items)
+            messages += _vmsgs
+        except Exception as _vid_e:
+            print(f'line video msg build error: {_vid_e}', flush=True)
         sent = 0
         failed = 0
         for r in recipients:
@@ -948,7 +997,8 @@ def api_renraku_line_send():
             else:
                 failed += 1
         return jsonify({'status': 'success', 'sent': sent, 'failed': failed,
-                        'recipient_count': len(recipients)})
+                        'recipient_count': len(recipients),
+                        'video_skipped': _vid_skipped})   # video-srv-v1
     except Exception as e:
         print(f'api_renraku_line_send error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -974,6 +1024,34 @@ def api_renraku_upload_photo():
         return jsonify({'status': 'success', 'urls': urls or []})
     except Exception as e:
         print(f'api_renraku_upload_photo error: {e}', flush=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ===== video-srv-v1 : 動画アップロード（連絡帳と掲示板で共通に使う） =====
+
+@app.route('/api/upload_video', methods=['POST'])  # video-srv-v1
+@login_required
+def api_upload_video():
+    """動画を1本受け取って置く。プレビュー画像があれば一緒に置く。
+
+    ★上限は 20MB（utils.VIDEO_MAX_BYTES）。Cloud Run の 32MiB より内側に取ってある。
+    ★返りの ext に【実際の形】を入れる。現場の端末が何を作るのか分かるように。
+    """
+    try:
+        f_code = session['f_code']
+        supabase = get_supabase()
+        video = request.files.get('video')
+        if not video or not video.filename:
+            return jsonify({'status': 'error', 'message': '動画がありません'}), 400
+        poster = request.files.get('poster')
+        from utils import upload_video_to_supabase
+        info, err = upload_video_to_supabase(supabase, video, poster, f_code)
+        if err:
+            return jsonify({'status': 'error', 'message': err}), 400
+        return jsonify({'status': 'success', 'url': info['url'], 'poster': info['poster'],
+                        'ext': info['ext'], 'size': info['size'], 'is_mp4': info['is_mp4']})
+    except Exception as e:
+        print(f'api_upload_video error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
@@ -17401,6 +17479,20 @@ def api_board_create_post():
         if audio and audio.filename:
             from utils import upload_audio_to_supabase
             audio_url = upload_audio_to_supabase(supabase, audio.read(), audio.filename, f_code)
+        # board-video-v1 : 動画はすでに上がっている（/api/upload_video）。
+        #   ★ここでは【URLだけ】を受け取る。投稿と一緒にファイルを運ばない。
+        #     一緒に運ぶと写真・PDFと合わせて Cloud Run の 32MiB に当たりやすい。
+        video_urls = []
+        try:
+            _vraw = _json.loads(request.form.get("video_urls", "[]"))
+            if isinstance(_vraw, list):
+                for _v in _vraw:
+                    if isinstance(_v, dict) and str(_v.get("url") or "").startswith("https://"):
+                        video_urls.append({"url": _v.get("url"),
+                                           "poster": _v.get("poster") or "",
+                                           "ext": _v.get("ext") or ""})
+        except Exception as _ve:
+            print(f"[board] video_urls parse error: {_ve}", flush=True)
         pdf_url = ""
         pdf_file = request.files.get("pdf")
         if pdf_file and pdf_file.filename:
@@ -17430,6 +17522,7 @@ def api_board_create_post():
             "facility_code": f_code, "staff_name": my_name,
             "content": content, "image_urls": image_urls,
             "file_urls": ([pdf_url] if pdf_url else []), "audio_url": audio_url,
+            "video_urls": video_urls,   # board-video-v1
             "mention_names": mentions, "patient_names": patient_names,
             "is_pinned": False,
             "is_private": is_private,
@@ -17441,7 +17534,9 @@ def api_board_create_post():
         #   リクエスト本文の取りこぼし（ServiceWorkerによるPOST再送でbodyが消える等）。
         #   そのまま保存すると「投稿者名だけ・未分類」の空投稿が掲示板に並び、
         #   現場は投稿できたつもりで内容が消える。保存せずエラーを返す。
-        if (not content) and (not image_urls) and (not audio_url) and (not pdf_url):
+        # board-video-v1 : ★動画だけの投稿も中身がある。空あつかいにしない。
+        if (not content) and (not image_urls) and (not audio_url) and (not pdf_url) \
+                and (not video_urls):
             print(f"[board] empty post blocked f_code={f_code} staff={my_name} "
                   f"ct={request.content_type} len={request.content_length}", flush=True)
             return jsonify({

@@ -55,6 +55,75 @@ def get_secret(key):
 # ==========================================
 # 写真をSupabaseストレージに保存
 # ==========================================
+# ===== video-srv-v1 : 動画のアップロード =====
+#   ★写真と違って【作り直さない】。中身はそのまま置く。
+#     動画の作り直し(変換)はサーバーの仕事が重く、失敗の仕方も読みにくいため。
+
+VIDEO_MAX_BYTES = 20 * 1024 * 1024      # 20MB
+#   ★Cloud Run は HTTP/1 のとき 1リクエスト 32MiB まで。
+#     余裕をみて 20MB。スマホの動画でおよそ15〜25秒。
+VIDEO_EXT_OK = {
+    'mp4': 'video/mp4',
+    'm4v': 'video/mp4',
+    'mov': 'video/quicktime',           # ★iPhone。LINEには送れない
+}
+VIDEO_EXT_LINE = ('mp4', 'm4v')         # ★LINEの動画メッセージに送れる形
+
+
+def _video_ext_of(filename):
+    """ファイル名から拡張子を小文字で。無ければ ''。"""
+    name = (filename or '')
+    return name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+
+
+def upload_video_to_supabase(supabase, video_file, poster_file, f_code):
+    """動画を1本（あればプレビュー画像も）置いて、その情報を返す。video-srv-v1
+
+    返り: (info, error)
+      info  = {'url':.., 'poster':.., 'ext':.., 'size':.., 'is_mp4':bool} / None
+      error = 人が読める理由の文字列 / None
+
+    ★例外を投げない。呼ぶ側で必ず error を見ること。
+    """
+    try:
+        name = getattr(video_file, 'filename', '') or ''
+        ext = _video_ext_of(name)
+        if ext not in VIDEO_EXT_OK:
+            return None, '%s は受け取れない形です（mp4 か mov をお選びください）' % (name or '動画')
+        data = video_file.read()
+        size = len(data)
+        if size <= 0:
+            return None, '%s が空でした' % (name or '動画')
+        if size > VIDEO_MAX_BYTES:
+            return None, '%s は %.1fMB です。%dMB までにしてください' % (
+                name or '動画', size / 1024.0 / 1024.0, VIDEO_MAX_BYTES // 1024 // 1024)
+        path = "%s/video/%s.%s" % (f_code, uuid.uuid4(), ext)
+        supabase.storage.from_("case-photos").upload(
+            path=path, file=data,
+            file_options={"content-type": VIDEO_EXT_OK[ext]})
+        url = supabase.storage.from_("case-photos").get_public_url(path)
+
+        # プレビュー画像（LINEの動画メッセージに必須）。無くても動画は保存する。
+        poster = ''
+        if poster_file is not None and getattr(poster_file, 'filename', ''):
+            try:
+                pdata = poster_file.read()
+                if pdata:
+                    ppath = "%s/video/%s.jpg" % (f_code, uuid.uuid4())
+                    supabase.storage.from_("case-photos").upload(
+                        path=ppath, file=pdata,
+                        file_options={"content-type": "image/jpeg"})
+                    poster = supabase.storage.from_("case-photos").get_public_url(ppath)
+            except Exception as pe:
+                print("動画のプレビュー画像アップロードエラー: %s" % pe, flush=True)
+
+        return {'url': url, 'poster': poster, 'ext': ext, 'size': size,
+                'is_mp4': ext in VIDEO_EXT_LINE}, None
+    except Exception as e:
+        print("動画アップロードエラー: %s" % e, flush=True)
+        return None, '保存に失敗しました（%s）' % e
+
+
 def upload_images_to_supabase(supabase, imgs, f_code):
     image_urls = []
     for img_file in imgs:

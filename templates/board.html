@@ -1094,6 +1094,14 @@ body.modal-open .bottom-nav {
     </div>
     {% endif %}
 
+    <!-- board-video-v1 : 動画があることを一覧で分かるように -->
+    {% if post.video_urls %}
+    <div style="display:inline-flex;align-items:center;gap:4px;font-size:0.76rem;color:#1a73e8;background:#e8f0fe;border-radius:6px;padding:3px 8px;margin-top:6px;"
+         onclick="event.stopPropagation();showPostDetail({{ post.id }})">
+        <span class="material-symbols-outlined" style="font-size:15px;">movie</span>動画 {{ post.video_urls|length }}本
+    </div>
+    {% endif %}
+
     <!-- 音声(一覧ではチップのみ、プレイヤーは詳細モーダルで) -->
     {% if post.audio_url %}
     <span class="post-audio-chip" onclick="event.stopPropagation();showPostDetail({{ post.id }})">
@@ -1177,6 +1185,7 @@ body.modal-open .bottom-nav {
         <div class="post-detail-body" id="pd-body"></div>
         <div id="pd-patients-container"></div>
         <div id="pd-images-container"></div>
+        <div id="pd-videos-container"></div>  <!-- board-video-v1 -->
         <div id="pd-audio-container"></div>
         <div id="pd-file-container"></div>
         <div id="pd-reactions-container"></div>
@@ -1332,6 +1341,11 @@ body.modal-open .bottom-nav {
                 <span class="material-symbols-outlined">picture_as_pdf</span>
                 PDF
             </div>
+            <!-- board-video-v1 -->
+            <div class="attach-btn" id="video-attach-btn">
+                <span class="material-symbols-outlined">videocam</span>
+                動画
+            </div>
         </div>
         <div class="attach-preview" id="photo-preview"></div>
         <input type="file" id="photo-input" accept="image/*" multiple style="display:none">
@@ -1341,6 +1355,17 @@ body.modal-open .bottom-nav {
             <span id="audio-filename"></span>
         </div>
         <input type="file" id="pdf-input" accept=".pdf" style="display:none">
+        <!-- board-video-v1 : 選んだ時点で先に上げる。投稿ボタンでは上げない。 -->
+        <input type="file" id="video-input" accept="video/*" style="display:none">
+        <div id="video-preview" style="margin-bottom:10px;display:none;">
+            <div style="display:flex;align-items:center;gap:8px;font-size:0.8rem;color:#1a73e8;">
+                <span class="material-symbols-outlined" style="font-size:15px;">movie</span>
+                <span id="video-filename"></span>
+                <span id="video-warn" style="color:#c5221f;font-weight:700;display:none;">再生できない端末あり</span>
+                <span onclick="clearVideo()" style="margin-left:auto;cursor:pointer;color:#80868b;">✕</span>
+            </div>
+        </div>
+        <div id="video-status" style="font-size:0.8rem;color:#5f6368;margin-bottom:10px;min-height:16px;"></div>
         <div id="pdf-preview" style="font-size:0.8rem;color:#e53935;margin-bottom:10px;display:none;">
             <span class="material-symbols-outlined" style="font-size:14px;vertical-align:middle;">picture_as_pdf</span>
             <span id="pdf-filename"></span>
@@ -2280,6 +2305,7 @@ function closePostModal() {
     unlockBodyScroll();
     document.getElementById('post-textarea').value = '';
     selectedPhotos = []; selectedAudio = null; selectedPdf = null; selectedMentions = [];
+    clearVideo();   /* board-video-v1 */
     selectedPatients = [];
     document.getElementById('photo-preview').innerHTML = '';
     document.getElementById('audio-preview').style.display = 'none';
@@ -2438,6 +2464,100 @@ window.pdfNextPage=async function(id){ var st=window._pdfState&&window._pdfState
 
 // PDF添付
 var selectedPdf = null;
+/* ===== board-video-v1 : 動画 =====
+   ★選んだ時点で上げてしまい、ここには【上がったあとのURL】だけを持つ。
+     投稿ボタンを押したときに上げると、写真・PDFと1つの荷物になって
+     Cloud Run の 32MiB に当たりやすい。動画は別便で運ぶ。 */
+var uploadedVideos = [];
+var BOARD_VIDEO_MAX = 20 * 1024 * 1024;   /* サーバーの VIDEO_MAX_BYTES と同じ値 */
+
+function clearVideo() {
+    uploadedVideos = [];
+    document.getElementById('video-preview').style.display = 'none';
+    document.getElementById('video-status').textContent = '';
+}
+
+/* 1コマ目を切り出す。★できなくても null を返すだけ（動画は上げる）。 */
+function boardVideoPoster(file) {
+    return new Promise(function(resolve) {
+        var done = false, url = null, v = null;
+        var fin = function(b) {
+            if (done) return; done = true;
+            try { if (url) URL.revokeObjectURL(url); } catch(e) {}
+            resolve(b || null);
+        };
+        try {
+            url = URL.createObjectURL(file);
+            v = document.createElement('video');
+            v.preload = 'metadata'; v.muted = true; v.playsInline = true;
+            v.setAttribute('playsinline', '');
+            var draw = function() {
+                try {
+                    var w = v.videoWidth || 0, h = v.videoHeight || 0;
+                    if (!w || !h) { fin(null); return; }
+                    var m = Math.min(1, 480 / Math.max(w, h));
+                    var c = document.createElement('canvas');
+                    c.width = Math.round(w * m); c.height = Math.round(h * m);
+                    c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+                    c.toBlob(function(b) { fin(b); }, 'image/jpeg', 0.8);
+                } catch(e) { fin(null); }
+            };
+            v.onloadedmetadata = function() {
+                try { v.currentTime = Math.min(0.2, (v.duration || 1) / 4); } catch(e) { draw(); }
+            };
+            v.onseeked = draw;
+            v.onloadeddata = function() { if (v.currentTime > 0) draw(); };
+            v.onerror = function() { fin(null); };
+            setTimeout(function() { fin(null); }, 8000);   /* ★待ちすぎない */
+            v.src = url;
+        } catch(e) { fin(null); }
+    });
+}
+
+document.getElementById('video-attach-btn').addEventListener('click', function() {
+    document.getElementById('video-input').click();
+});
+document.getElementById('video-input').addEventListener('change', async function() {
+    var st = document.getElementById('video-status');
+    var file = this.files && this.files[0];
+    if (!file) return;
+    try {
+        /* ★上げる前に大きさを見る。上げてから断られると待ち時間が無駄になる。 */
+        if (file.size > BOARD_VIDEO_MAX) {
+            st.style.color = '#c5221f';
+            st.textContent = 'この動画は' + (file.size/1024/1024).toFixed(1)
+                + 'MBです。20MBまでにしてください（短く撮り直すか、トリミングしてください）';
+            return;
+        }
+        st.style.color = '#5f6368'; st.textContent = '準備中...';
+        var poster = await boardVideoPoster(file);
+        st.textContent = 'アップロード中...';
+        var fd = new FormData();
+        fd.append('video', file);
+        if (poster) fd.append('poster', new File([poster], 'poster.jpg', { type: 'image/jpeg' }));
+        var d = await fetch('/api/upload_video', { method: 'POST', body: fd }).then(function(r){ return r.json(); });
+        if (d.status !== 'success') {
+            st.style.color = '#c5221f';
+            st.textContent = 'アップロードに失敗しました: ' + (d.message || '不明');
+            return;
+        }
+        uploadedVideos = [{ url: d.url, poster: d.poster || '', ext: d.ext || '' }];
+        document.getElementById('video-filename').textContent = file.name;
+        /* ★掲示板はLINEに送らない。ここで気にするのは【他の職員の端末で映るか】。
+             mp4/m4v はどの端末でも映る。mov(iPhoneの既定)は Android や Windows で
+             映らないことがあるので、その場で伝える。 */
+        var _okEverywhere = (d.ext === 'mp4' || d.ext === 'm4v');
+        document.getElementById('video-warn').style.display = _okEverywhere ? 'none' : '';
+        document.getElementById('video-preview').style.display = 'block';
+        st.style.color = _okEverywhere ? '#188038' : '#b06000';
+        st.textContent = _okEverywhere
+            ? '動画を添付しました（' + (d.ext || '') + '）'
+            : '動画を添付しました（' + (d.ext || '') + '）'
+              + '※iPhone以外の端末では映らないことがあります';
+    } catch(e) {
+        st.style.color = '#c5221f'; st.textContent = '通信エラー';
+    } finally { this.value = ''; }
+});
 document.getElementById('pdf-attach-btn').addEventListener('click', function() {
     document.getElementById('pdf-input').click();
 });
@@ -2459,7 +2579,8 @@ document.getElementById('post-submit-btn').addEventListener('touchend', function
 
 async function submitPost() {
     var content = document.getElementById('post-textarea').value.trim();
-    if (!content && selectedPhotos.length === 0 && !selectedAudio) {
+    /* board-video-v1 : ★動画だけの投稿も中身がある。空あつかいにしない。 */
+    if (!content && selectedPhotos.length === 0 && !selectedAudio && uploadedVideos.length === 0) {
         alert('内容を入力してください'); return;
     }
     // board-empty-mention-fix-v1: 公開範囲が「メンションのみ」なのに宛先が空だと、
@@ -2481,6 +2602,8 @@ async function submitPost() {
         selectedPhotos.forEach(function(f) { formData.append('photos', f); });
         if (selectedAudio) formData.append('audio', selectedAudio);
         if (selectedPdf) formData.append('pdf', selectedPdf);
+        /* board-video-v1 : 動画はもう上がっているので、URLだけ渡す */
+        formData.append('video_urls', JSON.stringify(uploadedVideos));
 
         var res = await fetch('/api/board/create_post', { method: 'POST', body: formData });
         var data = await res.json();
@@ -3087,6 +3210,33 @@ window.showPostDetail = function(postId) {
         });
         imgsHtml += '</div>';
         imgContainer.innerHTML = imgsHtml;
+    }
+
+    // board-video-v1 : 動画（その場で再生できる）
+    var vidContainer = document.getElementById('pd-videos-container');
+    if (vidContainer) {
+        vidContainer.innerHTML = '';
+        var vids = Array.isArray(post.video_urls) ? post.video_urls : [];
+        //  ★中身を先に作る。1本も作れなければ枠ごと出さない（空白だけ残るのを防ぐ）
+        var vInner = '';
+        vids.forEach(function(v) {
+            if (!v || !v.url) return;
+            //  ★URLは属性に入れるので必ず逃がす
+            var u = String(v.url).replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+                      .replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            var p = String(v.poster || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;')
+                      .replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            vInner += '<video controls preload="metadata" playsinline'
+                  + (p ? ' poster="' + p + '"' : '')
+                  + ' style="width:100%;max-height:60vh;background:#000;border-radius:8px;">'
+                  + '<source src="' + u + '">'
+                  + '</video>';
+        });
+        if (vInner) {
+            vidContainer.innerHTML =
+                '<div style="padding:0 16px 12px;display:flex;flex-direction:column;gap:10px;">'
+                + vInner + '</div>';
+        }
     }
 
     // 音声(プレイヤー表示)
