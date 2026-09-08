@@ -27494,6 +27494,7 @@ def soge_build_week_keep(supabase, f_code, weekday, settings=None):  # soge-keep
 
     tdefs = dict((t["key"], t) for t in settings["trips"])
     n_out, n_in, n_left = 0, 0, 0
+    shorts = []                      # soge-keep-times-v1
 
     for trip in (week.get("trips") or []):
         tdef = tdefs.get(trip.get("trip_key"))
@@ -27564,18 +27565,43 @@ def soge_build_week_keep(supabase, f_code, weekday, settings=None):  # soge-keep
             used, n_wc = _soge_stops_used(v.get("stops"), spec)
             v["seats_used"] = used
             v["wheelchair_count"] = n_wc
-            # 顔ぶれか順番が変わっているので、時刻は保存時に引き直す
-            for s in (v.get("stops") or []):
-                # soge-plan-manual-v1: 手で入れた時刻は残す。
-                #   ★この処理は「新しく来る人を足して、来なくなった人を外す」もので、
-                #     すでにいる人の車は変わらない。ここで消すと、押すたびに入れ直しになる。
+
+            # soge-keep-times-v1: ここで測る。
+            #   ★前は「時刻は保存時に引き直す」として stale にしていた。
+            #     ところが保存は【自動の時刻を保存しない】決まり（_soge_plan_rows）。
+            #     だから引き直しは起きず、所要時間も待機も一生出てこなかった。
+            #   ★並びは触らない。保存済み／手で直した順のまま測る。
+            #     _soge_stops_of を通すと並べ直してしまうので、ここでは通さない。
+            _stops = v.get("stops") or []
+            _drive, _km, _err, _legs = _soge_drive_detail(supabase, f_code, geo, _stops)
+            if _drive is None:
+                _drive, _km, _legs = 0, 0.0, None   # 取れなければ時間の縛りは効かせない
+            _stop_m = _soge_stop_minutes(_stops, settings)
+            _pinf = {}
+            _planned = _soge_planned_times(trip.get("depart") or "", _stops, _drive,
+                                           settings, _legs,
+                                           trip.get("arrive") or "", _pinf)
+            for _i, s in enumerate(_stops):
+                # soge-plan-manual-v1: 手で入れた時刻は残す（自動で上書きしない）
                 if s.get("plan_manual"):
                     continue
-                s["planned_at"] = None
-            v["stale"] = True
-            v["minutes"] = None
-            v["distance_km"] = None
-            v["over_target"] = False
+                s["planned_at"] = _planned[_i] if _i < len(_planned) else None
+            if _pinf.get("short"):
+                # ★黙って前向きに戻さない。無理な便はここで見えるようにする。
+                shorts.append("%s の %s は 到着 %s に間に合いません。"
+                              "いまは出発時刻からの計算で出しています。"
+                              % (trip.get("trip_name") or "便",
+                                 v.get("vehicle_name") or "車",
+                                 trip.get("arrive") or ""))
+            _tgt, _maxm = _soge_trip_target(tdef, settings)   # soge-trip-target-v1
+            v["stale"] = False
+            v["minutes"] = _drive + _stop_m
+            v["drive_minutes"] = _drive
+            v["stop_minutes"] = _stop_m
+            v["distance_km"] = _km
+            v["over_target"] = (_drive + _stop_m) > _tgt
+            v["wait_minutes"] = _pinf.get("wait", 0)      # 逆算で空いた時間
+            v["plan_short"] = bool(_pinf.get("short"))
 
     warns = []
     if n_out:
@@ -27585,6 +27611,7 @@ def soge_build_week_keep(supabase, f_code, weekday, settings=None):  # soge-keep
     if n_left:
         warns.append("%d件は入る車がありませんでした。"
                      "「まだ車が決まっていない人」から移すか、車を足してください。" % n_left)
+    warns.extend(shorts)             # soge-keep-times-v1
     week["warnings"] = warns
     week["kept"] = True
     week["saved"] = False        # 画面で確かめてから保存する
