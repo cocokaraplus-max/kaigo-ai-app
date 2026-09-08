@@ -2042,7 +2042,11 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     if (off) tm = '<span class="tm pl">—</span>';
     else if (s.arrived_at) tm = '<span class="tm">済 ' + esc(s.arrived_at) + '</span>';
     else if (isNow) tm = '<span class="tm">いま向かう</span>';
-    else tm = '<span class="tm pl">' + (s.planned_at ? ('予定 ' + esc(s.planned_at)) : '—') + '</span>';
+    /* soge-run-plan-edit-v1: まだ着いていない人は、ここを押して予定を直せる。
+       ★打刻の「済」は押しても予定にはならない。触れるのは予定だけ。 */
+    else tm = '<span class="tm pl" data-plan="' + escA(s.id) + '" data-pinit="'
+      + escA(s.planned_at || '') + '" title="押すと到着予定時刻を直せます">'
+      + (s.planned_at ? ('予定 ' + esc(s.planned_at)) : '予定 —') + '</span>';
     return '<div class="sr-lr ' + cls + '">'
       + '<span class="no">' + (i + 1) + '</span>'
       /* soge-list-type-v1: 迎えか送りかを色で出す。中間便は混ざるので必須。 */
@@ -2510,6 +2514,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
           + '<div class="sr-dv-sub">'
             + '<button data-abs="' + s.id + '">お休みだった</button>'
             + '<button data-pen="' + s.id + '" data-init="' + esc(s.planned_at || '') + '">時刻を手で</button>'
+            /* soge-run-plan-edit-v1: 予定のほうを直す。★「時刻を手で」は打刻。別もの。 */
+            + '<button data-plan="' + escA(s.id) + '" data-pinit="'
+              + escA(s.planned_at || '') + '">予定を直す</button>'
             + '<button data-mv="' + s.id + '">別の車へ</button>'
           + '</div>'
         + '</div></div>';
@@ -2815,6 +2822,63 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     });
 
     // 時刻を手で入れる／直す。押した要素をその場で時刻入力に差し替える。
+    /* soge-run-plan-edit-v1: 到着【予定】時刻の入力。
+       ★打刻のほうの入力と同じ形にそろえる（すぐ下にある関数）。
+         ［決定］［やめる］を置き、押すまで何も起きない。
+         input[type=time] は触った瞬間にフォーカスが外れる端末があり、
+         onblur で確定させると「触れた瞬間に決定される」（2026-09-04 現場報告）。 */
+    function openPlanEditor(el, id, initial) {
+      var wrap = document.createElement('span');
+      wrap.className = 'sr-timewrap';
+      wrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;';
+      var inp = document.createElement('input');
+      inp.type = 'time';
+      inp.className = 'sr-timeedit';
+      inp.value = initial || '';
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.textContent = '決定';
+      okBtn.style.cssText = 'padding:6px 10px;border:none;border-radius:8px;background:#1a73e8;color:#fff;font-weight:700;font-size:0.85rem;';
+      var ngBtn = document.createElement('button');
+      ngBtn.type = 'button';
+      ngBtn.textContent = 'やめる';
+      ngBtn.style.cssText = 'padding:6px 10px;border:1px solid #dadce0;border-radius:8px;background:#fff;color:#5f6368;font-size:0.85rem;';
+      wrap.appendChild(inp);
+      wrap.appendChild(okBtn);
+      wrap.appendChild(ngBtn);
+      el.replaceWith(wrap);
+      inp.focus();
+      var done = false;
+      async function commit() {
+        if (done) return;
+        var t = inp.value;
+        /* ★何も変えていないなら送らない。触っただけで保存しない。 */
+        if (t === (initial || '')) { done = true; keepScroll(render); return; }
+        done = true;
+        var res = await srSend('/api/soge/run/stop', 'PUT', { stop_id: id, plan: t });
+        if (srRefused(res)) {
+          var sx = findStop(id);
+          srRefuseAlert(((sx && sx.user_name) || 'この方') + ' の到着予定', res);
+          keepScroll(render);
+          return;
+        }
+        if (!res.ok) {
+          /* ★貯めない。予定は実績ではないので、入らなかったらその場で言う。 */
+          srAlert('err', '到着予定を直せませんでした（' + res.why + '）。'
+                  + 'もう一度お試しください。');
+          keepScroll(render);
+          return;
+        }
+        srAlert('');
+        var s = findStop(id);
+        if (s) s.planned_at = (t || null);
+        toast(t ? ('到着予定を ' + t + ' にしました') : '到着予定を消しました');
+        keepScroll(render);
+      }
+      okBtn.onclick = commit;
+      ngBtn.onclick = function () { done = true; keepScroll(render); };
+    }
+
     function openTimeEditor(el, id, initial) {
       var inp = document.createElement('input');
       inp.type = 'time';
@@ -2906,6 +2970,15 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     // 記録した時刻をタップすると直せる
     root.querySelectorAll('[data-edit]').forEach(function (el) {
       el.onclick = function () { openTimeEditor(el, el.dataset.edit, el.textContent.trim()); };
+    });
+
+    /* soge-run-plan-edit-v1: 到着【予定】時刻を直す。
+       ★打刻(arrived_at)とは別の口。送るのは plan で、planned_at に入る。
+       ★貯めない（電波が戻ってから送り直す仕掛けには乗せない）。
+         予定は実績ではないので、入らなかったらその場で言えば足りる。
+         貯めると、あとから古い予定が入って現場を惑わせる。 */
+    root.querySelectorAll('[data-plan]').forEach(function (el) {
+      el.onclick = function () { openPlanEditor(el, el.dataset.plan, el.dataset.pinit || ''); };
     });
 
     // まだ打刻していない人に、時刻を手で入れる（初期値は到着予定）

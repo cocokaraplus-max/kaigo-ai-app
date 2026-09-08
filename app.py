@@ -30054,6 +30054,26 @@ def api_soge_run_stop_edit():
                 upd["arrived_at"] = None      # 休みなら打刻は消す
                 upd["arrived_by"] = None
 
+        # soge-run-plan-edit-v1: 到着【予定】時刻を手で直す。
+        #   ★打刻(arrived_at)とは別もの。予定は planned_at に入る。
+        #     どちらも同じ口で受けるが、書く先を混ぜない。
+        #   ★空で送れば予定を消せる。「予定時刻を計算し直す」で入れ直せる。
+        #   ★この関数は頭で必ず edited_at を書く。＝その日は「動き出した」に数える。
+        #     数えないと、次に運行表が作り直されたときに手で入れた予定が消える。
+        if "plan" in data:
+            _p = (data.get("plan") or "").strip()
+            if not _p:
+                upd["planned_at"] = None
+            #   ★isascii() が要る。全角の「０８:３０」は isdigit() も int() も通る。
+            #     そのまま入れると、画面にも記録表にも全角のまま出る。
+            elif not (len(_p) == 5 and _p[2] == ":" and _p.isascii()
+                      and _p[:2].isdigit() and _p[3:].isdigit()
+                      and 0 <= int(_p[:2]) <= 23 and 0 <= int(_p[3:]) <= 59):
+                return jsonify({"status": "error",
+                                "message": "\u6642\u523b\u306f HH:MM \u3067\u5165\u308c\u3066\u304f\u3060\u3055\u3044"}), 400
+            else:
+                upd["planned_at"] = _p
+
         if "time" in data:
             t = (data.get("time") or "").strip()
             if not t:
