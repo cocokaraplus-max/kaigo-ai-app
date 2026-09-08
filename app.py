@@ -475,16 +475,39 @@ def api_line_friends_list():
         r = supabase.table('line_friends').select('*').eq('facility_code', f_code).order('updated_at', desc=True).execute()
         rows = r.data or []
         name_map = _line_patient_name_map(supabase, f_code)
+        # line-multi-patient-v1: 紐付けを1回だけ読んで、友だちごとにまとめる。
+        #   ★友だちの数だけ問い合わせない。人数が増えるほど遅くなるため。
+        _links, _links_ok = {}, True
+        try:
+            _lr = (supabase.table('line_friend_patients')
+                   .select('line_user_id,patient_id,created_at')
+                   .eq('facility_code', f_code).order('created_at', desc=False).execute())
+            for _x in (_lr.data or []):
+                _links.setdefault(_x.get('line_user_id'), []).append(str(_x.get('patient_id')))
+        except Exception as e:
+            _links_ok = False
+            print(f'[line-multi] 紐付けの表を読めませんでした（一覧）: {e}', flush=True)
         friends = []
         for row in rows:
             pid = row.get('patient_id')
             pinfo = name_map.get(str(pid)) if pid else None
+            # line-multi-patient-v1: 担当している利用者を並べて返す。
+            #   ★表が読めたなら、そちらが正。読めなかったときだけ古い列に倒れる。
+            _pids = _links.get(row.get('line_user_id'))
+            if _pids is None:
+                _pids = ([str(pid)] if (not _links_ok and pid) else [])
+            _plist = [{'patient_id': p,
+                       'patient_name': (name_map.get(p) or {}).get('user_name', '')}
+                      for p in _pids]
             friends.append({
                 'line_user_id': row.get('line_user_id'),
                 'display_name': row.get('display_name') or '',
-                'status': row.get('status') or 'unlinked',
-                'patient_id': pid,
-                'patient_name': (pinfo['user_name'] if pinfo else ''),
+                'status': ('linked' if _plist else 'unlinked'),
+                'patients': _plist,                      # line-multi-patient-v1
+                # ★1人目だけを返す古い形も残す（他から読まれていても壊れないように）
+                'patient_id': (_plist[0]['patient_id'] if _plist else pid),
+                'patient_name': (_plist[0]['patient_name'] if _plist
+                                 else (pinfo['user_name'] if pinfo else '')),
                 'linked_by': row.get('linked_by') or '',
                 'updated_at': row.get('updated_at') or '',
             })
@@ -512,16 +535,23 @@ def api_line_friends_link():
         name_map = _line_patient_name_map(supabase, f_code)
         if str(pid) not in name_map:
             return jsonify({'status': 'error', 'message': 'この利用者は施設に存在しません'}), 400
-        from datetime import datetime, timezone
-        now_iso = datetime.now(timezone.utc).isoformat()
-        # facility_code + line_user_id の二条件guard
-        supabase.table('line_friends').update({
-            'patient_id': pid,
-            'status': 'linked',
-            'linked_by': my_name,
-            'updated_at': now_iso,
-        }).eq('facility_code', f_code).eq('line_user_id', uid).execute()
-        return jsonify({'status': 'success', 'patient_name': name_map[str(pid)]['user_name']})
+        # line-multi-patient-v1: 【置き換えではなく足す】。
+        #   ★同じ組み合わせはDB側の一意制約で止まるので、二重に入らない。
+        try:
+            supabase.table('line_friend_patients').upsert({
+                'facility_code': f_code,
+                'line_user_id': uid,
+                'patient_id': pid,
+                'linked_by': my_name,
+            }, on_conflict='facility_code,line_user_id,patient_id').execute()
+        except Exception as e:
+            print(f'[line-multi] 紐付けを足せませんでした: {e}', flush=True)
+            return jsonify({'status': 'error',
+                            'message': '紐付けできませんでした。もう一度お試しください。'}), 500
+        _pids = _line_sync_friend_status(supabase, f_code, uid, my_name)
+        return jsonify({'status': 'success',
+                        'patient_name': name_map[str(pid)]['user_name'],
+                        'patient_count': (len(_pids) if _pids is not None else None)})
     except Exception as e:
         print(f'api_line_friends_link error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -540,15 +570,23 @@ def api_line_friends_unlink():
         uid = (data.get('line_user_id') or '').strip()
         if not uid:
             return jsonify({'status': 'error', 'message': 'line_user_id が必要です'}), 400
-        from datetime import datetime, timezone
-        now_iso = datetime.now(timezone.utc).isoformat()
-        supabase.table('line_friends').update({
-            'patient_id': None,
-            'status': 'unlinked',
-            'linked_by': None,
-            'updated_at': now_iso,
-        }).eq('facility_code', f_code).eq('line_user_id', uid).execute()
-        return jsonify({'status': 'success'})
+        # line-multi-patient-v1: どの利用者ぶんを外すかを受け取る。
+        #   ★patient_id が来なければ、その友だちの紐付けを【全部】外す（前と同じ動き）。
+        #     古い画面から呼ばれても、意味が変わらないようにしておく。
+        _pid = str((data.get('patient_id') or '')).strip()
+        try:
+            q = (supabase.table('line_friend_patients').delete()
+                 .eq('facility_code', f_code).eq('line_user_id', uid))
+            if _pid:
+                q = q.eq('patient_id', _pid)
+            q.execute()
+        except Exception as e:
+            print(f'[line-multi] 紐付けを外せませんでした: {e}', flush=True)
+            return jsonify({'status': 'error',
+                            'message': '解除できませんでした。もう一度お試しください。'}), 500
+        _pids = _line_sync_friend_status(supabase, f_code, uid, my_name)
+        return jsonify({'status': 'success',
+                        'patient_count': (len(_pids) if _pids is not None else None)})
     except Exception as e:
         print(f'api_line_friends_unlink error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -884,11 +922,85 @@ def _renraku_fetch_for_line(supabase, f_code, patient_id, note_date):
     return note, vitals, pname
 
 
+def _line_patient_links(supabase, f_code, line_user_id):  # line-multi-patient-v1
+    """そのLINEアカウントが担当している利用者の id を、付けた順に返す。
+
+    ★「0件」と「読めなかった」を分ける。読めなかったときは None。
+      読めないのを0件と読むと、紐付いているのに未紐付けと出てしまう。
+    """
+    try:
+        r = (supabase.table('line_friend_patients').select('patient_id,created_at')
+             .eq('facility_code', f_code).eq('line_user_id', line_user_id)
+             .order('created_at', desc=False).execute())
+        return [str(x['patient_id']) for x in (r.data or []) if x.get('patient_id')]
+    except Exception as e:
+        print(f'[line-multi] 紐付けを読めませんでした: {e}', flush=True)
+        return None
+
+
+def _line_sync_friend_status(supabase, f_code, line_user_id, my_name=None):  # line-multi-patient-v1
+    """紐付けの本数に合わせて、古い列（status / patient_id）をそろえる。
+
+    ★読むときの正は line_friend_patients。ここでそろえるのは
+      【画面の出し分け】と【保険】のため。
+        status     … 1人でも紐付いていれば linked
+        patient_id … 1人目。新しい表が読めないときに、ここへ倒れる
+    """
+    pids = _line_patient_links(supabase, f_code, line_user_id)
+    if pids is None:
+        return None
+    upd = {
+        'status': ('linked' if pids else 'unlinked'),
+        'patient_id': (pids[0] if pids else None),
+        'updated_at': datetime.now(timezone.utc).isoformat(),
+    }
+    if my_name is not None:
+        upd['linked_by'] = (my_name if pids else None)
+    try:
+        (supabase.table('line_friends').update(upd)
+         .eq('facility_code', f_code).eq('line_user_id', line_user_id).execute())
+    except Exception as e:
+        print(f'[line-multi] 友だちの状態をそろえられませんでした: {e}', flush=True)
+    return pids
+
+
 def _line_linked_recipients(supabase, f_code, patient_id):
-    """その利用者に linked な友だち(userId, display_name)のリスト。"""
-    r = (supabase.table('line_friends').select('line_user_id,display_name,status,patient_id')
-         .eq('facility_code', f_code).eq('patient_id', patient_id).eq('status', 'linked').execute())
-    return r.data or []
+    """その利用者に紐付いた友だち(userId, display_name)のリスト。
+
+    line-multi-patient-v1 :
+      ★紐付けは line_friend_patients（1行＝1つの関係）で持つ。
+        1つのLINEアカウントが何人の利用者を担当していてもよい。
+      ★新しい表が読めないときは、古い line_friends.patient_id に倒れる。
+        SQLを流し忘れても【連絡帳が誰にも届かない】を起こさないため。
+        そのときは1人目のぶんしか届かない。理由をログに出す。
+    """
+    try:
+        r = (supabase.table('line_friend_patients').select('line_user_id')
+             .eq('facility_code', f_code).eq('patient_id', patient_id).execute())
+        uids = [x['line_user_id'] for x in (r.data or []) if x.get('line_user_id')]
+    except Exception as e:
+        print(f'[line-multi] 紐付けの表を読めませんでした。古い列で送ります: {e}',
+              flush=True)
+        r0 = (supabase.table('line_friends').select('line_user_id,display_name,status,patient_id')
+              .eq('facility_code', f_code).eq('patient_id', patient_id)
+              .eq('status', 'linked').execute())
+        return r0.data or []
+    if not uids:
+        return []
+    try:
+        r2 = (supabase.table('line_friends').select('line_user_id,display_name,status,patient_id')
+              .eq('facility_code', f_code).in_('line_user_id', uids).execute())
+        got = {x.get('line_user_id'): x for x in (r2.data or [])}
+    except Exception as e:
+        print(f'[line-multi] 友だちの名前を読めませんでした: {e}', flush=True)
+        got = {}
+    out = []
+    for u in uids:
+        x = got.get(u)
+        # ★名前が引けなくても送り先からは外さない。紐付けがあるのが正。
+        out.append(x if x else {'line_user_id': u, 'display_name': '',
+                                'status': 'linked', 'patient_id': patient_id})
+    return out
 
 
 @app.route('/api/renraku/line_preview', methods=['POST'])  # renraku-line-send-v1

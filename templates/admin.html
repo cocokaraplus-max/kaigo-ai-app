@@ -2122,22 +2122,37 @@ function _lfRender(){
   listEl.innerHTML = _lfFriends.map(f=>{
     const uidTail = _lfEsc((f.line_user_id||'').slice(-6));
     const dname = _lfEsc(f.display_name || '(名前未取得)');
-    if(f.status === 'linked'){
-      return '<div style="border:1.5px solid #34a853;border-radius:12px;padding:12px;margin-bottom:10px;background:#f0faf2;">'
-        + '<div style="font-weight:700;">'+dname+' <span style="color:#80868b;font-size:0.78rem;font-weight:400;">…'+uidTail+'</span></div>'
-        + '<div style="color:#188038;font-size:0.88rem;margin:6px 0;"><span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">link</span> '+_lfEsc(f.patient_name)+' 様のご家族として紐付済み</div>'
-        + '<button class="btn" onclick="lfUnlink(\''+_lfEsc(f.line_user_id)+'\',\''+_lfEsc(f.patient_name)+'\')" style="background:#fce8e6;color:#d93025;font-size:0.85rem;padding:8px 14px;">紐付けを解除</button>'
-        + '</div>';
+    /* line-multi-patient-v1: 1つのLINEアカウントが何人の利用者を担当していてもよい。
+       ★紐付け済みでも【検索欄を出したまま】にする。ここが「さらに追加」の入口。
+         前は紐付くと検索欄が消えていたので、2人目を足す場所が無かった。
+       ★解除は【利用者ごと】。誰を外すのかが分からない解除ボタンは置かない。 */
+    const ps = f.patients || [];
+    const on = ps.length > 0;
+    let body = '';
+    if(on){
+      body += ps.map(function(p){
+        return '<div style="display:flex;align-items:center;gap:8px;margin:6px 0;">'
+          + '<span style="color:#188038;font-size:0.88rem;flex:1;">'
+          +   '<span class="material-symbols-outlined" style="font-size:16px;vertical-align:-3px;">link</span> '
+          +   _lfEsc(p.patient_name)+' 様</span>'
+          + '<button class="btn" onclick="lfUnlink(\''+_lfEsc(f.line_user_id)+'\',\''+_lfEsc(p.patient_id)+'\',\''+_lfEsc(p.patient_name)+'\')" '
+          +   'style="background:#fce8e6;color:#d93025;font-size:0.8rem;padding:6px 12px;">解除</button>'
+          + '</div>';
+      }).join('');
     } else {
-      return '<div style="border:1.5px solid #e0e0e0;border-radius:12px;padding:12px;margin-bottom:10px;">'
-        + '<div style="font-weight:700;">'+dname+' <span style="color:#80868b;font-size:0.78rem;font-weight:400;">…'+uidTail+'</span></div>'
-        + '<div style="color:#9aa0a6;font-size:0.82rem;margin:4px 0 8px;">未紐付け</div>'
-        + '<input type="text" placeholder="利用者を名前・ふりがなで検索" autocomplete="off" '
-        +   'oninput="lfSearch(\''+_lfEsc(f.line_user_id)+'\', this.value)" '
-        +   'style="width:100%;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;box-sizing:border-box;">'
-        + '<div id="lf-results-'+_lfEsc(f.line_user_id)+'" style="margin-top:6px;"></div>'
-        + '</div>';
+      body += '<div style="color:#9aa0a6;font-size:0.82rem;margin:4px 0 8px;">未紐付け</div>';
     }
+    body += '<input type="text" placeholder="'
+      + (on ? 'さらに利用者を追加（名前・ふりがなで検索）' : '利用者を名前・ふりがなで検索')
+      + '" autocomplete="off" '
+      +   'oninput="lfSearch(\''+_lfEsc(f.line_user_id)+'\', this.value)" '
+      +   'style="width:100%;padding:10px;border:1.5px solid #e0e0e0;border-radius:8px;box-sizing:border-box;margin-top:6px;">'
+      + '<div id="lf-results-'+_lfEsc(f.line_user_id)+'" style="margin-top:6px;"></div>';
+    return '<div style="border:1.5px solid '+(on ? '#34a853' : '#e0e0e0')+';border-radius:12px;padding:12px;margin-bottom:10px;'
+      + (on ? 'background:#f0faf2;' : '')+'">'
+      + '<div style="font-weight:700;">'+dname+' <span style="color:#80868b;font-size:0.78rem;font-weight:400;">…'+uidTail+'</span></div>'
+      + body
+      + '</div>';
   }).join('');
 }
 
@@ -2190,15 +2205,18 @@ async function lfDoLink(uid, pid){
   }catch(e){ if(msg){ msg.style.color='#d93025'; msg.textContent='通信エラー'; } console.error('lfDoLink', e); }
 }
 
-async function lfUnlink(uid, pname){
-  const ok = confirm('「'+pname+'」様との紐付けを解除します。\n以後、この方に連絡帳は届かなくなります。\nよろしいですか？');
+/* line-multi-patient-v1: 外すのは【この利用者ぶんだけ】。
+   ★ほかの利用者の紐付けは残る。文面にもそう書く。
+     「連絡帳は届かなくなります」だけだと、全部止まると読める。 */
+async function lfUnlink(uid, pid, pname){
+  const ok = confirm('「'+pname+'」様との紐付けを解除します。\n以後、この方に「'+pname+'」様の連絡帳は届かなくなります。\n（ほかの利用者との紐付けは残ります）\nよろしいですか？');
   if(!ok) return;
   const msg = document.getElementById('line-friends-msg');
   if(msg){ msg.style.color='#5f6368'; msg.textContent='解除中...'; }
   try{
     const d = await fetch('/api/line/friends/unlink',{
       method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({line_user_id: uid})
+      body: JSON.stringify({line_user_id: uid, patient_id: pid})
     }).then(r=>r.json());
     if(d.status==='success'){
       if(msg){ msg.style.color='#188038'; msg.textContent='解除しました'; }
