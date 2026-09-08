@@ -41,6 +41,32 @@
 .field-row textarea { min-height: 70px; font-family: inherit; resize: vertical; }
 .field-row input:focus, .field-row select:focus, .field-row textarea:focus { outline: none; border-color: #1a73e8; }
 .field-row-inline { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+/* patinfo-period-fix-v1 : 期間の枠がスマホではみ出す件
+   ★grid の子は既定 min-width:auto ＝「中身より狭くならない」。
+     <input type="date"> は中身の最低幅が広いので、1fr がそれに負けて
+     カードごと横にはみ出していた。子に min-width:0 を書くのが本命の直し。 */
+.field-row-inline > .field-row { min-width: 0; margin-bottom: 0; }
+.field-row-inline input[type="date"] { max-width: 100%; }
+@media (max-width: 400px) { .field-row-inline { grid-template-columns: 1fr; } }
+
+/* patinfo-ocr-busy-v1 : 読み取り中を見逃さないための全面の覆い
+   ★この枠は JS で body 直下に付ける。HTMLの中に置くと、
+     親の transform/filter で position:fixed が効かなくなる
+     （errorMsg / successMsg を body へ移しているのと同じ理由）。 */
+#ocrBusy { position: fixed; inset: 0; z-index: 100000; display: none;
+  align-items: center; justify-content: center; background: rgba(32,33,36,.58); }
+#ocrBusy.show { display: flex; }
+#ocrBusy .ob-card { background: #fff; border-radius: 16px; padding: 26px 28px;
+  width: min(320px, 84vw); text-align: center; box-shadow: 0 10px 34px rgba(0,0,0,.3); }
+#ocrBusy .ob-ring { width: 54px; height: 54px; margin: 0 auto 14px;
+  border: 5px solid #e8f0fe; border-top-color: #1a73e8; border-radius: 50%;
+  animation: obSpin .9s linear infinite; }
+@keyframes obSpin { to { transform: rotate(360deg); } }
+#ocrBusy .ob-title { font-size: 1.02rem; font-weight: 700; color: #202124; margin-bottom: 6px; }
+#ocrBusy .ob-sub { font-size: .8rem; color: #5f6368; line-height: 1.65; }
+#ocrBusy .ob-sec { font-size: .78rem; color: #1a73e8; font-weight: 700; margin-top: 8px; }
+/* 動きが苦手な方の設定を尊重する。止めると「固まった」に見えるので、ゆっくりにする */
+@media (prefers-reduced-motion: reduce) { #ocrBusy .ob-ring { animation-duration: 2.6s; } }
 
 .btn-primary { width: 100%; padding: 14px; background: #1a73e8; color: #fff; border: none; border-radius: 12px; font-size: 0.96rem; font-weight: 700; cursor: pointer; }
 .btn-primary:hover { background: #1557b0; }
@@ -212,8 +238,8 @@
     </h2>
 
     <div class="info-msg">
-        利用者ごとの長期目標・短期目標・支援内容を事前登録します。<br>
-        登録した情報は、モニタリング書類の生成時に自動で転記されます。
+        既往歴・家族構成・ICF・病歴など、その方のことをここにまとめます。<br>
+        目標は<b>利用者基本情報</b>と<b>評価</b>で入れたものを、下に見るだけで出しています。
     </div>
 
     <div id="errorMsg" class="error-msg"></div>
@@ -447,128 +473,20 @@
           </div>
         </div>
 
-    <!-- ケアプラン編集エリア -->
-    <div id="planEditor">
-
-        <!-- 要介護度（期間計算で使用） -->
-        <div class="section-card">
-            <div class="section-title">
-                <span class="material-symbols-outlined" style="font-size:20px;">info</span>
-                要介護度
-                <span id="careLevelBadge" style="margin-left:auto; font-size:0.72rem; background:#e8f0fe; color:#1967d2; padding:3px 10px; border-radius:10px;"></span>
-            </div>
-            <div class="field-row">
-                <label>区分（期間計算の自動判定に使用）</label>
-                <select id="careLevelSelect">
-                    <option value="">-- 選択 --</option>
-                    <option value="要介護">要介護（短期3ヶ月 / 長期6ヶ月）</option>
-                    <option value="要支援">要支援（短期1ヶ月 / 長期3ヶ月）</option>
-                    <option value="自立">自立（短期1ヶ月 / 長期3ヶ月）</option>
-                    <option value="事業対象者">事業対象者（短期1ヶ月 / 長期3ヶ月）</option>
-                </select>
-            </div>
+    <!-- patinfo-goal-readonly-v1 : 目標は見るだけ。正は利用者基本情報。 -->
+    <div id="goalView" class="section-card">
+        <div class="section-title">
+            <span class="material-symbols-outlined" style="font-size:20px;">flag</span>
+            今の目標
+            <a id="goalEditLink" href="#" style="margin-left:auto; font-size:0.72rem; background:#e8f0fe; color:#1967d2; padding:4px 10px; border-radius:10px; text-decoration:none; display:none;">
+                <span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle;">edit</span>直す
+            </a>
         </div>
-
-        <div class="section-card">
-            <div class="section-title">
-                <span class="material-symbols-outlined" style="font-size:20px;">flag</span>
-                長期目標
-            </div>
-            <div class="goal-section-hint" id="longGoalHint">
-                長期目標。ICF（機能・活動・参加）の視点で入力します。
-            </div>
-
-            <div class="field-row-inline">
-                <div class="field-row">
-                    <label>期間 From</label>
-                    <input type="date" data-field="long_goal_period_from">
-                </div>
-                <div class="field-row">
-                    <label>期間 To（自動計算／手修正可）</label>
-                    <input type="date" data-field="long_goal_period_to">
-                </div>
-            </div>
-
-            <div class="field-row">
-                <label>機能（心身機能・身体構造）</label>
-                <textarea data-field="long_goal_function" placeholder="例: 歩行機能を維持する"></textarea>
-            </div>
-            <div class="field-row">
-                <label>活動（日常生活動作）</label>
-                <textarea data-field="long_goal_activity" placeholder="例: 屋外を自力で歩行できる"></textarea>
-            </div>
-            <div class="field-row">
-                <label>参加（社会参加）</label>
-                <textarea data-field="long_goal_participation" placeholder="例: 地域行事に参加できる"></textarea>
-            </div>
+        <div class="goal-section-hint">
+            目標は<b>利用者基本情報</b>か<b>評価</b>で入れます。ここでは見るだけです。<br>
+            モニタリング報告書に出るのも、ここに出ているものと同じです。
         </div>
-
-        <div class="section-card">
-            <div class="section-title">
-                <span class="material-symbols-outlined" style="font-size:20px;">outlined_flag</span>
-                短期目標
-            </div>
-            <div class="goal-section-hint" id="shortGoalHint">
-                短期目標。長期目標に向けた具体的ステップ。
-            </div>
-
-            <div class="field-row-inline">
-                <div class="field-row">
-                    <label>期間 From</label>
-                    <input type="date" data-field="short_goal_period_from">
-                </div>
-                <div class="field-row">
-                    <label>期間 To（自動計算／手修正可）</label>
-                    <input type="date" data-field="short_goal_period_to">
-                </div>
-            </div>
-
-            <div class="field-row">
-                <label>機能</label>
-                <textarea data-field="short_goal_function" placeholder="例: 下肢筋力を維持する"></textarea>
-            </div>
-            <div class="field-row">
-                <label>活動</label>
-                <textarea data-field="short_goal_activity" placeholder="例: 屋内を見守りで歩行できる"></textarea>
-            </div>
-            <div class="field-row">
-                <label>参加</label>
-                <textarea data-field="short_goal_participation" placeholder="例: 集団体操に意欲的に参加する"></textarea>
-            </div>
-        </div>
-
-        <div class="section-card">
-            <div class="section-title">
-                <span class="material-symbols-outlined" style="font-size:20px;">list_alt</span>
-                支援内容（モニタリング項目①〜④）
-            </div>
-            <div class="goal-section-hint">
-                目標達成のための具体的な支援内容。モニタリング書類の①〜④に自動反映されます。<br>
-                日々のケース記録で「支援内容は…」と発言した内容は、特記事項に優先表記されます。
-            </div>
-
-            <div class="field-row">
-                <label>支援内容①</label>
-                <textarea data-field="support_content_1"></textarea>
-            </div>
-            <div class="field-row">
-                <label>支援内容②</label>
-                <textarea data-field="support_content_2"></textarea>
-            </div>
-            <div class="field-row">
-                <label>支援内容③</label>
-                <textarea data-field="support_content_3"></textarea>
-            </div>
-            <div class="field-row">
-                <label>支援内容④</label>
-                <textarea data-field="support_content_4"></textarea>
-            </div>
-        </div>
-
-        <button id="saveBtn" class="btn-primary">
-            <span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span>
-            この内容で保存
-        </button>
+        <div id="goalViewBody"></div>
     </div>
       </div><!-- /inputPane -->
     </div><!-- /tabbedArea -->
@@ -597,8 +515,6 @@ const PATIENTS = {{ patients | tojson }};
                 }
             });
             
-            document.getElementById("saveBtn").addEventListener("click", () => this.save());
-
             // patient-hub-v1: 基本情報保存・趣味嗜好OCR
             // patient-info-toast-v1: 親要素の transform/filter で position:fixed が効かなくなるのを避けるため、
             //   メッセージ要素を body 直下へ移す（vitals.html と同じ対策）。
@@ -612,9 +528,6 @@ const PATIENTS = {{ patients | tojson }};
                 e.target.value = "";   // 同じ写真を選び直しても再実行できるように
                 e.target.value = "";
             });
-
-            // 期間自動計算
-            this.setupPeriodAutoCalc();
         },
 
         // ===== patient-hub-v1: 見る/入力ハブ =====
@@ -643,6 +556,7 @@ const PATIENTS = {{ patients | tojson }};
                 this.hubPid = j.pid; this.hubData = j;
                 // patient-safety-notes-v1: 入力欄を埋めない画面でも、赤い帯は必ず出す
                 this.renderSafety(j.profile);
+                this.renderGoals(j.profile);   // patinfo-goal-readonly-v1
                 if (fillInputs) {
                     this.fillBasicInputs(j.profile);
                     this.familyMembers = (j.family || []).map(m => ({
@@ -1379,6 +1293,45 @@ const PATIENTS = {{ patients | tojson }};
             } catch (e) { this.showError(e.message); }
         },
 
+        // ===== patinfo-ocr-busy-v1: 読み取り中の案内 =====
+        //   ★body 直下に付ける。画面の中に置くと親の transform で位置が狂う。
+        ocrBusyOn(pages) {
+            let el = document.getElementById("ocrBusy");
+            if (!el) {
+                el = document.createElement("div");
+                el.id = "ocrBusy";
+                el.innerHTML =
+                    '<div class="ob-card">'
+                  + '<div class="ob-ring"></div>'
+                  + '<div class="ob-title">読み取り中です</div>'
+                  + '<div class="ob-sub" id="ocrBusySub"></div>'
+                  + '<div class="ob-sec" id="ocrBusySec">0秒</div>'
+                  + '</div>';
+                document.body.appendChild(el);
+            }
+            const sub = el.querySelector("#ocrBusySub");
+            if (sub) {
+                sub.innerHTML = (pages ? (pages + "枚をAIが読んでいます。<br>") : "")
+                              + "30秒ほどかかることがあります。<br>"
+                              + "このまま、画面を閉じずにお待ちください。";
+            }
+            // 経過の秒数。★出しておかないと「固まった」と思われて二度押しされる。
+            const t0 = Date.now();
+            const sec = el.querySelector("#ocrBusySec");
+            if (sec) sec.textContent = "0秒";
+            if (this._ocrTimer) clearInterval(this._ocrTimer);
+            this._ocrTimer = setInterval(() => {
+                if (sec) sec.textContent = Math.floor((Date.now() - t0) / 1000) + "秒";
+            }, 1000);
+            el.classList.add("show");
+        },
+
+        ocrBusyOff() {
+            if (this._ocrTimer) { clearInterval(this._ocrTimer); this._ocrTimer = null; }
+            const el = document.getElementById("ocrBusy");
+            if (el) el.classList.remove("show");
+        },
+
         // sheet-ocr-v1: 計画書・利用者情報シートを複数枚まとめて読み取り、
         //   基本情報6欄とICF付箋ボードに反映する（保存はユーザーが押す）。
         async hobbyOcr(files) {
@@ -1387,6 +1340,7 @@ const PATIENTS = {{ patients | tojson }};
             if (!this.hubPid) { this.showError("先に利用者を選択してください"); return; }
             const st = document.getElementById("ocrStatus");
             st.textContent = `読み取り中…（${list.length}枚）`;
+            this.ocrBusyOn(list.length);          // patinfo-ocr-busy-v1
             try {
                 const images = await Promise.all(list.map(f => new Promise((res, rej) => {
                     const fr = new FileReader();
@@ -1439,81 +1393,7 @@ const PATIENTS = {{ patients | tojson }};
                 st.textContent = `${j.pages || list.length}枚から ${msg.join(" / ")} を反映しました。内容を確認して「基本情報を保存」`
                                + (icf ? "「ICF付箋を保存」" : "") + "を押してください。";
             } catch (e) { st.textContent = ""; this.showError(e.message); }
-        },
-        
-        // ---- 期間自動計算 ----
-        setupPeriodAutoCalc() {
-            const shortFrom = document.querySelector('[data-field="short_goal_period_from"]');
-            shortFrom.addEventListener("change", () => {
-                this.autoCalcEndDate("short", shortFrom.value);
-            });
-            
-            const longFrom = document.querySelector('[data-field="long_goal_period_from"]');
-            longFrom.addEventListener("change", () => {
-                this.autoCalcEndDate("long", longFrom.value);
-            });
-            
-            // 要介護度が変わったらFromが入っていれば再計算
-            const careLevel = document.getElementById("careLevelSelect");
-            careLevel.addEventListener("change", () => {
-                this.updateCareLevelBadge();
-                if (shortFrom.value) this.autoCalcEndDate("short", shortFrom.value);
-                if (longFrom.value) this.autoCalcEndDate("long", longFrom.value);
-            });
-        },
-        
-        // 要介護度バッジの表示
-        updateCareLevelBadge() {
-            const sel = document.getElementById("careLevelSelect");
-            const badge = document.getElementById("careLevelBadge");
-            if (!sel.value) {
-                badge.style.display = "none";
-                return;
-            }
-            const isCare = sel.value === "要介護";
-            badge.textContent = isCare ? "短期3ヶ月 / 長期6ヶ月" : "短期1ヶ月 / 長期3ヶ月";
-            badge.style.display = "inline-block";
-        },
-        
-        // 開始日から月数分後の日付を計算（同日）
-        calcEndDate(startDateStr, months) {
-            if (!startDateStr) return "";
-            const d = new Date(startDateStr);
-            if (isNaN(d.getTime())) return "";
-            const originalDay = d.getDate();
-            d.setMonth(d.getMonth() + months);
-            // 月末跨ぎ補正（1/31 + 1ヶ月 → 3/3 を回避して 2/28 に）
-            if (d.getDate() !== originalDay) {
-                d.setDate(0);
-            }
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, "0");
-            const dd = String(d.getDate()).padStart(2, "0");
-            return `${y}-${m}-${dd}`;
-        },
-        
-        // From変更時に To を自動計算・上書き
-        autoCalcEndDate(kind, fromValue) {
-            if (!fromValue) return;
-            const careLevel = document.getElementById("careLevelSelect").value;
-            if (!careLevel) return;  // 要介護度が未選択なら何もしない
-            
-            const isCare = careLevel === "要介護";
-            const months = kind === "short" 
-                ? (isCare ? 3 : 1)
-                : (isCare ? 6 : 3);
-            
-            const calculated = this.calcEndDate(fromValue, months);
-            const toInput = document.querySelector(`[data-field="${kind}_goal_period_to"]`);
-            toInput.value = calculated;
-        },
-        
-        // 要介護度を自動推定（利用者情報から取得できた場合）
-        inferCareLevel(patient) {
-            // patient_care_plansテーブルまたは patients テーブル経由で
-            // 要介護度情報を取得できる想定だが、現状そのカラムは無い
-            // → ユーザーに手動で選んでもらう
-            return "";
+            finally { this.ocrBusyOff(); }        // patinfo-ocr-busy-v1
         },
         
         showError(msg) {
@@ -1586,20 +1466,6 @@ const PATIENTS = {{ patients | tojson }};
             this.switchTab("view");
             this.loadHub(patient);
 
-            this.clearForm();
-            try {
-                const displayValue = patient.value || `[${patient.user_name}]`;
-                const res = await fetch(`/api/patient-info/get?patient=${encodeURIComponent(displayValue)}`, {
-                    headers: { "X-Requested-With": "XMLHttpRequest" },
-                });
-                const json = await res.json();
-                if (!res.ok || json.error) {
-                    throw new Error(json.error || "取得に失敗しました");
-                }
-                this.populateForm(json.care_plan);
-            } catch (e) {
-                this.showError(e.message);
-            }
         },
         
         clearSelection() {
@@ -1611,71 +1477,67 @@ const PATIENTS = {{ patients | tojson }};
             document.getElementById("tabbedArea").style.display = "none";
             document.getElementById("patientSearch").value = "";
             document.getElementById("patientSearch").focus();
-            this.clearForm();
+            this.clearGoals();
         },
         
-        clearForm() {
-            document.querySelectorAll("#planEditor [data-field]").forEach(el => el.value = "");
-            document.getElementById("careLevelSelect").value = "";
-            this.updateCareLevelBadge();
+        // patinfo-goal-readonly-v1: ここから下は「見るだけ」。
+        //   ★目標を書き込む処理は、この画面には一切ありません。
+        //     正は patient_profiles で、入れるのは
+        //     利用者基本情報(/patient_profile) と 評価ページ。
+        clearGoals() {
+            const body = document.getElementById("goalViewBody");
+            const link = document.getElementById("goalEditLink");
+            if (body) body.innerHTML = "";
+            if (link) link.style.display = "none";
         },
-        
-        populateForm(data) {
-            if (!data) {
-                this.clearForm();
-                return;
+
+        renderGoals(profile) {
+            const body = document.getElementById("goalViewBody");
+            const link = document.getElementById("goalEditLink");
+            if (!body) return;
+            if (!profile) { this.clearGoals(); return; }
+
+            if (link && profile.id) {
+                link.href = "/patient_profile?id=" + encodeURIComponent(profile.id);
+                link.style.display = "inline-block";
+            } else if (link) {
+                link.style.display = "none";
             }
-            document.querySelectorAll("#planEditor [data-field]").forEach(el => {
-                const key = el.dataset.field;
-                el.value = data[key] || "";
-            });
-            // care_levelがDBに保存されていれば復元
-            if (data.care_level_category) {
-                document.getElementById("careLevelSelect").value = data.care_level_category;
-                this.updateCareLevelBadge();
-            }
-        },
-        
-        collectFormData() {
-            const data = { user_name: this.currentPatient.user_name };
-            data.chart_number = this.currentPatient.chart_number;
-            data.care_level_category = document.getElementById("careLevelSelect").value;
-            document.querySelectorAll("#planEditor [data-field]").forEach(el => {
-                data[el.dataset.field] = el.value;
-            });
-            return data;
-        },
-        
-        async save() {
-            if (!this.currentPatient) {
-                this.showError("利用者を選択してください");
-                return;
-            }
-            
-            const btn = document.getElementById("saveBtn");
-            btn.disabled = true;
-            btn.textContent = "保存中...";
-            
-            try {
-                const res = await fetch("/api/patient-info/save", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        "X-Requested-With": "XMLHttpRequest"
-                    },
-                    body: JSON.stringify(this.collectFormData()),
-                });
-                const json = await res.json();
-                if (!res.ok || json.error) {
-                    throw new Error(json.error || "保存に失敗しました");
-                }
-                this.showSuccess("保存しました ✓");
-            } catch (e) {
-                this.showError(e.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerHTML = '<span class="material-symbols-outlined" style="vertical-align:middle; font-size:20px;">save</span> この内容で保存';
-            }
+
+            const e = (v) => this.esc(v == null ? "" : String(v));
+            const line = (label, v) => (!v || !String(v).trim()) ? "" :
+                '<div style="display:flex; gap:10px; padding:5px 0; border-bottom:1px solid #f1f3f4;">'
+              + '<div style="flex:0 0 5.2em; font-size:0.72rem; color:#5f6368; padding-top:2px;">' + label + '</div>'
+              + '<div style="flex:1 1 auto; min-width:0; font-size:0.85rem; color:#202124; white-space:pre-wrap;">' + e(v) + '</div>'
+              + '</div>';
+
+            const blk = (title, color, p) => {
+                const inner = line("機能", p.fn) + line("活動", p.ac)
+                            + line("参加", p.pa) + line("目標", p.plain);
+                if (!inner) return "";
+                const per = (p.from || p.to)
+                    ? '<span style="margin-left:auto; font-size:0.7rem; color:#5f6368; font-weight:400;">'
+                      + e(p.from || "") + " 〜 " + e(p.to || "") + '</span>' : "";
+                return '<div style="margin-bottom:12px;">'
+                     + '<div style="display:flex; align-items:center; font-size:0.78rem; font-weight:700; color:'
+                     + color + '; margin-bottom:4px;">' + title + per + '</div>'
+                     + inner + '</div>';
+            };
+
+            const html =
+                blk("長期目標", "#1a73e8", {
+                    fn: profile.long_goal_function, ac: profile.long_goal_activity,
+                    pa: profile.long_goal_participation, plain: profile.long_goal,
+                    from: profile.long_goal_period_from, to: profile.long_goal_period_to })
+              + blk("短期目標", "#188038", {
+                    fn: profile.short_goal_function, ac: profile.short_goal_activity,
+                    pa: profile.short_goal_participation, plain: profile.short_goal,
+                    from: profile.short_goal_period_from, to: profile.short_goal_period_to });
+
+            body.innerHTML = html ||
+                '<div style="font-size:0.8rem; color:#5f6368; padding:6px 0;">'
+              + 'まだ目標が入っていません。右上の「直す」から利用者基本情報で入れるか、'
+              + '評価ページで入れてください。</div>';
         },
     };
     

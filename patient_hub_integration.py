@@ -187,6 +187,22 @@ def register_patient_hub_routes(app):
                 "dislikes": pp.get("dislikes"),
                 # patient-safety-notes-v1: サービス中に必ず確認する注意事項
                 "safety_notes": pp.get("safety_notes"),
+                # patinfo-goal-readonly-v1: 利用者情報ページで「今の目標」を
+                #   見るだけで出すために足した。★正は patient_profiles。
+                #   入れるのは 利用者基本情報(/patient_profile) と 評価ページ。
+                #   ここは読むだけで、書き込みは一切しない。
+                "long_goal":                pp.get("long_goal"),
+                "long_goal_function":       pp.get("long_goal_function"),
+                "long_goal_activity":       pp.get("long_goal_activity"),
+                "long_goal_participation":  pp.get("long_goal_participation"),
+                "long_goal_period_from":    pp.get("long_goal_period_from"),
+                "long_goal_period_to":      pp.get("long_goal_period_to"),
+                "short_goal":               pp.get("short_goal"),
+                "short_goal_function":      pp.get("short_goal_function"),
+                "short_goal_activity":      pp.get("short_goal_activity"),
+                "short_goal_participation": pp.get("short_goal_participation"),
+                "short_goal_period_from":   pp.get("short_goal_period_from"),
+                "short_goal_period_to":     pp.get("short_goal_period_to"),
             },
             "family": family,
             "medical_approved": med_approved,
