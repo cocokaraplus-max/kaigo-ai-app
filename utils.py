@@ -155,8 +155,45 @@ def upload_images_to_supabase(supabase, imgs, f_code):
 # Gemini AI
 # ==========================================
 class GeminiResponse:
-    def __init__(self, text):
+    # ai-usage-meter-v1: 使ったトークン数も持ち帰る。
+    #   ★usage を見ない今までの呼び出し方は、そのまま動く（引数は任意）。
+    def __init__(self, text, usage=None):
         self.text = text
+        self.usage = usage or {}
+
+
+# ai-usage-meter-v1: 記録の差し込み口。app.py が起動時に関数を入れる。
+#   ★utils に supabase も session も持たせないこと。
+#     ここに書くと、AIを呼ぶ30か所すべてが道連れで重くなる。
+AI_USAGE_HOOK = None
+
+
+def _ai_extract_usage(response, model_name):  # ai-usage-meter-v1
+    """応答から「使ったトークン数」を取り出す。取れなければ 0 のまま返す。
+
+    ★音声は 32トークン＝1秒（Googleの決まり。1分＝1,920トークン）。
+      分に直すのは読む側の仕事。ここは生の数だけを持つ。
+    ★ここで例外を出さないこと。測れないことより、AIが止まるほうが困る。
+    ★SDKの形が変わっても落ちないよう、getattr で恐る恐る取る。
+    """
+    u = {"model": model_name, "audio": 0, "image": 0, "input": 0, "output": 0}
+    try:
+        um = getattr(response, "usage_metadata", None)
+        if um is None:
+            return u
+        u["input"] = int(getattr(um, "prompt_token_count", 0) or 0)
+        u["output"] = int(getattr(um, "candidates_token_count", 0) or 0)
+        for d in (getattr(um, "prompt_tokens_details", None) or []):
+            m = getattr(d, "modality", None)
+            name = str(getattr(m, "name", None) or m or "").upper()
+            n = int(getattr(d, "token_count", 0) or 0)
+            if "AUDIO" in name:
+                u["audio"] += n
+            elif "IMAGE" in name:
+                u["image"] += n
+    except Exception as e:
+        print("[ai-usage] 使用量を読めませんでした: %s" % e, flush=True)
+    return u
 
 # 優先順:速い→重い→軽い→旧世代軽量→latest別名
 FALLBACK_MODELS = [
@@ -219,7 +256,15 @@ class FastGeminiModel:
                         raise Exception("応答テキストが空でした(安全フィルタの可能性)")
                     if model_idx > 0 or attempt > 0:
                         print(f"[gemini ok] model={model_name} attempt={attempt+1}", flush=True)
-                    return GeminiResponse(text)
+                    # ai-usage-meter-v1: 測って、記録の口があれば渡す。
+                    #   ★記録に失敗してもAIの結果は返す。測れないことでは止めない。
+                    _usage = _ai_extract_usage(response, model_name)
+                    if AI_USAGE_HOOK is not None:
+                        try:
+                            AI_USAGE_HOOK(_usage)
+                        except Exception as _hook_e:
+                            print("[ai-usage] 記録できませんでした: %s" % _hook_e, flush=True)
+                    return GeminiResponse(text, _usage)
 
                 except Exception as e:
                     error_str = str(e)

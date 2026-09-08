@@ -3667,6 +3667,66 @@ def _tier_ok(state, tier):  # plan-gating-v1
     return state.get("rank", 0) >= TIER_RANK.get(tier, 0)
 
 
+# ===== ai-usage-meter-v1 : AIの使用量を測る =====
+#   ★いまは【記録するだけ】。止めない。
+#     上限を入れるのは、実データを2週間ほど見てから（ai-usage-limit-v1）。
+#   ★音声は 32トークン＝1秒（Googleの決まり）。1分＝1,920トークン。
+#     生の数を残しておけば、あとから数え方を変えられる。
+AI_AUDIO_TOKENS_PER_MIN = 1920
+
+
+def _ai_usage_record(u):  # ai-usage-meter-v1
+    """utils から呼ばれる。1回のAI呼び出しを1行残す。
+
+    ★ここで例外を投げないこと。記録のためにAIを止めては本末転倒。
+    ★リクエストの外（起動時の処理など）からは記録しない。施設が分からないため。
+    """
+    try:
+        from flask import has_request_context
+        if not has_request_context():
+            return
+        f_code = session.get("f_code")
+        if not f_code:
+            return
+        audio = int(u.get("audio") or 0)
+        image = int(u.get("image") or 0)
+        kind = "audio" if audio > 0 else ("image" if image > 0 else "text")
+        get_supabase().table("ai_usage").insert({
+            "facility_code": f_code,
+            "ym": datetime.now(tokyo_tz).strftime("%Y-%m"),
+            "kind": kind,
+            "audio_tokens": audio,
+            "input_tokens": int(u.get("input") or 0),
+            "output_tokens": int(u.get("output") or 0),
+            "model": (str(u.get("model") or ""))[:60],
+            "route": (str(request.endpoint or ""))[:60],
+        }).execute()
+    except Exception as e:
+        print("[ai-usage] 記録できませんでした: %s" % e, flush=True)
+
+
+def ai_audio_minutes_this_month(supabase, f_code):  # ai-usage-meter-v1
+    """その施設の今月の録音（分）。★まだ止めるのには使わない。画面に出す用。
+    ★読めなかったら 0 を返す。判定に使うときは「読めなかった＝0」で
+      通してしまうので、上限を入れるときにそこを作り直すこと。"""
+    try:
+        ym = datetime.now(tokyo_tz).strftime("%Y-%m")
+        r = (supabase.table("ai_usage").select("audio_tokens")
+             .eq("facility_code", f_code).eq("ym", ym).execute())
+        tok = sum(int(x.get("audio_tokens") or 0) for x in (r.data or []))
+        return round(tok / float(AI_AUDIO_TOKENS_PER_MIN), 1)
+    except Exception as e:
+        print("[ai-usage] 今月の録音を読めませんでした: %s" % e, flush=True)
+        return 0.0
+
+
+try:
+    import utils as _utils_for_ai_usage        # ai-usage-meter-v1
+    _utils_for_ai_usage.AI_USAGE_HOOK = _ai_usage_record
+except Exception as _ai_hook_e:
+    print("[ai-usage] 計測を差し込めませんでした: %s" % _ai_hook_e, flush=True)
+
+
 # plan-enforce-v1: プラン階層による強制アクセス制御のキルスイッチ。
 #   既定 False（＝ブロックしない・バッジ表示のみ。体験開放と同じ見た目のまま）。
 #   DEVで各施設の plan 値を検証してから True にすると、tier を満たさない施設は
