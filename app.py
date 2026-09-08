@@ -25642,6 +25642,11 @@ def _soge_norm_trips(raw, unit_count):  # soge-settings-v1
         depart = (t.get("depart") or "").strip()
         if depart and not (len(depart) == 5 and depart[2] == ":"):
             depart = ""
+        # soge-back-plan-v1: 迎えを逆算するときの「到着」時刻。
+        #   ★空なら前向きのまま。送り便は空にしておく。
+        arrive = (t.get("arrive") or "").strip()
+        if arrive and not (len(arrive) == 5 and arrive[2] == ":"):
+            arrive = ""
         def _units(v):
             out2 = []
             for u in (v or []):
@@ -25665,6 +25670,7 @@ def _soge_norm_trips(raw, unit_count):  # soge-settings-v1
             "key": (t.get("key") or "t%d" % (i + 1)),
             "name": name,
             "depart": depart,
+            "arrive": arrive,                      # soge-back-plan-v1
             "pickup_units": _units(t.get("pickup_units")),
             "dropoff_units": _units(t.get("dropoff_units")),
             "max_cars": max_cars,
@@ -25717,6 +25723,8 @@ def get_soge_settings(supabase, f_code):  # soge-settings-v1
                 "unit_count": uc,
                 "trips": _soge_norm_trips(s.get("trips"), uc),
                 "mid_dropoff_first": bool(s.get("mid_dropoff_first", True)),
+                # soge-back-plan-v1: 列が無い施設でも False に倒れる（SQL前でも落ちない）
+                "back_plan": bool(s.get("back_plan")),
                 "configured": True,
             }
             for k, dv in SOGE_TIME_DEFAULTS.items():   # soge-time-v1
@@ -25732,6 +25740,7 @@ def get_soge_settings(supabase, f_code):  # soge-settings-v1
         "unit_count": 1,
         "trips": [dict(t) for t in SOGE_DEFAULT_TRIPS[1]],
         "mid_dropoff_first": True,
+        "back_plan": False,                        # soge-back-plan-v1
         "configured": False,
     }
     out.update(SOGE_TIME_DEFAULTS)
@@ -25781,6 +25790,7 @@ def api_soge_settings_save():
             "unit_count": uc,
             "trips": trips,
             "mid_dropoff_first": bool(data.get("mid_dropoff_first", True)),
+            "back_plan": bool(data.get("back_plan")),      # soge-back-plan-v1
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         # soge-time-v1: 目標時間・上限時間・乗降時間
@@ -26919,7 +26929,9 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
         people = [t for t in targets if t["unit"] in pu or t["unit"] in du]
         if not people:
             trips_out.append({"trip_key": trip["key"], "trip_name": trip["name"],
-                              "depart": trip.get("depart") or "", "vehicles": []})
+                              "depart": trip.get("depart") or "",
+                              "arrive": trip.get("arrive") or "",   # soge-back-plan-v1
+                              "vehicles": []})
             continue
 
         # soge-time-v1: 席数だけでなく「事業所に戻るまでの時間」で台数を決める
@@ -26945,8 +26957,17 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
             used, n_wc = _soge_peak_seats(grp, spec, trip)
             tm = times[i] if i < len(times) else {"drive": 0, "stop": 0, "total": 0,
                                                   "km": 0.0, "legs": None}
+            _pinf = {}                                   # soge-back-plan-v1
             planned = _soge_planned_times(trip.get("depart") or "", gstops, tm["drive"],
-                                          settings, tm.get("legs"))   # soge-legtime-v1
+                                          settings, tm.get("legs"),
+                                          trip.get("arrive") or "",
+                                          _pinf)   # soge-legtime-v1
+            if _pinf.get("short"):
+                # ★黙って前向きに戻さない。無理な日はここで見えるようにする。
+                warnings.append("%s の %s は 到着 %s に間に合いません。"
+                                "いまは出発時刻からの計算で出しています。"
+                                % (trip["name"], (v.get("name") if v else "車%d" % (i + 1)),
+                                   trip.get("arrive") or ""))
 
             _tgt, _max = _soge_trip_target(trip, settings)   # soge-trip-target-v1
             if tm["total"] > _max:
@@ -26969,6 +26990,8 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
                 "stop_minutes": tm["stop"],
                 "distance_km": tm["km"],
                 "over_target": tm["total"] > _tgt,   # soge-trip-target-v1
+                "wait_minutes": _pinf.get("wait", 0),      # soge-back-plan-v1
+                "plan_short": bool(_pinf.get("short")),    # soge-back-plan-v1
                 "stops": [{
                     "patient_id": s["patient_id"], "user_name": s["user_name"],
                     "type": s["type"], "nth": s.get("nth") or 0,
@@ -26987,6 +27010,7 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
         trips_out.append({
             "trip_key": trip["key"], "trip_name": trip["name"],
             "depart": trip.get("depart") or "",
+            "arrive": trip.get("arrive") or "",        # soge-back-plan-v1
             "vehicles": cars_out,
         })
 
@@ -27167,6 +27191,7 @@ def _soge_rows_view(supabase, f_code, weekday, settings, rows):  # soge-date-pla
         trips_out.append({
             "trip_key": trip["key"], "trip_name": trip["name"],
             "depart": trip.get("depart") or "",
+            "arrive": trip.get("arrive") or "",        # soge-back-plan-v1
             "vehicles": cars_out,
         })
 
@@ -28532,7 +28557,8 @@ def _soge_stops_of(grp, trip, geo, settings):  # soge-time-v1
                              settings.get("_fac"))  # soge-routeopt-v1
 
 
-def _soge_planned_times(depart, stops, drive_minutes, settings, legs=None):  # soge-time-v1
+def _soge_planned_times(depart, stops, drive_minutes, settings, legs=None,
+                        arrive=None, info=None):  # soge-time-v1 / soge-back-plan-v1
     """各立ち寄りの到着予定時刻。走行時間を区間ごとに積み上げ、乗降時間を足していく。
 
     ★soge-legtime-v1: legs（区間ごとの分）があればそれを使う。
@@ -28551,19 +28577,77 @@ def _soge_planned_times(depart, stops, drive_minutes, settings, legs=None):  # s
     n = len(stops)
     use_legs = legs if (isinstance(legs, list) and len(legs) == n and any(legs)) else None
     per_leg = (drive_minutes / float(n + 1)) if n else 0   # 施設→…→施設 で n+1 区間
-    out, acc = [], 0.0
-    for i, s in enumerate(stops):
+
+    def _leg(i):
+        """立ち寄り i に着くまでの走行時間（前の場所からの区間）。"""
         if use_legs is not None:
             try:
-                acc += float(use_legs[i])
+                return float(use_legs[i])
             except (TypeError, ValueError):
-                acc += per_leg
-        else:
-            acc += per_leg
-        t = h * 60 + mm + int(round(acc))
-        out.append("%02d:%02d" % ((t // 60) % 24, t % 60))
-        acc += settings["stop_minutes_wc"] if s.get("is_wheelchair") else settings["stop_minutes"]
-    return out
+                return per_leg
+        return per_leg
+
+    def _stay(s):
+        return (settings["stop_minutes_wc"] if s.get("is_wheelchair")
+                else settings["stop_minutes"])
+
+    def _hhmm(t):
+        t = int(round(t))
+        return "%02d:%02d" % ((t // 60) % 24, t % 60)
+
+    start = h * 60 + mm
+    fwd, acc = [], 0.0
+    for i, s in enumerate(stops):
+        acc += _leg(i)
+        fwd.append(start + acc)
+        acc += _stay(s)
+
+    # soge-back-plan-v1: 迎えの立ち寄りを【到着時刻から逆算】する。
+    #   ★送りは出るのが決まっているので前向き、迎えは着くのが決まっているので後ろ向き。
+    #     余った時間は「迎えの手前」に待機として出る
+    #     （中間便なら送りと迎えの間、迎え便なら出発の前）。
+    #   ★_soge_stops_of は【送り→迎えの順】で返す（_soge_order_stops がその順序を守る）。
+    #     だから最初の pickup で切れば、前半＝送り・後半＝迎えになる。
+    #   ★間に合わない日は前向きに倒して、呼んだ側に short を返す（HIROさん決め）。
+    tried, back_ok, wait = False, False, 0
+    if settings.get("back_plan") and arrive and len(arrive) == 5:
+        p = None
+        for i, s in enumerate(stops):
+            if s.get("type") == "pickup":
+                p = i
+                break
+        end = None
+        if p is not None:
+            try:
+                end = int(arrive[:2]) * 60 + int(arrive[3:5])
+            except (TypeError, ValueError):
+                end = None
+        if end is not None:
+            tried = True
+            # ★最後の立ち寄り → 事業所 の区間は legs に入っていない。
+            #   走行時間の合計（n+1区間ぶん）から、行きの n 区間を引いて出す。
+            ret = drive_minutes - sum(_leg(i) for i in range(n))
+            if ret < 0:
+                ret = per_leg
+            back = list(fwd)
+            t = end - ret
+            for i in range(n - 1, p - 1, -1):
+                t -= _stay(stops[i])
+                back[i] = t
+                if i > p:
+                    t -= _leg(i)
+            # 前向きの時刻は「いちばん早く着ける時刻」。逆算がそれ以降なら収まる。
+            wait = int(round(back[p] - fwd[p]))
+            if wait >= 0:
+                fwd = back
+                back_ok = True
+            else:
+                wait = 0
+    if info is not None:
+        info["wait"] = wait
+        info["back"] = back_ok
+        info["short"] = bool(tried and not back_ok)
+    return [_hhmm(t) for t in fwd]
 
 # ===== /soge-time-v1 =====
 
@@ -29010,7 +29094,8 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
             elif len(riding) != len(stops):
                 drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, riding)
                 times = _soge_planned_times(trip.get("depart") or "",
-                                            riding, drive or 0, settings, _lg)
+                                            riding, drive or 0, settings, _lg,
+                                            trip.get("arrive") or "")  # soge-back-plan-v1
                 tmap = {}
                 for _s, _t in zip(riding, times):
                     tmap[id(_s)] = _t
@@ -29020,7 +29105,8 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
                 if not any(planned):
                     drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, stops)
                     planned = _soge_planned_times(trip.get("depart") or "",
-                                                  stops, drive or 0, settings, _lg)
+                                                  stops, drive or 0, settings, _lg,
+                                                  trip.get("arrive") or "")  # soge-back-plan-v1
 
             head = {
                 "trip_name": trip.get("trip_name"),
@@ -29363,7 +29449,8 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
             elif len(riding) != len(stops):
                 drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, riding)
                 times = _soge_planned_times(trip.get("depart") or "",
-                                            riding, drive or 0, settings, _lg)
+                                            riding, drive or 0, settings, _lg,
+                                            trip.get("arrive") or "")  # soge-back-plan-v1
                 tmap = {}
                 for _s, _t in zip(riding, times):
                     tmap[id(_s)] = _t
@@ -29373,7 +29460,8 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                 if not any(planned):
                     drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, stops)
                     planned = _soge_planned_times(trip.get("depart") or "",
-                                                  stops, drive or 0, settings, _lg)
+                                                  stops, drive or 0, settings, _lg,
+                                                  trip.get("arrive") or "")  # soge-back-plan-v1
 
             try:
                 dr = supabase.table("soge_days").insert({
@@ -29855,6 +29943,13 @@ def api_soge_run_replan():
         settings = get_soge_settings(supabase, f_code)
         geo = soge_geo_map(supabase, f_code)
 
+        # soge-back-plan-v1: 便ごとの「到着」を、便の定義から引けるようにする。
+        #   ★ここには便の定義が来ていない（soge_days の行しか無い）ので、
+        #     trip_key で引き当てる。
+        _arrive_of = {}
+        for _t in (settings.get("trips") or []):
+            _arrive_of[str(_t.get("key") or "")] = (_t.get("arrive") or "")
+
         by_day = {}
         for s in stops:
             by_day.setdefault(s.get("day_id"), []).append(s)
@@ -29874,7 +29969,8 @@ def api_soge_run_replan():
             if riding:
                 drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, riding)
                 times = _soge_planned_times((str(d.get("depart_at") or ""))[:5],
-                                            riding, drive or 0, settings, _lg)
+                                            riding, drive or 0, settings, _lg,
+                                            _arrive_of.get(str(d.get("trip_key") or ""), ""))
             tmap = {}
             for x, t in zip(riding, times):
                 tmap[x["id"]] = t
