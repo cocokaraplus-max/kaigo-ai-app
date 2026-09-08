@@ -292,6 +292,20 @@
           <div id="viewProfileHead"></div>
         </div>
 
+        <!-- patinfo-goal-viewtab-v1 : 目標は見るだけなので「見る」タブの上に置く -->
+        <div class="v-card" id="goalView">
+          <div class="v-card-h">
+            <span class="material-symbols-outlined" style="font-size:18px;">flag</span>今の目標
+            <a id="goalEditLink" href="#" class="edit-jump"
+               style="display:none; text-decoration:none;">✏️ 直す</a>
+          </div>
+          <div style="font-size:0.72rem; color:#5f6368; line-height:1.5; margin-bottom:10px;">
+            目標は<b>利用者基本情報</b>か<b>評価</b>で入れます。ここでは見るだけです。<br>
+            モニタリング報告書に出るのも、ここに出ているものと同じです。
+          </div>
+          <div id="goalViewBody"></div>
+        </div>
+
         <div class="v-card">
           <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">calculate</span>数秘（ライフパスナンバー）</div>
           <div id="viewNumerology"></div>
@@ -473,21 +487,6 @@
           </div>
         </div>
 
-    <!-- patinfo-goal-readonly-v1 : 目標は見るだけ。正は利用者基本情報。 -->
-    <div id="goalView" class="section-card">
-        <div class="section-title">
-            <span class="material-symbols-outlined" style="font-size:20px;">flag</span>
-            今の目標
-            <a id="goalEditLink" href="#" style="margin-left:auto; font-size:0.72rem; background:#e8f0fe; color:#1967d2; padding:4px 10px; border-radius:10px; text-decoration:none; display:none;">
-                <span class="material-symbols-outlined" style="font-size:14px; vertical-align:middle;">edit</span>直す
-            </a>
-        </div>
-        <div class="goal-section-hint">
-            目標は<b>利用者基本情報</b>か<b>評価</b>で入れます。ここでは見るだけです。<br>
-            モニタリング報告書に出るのも、ここに出ているものと同じです。
-        </div>
-        <div id="goalViewBody"></div>
-    </div>
       </div><!-- /inputPane -->
     </div><!-- /tabbedArea -->
 

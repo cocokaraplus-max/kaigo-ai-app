@@ -13604,6 +13604,44 @@ def api_admin_patient_add():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ===== goal-period-order-v1 : 目標の期間が逆になっていないか =====
+#   ★書き込む入口は2つ（利用者基本情報 と 評価ページ）。
+#     どちらもここを通して止める。片方だけだと必ずすり抜ける。
+_GOAL_PERIOD_PAIRS = (
+    ("long_goal_period_from",  "long_goal_period_to",  "長期目標"),
+    ("short_goal_period_from", "short_goal_period_to", "短期目標"),
+)
+
+
+def _goal_period_ng(get):   # goal-period-order-v1
+    """期間が逆なら、その理由の文を返す。問題なければ None。
+
+    get(列名) は「保存したあとにその列がどうなるか」を返す関数。
+    ★片方だけ送られてくることがあるので、必ず
+      【送られた値と、今入っている値を混ぜたあと】で見ること。
+    ★空は通す（あとで入れる使い方を邪魔しない）。
+    ★同じ日は通す（1日だけの期間）。止めるのは To が From より前のときだけ。
+    """
+    for k_from, k_to, label in _GOAL_PERIOD_PAIRS:
+        a = (str(get(k_from) or "")).strip()
+        b = (str(get(k_to) or "")).strip()
+        if a.lower() in ("none", "null"):
+            a = ""
+        if b.lower() in ("none", "null"):
+            b = ""
+        if not a or not b:
+            continue
+        # YYYY-MM-DD の形のときだけ見る。形が違うものは触らない
+        if not (re.fullmatch(r"\d{4}-\d{2}-\d{2}", a)
+                and re.fullmatch(r"\d{4}-\d{2}-\d{2}", b)):
+            continue
+        if b < a:   # 同じ形なので、文字のまま比べて日付の前後になる
+            return ("%sの期間が逆になっています（%s 〜 %s）。"
+                    "終わりの日は、始まりの日と同じ日か、あとの日にしてください。"
+                    % (label, a, b))
+    return None
+
+
 @app.route('/api/admin/patient/save', methods=['POST'])
 @login_required
 def api_admin_patient_save():
@@ -13629,6 +13667,12 @@ def api_admin_patient_save():
         # user_name 必須(新規時)
         if not pid and not (row.get("user_name") or "").strip():
             return jsonify({"status": "error", "message": "氏名は必須です"}), 400
+
+        # goal-period-order-v1: 目標の期間が逆なら、書き込む前に止める。
+        #   ★この画面は期間4つをまとめて送ってくるので、row だけ見れば足りる。
+        _pmsg = _goal_period_ng(lambda k: row.get(k))
+        if _pmsg:
+            return jsonify({"status": "error", "message": _pmsg}), 400
 
         supabase = get_supabase()
         if pid:
@@ -16797,6 +16841,14 @@ def api_goal_apply():
                          "field": field, "field_label": LABEL.get(field, field),
                          "old_value": old_v, "new_value": new_v, "year_month": year_month,
                          "valid_from": _valid_from, "changed_by": my})   # goal-valid-from-v1
+        # goal-period-order-v1: 目標の期間が逆なら、書き込む前に止める。
+        #   ★ここは From だけ／To だけが送られてくることがある。
+        #     upd（今回変える分）を prof（今入っている分）にかぶせた
+        #     【保存後の姿】で見ないと、片側だけの変更を取り逃す。
+        _pmsg = _goal_period_ng(lambda k: upd.get(k, prof.get(k)))
+        if _pmsg:
+            return jsonify({"status": "error", "message": _pmsg}), 400
+
         if not upd:
             return jsonify({"status": "success", "updated": 0, "message": "変更はありません"})
         # goal-history-first-v1: 【記録を先に残してから変える】。
