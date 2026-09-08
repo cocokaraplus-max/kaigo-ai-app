@@ -27043,6 +27043,10 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
             trips_out.append({"trip_key": trip["key"], "trip_name": trip["name"],
                               "depart": trip.get("depart") or "",
                               "arrive": trip.get("arrive") or "",   # soge-back-plan-v1
+                              # soge-addppl-type-v1: 誰も居ない便でも、
+                              #   迎えの便か送りの便かは【定義】で決まっている
+                              "can_pickup": bool(trip.get("pickup_units")),
+                              "can_dropoff": bool(trip.get("dropoff_units")),
                               "vehicles": []})
             continue
 
@@ -27123,6 +27127,8 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
             "trip_key": trip["key"], "trip_name": trip["name"],
             "depart": trip.get("depart") or "",
             "arrive": trip.get("arrive") or "",        # soge-back-plan-v1
+            "can_pickup": bool(trip.get("pickup_units")),    # soge-addppl-type-v1
+            "can_dropoff": bool(trip.get("dropoff_units")),  # soge-addppl-type-v1
             "vehicles": cars_out,
         })
 
@@ -27311,6 +27317,8 @@ def _soge_rows_view(supabase, f_code, weekday, settings, rows):  # soge-date-pla
             "trip_key": trip["key"], "trip_name": trip["name"],
             "depart": trip.get("depart") or "",
             "arrive": trip.get("arrive") or "",        # soge-back-plan-v1
+            "can_pickup": bool(trip.get("pickup_units")),    # soge-addppl-type-v1
+            "can_dropoff": bool(trip.get("dropoff_units")),  # soge-addppl-type-v1
             "vehicles": cars_out,
         })
 

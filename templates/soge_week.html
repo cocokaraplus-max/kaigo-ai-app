@@ -1308,13 +1308,20 @@
     if (btn.parentNode.querySelector('.sg-add')) return;   // 二重に開かない
     var trip = state.data.trips[ti];
 
-    // 中間便は「送り」と「迎え」が混ざるので、どちらか選んでもらう
-    var hasPick = (trip.vehicles || []).some(function (v) {
-      return (v.stops || []).some(function (s) { return s.type === 'pickup'; });
-    });
-    var hasDrop = (trip.vehicles || []).some(function (v) {
-      return (v.stops || []).some(function (s) { return s.type === 'dropoff'; });
-    });
+    /* 中間便は「送り」と「迎え」が混ざるので、どちらか選んでもらう。
+       ★soge-addppl-type-v1: 決めるのは便の【定義】。
+         前は「いま入っている人の種類」で決めていたので、
+         まだ迎えの人が1人も居ない中間便では【迎えの1人目を足せなかった】。
+       ★can_pickup / can_dropoff が渡って来ない古い画面データのときだけ、
+         これまでどおり入っている人から見る（保険）。 */
+    function _tripHas(kind, key) {
+      if (typeof trip[key] === 'boolean') { return trip[key]; }
+      return (trip.vehicles || []).some(function (v) {
+        return (v.stops || []).some(function (s) { return s.type === kind; });
+      });
+    }
+    var hasPick = _tripHas('pickup', 'can_pickup');
+    var hasDrop = _tripHas('dropoff', 'can_dropoff');
     var typeSel = (hasPick && hasDrop)
       ? '<select class="ty"><option value="pickup">迎え</option><option value="dropoff">送り</option></select>'
       : '<input type="hidden" class="ty" value="' + (hasDrop && !hasPick ? 'dropoff' : 'pickup') + '">';
