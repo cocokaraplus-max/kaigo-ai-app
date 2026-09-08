@@ -27126,9 +27126,15 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
             "vehicles": cars_out,
         })
 
+    # soge-nogeo-leg-v1: 人数だけでは誰を直せばよいか分からないので名前も出す。
+    #   ★座標が無い人はGoogleへの経路に入れていないため、その人の区間が0分になり、
+    #     到着予定時刻が【1つ前の人と同じ】になる。
     no_geo = [t["user_name"] for t in targets if str(t["patient_id"]) not in geo]
     if no_geo:
-        warnings.append("座標が無い利用者が %d名います（住所の登録・変換を確認してください）。" % len(no_geo))
+        warnings.append("住所から座標が取れていない方が %d名います（%s）。"
+                        "その方の到着予定時刻がずれます。"
+                        "下の「座標を取り直す」を押してください。"
+                        % (len(no_geo), _soge_name_list(no_geo)))
 
     return {
         "weekday": weekday,
@@ -27137,6 +27143,7 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
         "target_count": len(targets),
         "wheelchair_count": sum(1 for t in targets if t["is_wheelchair"]),
         "warnings": warnings,
+        "geo_missing": len(no_geo),          # soge-nogeo-leg-v1
     }
 
 
@@ -27318,8 +27325,18 @@ def _soge_rows_view(supabase, f_code, weekday, settings, rows):  # soge-date-pla
         if cnt:
             warns.append("%s: %d件、まだ乗る車が決まっていません。" % (t["trip_name"], cnt))
 
+    # soge-nogeo-leg-v1: 保存済みの配車表にも出す。ふだん見ているのはこちらなので、
+    #   ここに出ないと座標が抜けていることに一生気づけない。
+    _ng = [t["user_name"] for t in targets if str(t["patient_id"]) not in geo]
+    if _ng:
+        warns.append("住所から座標が取れていない方が %d名います（%s）。"
+                     "その方の到着予定時刻がずれます。"
+                     "下の「座標を取り直す」を押してください。"
+                     % (len(_ng), _soge_name_list(_ng)))
+
     return {"weekday": weekday, "unit_count": settings["unit_count"],
-            "trips": trips_out, "saved": True, "warnings": warns}
+            "trips": trips_out, "saved": True, "warnings": warns,
+            "geo_missing": len(_ng)}          # soge-nogeo-leg-v1
 
 
 def _soge_weekday_arg(v, default=1):  # soge-weekday-zero-v1
@@ -28294,11 +28311,68 @@ def api_soge_staff():
 # 席が空いていても1台で16か所回るのは現実的でない。
 
 
-def _soge_route_hash(origin, stops):  # soge-time-v1
-    """立ち寄り順のハッシュ。同じ順なら所要時間は変わらないのでキャッシュに使う。"""
+def _soge_route_hash(origin, stops, geo=None):  # soge-time-v1 / soge-nogeo-leg-v1
+    """立ち寄り順のハッシュ。同じ順なら所要時間は変わらないのでキャッシュに使う。
+
+    ★soge-nogeo-leg-v1: 【座標の有無】も鍵に混ぜる。
+      座標が無い人はGoogleへの経路に入れていないので、その人の区間は 0分 で保存される。
+      鍵が並び順だけだと、あとで座標を付けても同じ鍵にぶつかり、
+      【古い 0分 を永久に返し続ける】。有無を混ぜておけば、
+      座標が付いた時点で鍵が変わり、次に開いたときに1回だけ取り直す。
+    ★geo を渡さない呼び方は今までどおり（混ぜない）。
+    """
     import hashlib
     key = (origin or "") + "|" + "|".join(str(s.get("patient_id")) for s in (stops or []))
+    if geo is not None:
+        key += "|g:" + "".join("1" if geo.get(str(s.get("patient_id"))) else "0"
+                               for s in (stops or []))
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:32]
+
+
+def _soge_fill_nogeo_legs(legs, stops, geo):  # soge-nogeo-leg-v1
+    """座標が無い人の区間（0分）を、分かっている区間の平均で埋める。
+
+    ★座標が無い人はGoogleへの経路に入れていないので、その人の区間は 0.0 になる。
+      そのままだと「1つ前の人と同じ時刻に着く」ことになり、
+      送り便の1人目なら【出発時刻と同じ】が出る（2026-09-08 に本番で出た）。
+    ★同じ住所のご夫婦などは【座標がある】ので、ここでは触らない。
+      本当に0分でよい区間は0分のまま残る。
+    ★1人も座標が無い便は埋めようがないので、そのまま返す（等分に倒れる）。
+    ★平均は「実際より早い時刻」を避けるための当て推量。正しい直し方は座標を付けること。
+      だから配車表には警告も出す。
+    """
+    if not isinstance(legs, list) or not stops or len(legs) != len(stops):
+        return legs
+    geo = geo or {}
+    miss = [i for i, s in enumerate(stops)
+            if not geo.get(str(s.get("patient_id")))]
+    if not miss:
+        return legs
+    known = []
+    for i, v in enumerate(legs):
+        if i in miss:
+            continue
+        try:
+            known.append(float(v))
+        except (TypeError, ValueError):
+            return legs
+    if not known:
+        return legs
+    avg = round(sum(known) / float(len(known)), 2)
+    out = list(legs)
+    for i in miss:
+        out[i] = avg
+    return out
+
+
+def _soge_name_list(names, limit=5):  # soge-nogeo-leg-v1
+    """警告に出す名前の並び。多いときは「ほか◯名」でたたむ。"""
+    ns = [str(x or "").strip() for x in (names or []) if str(x or "").strip()]
+    if not ns:
+        return ""
+    if len(ns) <= limit:
+        return "・".join(ns)
+    return "・".join(ns[:limit]) + " ほか%d名" % (len(ns) - limit)
 
 
 def _soge_legs_ok(legs, n):  # soge-legtime-v1
@@ -28359,7 +28433,7 @@ def _soge_drive_detail(supabase, f_code, geo, stops):  # soge-time-v1 / soge-leg
     if not origin:
         return None, None, "施設の住所が未登録です", None
 
-    h = _soge_route_hash(origin, stops)
+    h = _soge_route_hash(origin, stops, geo)   # soge-nogeo-leg-v1
     cached = None               # soge-legtime-v1: 保存済みの (分, km)。下の失敗時に使う
     try:
         cr = (supabase.table("soge_route_time").select("drive_minutes,distance_km,legs")
@@ -28367,8 +28441,11 @@ def _soge_drive_detail(supabase, f_code, geo, stops):  # soge-time-v1 / soge-leg
         if cr.data:
             cached = (int(cr.data[0]["drive_minutes"]), cr.data[0].get("distance_km"))
             if cr.data[0].get("legs") is not None:
+                # soge-nogeo-leg-v1: 座標が無い人の 0分 を平均で埋めてから返す
                 return (cached[0], cached[1], None,
-                        _soge_legs_ok(cr.data[0].get("legs"), len(stops)))
+                        _soge_fill_nogeo_legs(
+                            _soge_legs_ok(cr.data[0].get("legs"), len(stops)),
+                            stops, geo))
         # soge-legtime-v1: legs が null = legs列を足す前に保存した古い行。
         #   周り順が同じだとハッシュも同じで永久にここに来てしまうので、
         #   【1回だけ】取り直して埋める。取れなかったときは空配列を書き、
@@ -28471,7 +28548,9 @@ def _soge_drive_detail(supabase, f_code, geo, stops):  # soge-time-v1 / soge-leg
     except Exception as e:
         print("soge route time save error: %s" % e, flush=True)
 
-    return minutes, dist_km, None, (legs or None)
+    # soge-nogeo-leg-v1: 返すときだけ埋める。★保存するのは埋める【前】の値。
+    #   座標が付いたら鍵が変わって取り直すので、当て推量をキャッシュに混ぜない。
+    return minutes, dist_km, None, _soge_fill_nogeo_legs((legs or None), stops, geo)
 
 
 def _soge_trip_legs(trip):  # soge-trip-target-v1
