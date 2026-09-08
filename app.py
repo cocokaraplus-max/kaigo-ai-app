@@ -28629,9 +28629,18 @@ def _soge_past_admin_ok(supabase, f_code, date_str, my_name):  # soge-past-admin
     except Exception as e:
         print("[soge-past-admin] 今日が分かりませんでした: %s" % e, flush=True)
         return False
-    d = str(date_str or "")[:10]
-    if len(d) != 10:
-        # 日付が分からないものは触らせない
+    # soge-past-admin-v2 : 長さではなく【本物の日付として読めるか】で見て、
+    #   読めたら必ず YYYY-MM-DD の形にそろえてから比べる。
+    #   ★len(d) == 10 だけだと "2026/08/01" や "2026-13-45" が通ってしまう。
+    #     しかも下の比べ方は【文字】なので '2026/' > '2026-'、'2026-1' > '2026-0'
+    #     となり、過ぎた日なのに「今日より後」と判定されて歯止めを抜けていた。
+    #   ★読めただけでは足りない。形をそろえないと "2026-8-1" のような
+    #     0埋めなしの日付が、やはり文字の大小で狂う。だから strftime で戻す。
+    try:
+        d = datetime.strptime(str(date_str or "")[:10],
+                              "%Y-%m-%d").strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        # 日付として読めないものは触らせない
         return False
     if d >= today:
         return True
