@@ -475,16 +475,39 @@ def api_line_friends_list():
         r = supabase.table('line_friends').select('*').eq('facility_code', f_code).order('updated_at', desc=True).execute()
         rows = r.data or []
         name_map = _line_patient_name_map(supabase, f_code)
+        # line-multi-patient-v1: 紐付けを1回だけ読んで、友だちごとにまとめる。
+        #   ★友だちの数だけ問い合わせない。人数が増えるほど遅くなるため。
+        _links, _links_ok = {}, True
+        try:
+            _lr = (supabase.table('line_friend_patients')
+                   .select('line_user_id,patient_id,created_at')
+                   .eq('facility_code', f_code).order('created_at', desc=False).execute())
+            for _x in (_lr.data or []):
+                _links.setdefault(_x.get('line_user_id'), []).append(str(_x.get('patient_id')))
+        except Exception as e:
+            _links_ok = False
+            print(f'[line-multi] 紐付けの表を読めませんでした（一覧）: {e}', flush=True)
         friends = []
         for row in rows:
             pid = row.get('patient_id')
             pinfo = name_map.get(str(pid)) if pid else None
+            # line-multi-patient-v1: 担当している利用者を並べて返す。
+            #   ★表が読めたなら、そちらが正。読めなかったときだけ古い列に倒れる。
+            _pids = _links.get(row.get('line_user_id'))
+            if _pids is None:
+                _pids = ([str(pid)] if (not _links_ok and pid) else [])
+            _plist = [{'patient_id': p,
+                       'patient_name': (name_map.get(p) or {}).get('user_name', '')}
+                      for p in _pids]
             friends.append({
                 'line_user_id': row.get('line_user_id'),
                 'display_name': row.get('display_name') or '',
-                'status': row.get('status') or 'unlinked',
-                'patient_id': pid,
-                'patient_name': (pinfo['user_name'] if pinfo else ''),
+                'status': ('linked' if _plist else 'unlinked'),
+                'patients': _plist,                      # line-multi-patient-v1
+                # ★1人目だけを返す古い形も残す（他から読まれていても壊れないように）
+                'patient_id': (_plist[0]['patient_id'] if _plist else pid),
+                'patient_name': (_plist[0]['patient_name'] if _plist
+                                 else (pinfo['user_name'] if pinfo else '')),
                 'linked_by': row.get('linked_by') or '',
                 'updated_at': row.get('updated_at') or '',
             })
@@ -512,16 +535,23 @@ def api_line_friends_link():
         name_map = _line_patient_name_map(supabase, f_code)
         if str(pid) not in name_map:
             return jsonify({'status': 'error', 'message': 'この利用者は施設に存在しません'}), 400
-        from datetime import datetime, timezone
-        now_iso = datetime.now(timezone.utc).isoformat()
-        # facility_code + line_user_id の二条件guard
-        supabase.table('line_friends').update({
-            'patient_id': pid,
-            'status': 'linked',
-            'linked_by': my_name,
-            'updated_at': now_iso,
-        }).eq('facility_code', f_code).eq('line_user_id', uid).execute()
-        return jsonify({'status': 'success', 'patient_name': name_map[str(pid)]['user_name']})
+        # line-multi-patient-v1: 【置き換えではなく足す】。
+        #   ★同じ組み合わせはDB側の一意制約で止まるので、二重に入らない。
+        try:
+            supabase.table('line_friend_patients').upsert({
+                'facility_code': f_code,
+                'line_user_id': uid,
+                'patient_id': pid,
+                'linked_by': my_name,
+            }, on_conflict='facility_code,line_user_id,patient_id').execute()
+        except Exception as e:
+            print(f'[line-multi] 紐付けを足せませんでした: {e}', flush=True)
+            return jsonify({'status': 'error',
+                            'message': '紐付けできませんでした。もう一度お試しください。'}), 500
+        _pids = _line_sync_friend_status(supabase, f_code, uid, my_name)
+        return jsonify({'status': 'success',
+                        'patient_name': name_map[str(pid)]['user_name'],
+                        'patient_count': (len(_pids) if _pids is not None else None)})
     except Exception as e:
         print(f'api_line_friends_link error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -540,15 +570,23 @@ def api_line_friends_unlink():
         uid = (data.get('line_user_id') or '').strip()
         if not uid:
             return jsonify({'status': 'error', 'message': 'line_user_id が必要です'}), 400
-        from datetime import datetime, timezone
-        now_iso = datetime.now(timezone.utc).isoformat()
-        supabase.table('line_friends').update({
-            'patient_id': None,
-            'status': 'unlinked',
-            'linked_by': None,
-            'updated_at': now_iso,
-        }).eq('facility_code', f_code).eq('line_user_id', uid).execute()
-        return jsonify({'status': 'success'})
+        # line-multi-patient-v1: どの利用者ぶんを外すかを受け取る。
+        #   ★patient_id が来なければ、その友だちの紐付けを【全部】外す（前と同じ動き）。
+        #     古い画面から呼ばれても、意味が変わらないようにしておく。
+        _pid = str((data.get('patient_id') or '')).strip()
+        try:
+            q = (supabase.table('line_friend_patients').delete()
+                 .eq('facility_code', f_code).eq('line_user_id', uid))
+            if _pid:
+                q = q.eq('patient_id', _pid)
+            q.execute()
+        except Exception as e:
+            print(f'[line-multi] 紐付けを外せませんでした: {e}', flush=True)
+            return jsonify({'status': 'error',
+                            'message': '解除できませんでした。もう一度お試しください。'}), 500
+        _pids = _line_sync_friend_status(supabase, f_code, uid, my_name)
+        return jsonify({'status': 'success',
+                        'patient_count': (len(_pids) if _pids is not None else None)})
     except Exception as e:
         print(f'api_line_friends_unlink error: {e}', flush=True)
         return jsonify({'status': 'error', 'message': str(e)}), 500
@@ -884,11 +922,85 @@ def _renraku_fetch_for_line(supabase, f_code, patient_id, note_date):
     return note, vitals, pname
 
 
+def _line_patient_links(supabase, f_code, line_user_id):  # line-multi-patient-v1
+    """そのLINEアカウントが担当している利用者の id を、付けた順に返す。
+
+    ★「0件」と「読めなかった」を分ける。読めなかったときは None。
+      読めないのを0件と読むと、紐付いているのに未紐付けと出てしまう。
+    """
+    try:
+        r = (supabase.table('line_friend_patients').select('patient_id,created_at')
+             .eq('facility_code', f_code).eq('line_user_id', line_user_id)
+             .order('created_at', desc=False).execute())
+        return [str(x['patient_id']) for x in (r.data or []) if x.get('patient_id')]
+    except Exception as e:
+        print(f'[line-multi] 紐付けを読めませんでした: {e}', flush=True)
+        return None
+
+
+def _line_sync_friend_status(supabase, f_code, line_user_id, my_name=None):  # line-multi-patient-v1
+    """紐付けの本数に合わせて、古い列（status / patient_id）をそろえる。
+
+    ★読むときの正は line_friend_patients。ここでそろえるのは
+      【画面の出し分け】と【保険】のため。
+        status     … 1人でも紐付いていれば linked
+        patient_id … 1人目。新しい表が読めないときに、ここへ倒れる
+    """
+    pids = _line_patient_links(supabase, f_code, line_user_id)
+    if pids is None:
+        return None
+    upd = {
+        'status': ('linked' if pids else 'unlinked'),
+        'patient_id': (pids[0] if pids else None),
+        'updated_at': datetime.now(timezone.utc).isoformat(),
+    }
+    if my_name is not None:
+        upd['linked_by'] = (my_name if pids else None)
+    try:
+        (supabase.table('line_friends').update(upd)
+         .eq('facility_code', f_code).eq('line_user_id', line_user_id).execute())
+    except Exception as e:
+        print(f'[line-multi] 友だちの状態をそろえられませんでした: {e}', flush=True)
+    return pids
+
+
 def _line_linked_recipients(supabase, f_code, patient_id):
-    """その利用者に linked な友だち(userId, display_name)のリスト。"""
-    r = (supabase.table('line_friends').select('line_user_id,display_name,status,patient_id')
-         .eq('facility_code', f_code).eq('patient_id', patient_id).eq('status', 'linked').execute())
-    return r.data or []
+    """その利用者に紐付いた友だち(userId, display_name)のリスト。
+
+    line-multi-patient-v1 :
+      ★紐付けは line_friend_patients（1行＝1つの関係）で持つ。
+        1つのLINEアカウントが何人の利用者を担当していてもよい。
+      ★新しい表が読めないときは、古い line_friends.patient_id に倒れる。
+        SQLを流し忘れても【連絡帳が誰にも届かない】を起こさないため。
+        そのときは1人目のぶんしか届かない。理由をログに出す。
+    """
+    try:
+        r = (supabase.table('line_friend_patients').select('line_user_id')
+             .eq('facility_code', f_code).eq('patient_id', patient_id).execute())
+        uids = [x['line_user_id'] for x in (r.data or []) if x.get('line_user_id')]
+    except Exception as e:
+        print(f'[line-multi] 紐付けの表を読めませんでした。古い列で送ります: {e}',
+              flush=True)
+        r0 = (supabase.table('line_friends').select('line_user_id,display_name,status,patient_id')
+              .eq('facility_code', f_code).eq('patient_id', patient_id)
+              .eq('status', 'linked').execute())
+        return r0.data or []
+    if not uids:
+        return []
+    try:
+        r2 = (supabase.table('line_friends').select('line_user_id,display_name,status,patient_id')
+              .eq('facility_code', f_code).in_('line_user_id', uids).execute())
+        got = {x.get('line_user_id'): x for x in (r2.data or [])}
+    except Exception as e:
+        print(f'[line-multi] 友だちの名前を読めませんでした: {e}', flush=True)
+        got = {}
+    out = []
+    for u in uids:
+        x = got.get(u)
+        # ★名前が引けなくても送り先からは外さない。紐付けがあるのが正。
+        out.append(x if x else {'line_user_id': u, 'display_name': '',
+                                'status': 'linked', 'patient_id': patient_id})
+    return out
 
 
 @app.route('/api/renraku/line_preview', methods=['POST'])  # renraku-line-send-v1
@@ -25642,6 +25754,11 @@ def _soge_norm_trips(raw, unit_count):  # soge-settings-v1
         depart = (t.get("depart") or "").strip()
         if depart and not (len(depart) == 5 and depart[2] == ":"):
             depart = ""
+        # soge-back-plan-v1: 迎えを逆算するときの「到着」時刻。
+        #   ★空なら前向きのまま。送り便は空にしておく。
+        arrive = (t.get("arrive") or "").strip()
+        if arrive and not (len(arrive) == 5 and arrive[2] == ":"):
+            arrive = ""
         def _units(v):
             out2 = []
             for u in (v or []):
@@ -25665,6 +25782,7 @@ def _soge_norm_trips(raw, unit_count):  # soge-settings-v1
             "key": (t.get("key") or "t%d" % (i + 1)),
             "name": name,
             "depart": depart,
+            "arrive": arrive,                      # soge-back-plan-v1
             "pickup_units": _units(t.get("pickup_units")),
             "dropoff_units": _units(t.get("dropoff_units")),
             "max_cars": max_cars,
@@ -25717,6 +25835,8 @@ def get_soge_settings(supabase, f_code):  # soge-settings-v1
                 "unit_count": uc,
                 "trips": _soge_norm_trips(s.get("trips"), uc),
                 "mid_dropoff_first": bool(s.get("mid_dropoff_first", True)),
+                # soge-back-plan-v1: 列が無い施設でも False に倒れる（SQL前でも落ちない）
+                "back_plan": bool(s.get("back_plan")),
                 "configured": True,
             }
             for k, dv in SOGE_TIME_DEFAULTS.items():   # soge-time-v1
@@ -25732,6 +25852,7 @@ def get_soge_settings(supabase, f_code):  # soge-settings-v1
         "unit_count": 1,
         "trips": [dict(t) for t in SOGE_DEFAULT_TRIPS[1]],
         "mid_dropoff_first": True,
+        "back_plan": False,                        # soge-back-plan-v1
         "configured": False,
     }
     out.update(SOGE_TIME_DEFAULTS)
@@ -25781,6 +25902,7 @@ def api_soge_settings_save():
             "unit_count": uc,
             "trips": trips,
             "mid_dropoff_first": bool(data.get("mid_dropoff_first", True)),
+            "back_plan": bool(data.get("back_plan")),      # soge-back-plan-v1
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
         # soge-time-v1: 目標時間・上限時間・乗降時間
@@ -26919,7 +27041,9 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
         people = [t for t in targets if t["unit"] in pu or t["unit"] in du]
         if not people:
             trips_out.append({"trip_key": trip["key"], "trip_name": trip["name"],
-                              "depart": trip.get("depart") or "", "vehicles": []})
+                              "depart": trip.get("depart") or "",
+                              "arrive": trip.get("arrive") or "",   # soge-back-plan-v1
+                              "vehicles": []})
             continue
 
         # soge-time-v1: 席数だけでなく「事業所に戻るまでの時間」で台数を決める
@@ -26945,8 +27069,17 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
             used, n_wc = _soge_peak_seats(grp, spec, trip)
             tm = times[i] if i < len(times) else {"drive": 0, "stop": 0, "total": 0,
                                                   "km": 0.0, "legs": None}
+            _pinf = {}                                   # soge-back-plan-v1
             planned = _soge_planned_times(trip.get("depart") or "", gstops, tm["drive"],
-                                          settings, tm.get("legs"))   # soge-legtime-v1
+                                          settings, tm.get("legs"),
+                                          trip.get("arrive") or "",
+                                          _pinf)   # soge-legtime-v1
+            if _pinf.get("short"):
+                # ★黙って前向きに戻さない。無理な日はここで見えるようにする。
+                warnings.append("%s の %s は 到着 %s に間に合いません。"
+                                "いまは出発時刻からの計算で出しています。"
+                                % (trip["name"], (v.get("name") if v else "車%d" % (i + 1)),
+                                   trip.get("arrive") or ""))
 
             _tgt, _max = _soge_trip_target(trip, settings)   # soge-trip-target-v1
             if tm["total"] > _max:
@@ -26969,6 +27102,8 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
                 "stop_minutes": tm["stop"],
                 "distance_km": tm["km"],
                 "over_target": tm["total"] > _tgt,   # soge-trip-target-v1
+                "wait_minutes": _pinf.get("wait", 0),      # soge-back-plan-v1
+                "plan_short": bool(_pinf.get("short")),    # soge-back-plan-v1
                 "stops": [{
                     "patient_id": s["patient_id"], "user_name": s["user_name"],
                     "type": s["type"], "nth": s.get("nth") or 0,
@@ -26987,6 +27122,7 @@ def soge_build_week(supabase, f_code, weekday, settings=None):  # soge-week-v1
         trips_out.append({
             "trip_key": trip["key"], "trip_name": trip["name"],
             "depart": trip.get("depart") or "",
+            "arrive": trip.get("arrive") or "",        # soge-back-plan-v1
             "vehicles": cars_out,
         })
 
@@ -27167,6 +27303,7 @@ def _soge_rows_view(supabase, f_code, weekday, settings, rows):  # soge-date-pla
         trips_out.append({
             "trip_key": trip["key"], "trip_name": trip["name"],
             "depart": trip.get("depart") or "",
+            "arrive": trip.get("arrive") or "",        # soge-back-plan-v1
             "vehicles": cars_out,
         })
 
@@ -27798,6 +27935,84 @@ def _soge_date_day_info(supabase, f_code, date_str):  # soge-date-plan-v1
             "locked": st["locked"], "past": st["past"]}
 
 
+def _soge_push_driver(supabase, f_code, date_str, rows, reason):  # soge-date-driver-v1
+    """配車編集の運転手を、その日の運行表にも当てる。
+
+    ★なぜ要るか。_soge_merge_day は「その日にもう運転手が入っていれば
+      配車表で上書きしない」（soge-guard4-v1）。配車表から作った日は
+      最初から名前が入っているので、配車編集の運転手が一生届かなかった。
+
+    ★決め（2026-09-08 HIROさん）: あとから触ったほうが勝つ。
+      配車を保存したら、その日の運転手は配車のとおりになる。
+
+    ★【黙って変えない】。運行画面で立てた代理が保存で戻ることがあるので、
+      変わったぶんを (便名, 前, 後) で返し、保存の返事に出す。
+      記録表には運転手の名前が必須。黙って変わるのがいちばん困る。
+
+    ★当てない日: 過ぎた日 / 確定済み / 状態を読めなかった日 /
+      まだ運行表が無い日。運行表の作り直しと同じ線引きにそろえる。
+      （まだ無い日は、あとで作られるときに配車の運転手がそのまま入る）
+
+    返り値: [(便名, 前の名前, 後の名前), ...]
+    """
+    if reason in ("past", "locked", "unknown", "not_yet"):
+        return []
+    try:
+        _dr = (supabase.table("soge_days")
+               .select("id,trip_key,trip_name,vehicle_no,driver_name")
+               .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        days = _dr.data or []
+    except Exception as e:
+        print("[soge-date-driver] その日の便を読めませんでした: %s" % e, flush=True)
+        return []
+
+    want = {}
+    for r in (rows or []):
+        tk = (r.get("trip_key") or "").strip()
+        vno = r.get("vehicle_no")
+        # 特別枠（0=車が未定 / -1=送迎なし）は運行表に無い。
+        if not tk or vno is None or vno <= 0:
+            continue
+        want[(tk, vno)] = (r.get("driver_name") or "").strip()
+
+    changed = []
+    for d in days:
+        # 臨時便はその日かぎりのものなので、配車表では決められない。
+        if d.get("is_extra"):
+            continue
+        k = ((d.get("trip_key") or "").strip(), d.get("vehicle_no"))
+        if k not in want:
+            continue
+        now_name = (d.get("driver_name") or "").strip()
+        new_name = want[k]
+        if now_name == new_name:
+            continue
+        try:
+            (supabase.table("soge_days")
+             .update({"driver_name": (new_name or None),
+                      "updated_at": datetime.now(timezone.utc).isoformat()})
+             .eq("facility_code", f_code).eq("id", d.get("id")).execute())
+        except Exception as e:
+            print("[soge-date-driver] 運転手を当てられませんでした %s: %s"
+                  % (k, e), flush=True)
+            continue
+        changed.append(((d.get("trip_name") or k[0]), now_name, new_name))
+    return changed
+
+
+def _soge_driver_say(changed):  # soge-date-driver-v1
+    """変わった運転手を、そのまま読める一言にする。長くなりすぎないよう3件まで。"""
+    if not changed:
+        return ""
+    def _one(c):
+        name, before, after = c
+        return "%s：%s → %s" % (name, (before or "未設定"), (after or "未設定"))
+    head = "、".join(_one(c) for c in changed[:3])
+    if len(changed) > 3:
+        head += "、ほか%d件" % (len(changed) - 3)
+    return "運転手も当日の運行表に反映しました（%s）。" % head
+
+
 def _soge_date_rebuild(supabase, f_code, date_str):  # soge-date-plan-v1
     """保存や取り消しのあと、当日の運行表を作り直せるなら作り直す。
 
@@ -27973,9 +28188,18 @@ def api_soge_date_save():
 
         res = _soge_date_rebuild(supabase, f_code, date_str)
         say = "" if res.get("built") else _SOGE_REBUILD_SAY.get(res.get("reason") or "", "")
+        # soge-date-driver-v1: 運転手は、作り直しとは別に直接当てる。
+        #   ★_soge_merge_day は「その日にもう運転手が入っていれば上書きしない」ので、
+        #     ここで当てないと配車編集の運転手が当日に届かない。
+        _dchg = _soge_push_driver(supabase, f_code, date_str, rows,
+                                  res.get("reason") or "")
+        _dsay = _soge_driver_say(_dchg)
+        if _dsay:
+            say = (say + " " + _dsay) if say else _dsay
         return jsonify({"status": "success", "saved": len(rows),
                         "rebuilt": bool(res.get("built")),
                         "reason": res.get("reason") or "",
+                        "drivers": [list(c) for c in _dchg],   # soge-date-driver-v1
                         "message": ("この日だけの配車を保存しました。" + (" " + say if say else "")).strip(),
                         "day": _soge_date_day_info(supabase, f_code, date_str)})
     except Exception as e:
@@ -28445,7 +28669,8 @@ def _soge_stops_of(grp, trip, geo, settings):  # soge-time-v1
                              settings.get("_fac"))  # soge-routeopt-v1
 
 
-def _soge_planned_times(depart, stops, drive_minutes, settings, legs=None):  # soge-time-v1
+def _soge_planned_times(depart, stops, drive_minutes, settings, legs=None,
+                        arrive=None, info=None):  # soge-time-v1 / soge-back-plan-v1
     """各立ち寄りの到着予定時刻。走行時間を区間ごとに積み上げ、乗降時間を足していく。
 
     ★soge-legtime-v1: legs（区間ごとの分）があればそれを使う。
@@ -28464,19 +28689,77 @@ def _soge_planned_times(depart, stops, drive_minutes, settings, legs=None):  # s
     n = len(stops)
     use_legs = legs if (isinstance(legs, list) and len(legs) == n and any(legs)) else None
     per_leg = (drive_minutes / float(n + 1)) if n else 0   # 施設→…→施設 で n+1 区間
-    out, acc = [], 0.0
-    for i, s in enumerate(stops):
+
+    def _leg(i):
+        """立ち寄り i に着くまでの走行時間（前の場所からの区間）。"""
         if use_legs is not None:
             try:
-                acc += float(use_legs[i])
+                return float(use_legs[i])
             except (TypeError, ValueError):
-                acc += per_leg
-        else:
-            acc += per_leg
-        t = h * 60 + mm + int(round(acc))
-        out.append("%02d:%02d" % ((t // 60) % 24, t % 60))
-        acc += settings["stop_minutes_wc"] if s.get("is_wheelchair") else settings["stop_minutes"]
-    return out
+                return per_leg
+        return per_leg
+
+    def _stay(s):
+        return (settings["stop_minutes_wc"] if s.get("is_wheelchair")
+                else settings["stop_minutes"])
+
+    def _hhmm(t):
+        t = int(round(t))
+        return "%02d:%02d" % ((t // 60) % 24, t % 60)
+
+    start = h * 60 + mm
+    fwd, acc = [], 0.0
+    for i, s in enumerate(stops):
+        acc += _leg(i)
+        fwd.append(start + acc)
+        acc += _stay(s)
+
+    # soge-back-plan-v1: 迎えの立ち寄りを【到着時刻から逆算】する。
+    #   ★送りは出るのが決まっているので前向き、迎えは着くのが決まっているので後ろ向き。
+    #     余った時間は「迎えの手前」に待機として出る
+    #     （中間便なら送りと迎えの間、迎え便なら出発の前）。
+    #   ★_soge_stops_of は【送り→迎えの順】で返す（_soge_order_stops がその順序を守る）。
+    #     だから最初の pickup で切れば、前半＝送り・後半＝迎えになる。
+    #   ★間に合わない日は前向きに倒して、呼んだ側に short を返す（HIROさん決め）。
+    tried, back_ok, wait = False, False, 0
+    if settings.get("back_plan") and arrive and len(arrive) == 5:
+        p = None
+        for i, s in enumerate(stops):
+            if s.get("type") == "pickup":
+                p = i
+                break
+        end = None
+        if p is not None:
+            try:
+                end = int(arrive[:2]) * 60 + int(arrive[3:5])
+            except (TypeError, ValueError):
+                end = None
+        if end is not None:
+            tried = True
+            # ★最後の立ち寄り → 事業所 の区間は legs に入っていない。
+            #   走行時間の合計（n+1区間ぶん）から、行きの n 区間を引いて出す。
+            ret = drive_minutes - sum(_leg(i) for i in range(n))
+            if ret < 0:
+                ret = per_leg
+            back = list(fwd)
+            t = end - ret
+            for i in range(n - 1, p - 1, -1):
+                t -= _stay(stops[i])
+                back[i] = t
+                if i > p:
+                    t -= _leg(i)
+            # 前向きの時刻は「いちばん早く着ける時刻」。逆算がそれ以降なら収まる。
+            wait = int(round(back[p] - fwd[p]))
+            if wait >= 0:
+                fwd = back
+                back_ok = True
+            else:
+                wait = 0
+    if info is not None:
+        info["wait"] = wait
+        info["back"] = back_ok
+        info["short"] = bool(tried and not back_ok)
+    return [_hhmm(t) for t in fwd]
 
 # ===== /soge-time-v1 =====
 
@@ -28629,9 +28912,18 @@ def _soge_past_admin_ok(supabase, f_code, date_str, my_name):  # soge-past-admin
     except Exception as e:
         print("[soge-past-admin] 今日が分かりませんでした: %s" % e, flush=True)
         return False
-    d = str(date_str or "")[:10]
-    if len(d) != 10:
-        # 日付が分からないものは触らせない
+    # soge-past-admin-v2 : 長さではなく【本物の日付として読めるか】で見て、
+    #   読めたら必ず YYYY-MM-DD の形にそろえてから比べる。
+    #   ★len(d) == 10 だけだと "2026/08/01" や "2026-13-45" が通ってしまう。
+    #     しかも下の比べ方は【文字】なので '2026/' > '2026-'、'2026-1' > '2026-0'
+    #     となり、過ぎた日なのに「今日より後」と判定されて歯止めを抜けていた。
+    #   ★読めただけでは足りない。形をそろえないと "2026-8-1" のような
+    #     0埋めなしの日付が、やはり文字の大小で狂う。だから strftime で戻す。
+    try:
+        d = datetime.strptime(str(date_str or "")[:10],
+                              "%Y-%m-%d").strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        # 日付として読めないものは触らせない
         return False
     if d >= today:
         return True
@@ -28914,7 +29206,8 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
             elif len(riding) != len(stops):
                 drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, riding)
                 times = _soge_planned_times(trip.get("depart") or "",
-                                            riding, drive or 0, settings, _lg)
+                                            riding, drive or 0, settings, _lg,
+                                            trip.get("arrive") or "")  # soge-back-plan-v1
                 tmap = {}
                 for _s, _t in zip(riding, times):
                     tmap[id(_s)] = _t
@@ -28924,7 +29217,8 @@ def _soge_merge_day(supabase, f_code, date_str):  # soge-day-merge-v1
                 if not any(planned):
                     drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, stops)
                     planned = _soge_planned_times(trip.get("depart") or "",
-                                                  stops, drive or 0, settings, _lg)
+                                                  stops, drive or 0, settings, _lg,
+                                                  trip.get("arrive") or "")  # soge-back-plan-v1
 
             head = {
                 "trip_name": trip.get("trip_name"),
@@ -29267,7 +29561,8 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
             elif len(riding) != len(stops):
                 drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, riding)
                 times = _soge_planned_times(trip.get("depart") or "",
-                                            riding, drive or 0, settings, _lg)
+                                            riding, drive or 0, settings, _lg,
+                                            trip.get("arrive") or "")  # soge-back-plan-v1
                 tmap = {}
                 for _s, _t in zip(riding, times):
                     tmap[id(_s)] = _t
@@ -29277,7 +29572,8 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
                 if not any(planned):
                     drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, stops)
                     planned = _soge_planned_times(trip.get("depart") or "",
-                                                  stops, drive or 0, settings, _lg)
+                                                  stops, drive or 0, settings, _lg,
+                                                  trip.get("arrive") or "")  # soge-back-plan-v1
 
             try:
                 dr = supabase.table("soge_days").insert({
@@ -29759,6 +30055,13 @@ def api_soge_run_replan():
         settings = get_soge_settings(supabase, f_code)
         geo = soge_geo_map(supabase, f_code)
 
+        # soge-back-plan-v1: 便ごとの「到着」を、便の定義から引けるようにする。
+        #   ★ここには便の定義が来ていない（soge_days の行しか無い）ので、
+        #     trip_key で引き当てる。
+        _arrive_of = {}
+        for _t in (settings.get("trips") or []):
+            _arrive_of[str(_t.get("key") or "")] = (_t.get("arrive") or "")
+
         by_day = {}
         for s in stops:
             by_day.setdefault(s.get("day_id"), []).append(s)
@@ -29778,7 +30081,8 @@ def api_soge_run_replan():
             if riding:
                 drive, _km, _err, _lg = _soge_drive_detail(supabase, f_code, geo, riding)
                 times = _soge_planned_times((str(d.get("depart_at") or ""))[:5],
-                                            riding, drive or 0, settings, _lg)
+                                            riding, drive or 0, settings, _lg,
+                                            _arrive_of.get(str(d.get("trip_key") or ""), ""))
             tmap = {}
             for x, t in zip(riding, times):
                 tmap[x["id"]] = t
@@ -29861,6 +30165,26 @@ def api_soge_run_stop_edit():
             if upd["is_absent"]:
                 upd["arrived_at"] = None      # 休みなら打刻は消す
                 upd["arrived_by"] = None
+
+        # soge-run-plan-edit-v1: 到着【予定】時刻を手で直す。
+        #   ★打刻(arrived_at)とは別もの。予定は planned_at に入る。
+        #     どちらも同じ口で受けるが、書く先を混ぜない。
+        #   ★空で送れば予定を消せる。「予定時刻を計算し直す」で入れ直せる。
+        #   ★この関数は頭で必ず edited_at を書く。＝その日は「動き出した」に数える。
+        #     数えないと、次に運行表が作り直されたときに手で入れた予定が消える。
+        if "plan" in data:
+            _p = (data.get("plan") or "").strip()
+            if not _p:
+                upd["planned_at"] = None
+            #   ★isascii() が要る。全角の「０８:３０」は isdigit() も int() も通る。
+            #     そのまま入れると、画面にも記録表にも全角のまま出る。
+            elif not (len(_p) == 5 and _p[2] == ":" and _p.isascii()
+                      and _p[:2].isdigit() and _p[3:].isdigit()
+                      and 0 <= int(_p[:2]) <= 23 and 0 <= int(_p[3:]) <= 59):
+                return jsonify({"status": "error",
+                                "message": "\u6642\u523b\u306f HH:MM \u3067\u5165\u308c\u3066\u304f\u3060\u3055\u3044"}), 400
+            else:
+                upd["planned_at"] = _p
 
         if "time" in data:
             t = (data.get("time") or "").strip()
