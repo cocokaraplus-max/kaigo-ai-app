@@ -27798,6 +27798,84 @@ def _soge_date_day_info(supabase, f_code, date_str):  # soge-date-plan-v1
             "locked": st["locked"], "past": st["past"]}
 
 
+def _soge_push_driver(supabase, f_code, date_str, rows, reason):  # soge-date-driver-v1
+    """配車編集の運転手を、その日の運行表にも当てる。
+
+    ★なぜ要るか。_soge_merge_day は「その日にもう運転手が入っていれば
+      配車表で上書きしない」（soge-guard4-v1）。配車表から作った日は
+      最初から名前が入っているので、配車編集の運転手が一生届かなかった。
+
+    ★決め（2026-09-08 HIROさん）: あとから触ったほうが勝つ。
+      配車を保存したら、その日の運転手は配車のとおりになる。
+
+    ★【黙って変えない】。運行画面で立てた代理が保存で戻ることがあるので、
+      変わったぶんを (便名, 前, 後) で返し、保存の返事に出す。
+      記録表には運転手の名前が必須。黙って変わるのがいちばん困る。
+
+    ★当てない日: 過ぎた日 / 確定済み / 状態を読めなかった日 /
+      まだ運行表が無い日。運行表の作り直しと同じ線引きにそろえる。
+      （まだ無い日は、あとで作られるときに配車の運転手がそのまま入る）
+
+    返り値: [(便名, 前の名前, 後の名前), ...]
+    """
+    if reason in ("past", "locked", "unknown", "not_yet"):
+        return []
+    try:
+        _dr = (supabase.table("soge_days")
+               .select("id,trip_key,trip_name,vehicle_no,driver_name")
+               .eq("facility_code", f_code).eq("service_date", date_str).execute())
+        days = _dr.data or []
+    except Exception as e:
+        print("[soge-date-driver] その日の便を読めませんでした: %s" % e, flush=True)
+        return []
+
+    want = {}
+    for r in (rows or []):
+        tk = (r.get("trip_key") or "").strip()
+        vno = r.get("vehicle_no")
+        # 特別枠（0=車が未定 / -1=送迎なし）は運行表に無い。
+        if not tk or vno is None or vno <= 0:
+            continue
+        want[(tk, vno)] = (r.get("driver_name") or "").strip()
+
+    changed = []
+    for d in days:
+        # 臨時便はその日かぎりのものなので、配車表では決められない。
+        if d.get("is_extra"):
+            continue
+        k = ((d.get("trip_key") or "").strip(), d.get("vehicle_no"))
+        if k not in want:
+            continue
+        now_name = (d.get("driver_name") or "").strip()
+        new_name = want[k]
+        if now_name == new_name:
+            continue
+        try:
+            (supabase.table("soge_days")
+             .update({"driver_name": (new_name or None),
+                      "updated_at": datetime.now(timezone.utc).isoformat()})
+             .eq("facility_code", f_code).eq("id", d.get("id")).execute())
+        except Exception as e:
+            print("[soge-date-driver] 運転手を当てられませんでした %s: %s"
+                  % (k, e), flush=True)
+            continue
+        changed.append(((d.get("trip_name") or k[0]), now_name, new_name))
+    return changed
+
+
+def _soge_driver_say(changed):  # soge-date-driver-v1
+    """変わった運転手を、そのまま読める一言にする。長くなりすぎないよう3件まで。"""
+    if not changed:
+        return ""
+    def _one(c):
+        name, before, after = c
+        return "%s：%s → %s" % (name, (before or "未設定"), (after or "未設定"))
+    head = "、".join(_one(c) for c in changed[:3])
+    if len(changed) > 3:
+        head += "、ほか%d件" % (len(changed) - 3)
+    return "運転手も当日の運行表に反映しました（%s）。" % head
+
+
 def _soge_date_rebuild(supabase, f_code, date_str):  # soge-date-plan-v1
     """保存や取り消しのあと、当日の運行表を作り直せるなら作り直す。
 
@@ -27973,9 +28051,18 @@ def api_soge_date_save():
 
         res = _soge_date_rebuild(supabase, f_code, date_str)
         say = "" if res.get("built") else _SOGE_REBUILD_SAY.get(res.get("reason") or "", "")
+        # soge-date-driver-v1: 運転手は、作り直しとは別に直接当てる。
+        #   ★_soge_merge_day は「その日にもう運転手が入っていれば上書きしない」ので、
+        #     ここで当てないと配車編集の運転手が当日に届かない。
+        _dchg = _soge_push_driver(supabase, f_code, date_str, rows,
+                                  res.get("reason") or "")
+        _dsay = _soge_driver_say(_dchg)
+        if _dsay:
+            say = (say + " " + _dsay) if say else _dsay
         return jsonify({"status": "success", "saved": len(rows),
                         "rebuilt": bool(res.get("built")),
                         "reason": res.get("reason") or "",
+                        "drivers": [list(c) for c in _dchg],   # soge-date-driver-v1
                         "message": ("この日だけの配車を保存しました。" + (" " + say if say else "")).strip(),
                         "day": _soge_date_day_info(supabase, f_code, date_str)})
     except Exception as e:
