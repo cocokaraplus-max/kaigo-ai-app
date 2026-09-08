@@ -222,8 +222,36 @@ check("J 設定の読みにトグルがある", '"back_plan": bool(s.get("back_p
 check("J 既定は逆算しない", '"back_plan": False,' in SRC)
 check("J 設定の保存にトグルがある",
       '"back_plan": bool(data.get("back_plan"))' in SRC)
-check("J 呼び出しに到着が渡っている", SRC.count('trip.get("arrive")') == 9,
-      str(SRC.count('trip.get("arrive")')))
+# ★2026-09-08: ここは元々「trip.get("arrive") が9個あること」で見ていた。
+#   別の直しで1つ増えるたびに落ちる、意味のない検査だった（実際に落ちた）。
+#   数ではなく【予定時刻を出す呼び出しが、全部そろって到着を渡しているか】を見る。
+def _args_of(text, i):
+    """text[i] から始まる呼び出しの、かっこの中を返す。"""
+    j = text.index("(", i)
+    d, k = 0, j
+    while k < len(text):
+        if text[k] == "(":
+            d += 1
+        elif text[k] == ")":
+            d -= 1
+            if d == 0:
+                return text[j + 1:k]
+        k += 1
+    return ""
+
+
+_calls, _p = [], 0
+while True:
+    _p = SRC.find("_soge_planned_times(", _p)
+    if _p < 0:
+        break
+    if not SRC[max(0, _p - 4):_p].strip().endswith("def"):   # 定義そのものは数えない
+        _calls.append(_args_of(SRC, _p))
+    _p += 1
+check("J 予定時刻を出す呼び出しがある", len(_calls) >= 5, str(len(_calls)))
+check("J どの呼び出しも到着を渡している",
+      _calls and all("arrive" in a for a in _calls),
+      str([a[:50] for a in _calls if "arrive" not in a]))
 check("J 引き直しは便の定義から到着を引く", "_arrive_of.get(" in SRC)
 _bw = _top_block(SRC, "soge_build_week") or ""
 check("J 配車表は間に合わない便を警告する",
