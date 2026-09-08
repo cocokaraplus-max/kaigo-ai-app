@@ -186,6 +186,11 @@
 .sg-min { font-weight:800; }
 .sg-min.over { color:#c5221f; }
 .sg-min.stale { color:#9aa0a6; }
+/* soge-wait-show-v1: 待機は「時間が余っている」印なので、警告より弱い色にする。
+   間に合わなかった車だけ赤（.short）。 */
+.sg-wait { font-weight:700; color:#1E6B36; background:#E6F4EA;
+           border-radius:6px; padding:1px 6px; margin-left:4px; font-size:12px; }
+.sg-wait.short { color:#c5221f; background:#fce8e6; }
 .sg-seats.over { color:#c5221f; font-weight:800; }
 
 .sg-stops { padding:8px 10px 12px; min-height:44px; }
@@ -956,6 +961,19 @@
           ? '<span class="sg-min' + (v.over_target ? ' over' : '') + '">' + v.minutes + '分</span>' +
             (v.distance_km ? ' / ' + v.distance_km + 'km' : '')
           : '');
+
+    /* soge-wait-show-v1: 到着から逆算した便は、迎えの手前に待機が出る。
+       ★所要時間と同じ扱い。v.stale（保存して計算し直しが要る状態）のときは
+         所要時間も出していないので、待機だけ出さない。古い数字を今の数字のように
+         見せることになるため。 */
+    if (!v.stale) {
+      if (v.wait_minutes > 0) {
+        mins += ' <span class="sg-wait">待機 ' + v.wait_minutes + '分</span>';
+      }
+      if (v.plan_short) {
+        mins += ' <span class="sg-wait short">到着に間に合いません</span>';
+      }
+    }
 
     var used = seatsUsed(v);
     var seatsOver = (v.seats != null && used > v.seats);
