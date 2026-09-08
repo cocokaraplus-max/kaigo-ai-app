@@ -388,6 +388,53 @@
   }
 
   function $(id) { return document.getElementById(id); }
+
+  /* soge-nogeo-leg-v1: 警告の作り方を1か所にまとめる（2か所で同じ文を書いていた）。
+     座標が無い人がいるときだけ「座標を取り直す」を足す。 */
+  function sgWarnHTML(d) {
+    var w = (d.warnings || []);
+    var h = w.length
+      ? '<div class="sg-warn">' + w.map(esc).join('<br>') + '</div>' : '';
+    if (d.geo_missing) {
+      h += '<div class="sg-warn">'
+         + '<button type="button" class="sg-btn" id="sgGeoBtn" onclick="sgGeoFix()">'
+         + '座標を取り直す</button> <span id="sgGeoMsg"></span></div>';
+    }
+    return h;
+  }
+
+  /* soge-nogeo-leg-v1: 住所→座標の変換を走らせる（管理者のみ・口は前からある）。
+     ★走らせたあとは走行時間を取り直す必要があるので画面を読み直す。
+       ただし保存していない直しがあるときは【読み直さない】。消えてしまうため。 */
+  window.sgGeoFix = async function () {
+    var b = $('sgGeoBtn'), m = $('sgGeoMsg');
+    if (!b || !m) { return; }
+    b.disabled = true;
+    m.textContent = ' 変換しています…';
+    try {
+      var r = await fetch('/api/soge/geocode', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      });
+      var d = await r.json();
+      if (!r.ok || d.status !== 'success') {
+        m.textContent = ' ' + (d.message || '取り直せませんでした');
+        b.disabled = false;
+        return;
+      }
+      var ng = (d.failed || []).concat(d.no_address || []);
+      m.textContent = ' ' + (d.geocoded || 0) + '名ぶん取れました。'
+        + (ng.length ? '取れなかった方: ' + ng.join('・') + '（住所を確かめてください）' : '');
+      if (window.state && state.dirty) {
+        m.textContent += ' 保存してから開き直すと反映されます。';
+        b.disabled = false;
+      } else {
+        setTimeout(function () { location.reload(); }, 1500);
+      }
+    } catch (e) {
+      m.textContent = ' 通信できませんでした';
+      b.disabled = false;
+    }
+  };
   function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
 
   var toastTimer = null;
@@ -799,8 +846,7 @@
         + '<div class="sg-pv-wrap">'
         + (state.view === 'car' ? pvByCar() : pvByTrip())
         + '</div>';
-      $('sgWarnings').innerHTML = (d.warnings || []).length
-        ? '<div class="sg-warn">' + d.warnings.map(esc).join('<br>') + '</div>' : '';
+      $('sgWarnings').innerHTML = sgWarnHTML(d);   /* soge-nogeo-leg-v1 */
       $('sgInfo').innerHTML =
         '対象 ' + (d.target_count != null ? d.target_count + '名' : '—') +
         (d.wheelchair_count ? '（うち車いす ' + d.wheelchair_count + '名）' : '');
@@ -885,8 +931,7 @@
         cars + tools + ndHtml;
     }
 
-    $('sgWarnings').innerHTML = (d.warnings || []).length
-      ? '<div class="sg-warn">' + d.warnings.map(esc).join('<br>') + '</div>' : '';
+    $('sgWarnings').innerHTML = sgWarnHTML(d);   /* soge-nogeo-leg-v1 */
     $('sgInfo').innerHTML =
       '対象 ' + (d.target_count != null ? d.target_count + '名' : '—') +
       (d.wheelchair_count ? '（うち車いす ' + d.wheelchair_count + '名）' : '') +
