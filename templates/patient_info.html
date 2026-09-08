@@ -49,6 +49,18 @@
 .field-row-inline input[type="date"] { max-width: 100%; }
 @media (max-width: 400px) { .field-row-inline { grid-template-columns: 1fr; } }
 
+/* patinfo-tier-cards-v1 : プロのカードにかける鍵
+   ★中身は「ぼかして薄く」出す。真っ白にすると何があるのか分からず、
+     上のプランを選ぶ理由にならない。 */
+.pro-lock { position: relative; }
+.pro-lock > *:not(.pro-lock-badge) {
+  filter: blur(2.6px); opacity: .42; pointer-events: none; user-select: none; }
+.pro-lock-badge { position: absolute; inset: 0; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 3px; text-decoration: none;
+  background: rgba(255,255,255,.58); border-radius: 14px; cursor: pointer; }
+.pro-lock-badge .pl-t { font-size: .8rem; font-weight: 700; color: #1a3a5c; }
+.pro-lock-badge .pl-s { font-size: .7rem; color: #5f6368; }
+
 /* patinfo-ocr-busy-v1 : 読み取り中を見逃さないための全面の覆い
    ★この枠は JS で body 直下に付ける。HTMLの中に置くと、
      親の transform/filter で position:fixed が効かなくなる
@@ -311,7 +323,7 @@
           <div id="viewNumerology"></div>
         </div>
 
-        <div class="v-card">
+        <div class="v-card" data-pro="1">
           <div class="v-card-h">
             <span class="material-symbols-outlined" style="font-size:18px;">psychology</span>記録から推測される人となり
             <button class="edit-jump" onclick="window.patientInfoApp.genPersonality()">AIで生成/更新</button>
@@ -319,7 +331,7 @@
           <div id="viewPersonality"><div class="v-empty">まだ生成されていません。「AIで生成/更新」で作成します。</div></div>
         </div>
 
-        <div class="v-card">
+        <div class="v-card" data-pro="1">
           <div class="v-card-h">
             <span class="material-symbols-outlined" style="font-size:18px;">medical_services</span>既往歴・医療の歩み
             <button class="edit-jump" onclick="window.patientInfoApp.scanMedical()">記録からAI抽出</button>
@@ -336,7 +348,7 @@
           <div id="viewBasic"></div>
         </div>
 
-        <div class="v-card">
+        <div class="v-card" data-pro="1">
           <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">family_history</span>家族構成（家系図）
             <button class="edit-jump" onclick="window.patientInfoApp.switchTab('input')">✏️ 入力へ</button>
           </div>
@@ -344,7 +356,7 @@
           <div class="fam-legend"><span>□ 男性</span><span>○ 女性</span><span>◎ 本人</span><span>■ 故人（死）</span><span style="color:#1a73e8;">┈ 同居</span></div>
         </div>
 
-        <div class="v-card">
+        <div class="v-card" data-pro="1">
           <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">sticky_note_2</span>ICF（付箋ボード）
             <button class="edit-jump" onclick="window.patientInfoApp.switchTab('input')">✏️ 入力へ</button>
           </div>
@@ -352,13 +364,13 @@
         </div>
 
         <!-- patient-hub-view-meetings-v1: 担当者会議記録（閲覧のみ・日付一覧→タップで議事録） -->
-        <div class="v-card">
+        <div class="v-card" data-pro="1">
           <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">groups</span>担当者会議記録</div>
           <div id="viewMeetings"><div class="v-empty">読み込み中…</div></div>
         </div>
 
         <!-- patient-hub-view-assessment-v1: アセスメント記録（閲覧のみ・月別一覧→タップで内容） -->
-        <div class="v-card">
+        <div class="v-card" data-pro="1">
           <div class="v-card-h"><span class="material-symbols-outlined" style="font-size:18px;">assignment</span>アセスメント記録（月別）</div>
           <div id="viewAssessments"><div class="v-empty">読み込み中…</div></div>
         </div>
@@ -376,7 +388,8 @@
           <div class="goal-section-hint">既往歴・家族構成・職歴・趣味嗜好・好き嫌いはここに入力します（旧・編集ページの欄はこちらに統合）。</div>
 
           <!-- sheet-ocr-v1: 計画書・利用者情報シートをまとめて読み取り、下の各欄とICF付箋を埋める -->
-          <div style="margin:8px 0 12px;">
+          <!-- patinfo-tier-cards-v1: 読み取りはプロ。重要確認事項や文字の欄は全プランなので、この塊だけに鍵をかける -->
+          <div data-pro="1" style="margin:8px 0 12px;">
             <button type="button" class="ocr-btn" style="font-size:0.8rem; padding:9px 14px; white-space:normal; text-align:left; line-height:1.35;"
                     onclick="document.getElementById('hobbyOcrFile').click()">
               <span class="material-symbols-outlined" style="font-size:18px;">photo_camera</span>利用者書類をカメラで読み取る
@@ -432,7 +445,7 @@
         </div>
 
         <!-- 家族構成（家系図） -->
-        <div class="section-card">
+        <div class="section-card" data-pro="1">
           <div class="section-title">
             <span class="material-symbols-outlined" style="font-size:20px;">family_history</span>家族構成（家系図）
           </div>
@@ -449,7 +462,7 @@
         </div>
 
         <!-- ICF付箋ボード -->
-        <div class="section-card">
+        <div class="section-card" data-pro="1">
           <div class="section-title">
             <span class="material-symbols-outlined" style="font-size:20px;">sticky_note_2</span>ICF付箋ボード
           </div>
@@ -469,7 +482,7 @@
         </div>
 
         <!-- 病歴（手入力・承認済みとして確定） -->
-        <div class="section-card">
+        <div class="section-card" data-pro="1">
           <div class="section-title">
             <span class="material-symbols-outlined" style="font-size:20px;">medical_services</span>病歴を追加
           </div>
@@ -1542,6 +1555,26 @@ const PATIENTS = {{ patients | tojson }};
     
     window.patientInfoApp = app;
     app.init();
+
+    // ===== patinfo-tier-cards-v1: プロのカードに鍵をかける =====
+    //   ★出すのは PLAN_ENFORCE が有効で、かつプロでないときだけ。
+    //     いまは PLAN_ENFORCE = False なので、ここは丸ごと出力されない。
+    //   ★見た目だけの鍵。実際に止めるのはサーバの門
+    //     （app.py の _patient_hub_pro_gate）。両方あって成立する。
+{% if plan_lock_pro %}
+    document.querySelectorAll('[data-pro="1"]').forEach(function (el) {
+        if (el.querySelector(':scope > .pro-lock-badge')) return;   // 二重がけ防止
+        el.classList.add('pro-lock');
+        var a = document.createElement('a');
+        a.className = 'pro-lock-badge';
+        a.href = '/pricing';
+        a.innerHTML =
+            '<span class="material-symbols-outlined" style="font-size:26px;color:#1a73e8;">lock</span>'
+          + '<div class="pl-t">プロプランでお使いいただけます</div>'
+          + '<div class="pl-s">タップして料金を見る</div>';
+        el.appendChild(a);
+    });
+{% endif %}
 })();
 </script>
 {% endblock %}

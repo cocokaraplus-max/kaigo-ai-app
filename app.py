@@ -3752,6 +3752,69 @@ def _plan_block_redirect(tier):  # plan-enforce-v1
         return None  # 判定に失敗したら安全側（通す）
 
 
+# ══════════════════════════════════════════════════════════════
+# patinfo-tier-cards-v1 : 画面の【中】でプランごとに鍵をかける
+#   ★今までは画面まるごと（MENU_ITEMS の tier）だけだった。
+#     利用者情報は、中に「全プランで要るもの（重要確認事項）」と
+#     「プロのもの（ICF・家系図など）」が混ざっているので、
+#     カード単位で分ける必要がある。この仕組みはここが初出。
+#   ★どちらも PLAN_ENFORCE にぶら下げてある。False の間は働かない。
+# ══════════════════════════════════════════════════════════════
+@app.context_processor
+def inject_plan_lock():   # patinfo-tier-cards-v1
+    """すべてのテンプレートに plan_lock_pro を渡す。
+    True のときだけ、画面はプロのカードに鍵をかける。"""
+    from flask import g as _g   # 既存の書き方（inject_app_drawer）に合わせる
+    try:
+        if not PLAN_ENFORCE:
+            return {"plan_lock_pro": False}
+        f_code = session.get("f_code")
+        if not f_code:
+            return {"plan_lock_pro": False}
+        if not hasattr(_g, "_plan_lock_cache"):
+            state = _facility_plan_state(get_supabase(), f_code)
+            _g._plan_lock_cache = {"plan_lock_pro": not _tier_ok(state, "pro")}
+        return _g._plan_lock_cache
+    except Exception as e:
+        print("inject_plan_lock error: %s" % e, flush=True)
+        return {"plan_lock_pro": False}   # 判定に失敗したら安全側（鍵をかけない）
+
+
+# 利用者情報のAPIのうち、全プランで通してよいものだけを名指しする。
+#   ★ここに書いていないものは、すべてプロ扱いになる。
+#     あとからAPIが増えたとき、書き足し忘れても【締まる側】に倒れる。
+#     （通すものを増やし忘れて怒られるほうが、穴が開くよりずっとよい）
+PATIENT_HUB_FREE_PATHS = (
+    "/api/patient-hub/get",          # 見るだけ。重要確認事項もこれで出る
+    "/api/patient-hub/save-basic",   # 重要確認事項・既往歴・趣味などの文字の欄
+)
+
+
+@app.before_request
+def _patient_hub_pro_gate():   # patinfo-tier-cards-v1
+    """プロ限定の利用者情報APIを、サーバ側でも止める。
+    ★画面でカードを隠すだけでは、URLを直接たたけば通ってしまう。
+      隠すのは見た目、止めるのはここ。両方いる。"""
+    try:
+        if not PLAN_ENFORCE:
+            return None
+        p = request.path
+        if not p.startswith("/api/patient-hub/"):
+            return None
+        if p in PATIENT_HUB_FREE_PATHS:
+            return None
+        f_code = session.get("f_code")
+        if not f_code:
+            return None   # 未ログインは既存のログイン判定に任せる
+        if _tier_ok(_facility_plan_state(get_supabase(), f_code), "pro"):
+            return None
+        return jsonify({"status": "error",
+                        "message": "この機能はプロプランでお使いいただけます。"}), 403
+    except Exception as e:
+        print("_patient_hub_pro_gate error: %s" % e, flush=True)
+        return None   # 判定に失敗したら安全側（通す）
+
+
 STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden",
                       "drawer_pos", "rc_cat_order", "rc_gap_cats",
                       "assessment_pref")   # 受け付けるキーはこれだけ  assessment-select-v1
