@@ -528,6 +528,15 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
   font-family:inherit; font-size:0.72rem; font-weight:700; border-radius:7px;
   padding:5px 10px; cursor:pointer; white-space:nowrap; }
 .sr-pl-u:active { background:#E4EAF2; }
+/* soge-run-time-edit-v1: 記録した時刻を手で直すボタン。
+   ★「戻す」（赤・消す）のとなりに並ぶので、色を必ず分ける。
+     同じ色にすると、走っている車の中で押し間違える。
+   ★.sr-done-r button は赤で当たっているので、後ろから重ねて上書きする。 */
+.sr-tm-e, .sr-done-r button.sr-tm-e {
+  align-self:center; border:1px solid #C6D9F5; background:#fff; color:#1a73e8;
+  font-family:inherit; font-size:0.72rem; font-weight:700; border-radius:7px;
+  padding:5px 10px; cursor:pointer; white-space:nowrap; }
+.sr-tm-e:active, .sr-done-r button.sr-tm-e:active { background:#E8F0FE; }
 
 /* お休みの人。運転手が休みにした人だけ「戻す」を出す。 */
 .sr-off-i { display:inline-flex; align-items:center; gap:6px; margin:0 10px 4px 0; }
@@ -1310,7 +1319,12 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
             + '[data-edit],[data-exadd],[data-exdel],#srAddExtra'    // soge-odo-off-v1
             /* soge-undo-v1: 戻すも「直す」なので、同じように止める。
                ★開け閉め([data-doneopen])は見るだけなので止めない。 */
-            + ',[data-udbar],[data-uds],[data-udd]';
+            /* soge-run-time-edit-v1: 足した［直す］も、過ぎた日は止める。
+               ★入れ忘れると、押せてしまってサーバに断られる。
+                 断られてから気づくのは現場に優しくない。
+               ★[data-plan]（予定を直す）はここに入っていなかった。
+                 サーバは断っていたが、画面は押せたままだった。一緒に入れる。 */
+            + ',[data-udbar],[data-uds],[data-udd],[data-ted],[data-tdd],[data-plan]';
     root.querySelectorAll(sel).forEach(function (el) {
       el.disabled = true;
       el.classList.add('sr-ro');
@@ -2398,6 +2412,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
                     + '<span class="n">' + esc(s.user_name) + '</span>'
                     + (_pend ? '<span class="sr-pend">未送信</span>' : '')
                     + '<span class="t">' + esc(s.arrived_at) + '</span>'
+                    /* soge-run-time-edit-v1: 直近3人より前の人は、ここからしか直せない。 */
+                    + '<button type="button" class="sr-tm-e" data-ted="' + escA(s.id) + '"'
+                      + ' data-tinit="' + escA(s.arrived_at) + '">直す</button>'
                     + '<button type="button" data-uds="' + escA(s.id) + '" data-udk="arrive"'
                       + ' data-udn="' + escA(s.user_name) + '"'
                       + ' data-udt="' + escA(s.arrived_at) + '">戻す</button>'
@@ -2435,6 +2452,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
       ? '<div class="sr-nd past"><div class="sr-pl dep done">'
           + '<span class="nm">事業所を出発</span>'
           + '<span class="tm">' + esc(t.departed_at) + '</span>'
+          /* soge-run-time-edit-v1: 消さずに時刻だけ直す。 */
+          + '<button type="button" class="sr-tm-e" data-tdd="' + escA(t.day_id) + '"'
+            + ' data-tdk="departed" data-tdt="' + escA(t.departed_at) + '">直す</button>'
           + '<button type="button" class="sr-pl-u" data-udd="' + escA(t.day_id) + '"'
             + ' data-udk="depart" data-udt="' + escA(t.departed_at) + '">戻す</button>'
           + '</div></div>'
@@ -2461,6 +2481,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         + '<span class="nm">' + esc(s.user_name) + '</span>'
         + (_pend ? '<span class="sr-pend">未送信</span>' : '')
         + '<span class="tm">済 ' + esc(s.arrived_at) + '</span>'
+        /* soge-run-time-edit-v1: 消さずに時刻だけ直す。 */
+        + '<button type="button" class="sr-tm-e" data-ted="' + escA(s.id) + '"'
+          + ' data-tinit="' + escA(s.arrived_at) + '">直す</button>'
         + '<button type="button" class="sr-pl-u" data-uds="' + escA(s.id) + '"'
           + ' data-udk="arrive" data-udn="' + escA(s.user_name) + '"'
           + ' data-udt="' + escA(s.arrived_at) + '">戻す</button>'
@@ -2536,6 +2559,9 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
         + '<span class="nm">事業所に帰着</span>'
         + '<span class="tm">' + esc(t.returned_at) + '</span>'
         /* soge-undo-v1: 押し間違えた帰着を消せるようにする。 */
+        /* soge-run-time-edit-v1: 消さずに時刻だけ直す。 */
+        + '<button type="button" class="sr-tm-e" data-tdd="' + escA(t.day_id) + '"'
+          + ' data-tdk="returned" data-tdt="' + escA(t.returned_at) + '">直す</button>'
         + '<button type="button" class="sr-pl-u" data-udd="' + escA(t.day_id) + '"'
           + ' data-udk="return" data-udt="' + escA(t.returned_at) + '">戻す</button>'
         + '</div></div>';
@@ -3188,6 +3214,80 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
           if (state.undo && state.undo.id === id) state.undo = null;
           keepScroll(render);
         } finally { state.busy[key] = false; }
+      };
+    });
+
+    /* ===== soge-run-time-edit-v1: 記録した時刻を手で直す =====
+       ★新しいAPIは作らない。すでにある2本を使う。
+       ★［決定］を押したときだけ保存する。input[type=time] は端末によって
+         触った瞬間に blur が飛ぶので、blur や change で確定してはいけない
+         （soge-tap-input-v1 で同じ事故を起こしている）。 */
+
+    /* 到着（打刻）を直す。★すでにある打刻の入力とまったく同じ口を使う。 */
+    root.querySelectorAll('[data-ted]').forEach(function (el) {
+      el.onclick = function () {
+        openTimeEditor(el, el.dataset.ted, el.dataset.tinit || '');
+      };
+    });
+
+    /* 出発・帰着を直す。
+       ★電波が無いときに【貯めない】。出発と帰着はその便に1つしかないので、
+         あとから古い値が届くと、直したはずの時刻が元に戻る。
+         入らなかったら、その場で言う。 */
+    function openDayTimeEditor(el, dayId, kind, initial) {
+      var jp = (kind === 'returned') ? '帰着' : '出発';
+      var wrap = document.createElement('span');
+      wrap.className = 'sr-timewrap';
+      wrap.style.cssText = 'display:inline-flex;align-items:center;gap:4px;flex:0 0 auto;';
+      var inp = document.createElement('input');
+      inp.type = 'time';
+      inp.className = 'sr-timeedit';
+      inp.value = initial || '';
+      var okBtn = document.createElement('button');
+      okBtn.type = 'button';
+      okBtn.textContent = '決定';
+      okBtn.style.cssText = 'padding:6px 10px;border:none;border-radius:8px;background:#1a73e8;color:#fff;font-weight:700;font-size:0.85rem;';
+      var ngBtn = document.createElement('button');
+      ngBtn.type = 'button';
+      ngBtn.textContent = 'やめる';
+      ngBtn.style.cssText = 'padding:6px 10px;border:1px solid #dadce0;border-radius:8px;background:#fff;color:#5f6368;font-size:0.85rem;';
+      wrap.appendChild(inp); wrap.appendChild(okBtn); wrap.appendChild(ngBtn);
+      el.replaceWith(wrap);
+      inp.focus();
+      var done = false;
+      async function commit() {
+        if (done) return;
+        var t = inp.value;
+        /* ★何も変えていないなら送らない。触っただけで保存しない。 */
+        if (t === (initial || '')) { done = true; keepScroll(render); return; }
+        /* ★空にはできない。消したいときは「戻す」を押す。
+           ここで空を通すと、直すつもりが記録を消したことになる。 */
+        if (!t) { toast(jp + 'の時刻を消すときは［戻す］を押してください'); return; }
+        done = true;
+        var body = { day_id: dayId };
+        body[kind] = t;
+        var res = await srSend('/api/soge/run/day', 'PUT', body);
+        if (srRefused(res)) { srRefuseAlert(jp + 'の時刻', res); keepScroll(render); return; }
+        if (!res.ok) {
+          srAlert('err', jp + 'の時刻を直せませんでした（' + res.why + '）。'
+                  + 'もう一度お試しください。');
+          keepScroll(render);
+          return;
+        }
+        srAlert('');
+        var tr = findTrip(dayId);
+        if (tr) { if (kind === 'returned') tr.returned_at = t; else tr.departed_at = t; }
+        toast(jp + 'を ' + t + ' にしました');
+        keepScroll(render);
+      }
+      okBtn.onclick = commit;
+      ngBtn.onclick = function () { done = true; keepScroll(render); };
+    }
+
+    root.querySelectorAll('[data-tdd]').forEach(function (el) {
+      el.onclick = function () {
+        openDayTimeEditor(el, el.dataset.tdd, el.dataset.tdk || 'departed',
+                          el.dataset.tdt || '');
       };
     });
 

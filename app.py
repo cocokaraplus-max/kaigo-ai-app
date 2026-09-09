@@ -3596,7 +3596,10 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/patient-info",  "icon": "person_book",            "label": "利用者情報",     "need": None},  # patient-hub-v1
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
     {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None, "tier": "standard"},
-    {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None, "tier": "standard"},   # soge-menu-name-v2
+    # soge-open-run-v1: メニューから入ったら【運行画面】。
+    #   ★現場が毎日開くのは運行画面。配車を組み直すのは週に1度。
+    #   ★配車編集(/soge)と記録表(/soge/print)は、上のタブから入れる。
+    {"href": "/soge/run",       "icon": "airport_shuttle",        "label": "送迎表",         "need": None, "tier": "standard"},   # soge-menu-name-v2 / soge-open-run-v1
     {"href": "/fitness",        "icon": "fitness_center",         "label": "体力・体重",     "need": None},
     {"href": "/life_check",     "icon": "checklist",              "label": "生活機能CHECK",  "need": None},
     {"href": "/calendar",       "icon": "calendar_month",         "label": "カレンダー",     "need": None},
