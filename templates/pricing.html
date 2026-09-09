@@ -261,12 +261,14 @@
 
 <script>
 // 料金表
-const PRICES = {
-    starter:  { monthly:5980,  '1y_m':4780,  '1y_l':57400,  '2y_m':3880,  '2y_l':93300,  '3y_m':2990,  '3y_l':107600 },
-    standard: { monthly:12800, '1y_m':10240, '1y_l':122800, '2y_m':8320,  '2y_l':199700, '3y_m':6400,  '3y_l':230400 },
-    pro:      { monthly:24800, '1y_m':19840, '1y_l':238100, '2y_m':16120, '2y_l':387100, '3y_m':12400, '3y_l':446400 },
+const PRICES = {   // stripe-price-v2 : app.py の PLAN_PRICES と必ず一致させる
+    // ★金額は総額（消費税を別立てにしない）。一括は契約期間まるごと。
+    starter:  { monthly:5980, '1y_m':5000, '1y_l':56400, '2y_m':4100, '2y_l':91200, '3y_m':3200, '3y_l':104400 },
+    standard: { monthly:12800, '1y_m':10800, '1y_l':122400, '2y_m':8900, '2y_l':199200, '3y_m':7000, '3y_l':230400 },
+    pro:      { monthly:24800, '1y_m':21000, '1y_l':237600, '2y_m':17300, '2y_l':386400, '3y_m':13600, '3y_l':446400 },
+    addon:    { monthly:4000, '1y_m':3400, '1y_l':38400, '2y_m':2800, '2y_l':62400, '3y_m':2200, '3y_l':72000 }   // 追加10名
 };
-const MONTHLY_PRICES = { starter:5980, standard:12800, pro:24800 };
+const MONTHLY_PRICES = { starter:5980, standard:12800, pro:24800, addon:4000 };   // stripe-price-v2
 const CANCEL_NOTES = {
     monthly: null,
     '1y_m': '1年契約の途中解約は残期間の30%が違約金となります。',

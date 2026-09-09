@@ -33901,12 +33901,21 @@ def line_notify_admin(message):
     return line_send_message(admin_line_id, [{"type": "text", "text": message}])
 
 # pricing-rebuild-v1 : 契約時の割引後価格表（違約金計算・表示用。pricing.html の PRICES と一致させること）
-PLAN_PRICES = {
-    "starter":  {"monthly": 5980,  "1y_m": 4780,  "1y_l": 57400,  "2y_m": 3880,  "2y_l": 93300,  "3y_m": 2990,  "3y_l": 107600},
-    "standard": {"monthly": 12800, "1y_m": 10240, "1y_l": 122800, "2y_m": 8320,  "2y_l": 199700, "3y_m": 6400,  "3y_l": 230400},
-    "pro":      {"monthly": 24800, "1y_m": 19840, "1y_l": 238100, "2y_m": 16120, "2y_l": 387100, "3y_m": 12400, "3y_l": 446400},
+PLAN_PRICES = {   # stripe-price-v2
+    # ★金額は【総額】。適格請求書発行事業者ではないので、消費税を別立てにしない。
+    #   （2026-09-09 税理士さんの助言：売上が増えてから登録を考える）
+    # ★割引は 契約期間×払い方。月払い0% / 1年 月々15%・一括20% /
+    #   2年 月々30%・一括35% / 3年 月々45%・一括50%。100円未満は切り捨て。
+    # ★_l（一括）は【契約期間まるごと】＝ 割引後の月額 × 月数。
+    #   1年12ヶ月 / 2年24ヶ月 / 3年36ヶ月。年払い（毎年1回）ではない。
+    "starter":   {"monthly": 5980, "1y_m": 5000, "1y_l": 56400, "2y_m": 4100, "2y_l": 91200, "3y_m": 3200, "3y_l": 104400},
+    "standard":  {"monthly": 12800, "1y_m": 10800, "1y_l": 122400, "2y_m": 8900, "2y_l": 199200, "3y_m": 7000, "3y_l": 230400},
+    "pro":       {"monthly": 24800, "1y_m": 21000, "1y_l": 237600, "2y_m": 17300, "2y_l": 386400, "3y_m": 13600, "3y_l": 446400},
+    # 追加10名（職員+10名・録音+30時間）。プランに足して使う。
+    "addon":     {"monthly": 4000, "1y_m": 3400, "1y_l": 38400, "2y_m": 2800, "2y_l": 62400, "3y_m": 2200, "3y_l": 72000},
 }
-PLAN_LABELS = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ", "monitor": "モニター", "free": "無料"}
+PLAN_LABELS = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ", "addon": "追加10名",   # stripe-price-v2
+               "monitor": "モニター", "free": "無料"}
 CANCEL_RATE = {1: 0.30, 2: 0.40, 3: 0.50}  # 年契約の違約率（1年30%/2年40%/3年50%）
 
 
@@ -34361,14 +34370,52 @@ def _resolve_price_id(env_key):  # stripe-price-setup-v1
     return ""
 
 
+# ══════════════════════════════════════════════════════════════
+# stripe-price-v2 : 価格キーの作り方を、ここ1箇所に閉じ込める
+#   ★以前は同じ規則が【4箇所】に手書きされていた（確認・作成・決済×2）。
+#     どれか1つ直し忘れると「確認画面は正しいのに決済だけ古い価格を拾う」
+#     という、いちばん気づきにくい壊れ方をする。
+#   ★版（_V2）を付けているのは、Stripeの価格は金額を書き換えられず、
+#     作成処理が「同じ lookup_key があれば再利用」する作りだから。
+#     金額を変えるときは、必ずこの版を上げて別の価格として作り直す。
+PRICE_KEY_VER = "V2"   # stripe-price-v2
+
+# (キー, サフィックス, 表示名, 課金の種類, 決済モード)
+#   _M系＝毎月課金(subscription) / _L系＝契約期間まるごと1回払い(payment)
+PRICE_TERMS = (
+    ("monthly", "M",    "月払い(単月)",   "recurring", "subscription"),
+    ("1y_m",    "1Y_M", "1年・月払い",    "recurring", "subscription"),
+    ("1y_l",    "1Y_L", "1年・一括",      "one_time",  "payment"),
+    ("2y_m",    "2Y_M", "2年・月払い",    "recurring", "subscription"),
+    ("2y_l",    "2Y_L", "2年・一括",      "one_time",  "payment"),
+    ("3y_m",    "3Y_M", "3年・月払い",    "recurring", "subscription"),
+    ("3y_l",    "3Y_L", "3年・一括",      "one_time",  "payment"),
+)
+PRICE_PLANS = ("starter", "standard", "pro", "addon")
+
+
+def _price_key(plan, suffix):   # stripe-price-v2
+    """Stripe の lookup_key。★組み立てるのはこの関数だけ。"""
+    return "STRIPE_PRICE_%s_%s_%s" % (plan.upper(), suffix, PRICE_KEY_VER)
+
+
+def _stripe_price_spec():  # stripe-price-v2
+    """28価格の仕様（4プラン × 7通り）。
+    返り値: (env_key, plan, plan_label, term_label, amount, kind)"""
+    spec = []
+    for plan in PRICE_PLANS:
+        p = PLAN_PRICES.get(plan, {})
+        label = PLAN_LABELS.get(plan, plan)
+        for key, suffix, term_label, kind, _mode in PRICE_TERMS:
+            spec.append((_price_key(plan, suffix), plan, label,
+                         term_label, p.get(key), kind))
+    return spec
+
+
 def _check_stripe_prices():
-    spec = []  # (env_key, plan_label, term_label, expected_amount, expected_mode)
-    for plan_key, plan_label in (("STARTER", "スターター"), ("STANDARD", "スタンダード"), ("PRO", "プロ")):
-        p = PLAN_PRICES.get(plan_key.lower(), {})
-        spec.append(("STRIPE_PRICE_%s_M" % plan_key, plan_label, "月払い(単月)", p.get("monthly"), "recurring"))
-        for y in (1, 2, 3):
-            spec.append(("STRIPE_PRICE_%s_%dY_M" % (plan_key, y), plan_label, "%d年・月払い" % y, p.get("%dy_m" % y), "recurring"))
-            spec.append(("STRIPE_PRICE_%s_%dY_L" % (plan_key, y), plan_label, "%d年・一括" % y, p.get("%dy_l" % y), "one_time"))
+    # stripe-price-v2: 仕様は _stripe_price_spec() ただ1つ。ここでは組み立てない
+    spec = [(k, lbl, term, amt, kind)
+            for k, _plan, lbl, term, amt, kind in _stripe_price_spec()]
     try:
         stripe.api_key = get_secret("STRIPE_SECRET_KEY")
     except Exception:
@@ -34423,20 +34470,6 @@ def dev_stripe_check():
     rows = _check_stripe_prices()
     ok_count = sum(1 for r in rows if r.get("ok"))
     return render_template("dev_stripe_check.html", rows=rows, ok_count=ok_count, total=len(rows))
-
-
-def _stripe_price_spec():  # stripe-price-setup-v1
-    """21価格の仕様。 _check_stripe_prices と同じ規則で (env_key, plan, plan_label, term, amount, mode)。"""
-    spec = []
-    labels = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ"}
-    for plan in ("starter", "standard", "pro"):
-        P = plan.upper()
-        p = PLAN_PRICES.get(plan, {})
-        spec.append(("STRIPE_PRICE_%s_M" % P, plan, labels[plan], "月払い(単月)", p.get("monthly"), "recurring"))
-        for y in (1, 2, 3):
-            spec.append(("STRIPE_PRICE_%s_%dY_M" % (P, y), plan, labels[plan], "%d年・月払い" % y, p.get("%dy_m" % y), "recurring"))
-            spec.append(("STRIPE_PRICE_%s_%dY_L" % (P, y), plan, labels[plan], "%d年・一括" % y, p.get("%dy_l" % y), "one_time"))
-    return spec
 
 
 def _stripe_find_or_create_product(plan, label):  # stripe-price-setup-v1
@@ -34554,7 +34587,7 @@ def stripe_create_checkout():
         return jsonify({"error": "invalid term: " + term}), 400
     suffix, checkout_mode = TERM_MAP[term]
 
-    env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
+    env_key = _price_key(plan, suffix)   # stripe-price-v2: 組み立ては1箇所だけ
     price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
     if not price_id:
         return jsonify({"error": "price not configured: " + env_key}), 400
@@ -34656,7 +34689,7 @@ def onboard_create_checkout():
     if term not in TERM_MAP:
         return jsonify({"error": "invalid term: " + term}), 400
     suffix, checkout_mode = TERM_MAP[term]
-    env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
+    env_key = _price_key(plan, suffix)   # stripe-price-v2: 組み立ては1箇所だけ
     price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
     if not price_id:
         return jsonify({"error": "price not configured: " + env_key}), 400
