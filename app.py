@@ -34044,6 +34044,8 @@ def pricing():
         f_code=f_code,
         my_name=session.get('my_name', ''),
         term_tabs=PRICE_TERM_TABS,   # pricing-discount-label-v1
+        plan_cards=_plan_cards(),    # pricing-card-v1
+        addon=_plan_card_addon(),    # pricing-card-v1
     )
 
 
@@ -34419,6 +34421,81 @@ PRICE_TERM_TABS = (
     ("3y_m",    "3年・月払い", 45),
     ("3y_l",    "3年・一括",   50),
 )
+
+
+
+
+# pricing-card-v1 : /pricing のプランカードに出す中身。
+#   ★お客様にお渡しするPDF「料金プランのご案内」と必ず同じにすること。
+#   ★人数・録音時間は staff / audio に1回だけ書く。行の文章はここから組み立てる。
+#   ★録音は「職員1名あたり月3時間」。この決めごとは自己点検で毎回確かめている。
+#   ★連絡帳はプロ限定。スタンダードの no に入れておくこと（ここを間違えると
+#     「入っている」と読めてしまい、契約後に揉める）。
+PLAN_CARD_HOURS_PER_STAFF = 3
+
+PLAN_CARDS = (
+    {"key": "starter", "emoji": "\U0001f331", "name": "スターター",
+     "desc": "小規模の事業所向け。まずはここから。",
+     "staff": 10, "audio": 30, "badge": "", "primary": False,
+     "yes": ["介護記録の入力（音声・手入力）",
+             "モニタリング報告書",
+             "利用者の登録・CSVでの一括取込",
+             "書類の出力・印刷",
+             "カレンダー・掲示板・BCP",
+             "2ヶ月無料トライアル"],
+     "no": ["送迎表",
+            "生活機能チェックシート",
+            "連絡帳（LINEでご家族へ）"]},
+
+    {"key": "standard", "emoji": "\U0001f680", "name": "スタンダード",
+     "desc": "送迎表まで使える、いちばん選ばれる形。",
+     "staff": 20, "audio": 60, "badge": "\u2b50 人気No.1", "primary": True,
+     "yes": ["スターターの全機能",
+             "送迎表（配車・運行・記録表）",
+             "生活機能チェックシート（様式3-2）",
+             "バイタルの写真読み取り",
+             "2ヶ月無料トライアル"],
+     "no": ["連絡帳（LINEでご家族へ）",
+            "タイムカード（勤怠）",
+            "利用者情報の詳しい機能（家系図・ICF ほか）"]},
+
+    {"key": "pro", "emoji": "\U0001f451", "name": "プロ",
+     "desc": "ご家族への連絡帳と勤怠まで。全機能が使えます。",
+     "staff": 30, "audio": 90, "badge": "", "primary": False,
+     "yes": ["スタンダードの全機能",
+             "連絡帳（LINEでご家族へ）",
+             "タイムカード・職員の勤務予定・様式の出力",
+             "家族構成（家系図）・ICF付箋ボード",
+             "利用者書類のカメラ読み取り・アセスメント",
+             "担当者会議の議事録／契約書・重要事項説明書",
+             "2ヶ月無料トライアル"],
+     "no": []},
+)
+
+# pricing-card-v1 : 人数を超えたときの追加ぶん
+PLAN_CARD_ADDON = {"key": "addon", "staff": 10, "audio": 30}
+
+
+def _plan_cards():   # pricing-card-v1
+    """カードに出す中身。
+    ★金額は PLAN_PRICES から取る（二重に持たない）。
+    ★先頭3行は staff / audio から組み立てる（数字を手書きしない）。"""
+    out = []
+    for c in PLAN_CARDS:
+        d = dict(c)
+        d["price"] = PLAN_PRICES[c["key"]]["monthly"]
+        d["yes"] = ["職員 %d名まで" % c["staff"],
+                    "録音 月%d時間（記録の音声入力・会議）" % c["audio"],
+                    "AI記録・写真の保存 無制限"] + list(c["yes"])
+        d["no"] = list(c["no"])
+        out.append(d)
+    return out
+
+
+def _plan_card_addon():   # pricing-card-v1
+    d = dict(PLAN_CARD_ADDON)
+    d["price"] = PLAN_PRICES["addon"]["monthly"]
+    return d
 
 
 def _price_key(plan, suffix):   # stripe-price-v2
