@@ -148,13 +148,10 @@
 
     <!-- 契約期間タブ -->
     <div class="term-tabs" id="term-tabs">
-        <div class="term-tab active" data-term="monthly" onclick="selectTerm('monthly')">月払い</div>
-        <div class="term-tab" data-term="1y_m" onclick="selectTerm('1y_m')">1年・月払い <span class="discount">20%OFF</span></div>
-        <div class="term-tab" data-term="1y_l" onclick="selectTerm('1y_l')">1年・一括 <span class="discount">20%OFF</span></div>
-        <div class="term-tab" data-term="2y_m" onclick="selectTerm('2y_m')">2年・月払い <span class="discount">35%OFF</span></div>
-        <div class="term-tab" data-term="2y_l" onclick="selectTerm('2y_l')">2年・一括 <span class="discount">35%OFF</span></div>
-        <div class="term-tab" data-term="3y_m" onclick="selectTerm('3y_m')">3年・月払い <span class="discount">50%OFF</span></div>
-        <div class="term-tab" data-term="3y_l" onclick="selectTerm('3y_l')">3年・一括 <span class="discount">50%OFF</span></div>
+        {# pricing-discount-label-v1 : 並びも名前も割引率も app.py の PRICE_TERM_TABS から。ここに数字を書かない #}
+        {% for _k, _label, _off in term_tabs %}
+        <div class="term-tab{% if loop.first %} active{% endif %}" data-term="{{ _k }}" onclick="selectTerm('{{ _k }}')">{{ _label }}{% if _off %} <span class="discount">{{ _off }}%OFF</span>{% endif %}</div>
+        {% endfor %}
     </div>
 
     <!-- プランカード -->

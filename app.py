@@ -34043,6 +34043,7 @@ def pricing():
         is_admin=session.get('admin_authenticated', False),  # pricing-rebuild-v1
         f_code=f_code,
         my_name=session.get('my_name', ''),
+        term_tabs=PRICE_TERM_TABS,   # pricing-discount-label-v1
     )
 
 
@@ -34400,6 +34401,24 @@ PRICE_TERMS = (
     ("3y_l",    "3Y_L", "3年・一括",      "one_time",  "payment"),
 )
 PRICE_PLANS = ("starter", "standard", "pro", "addon")
+
+# pricing-discount-label-v1 : /pricing の契約期間タブ（並ぶ順もこのとおり）
+#   (キー, 画面に出す名前, 割引率%)
+#   ★「○%OFF」の表示はここだけ。テンプレートに数字を手書きしない。
+#   ★お客様にお渡しするPDF（料金プランのご案内）と必ず同じ数字にすること。
+#   ★月々払いは一括より5%浅い。これが料金設計の芯なので、崩さない。
+#   ★100円未満を切り捨てるので、実際の割引率は表示より少しだけ大きくなる。
+#     （例：スターター1年一括は 20% と書いて実際は 21.4%）
+#     必ずお客様に有利な側へ寄るので、説明のときに困らない。
+PRICE_TERM_TABS = (
+    ("monthly", "月払い",      0),
+    ("1y_m",    "1年・月払い", 15),
+    ("1y_l",    "1年・一括",   20),
+    ("2y_m",    "2年・月払い", 30),
+    ("2y_l",    "2年・一括",   35),
+    ("3y_m",    "3年・月払い", 45),
+    ("3y_l",    "3年・一括",   50),
+)
 
 
 def _price_key(plan, suffix):   # stripe-price-v2
