@@ -3596,7 +3596,10 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/patient-info",  "icon": "person_book",            "label": "利用者情報",     "need": None},  # patient-hub-v1
     {"href": "/vitals",         "icon": "monitor_heart",          "label": "バイタル",       "need": None},
     {"href": "/renraku",        "icon": "menu_book",              "label": "連絡帳",         "need": None, "tier": "standard"},
-    {"href": "/soge",           "icon": "airport_shuttle",        "label": "送迎表",         "need": None, "tier": "standard"},   # soge-menu-name-v2
+    # soge-open-run-v1: メニューから入ったら【運行画面】。
+    #   ★現場が毎日開くのは運行画面。配車を組み直すのは週に1度。
+    #   ★配車編集(/soge)と記録表(/soge/print)は、上のタブから入れる。
+    {"href": "/soge/run",       "icon": "airport_shuttle",        "label": "送迎表",         "need": None, "tier": "standard"},   # soge-menu-name-v2 / soge-open-run-v1
     {"href": "/fitness",        "icon": "fitness_center",         "label": "体力・体重",     "need": None},
     {"href": "/life_check",     "icon": "checklist",              "label": "生活機能CHECK",  "need": None},
     {"href": "/calendar",       "icon": "calendar_month",         "label": "カレンダー",     "need": None},
@@ -3667,6 +3670,66 @@ def _tier_ok(state, tier):  # plan-gating-v1
     return state.get("rank", 0) >= TIER_RANK.get(tier, 0)
 
 
+# ===== ai-usage-meter-v1 : AIの使用量を測る =====
+#   ★いまは【記録するだけ】。止めない。
+#     上限を入れるのは、実データを2週間ほど見てから（ai-usage-limit-v1）。
+#   ★音声は 32トークン＝1秒（Googleの決まり）。1分＝1,920トークン。
+#     生の数を残しておけば、あとから数え方を変えられる。
+AI_AUDIO_TOKENS_PER_MIN = 1920
+
+
+def _ai_usage_record(u):  # ai-usage-meter-v1
+    """utils から呼ばれる。1回のAI呼び出しを1行残す。
+
+    ★ここで例外を投げないこと。記録のためにAIを止めては本末転倒。
+    ★リクエストの外（起動時の処理など）からは記録しない。施設が分からないため。
+    """
+    try:
+        from flask import has_request_context
+        if not has_request_context():
+            return
+        f_code = session.get("f_code")
+        if not f_code:
+            return
+        audio = int(u.get("audio") or 0)
+        image = int(u.get("image") or 0)
+        kind = "audio" if audio > 0 else ("image" if image > 0 else "text")
+        get_supabase().table("ai_usage").insert({
+            "facility_code": f_code,
+            "ym": datetime.now(tokyo_tz).strftime("%Y-%m"),
+            "kind": kind,
+            "audio_tokens": audio,
+            "input_tokens": int(u.get("input") or 0),
+            "output_tokens": int(u.get("output") or 0),
+            "model": (str(u.get("model") or ""))[:60],
+            "route": (str(request.endpoint or ""))[:60],
+        }).execute()
+    except Exception as e:
+        print("[ai-usage] 記録できませんでした: %s" % e, flush=True)
+
+
+def ai_audio_minutes_this_month(supabase, f_code):  # ai-usage-meter-v1
+    """その施設の今月の録音（分）。★まだ止めるのには使わない。画面に出す用。
+    ★読めなかったら 0 を返す。判定に使うときは「読めなかった＝0」で
+      通してしまうので、上限を入れるときにそこを作り直すこと。"""
+    try:
+        ym = datetime.now(tokyo_tz).strftime("%Y-%m")
+        r = (supabase.table("ai_usage").select("audio_tokens")
+             .eq("facility_code", f_code).eq("ym", ym).execute())
+        tok = sum(int(x.get("audio_tokens") or 0) for x in (r.data or []))
+        return round(tok / float(AI_AUDIO_TOKENS_PER_MIN), 1)
+    except Exception as e:
+        print("[ai-usage] 今月の録音を読めませんでした: %s" % e, flush=True)
+        return 0.0
+
+
+try:
+    import utils as _utils_for_ai_usage        # ai-usage-meter-v1
+    _utils_for_ai_usage.AI_USAGE_HOOK = _ai_usage_record
+except Exception as _ai_hook_e:
+    print("[ai-usage] 計測を差し込めませんでした: %s" % _ai_hook_e, flush=True)
+
+
 # plan-enforce-v1: プラン階層による強制アクセス制御のキルスイッチ。
 #   既定 False（＝ブロックしない・バッジ表示のみ。体験開放と同じ見た目のまま）。
 #   DEVで各施設の plan 値を検証してから True にすると、tier を満たさない施設は
@@ -3690,6 +3753,69 @@ def _plan_block_redirect(tier):  # plan-enforce-v1
     except Exception as e:
         print("_plan_block_redirect error: %s" % e, flush=True)
         return None  # 判定に失敗したら安全側（通す）
+
+
+# ══════════════════════════════════════════════════════════════
+# patinfo-tier-cards-v1 : 画面の【中】でプランごとに鍵をかける
+#   ★今までは画面まるごと（MENU_ITEMS の tier）だけだった。
+#     利用者情報は、中に「全プランで要るもの（重要確認事項）」と
+#     「プロのもの（ICF・家系図など）」が混ざっているので、
+#     カード単位で分ける必要がある。この仕組みはここが初出。
+#   ★どちらも PLAN_ENFORCE にぶら下げてある。False の間は働かない。
+# ══════════════════════════════════════════════════════════════
+@app.context_processor
+def inject_plan_lock():   # patinfo-tier-cards-v1
+    """すべてのテンプレートに plan_lock_pro を渡す。
+    True のときだけ、画面はプロのカードに鍵をかける。"""
+    from flask import g as _g   # 既存の書き方（inject_app_drawer）に合わせる
+    try:
+        if not PLAN_ENFORCE:
+            return {"plan_lock_pro": False}
+        f_code = session.get("f_code")
+        if not f_code:
+            return {"plan_lock_pro": False}
+        if not hasattr(_g, "_plan_lock_cache"):
+            state = _facility_plan_state(get_supabase(), f_code)
+            _g._plan_lock_cache = {"plan_lock_pro": not _tier_ok(state, "pro")}
+        return _g._plan_lock_cache
+    except Exception as e:
+        print("inject_plan_lock error: %s" % e, flush=True)
+        return {"plan_lock_pro": False}   # 判定に失敗したら安全側（鍵をかけない）
+
+
+# 利用者情報のAPIのうち、全プランで通してよいものだけを名指しする。
+#   ★ここに書いていないものは、すべてプロ扱いになる。
+#     あとからAPIが増えたとき、書き足し忘れても【締まる側】に倒れる。
+#     （通すものを増やし忘れて怒られるほうが、穴が開くよりずっとよい）
+PATIENT_HUB_FREE_PATHS = (
+    "/api/patient-hub/get",          # 見るだけ。重要確認事項もこれで出る
+    "/api/patient-hub/save-basic",   # 重要確認事項・既往歴・趣味などの文字の欄
+)
+
+
+@app.before_request
+def _patient_hub_pro_gate():   # patinfo-tier-cards-v1
+    """プロ限定の利用者情報APIを、サーバ側でも止める。
+    ★画面でカードを隠すだけでは、URLを直接たたけば通ってしまう。
+      隠すのは見た目、止めるのはここ。両方いる。"""
+    try:
+        if not PLAN_ENFORCE:
+            return None
+        p = request.path
+        if not p.startswith("/api/patient-hub/"):
+            return None
+        if p in PATIENT_HUB_FREE_PATHS:
+            return None
+        f_code = session.get("f_code")
+        if not f_code:
+            return None   # 未ログインは既存のログイン判定に任せる
+        if _tier_ok(_facility_plan_state(get_supabase(), f_code), "pro"):
+            return None
+        return jsonify({"status": "error",
+                        "message": "この機能はプロプランでお使いいただけます。"}), 403
+    except Exception as e:
+        print("_patient_hub_pro_gate error: %s" % e, flush=True)
+        return None   # 判定に失敗したら安全側（通す）
 
 
 STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden",
@@ -13544,6 +13670,44 @@ def api_admin_patient_add():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# ===== goal-period-order-v1 : 目標の期間が逆になっていないか =====
+#   ★書き込む入口は2つ（利用者基本情報 と 評価ページ）。
+#     どちらもここを通して止める。片方だけだと必ずすり抜ける。
+_GOAL_PERIOD_PAIRS = (
+    ("long_goal_period_from",  "long_goal_period_to",  "長期目標"),
+    ("short_goal_period_from", "short_goal_period_to", "短期目標"),
+)
+
+
+def _goal_period_ng(get):   # goal-period-order-v1
+    """期間が逆なら、その理由の文を返す。問題なければ None。
+
+    get(列名) は「保存したあとにその列がどうなるか」を返す関数。
+    ★片方だけ送られてくることがあるので、必ず
+      【送られた値と、今入っている値を混ぜたあと】で見ること。
+    ★空は通す（あとで入れる使い方を邪魔しない）。
+    ★同じ日は通す（1日だけの期間）。止めるのは To が From より前のときだけ。
+    """
+    for k_from, k_to, label in _GOAL_PERIOD_PAIRS:
+        a = (str(get(k_from) or "")).strip()
+        b = (str(get(k_to) or "")).strip()
+        if a.lower() in ("none", "null"):
+            a = ""
+        if b.lower() in ("none", "null"):
+            b = ""
+        if not a or not b:
+            continue
+        # YYYY-MM-DD の形のときだけ見る。形が違うものは触らない
+        if not (re.fullmatch(r"\d{4}-\d{2}-\d{2}", a)
+                and re.fullmatch(r"\d{4}-\d{2}-\d{2}", b)):
+            continue
+        if b < a:   # 同じ形なので、文字のまま比べて日付の前後になる
+            return ("%sの期間が逆になっています（%s 〜 %s）。"
+                    "終わりの日は、始まりの日と同じ日か、あとの日にしてください。"
+                    % (label, a, b))
+    return None
+
+
 @app.route('/api/admin/patient/save', methods=['POST'])
 @login_required
 def api_admin_patient_save():
@@ -13569,6 +13733,12 @@ def api_admin_patient_save():
         # user_name 必須(新規時)
         if not pid and not (row.get("user_name") or "").strip():
             return jsonify({"status": "error", "message": "氏名は必須です"}), 400
+
+        # goal-period-order-v1: 目標の期間が逆なら、書き込む前に止める。
+        #   ★この画面は期間4つをまとめて送ってくるので、row だけ見れば足りる。
+        _pmsg = _goal_period_ng(lambda k: row.get(k))
+        if _pmsg:
+            return jsonify({"status": "error", "message": _pmsg}), 400
 
         supabase = get_supabase()
         if pid:
@@ -16278,12 +16448,20 @@ def dev_menu():
         "total_facilities": len(facilities),
     }
 
+    # stripe-price-count-v1 : 画面に出す「何種類あるか」は、ここで数える。
+    #   ★テンプレートに数字を手書きしない。プランや契約を足したら自動で合う。
+    _price_plan_n = len(PRICE_PLANS)
+    _price_term_n = len(PRICE_TERMS)
+
     return render_template("dev_menu.html",
         stats=stats,
         env_status=env_status,
         recent_records=recent_records,
         runtime_info=runtime_info,
         current_f_code=f_code,
+        price_plan_n=_price_plan_n,                      # stripe-price-count-v1
+        price_term_n=_price_term_n,                      # stripe-price-count-v1
+        price_total_n=_price_plan_n * _price_term_n,     # stripe-price-count-v1
     )
 @app.route('/api/dev/update_facility_expiry', methods=['POST'])
 def api_dev_update_facility_expiry():
@@ -16737,6 +16915,14 @@ def api_goal_apply():
                          "field": field, "field_label": LABEL.get(field, field),
                          "old_value": old_v, "new_value": new_v, "year_month": year_month,
                          "valid_from": _valid_from, "changed_by": my})   # goal-valid-from-v1
+        # goal-period-order-v1: 目標の期間が逆なら、書き込む前に止める。
+        #   ★ここは From だけ／To だけが送られてくることがある。
+        #     upd（今回変える分）を prof（今入っている分）にかぶせた
+        #     【保存後の姿】で見ないと、片側だけの変更を取り逃す。
+        _pmsg = _goal_period_ng(lambda k: upd.get(k, prof.get(k)))
+        if _pmsg:
+            return jsonify({"status": "error", "message": _pmsg}), 400
+
         if not upd:
             return jsonify({"status": "success", "updated": 0, "message": "変更はありません"})
         # goal-history-first-v1: 【記録を先に残してから変える】。
@@ -33726,12 +33912,21 @@ def line_notify_admin(message):
     return line_send_message(admin_line_id, [{"type": "text", "text": message}])
 
 # pricing-rebuild-v1 : 契約時の割引後価格表（違約金計算・表示用。pricing.html の PRICES と一致させること）
-PLAN_PRICES = {
-    "starter":  {"monthly": 5980,  "1y_m": 4780,  "1y_l": 57400,  "2y_m": 3880,  "2y_l": 93300,  "3y_m": 2990,  "3y_l": 107600},
-    "standard": {"monthly": 12800, "1y_m": 10240, "1y_l": 122800, "2y_m": 8320,  "2y_l": 199700, "3y_m": 6400,  "3y_l": 230400},
-    "pro":      {"monthly": 24800, "1y_m": 19840, "1y_l": 238100, "2y_m": 16120, "2y_l": 387100, "3y_m": 12400, "3y_l": 446400},
+PLAN_PRICES = {   # stripe-price-v2
+    # ★金額は【総額】。適格請求書発行事業者ではないので、消費税を別立てにしない。
+    #   （2026-09-09 税理士さんの助言：売上が増えてから登録を考える）
+    # ★割引は 契約期間×払い方。月払い0% / 1年 月々15%・一括20% /
+    #   2年 月々30%・一括35% / 3年 月々45%・一括50%。100円未満は切り捨て。
+    # ★_l（一括）は【契約期間まるごと】＝ 割引後の月額 × 月数。
+    #   1年12ヶ月 / 2年24ヶ月 / 3年36ヶ月。年払い（毎年1回）ではない。
+    "starter":   {"monthly": 5980, "1y_m": 5000, "1y_l": 56400, "2y_m": 4100, "2y_l": 91200, "3y_m": 3200, "3y_l": 104400},
+    "standard":  {"monthly": 12800, "1y_m": 10800, "1y_l": 122400, "2y_m": 8900, "2y_l": 199200, "3y_m": 7000, "3y_l": 230400},
+    "pro":       {"monthly": 24800, "1y_m": 21000, "1y_l": 237600, "2y_m": 17300, "2y_l": 386400, "3y_m": 13600, "3y_l": 446400},
+    # 追加10名（職員+10名・録音+30時間）。プランに足して使う。
+    "addon":     {"monthly": 4000, "1y_m": 3400, "1y_l": 38400, "2y_m": 2800, "2y_l": 62400, "3y_m": 2200, "3y_l": 72000},
 }
-PLAN_LABELS = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ", "monitor": "モニター", "free": "無料"}
+PLAN_LABELS = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ", "addon": "追加10名",   # stripe-price-v2
+               "monitor": "モニター", "free": "無料"}
 CANCEL_RATE = {1: 0.30, 2: 0.40, 3: 0.50}  # 年契約の違約率（1年30%/2年40%/3年50%）
 
 
@@ -33851,6 +34046,9 @@ def pricing():
         is_admin=session.get('admin_authenticated', False),  # pricing-rebuild-v1
         f_code=f_code,
         my_name=session.get('my_name', ''),
+        term_tabs=PRICE_TERM_TABS,   # pricing-discount-label-v1
+        plan_cards=_plan_cards(),    # pricing-card-v1
+        addon=_plan_card_addon(),    # pricing-card-v1
     )
 
 
@@ -34160,7 +34358,7 @@ def api_cron_contract_notices():
 
 
 # pricing-rebuild-v1 : Stripe価格チェック（開発者専用・Secret Keyは表示しない）
-#   21個の STRIPE_PRICE_* が Stripe に正しく登録され、金額・課金種別が想定と一致するか検証
+#   すべての STRIPE_PRICE_* が Stripe に正しく登録され、金額・課金種別が想定と一致するか検証
 _PRICE_ID_CACHE = {}  # stripe-price-setup-v1: lookup_key -> price_id
 
 
@@ -34186,14 +34384,145 @@ def _resolve_price_id(env_key):  # stripe-price-setup-v1
     return ""
 
 
+# ══════════════════════════════════════════════════════════════
+# stripe-price-v2 : 価格キーの作り方を、ここ1箇所に閉じ込める
+#   ★以前は同じ規則が【4箇所】に手書きされていた（確認・作成・決済×2）。
+#     どれか1つ直し忘れると「確認画面は正しいのに決済だけ古い価格を拾う」
+#     という、いちばん気づきにくい壊れ方をする。
+#   ★版（_V2）を付けているのは、Stripeの価格は金額を書き換えられず、
+#     作成処理が「同じ lookup_key があれば再利用」する作りだから。
+#     金額を変えるときは、必ずこの版を上げて別の価格として作り直す。
+PRICE_KEY_VER = "V2"   # stripe-price-v2
+
+# (キー, サフィックス, 表示名, 課金の種類, 決済モード)
+#   _M系＝毎月課金(subscription) / _L系＝契約期間まるごと1回払い(payment)
+PRICE_TERMS = (
+    ("monthly", "M",    "月払い(単月)",   "recurring", "subscription"),
+    ("1y_m",    "1Y_M", "1年・月払い",    "recurring", "subscription"),
+    ("1y_l",    "1Y_L", "1年・一括",      "one_time",  "payment"),
+    ("2y_m",    "2Y_M", "2年・月払い",    "recurring", "subscription"),
+    ("2y_l",    "2Y_L", "2年・一括",      "one_time",  "payment"),
+    ("3y_m",    "3Y_M", "3年・月払い",    "recurring", "subscription"),
+    ("3y_l",    "3Y_L", "3年・一括",      "one_time",  "payment"),
+)
+PRICE_PLANS = ("starter", "standard", "pro", "addon")
+
+# pricing-discount-label-v1 : /pricing の契約期間タブ（並ぶ順もこのとおり）
+#   (キー, 画面に出す名前, 割引率%)
+#   ★「○%OFF」の表示はここだけ。テンプレートに数字を手書きしない。
+#   ★お客様にお渡しするPDF（料金プランのご案内）と必ず同じ数字にすること。
+#   ★月々払いは一括より5%浅い。これが料金設計の芯なので、崩さない。
+#   ★100円未満を切り捨てるので、実際の割引率は表示より少しだけ大きくなる。
+#     （例：スターター1年一括は 20% と書いて実際は 21.4%）
+#     必ずお客様に有利な側へ寄るので、説明のときに困らない。
+PRICE_TERM_TABS = (
+    ("monthly", "月払い",      0),
+    ("1y_m",    "1年・月払い", 15),
+    ("1y_l",    "1年・一括",   20),
+    ("2y_m",    "2年・月払い", 30),
+    ("2y_l",    "2年・一括",   35),
+    ("3y_m",    "3年・月払い", 45),
+    ("3y_l",    "3年・一括",   50),
+)
+
+
+
+
+# pricing-card-v1 : /pricing のプランカードに出す中身。
+#   ★お客様にお渡しするPDF「料金プランのご案内」と必ず同じにすること。
+#   ★人数・録音時間は staff / audio に1回だけ書く。行の文章はここから組み立てる。
+#   ★録音は「職員1名あたり月3時間」。この決めごとは自己点検で毎回確かめている。
+#   ★連絡帳はプロ限定。スタンダードの no に入れておくこと（ここを間違えると
+#     「入っている」と読めてしまい、契約後に揉める）。
+PLAN_CARD_HOURS_PER_STAFF = 3
+
+PLAN_CARDS = (
+    {"key": "starter", "emoji": "\U0001f331", "name": "スターター",
+     "desc": "小規模の事業所向け。まずはここから。",
+     "staff": 10, "audio": 30, "badge": "", "primary": False,
+     "yes": ["介護記録の入力（音声・手入力）",
+             "モニタリング報告書",
+             "利用者の登録・CSVでの一括取込",
+             "書類の出力・印刷",
+             "カレンダー・掲示板・BCP",
+             "2ヶ月無料トライアル"],
+     "no": ["送迎表",
+            "生活機能チェックシート",
+            "連絡帳（LINEでご家族へ）"]},
+
+    {"key": "standard", "emoji": "\U0001f680", "name": "スタンダード",
+     "desc": "送迎表まで使える、いちばん選ばれる形。",
+     "staff": 20, "audio": 60, "badge": "\u2b50 人気No.1", "primary": True,
+     "yes": ["スターターの全機能",
+             "送迎表（配車・運行・記録表）",
+             "生活機能チェックシート（様式3-2）",
+             "バイタルの写真読み取り",
+             "2ヶ月無料トライアル"],
+     "no": ["連絡帳（LINEでご家族へ）",
+            "タイムカード（勤怠）",
+            "利用者情報の詳しい機能（家系図・ICF ほか）"]},
+
+    {"key": "pro", "emoji": "\U0001f451", "name": "プロ",
+     "desc": "ご家族への連絡帳と勤怠まで。全機能が使えます。",
+     "staff": 30, "audio": 90, "badge": "", "primary": False,
+     "yes": ["スタンダードの全機能",
+             "連絡帳（LINEでご家族へ）",
+             "タイムカード・職員の勤務予定・様式の出力",
+             "家族構成（家系図）・ICF付箋ボード",
+             "利用者書類のカメラ読み取り・アセスメント",
+             "担当者会議の議事録／契約書・重要事項説明書",
+             "2ヶ月無料トライアル"],
+     "no": []},
+)
+
+# pricing-card-v1 : 人数を超えたときの追加ぶん
+PLAN_CARD_ADDON = {"key": "addon", "staff": 10, "audio": 30}
+
+
+def _plan_cards():   # pricing-card-v1
+    """カードに出す中身。
+    ★金額は PLAN_PRICES から取る（二重に持たない）。
+    ★先頭3行は staff / audio から組み立てる（数字を手書きしない）。"""
+    out = []
+    for c in PLAN_CARDS:
+        d = dict(c)
+        d["price"] = PLAN_PRICES[c["key"]]["monthly"]
+        d["yes"] = ["職員 %d名まで" % c["staff"],
+                    "録音 月%d時間（記録の音声入力・会議）" % c["audio"],
+                    "AI記録・写真の保存 無制限"] + list(c["yes"])
+        d["no"] = list(c["no"])
+        out.append(d)
+    return out
+
+
+def _plan_card_addon():   # pricing-card-v1
+    d = dict(PLAN_CARD_ADDON)
+    d["price"] = PLAN_PRICES["addon"]["monthly"]
+    return d
+
+
+def _price_key(plan, suffix):   # stripe-price-v2
+    """Stripe の lookup_key。★組み立てるのはこの関数だけ。"""
+    return "STRIPE_PRICE_%s_%s_%s" % (plan.upper(), suffix, PRICE_KEY_VER)
+
+
+def _stripe_price_spec():  # stripe-price-v2
+    """28価格の仕様（4プラン × 7通り）。
+    返り値: (env_key, plan, plan_label, term_label, amount, kind)"""
+    spec = []
+    for plan in PRICE_PLANS:
+        p = PLAN_PRICES.get(plan, {})
+        label = PLAN_LABELS.get(plan, plan)
+        for key, suffix, term_label, kind, _mode in PRICE_TERMS:
+            spec.append((_price_key(plan, suffix), plan, label,
+                         term_label, p.get(key), kind))
+    return spec
+
+
 def _check_stripe_prices():
-    spec = []  # (env_key, plan_label, term_label, expected_amount, expected_mode)
-    for plan_key, plan_label in (("STARTER", "スターター"), ("STANDARD", "スタンダード"), ("PRO", "プロ")):
-        p = PLAN_PRICES.get(plan_key.lower(), {})
-        spec.append(("STRIPE_PRICE_%s_M" % plan_key, plan_label, "月払い(単月)", p.get("monthly"), "recurring"))
-        for y in (1, 2, 3):
-            spec.append(("STRIPE_PRICE_%s_%dY_M" % (plan_key, y), plan_label, "%d年・月払い" % y, p.get("%dy_m" % y), "recurring"))
-            spec.append(("STRIPE_PRICE_%s_%dY_L" % (plan_key, y), plan_label, "%d年・一括" % y, p.get("%dy_l" % y), "one_time"))
+    # stripe-price-v2: 仕様は _stripe_price_spec() ただ1つ。ここでは組み立てない
+    spec = [(k, lbl, term, amt, kind)
+            for k, _plan, lbl, term, amt, kind in _stripe_price_spec()]
     try:
         stripe.api_key = get_secret("STRIPE_SECRET_KEY")
     except Exception:
@@ -34248,20 +34577,6 @@ def dev_stripe_check():
     rows = _check_stripe_prices()
     ok_count = sum(1 for r in rows if r.get("ok"))
     return render_template("dev_stripe_check.html", rows=rows, ok_count=ok_count, total=len(rows))
-
-
-def _stripe_price_spec():  # stripe-price-setup-v1
-    """21価格の仕様。 _check_stripe_prices と同じ規則で (env_key, plan, plan_label, term, amount, mode)。"""
-    spec = []
-    labels = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ"}
-    for plan in ("starter", "standard", "pro"):
-        P = plan.upper()
-        p = PLAN_PRICES.get(plan, {})
-        spec.append(("STRIPE_PRICE_%s_M" % P, plan, labels[plan], "月払い(単月)", p.get("monthly"), "recurring"))
-        for y in (1, 2, 3):
-            spec.append(("STRIPE_PRICE_%s_%dY_M" % (P, y), plan, labels[plan], "%d年・月払い" % y, p.get("%dy_m" % y), "recurring"))
-            spec.append(("STRIPE_PRICE_%s_%dY_L" % (P, y), plan, labels[plan], "%d年・一括" % y, p.get("%dy_l" % y), "one_time"))
-    return spec
 
 
 def _stripe_find_or_create_product(plan, label):  # stripe-price-setup-v1
@@ -34379,7 +34694,7 @@ def stripe_create_checkout():
         return jsonify({"error": "invalid term: " + term}), 400
     suffix, checkout_mode = TERM_MAP[term]
 
-    env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
+    env_key = _price_key(plan, suffix)   # stripe-price-v2: 組み立ては1箇所だけ
     price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
     if not price_id:
         return jsonify({"error": "price not configured: " + env_key}), 400
@@ -34481,7 +34796,7 @@ def onboard_create_checkout():
     if term not in TERM_MAP:
         return jsonify({"error": "invalid term: " + term}), 400
     suffix, checkout_mode = TERM_MAP[term]
-    env_key = "STRIPE_PRICE_" + plan.upper() + "_" + suffix
+    env_key = _price_key(plan, suffix)   # stripe-price-v2: 組み立ては1箇所だけ
     price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
     if not price_id:
         return jsonify({"error": "price not configured: " + env_key}), 400

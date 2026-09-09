@@ -1176,6 +1176,25 @@ async function saveProfile(e) {
       }
     }
 
+    // goal-period-order-v1: 目標の期間が逆なら、送る前に止める。
+    //   ★data はこの時点で【要支援／要介護のどちらの欄を使うか】が
+    //     決まったあとの値。だからここで見れば両方まとめて確かめられる。
+    //   （サーバ側でも同じ判定をしている。ここは「押す前に気づける」ため）
+    const _perOk = [
+      ['long_goal_period_from',  'long_goal_period_to',  '長期目標'],
+      ['short_goal_period_from', 'short_goal_period_to', '短期目標'],
+    ];
+    for (const [kf, kt, label] of _perOk) {
+      const a = (data[kf] || '').trim(), b = (data[kt] || '').trim();
+      if (!a || !b) continue;                 // 片方だけは通す
+      if (b < a) {                            // 同じ日は通す。前のときだけ止める
+        showToast('❌ ' + label + 'の期間が逆です（' + a + ' 〜 ' + b + '）');
+        const el = document.getElementById(kt) || document.getElementById('kaigo_' + kt);
+        if (el) { el.scrollIntoView({block:'center'}); el.focus(); }
+        return;
+      }
+    }
+
     // goal-valid-from-ui-v1: 目標が変わっていたら、いつから使うかを確かめてから送る。
     //   ★確認を出すのは【変わったときだけ】。毎回出すと読まれなくなる。
     const _gch = goalChangedFields();

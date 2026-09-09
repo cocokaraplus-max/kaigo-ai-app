@@ -31,7 +31,7 @@ a.back { display:inline-block; margin-top:16px; font-size:0.85rem; color:#1a73e8
 <body>
 <div class="wrap">
   <h1>Stripe 価格チェック</h1>
-  <div class="sub">21個の <span class="mono">STRIPE_PRICE_*</span> がStripeに正しく登録され、金額・課金種別が想定と一致するかを確認します（Secret Keyは表示しません）。</div>
+  <div class="sub">{{ total }}個の <span class="mono">STRIPE_PRICE_*</span>{# stripe-price-count-v1 #} がStripeに正しく登録され、金額・課金種別が想定と一致するかを確認します（Secret Keyは表示しません）。</div>
 
   {% if ok_count == total %}
   <div class="summary ok">✅ すべて正常（{{ ok_count }}/{{ total }}）</div>

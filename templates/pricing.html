@@ -48,6 +48,11 @@
 .plan-btn-current { background:#f1f3f4; color:#5f6368; cursor:default; }
 .plan-btn-outline { background:#fff; color:#1a73e8; border:1.5px solid #1a73e8; }
 .plan-btn-outline:hover { background:#e8f0fe; }
+/* pricing-card-v1 : 追加10名の案内 */
+.addon-note { display:flex; gap:10px; align-items:flex-start; background:#fff; border:1.5px dashed #c6d9f5; border-radius:14px; padding:14px 16px; margin-top:12px; }
+.addon-note .material-symbols-outlined { font-size:20px; color:#1a73e8; flex-shrink:0; }
+.addon-note b { font-size:0.85rem; color:#202124; }
+.addon-note .addon-sub { font-size:0.78rem; color:#5f6368; line-height:1.6; margin-top:3px; }
 
 /* 違約金注記 */
 .cancellation-note { background:#fff8e1; border:1px solid #fdd835; border-radius:10px; padding:10px 14px; margin-top:1rem; font-size:0.75rem; color:#5f4b00; }
@@ -148,108 +153,48 @@
 
     <!-- 契約期間タブ -->
     <div class="term-tabs" id="term-tabs">
-        <div class="term-tab active" data-term="monthly" onclick="selectTerm('monthly')">月払い</div>
-        <div class="term-tab" data-term="1y_m" onclick="selectTerm('1y_m')">1年・月払い <span class="discount">20%OFF</span></div>
-        <div class="term-tab" data-term="1y_l" onclick="selectTerm('1y_l')">1年・一括 <span class="discount">20%OFF</span></div>
-        <div class="term-tab" data-term="2y_m" onclick="selectTerm('2y_m')">2年・月払い <span class="discount">35%OFF</span></div>
-        <div class="term-tab" data-term="2y_l" onclick="selectTerm('2y_l')">2年・一括 <span class="discount">35%OFF</span></div>
-        <div class="term-tab" data-term="3y_m" onclick="selectTerm('3y_m')">3年・月払い <span class="discount">50%OFF</span></div>
-        <div class="term-tab" data-term="3y_l" onclick="selectTerm('3y_l')">3年・一括 <span class="discount">50%OFF</span></div>
+        {# pricing-discount-label-v1 : 並びも名前も割引率も app.py の PRICE_TERM_TABS から。ここに数字を書かない #}
+        {% for _k, _label, _off in term_tabs %}
+        <div class="term-tab{% if loop.first %} active{% endif %}" data-term="{{ _k }}" onclick="selectTerm('{{ _k }}')">{{ _label }}{% if _off %} <span class="discount">{{ _off }}%OFF</span>{% endif %}</div>
+        {% endfor %}
     </div>
 
     <!-- プランカード -->
     <div class="plan-cards" id="plan-cards">
         <!-- スターター -->
-        <div class="plan-card {% if current_plan == 'starter' %}current{% endif %}" id="card-starter">
+        {% for c in plan_cards %}{# pricing-card-v1 : 中身は app.py の PLAN_CARDS #}
+        <div class="plan-card{% if c.badge %} popular{% endif %}{% if current_plan == c.key %} current{% endif %}" id="card-{{ c.key }}">
+            {% if c.badge %}<div class="plan-card-badge">{{ c.badge }}</div>{% endif %}
             <div class="plan-card-body">
-                <div class="plan-name">🌱 スターター</div>
-                <div class="plan-desc">小規模施設向け。まずはここから。</div>
-                <div class="plan-price" id="price-starter">
-                    <span class="amount">¥5,980</span><span class="unit">/月</span>
+                <div class="plan-name">{{ c.emoji }} {{ c.name }}</div>
+                <div class="plan-desc">{{ c.desc }}</div>
+                <div class="plan-price" id="price-{{ c.key }}">
+                    <span class="amount">¥{{ "{:,}".format(c.price) }}</span><span class="unit">/月</span>
                 </div>
                 <ul class="plan-features">
-                    <li><span class="material-symbols-outlined">check</span>スタッフ最大5名</li>
-                    <li><span class="material-symbols-outlined">check</span>AI記録 月100件</li>
-                    <li><span class="material-symbols-outlined">check</span>モニタリング報告書</li>
-                    <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
-                    <li class="no"><span class="material-symbols-outlined">close</span>送迎表</li>
-                    <li class="no"><span class="material-symbols-outlined">close</span>CSV取込・OCR</li>
-                    <li class="no"><span class="material-symbols-outlined">close</span>連絡帳（LINE連携）</li>
+                    {% for f in c.yes %}<li><span class="material-symbols-outlined">check</span>{{ f }}</li>
+                    {% endfor %}{% for f in c.no %}<li class="no"><span class="material-symbols-outlined">close</span>{{ f }}</li>
+                    {% endfor %}
                 </ul>
-                <button class="plan-btn {% if current_plan == 'starter' %}plan-btn-current{% else %}plan-btn-outline{% endif %}"
-                    onclick="startCheckout('starter')" id="btn-starter"
-                    {% if current_plan == 'starter' %}disabled{% endif %}>
-                    {% if current_plan == 'starter' %}
+                <button class="plan-btn {% if current_plan == c.key %}plan-btn-current{% elif c.primary %}plan-btn-primary{% else %}plan-btn-outline{% endif %}"
+                    onclick="startCheckout('{{ c.key }}')" id="btn-{{ c.key }}"
+                    {% if current_plan == c.key %}disabled{% endif %}>
+                    {% if current_plan == c.key %}
                     <span class="material-symbols-outlined">check_circle</span>現在のプラン
                     {% else %}
-                    このプランで始める
+                    {% if c.primary %}<span class="material-symbols-outlined">rocket_launch</span>{% endif %}このプランで始める
                     {% endif %}
                 </button>
             </div>
         </div>
+        {% endfor %}
+    </div>
 
-        <!-- スタンダード -->
-        <div class="plan-card popular {% if current_plan == 'standard' %}current{% endif %}" id="card-standard">
-            <div class="plan-card-badge">⭐ 人気No.1</div>
-            <div class="plan-card-body">
-                <div class="plan-name">🚀 スタンダード</div>
-                <div class="plan-desc">中規模施設に最適。充実の機能セット。</div>
-                <div class="plan-price" id="price-standard">
-                    <span class="amount">¥12,800</span><span class="unit">/月</span>
-                </div>
-                <ul class="plan-features">
-                    <li><span class="material-symbols-outlined">check</span>スタッフ最大15名</li>
-                    <li><span class="material-symbols-outlined">check</span>AI記録 月500件</li>
-                    <li><span class="material-symbols-outlined">check</span>モニタリング報告書</li>
-                    <li><span class="material-symbols-outlined">check</span>送迎表</li>
-                    <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
-                    <li><span class="material-symbols-outlined">check</span>連絡帳（LINE連携）</li>
-                    <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
-                    <li class="no"><span class="material-symbols-outlined">close</span>タイムカード・議事録・アセスメント・ICF</li>
-                </ul>
-                <button class="plan-btn {% if current_plan == 'standard' %}plan-btn-current{% else %}plan-btn-primary{% endif %}"
-                    onclick="startCheckout('standard')" id="btn-standard"
-                    {% if current_plan == 'standard' %}disabled{% endif %}>
-                    {% if current_plan == 'standard' %}
-                    <span class="material-symbols-outlined">check_circle</span>現在のプラン
-                    {% else %}
-                    <span class="material-symbols-outlined">rocket_launch</span>このプランで始める
-                    {% endif %}
-                </button>
-            </div>
-        </div>
-
-        <!-- プロ -->
-        <div class="plan-card {% if current_plan == 'pro' %}current{% endif %}" id="card-pro">
-            <div class="plan-card-body">
-                <div class="plan-name">👑 プロ</div>
-                <div class="plan-desc">大規模・多事業所向け。制限なしのフル機能。</div>
-                <div class="plan-price" id="price-pro">
-                    <span class="amount">¥24,800</span><span class="unit">/月</span>
-                </div>
-                <ul class="plan-features">
-                    <li><span class="material-symbols-outlined">check</span>スタッフ無制限</li>
-                    <li><span class="material-symbols-outlined">check</span>AI記録 無制限</li>
-                    <li><span class="material-symbols-outlined">check</span>モニタリング報告書</li>
-                    <li><span class="material-symbols-outlined">check</span>送迎表</li>
-                    <li><span class="material-symbols-outlined">check</span>CSV取込・OCR</li>
-                    <li><span class="material-symbols-outlined">check</span>連絡帳（LINE連携）</li>
-                    <li><span class="material-symbols-outlined">check</span>タイムカード</li>
-                    <li><span class="material-symbols-outlined">check</span>担当者会議の議事録作成</li>
-                    <li><span class="material-symbols-outlined">check</span>アセスメントシート作成</li>
-                    <li><span class="material-symbols-outlined">check</span>ICF（生活機能の分類）</li>
-                    <li><span class="material-symbols-outlined">check</span>2ヶ月無料トライアル</li>
-                </ul>
-                <button class="plan-btn {% if current_plan == 'pro' %}plan-btn-current{% else %}plan-btn-outline{% endif %}"
-                    onclick="startCheckout('pro')" id="btn-pro"
-                    {% if current_plan == 'pro' %}disabled{% endif %}>
-                    {% if current_plan == 'pro' %}
-                    <span class="material-symbols-outlined">check_circle</span>現在のプラン
-                    {% else %}
-                    このプランで始める
-                    {% endif %}
-                </button>
-            </div>
+    <div class="addon-note">{# pricing-card-v1 #}
+        <span class="material-symbols-outlined">group_add</span>
+        <div>
+            <b>職員は{{ addon.staff }}名ごとに追加できます</b>
+            <div class="addon-sub">プランの人数を超えるときは、<b id="addon-price">¥{{ "{:,}".format(addon.price) }}/月</b>で職員が{{ addon.staff }}名増え、録音の時間も月{{ addon.audio }}時間増えます。</div>
         </div>
     </div>
 
@@ -261,12 +206,14 @@
 
 <script>
 // 料金表
-const PRICES = {
-    starter:  { monthly:5980,  '1y_m':4780,  '1y_l':57400,  '2y_m':3880,  '2y_l':93300,  '3y_m':2990,  '3y_l':107600 },
-    standard: { monthly:12800, '1y_m':10240, '1y_l':122800, '2y_m':8320,  '2y_l':199700, '3y_m':6400,  '3y_l':230400 },
-    pro:      { monthly:24800, '1y_m':19840, '1y_l':238100, '2y_m':16120, '2y_l':387100, '3y_m':12400, '3y_l':446400 },
+const PRICES = {   // stripe-price-v2 : app.py の PLAN_PRICES と必ず一致させる
+    // ★金額は総額（消費税を別立てにしない）。一括は契約期間まるごと。
+    starter:  { monthly:5980, '1y_m':5000, '1y_l':56400, '2y_m':4100, '2y_l':91200, '3y_m':3200, '3y_l':104400 },
+    standard: { monthly:12800, '1y_m':10800, '1y_l':122400, '2y_m':8900, '2y_l':199200, '3y_m':7000, '3y_l':230400 },
+    pro:      { monthly:24800, '1y_m':21000, '1y_l':237600, '2y_m':17300, '2y_l':386400, '3y_m':13600, '3y_l':446400 },
+    addon:    { monthly:4000, '1y_m':3400, '1y_l':38400, '2y_m':2800, '2y_l':62400, '3y_m':2200, '3y_l':72000 }   // 追加10名
 };
-const MONTHLY_PRICES = { starter:5980, standard:12800, pro:24800 };
+const MONTHLY_PRICES = { starter:5980, standard:12800, pro:24800, addon:4000 };   // stripe-price-v2
 const CANCEL_NOTES = {
     monthly: null,
     '1y_m': '1年契約の途中解約は残期間の30%が違約金となります。',
@@ -276,6 +223,9 @@ const CANCEL_NOTES = {
     '3y_m': '3年契約の途中解約は残期間の50%が違約金となります。',
     '3y_l': '3年契約の途中解約は残期間の50%が違約金となります。',
 };
+
+// pricing-card-v1 : ★プラン名を手書きしない。並んでいるカードから受け取る
+const PLAN_CARD_KEYS = {{ plan_cards | map(attribute='key') | list | tojson }};
 
 var currentTerm = 'monthly';
 
@@ -297,7 +247,7 @@ function selectTerm(term) {
 }
 
 function updatePrices() {
-    ['starter', 'standard', 'pro'].forEach(function(plan) {
+    PLAN_CARD_KEYS.forEach(function(plan) {   // pricing-card-v1
         var price = PRICES[plan][currentTerm];
         var monthly = MONTHLY_PRICES[plan];
         var el = document.getElementById('price-' + plan);
@@ -310,6 +260,12 @@ function updatePrices() {
         html += '<span class="unit">' + (isLump ? '（一括）' : '/月') + '</span>';
         el.innerHTML = html;
     });
+    // pricing-card-v1 : 追加10名の金額も、同じ契約期間で動かす
+    var ae = document.getElementById('addon-price');
+    if (ae) {
+        var ap = PRICES.addon[currentTerm];
+        ae.textContent = '¥' + ap.toLocaleString() + (currentTerm.endsWith('_l') ? '（一括）' : '/月');
+    }
 }
 
 // pricing-rebuild-v1 : alert撤去（Chrome拡張が止まるため）→ 画面内トースト
