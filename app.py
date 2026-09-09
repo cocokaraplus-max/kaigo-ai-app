@@ -16445,12 +16445,20 @@ def dev_menu():
         "total_facilities": len(facilities),
     }
 
+    # stripe-price-count-v1 : 画面に出す「何種類あるか」は、ここで数える。
+    #   ★テンプレートに数字を手書きしない。プランや契約を足したら自動で合う。
+    _price_plan_n = len(PRICE_PLANS)
+    _price_term_n = len(PRICE_TERMS)
+
     return render_template("dev_menu.html",
         stats=stats,
         env_status=env_status,
         recent_records=recent_records,
         runtime_info=runtime_info,
         current_f_code=f_code,
+        price_plan_n=_price_plan_n,                      # stripe-price-count-v1
+        price_term_n=_price_term_n,                      # stripe-price-count-v1
+        price_total_n=_price_plan_n * _price_term_n,     # stripe-price-count-v1
     )
 @app.route('/api/dev/update_facility_expiry', methods=['POST'])
 def api_dev_update_facility_expiry():
@@ -34344,7 +34352,7 @@ def api_cron_contract_notices():
 
 
 # pricing-rebuild-v1 : Stripe価格チェック（開発者専用・Secret Keyは表示しない）
-#   21個の STRIPE_PRICE_* が Stripe に正しく登録され、金額・課金種別が想定と一致するか検証
+#   すべての STRIPE_PRICE_* が Stripe に正しく登録され、金額・課金種別が想定と一致するか検証
 _PRICE_ID_CACHE = {}  # stripe-price-setup-v1: lookup_key -> price_id
 
 

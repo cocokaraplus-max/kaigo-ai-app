@@ -305,11 +305,11 @@
 <div class="dev-section">
     <div class="dev-section-title">
         <span class="material-symbols-outlined">payments</span>
-        Stripe価格セットアップ（21種を一括作成）
+        Stripe価格セットアップ（{{ price_total_n }}種を一括作成）{# stripe-price-count-v1 #}
     </div>
     <div class="dev-section-body">
         <div style="font-size:0.82rem;color:#5f6368;line-height:1.7;margin-bottom:12px;">
-            3プラン×7契約＝<b>21種類の価格をStripeにまとめて作成</b>します。<br>
+            {{ price_plan_n }}プラン×{{ price_term_n }}契約＝<b>{{ price_total_n }}種類の価格をStripeにまとめて作成</b>します。<br>
             先に <b>STRIPE_SECRET_KEY</b>（まずはテストキー <code>sk_test_…</code>）をサーバーの環境変数に設定してください。<br>
             何度押しても価格は重複しません（重複は自動で再利用）。
         </div>
@@ -320,7 +320,7 @@
         </button>
         <div id="stripe-create-result" style="display:none;margin-top:12px;font-size:0.82rem;"></div>
         <div style="margin-top:10px;">
-            <a href="/dev/stripe_check" style="font-size:0.82rem;color:#1a73e8;">→ 作成後は /dev/stripe_check で「正常 21/21」を確認</a>
+            <a href="/dev/stripe_check" style="font-size:0.82rem;color:#1a73e8;">→ 作成後は /dev/stripe_check で「正常 {{ price_total_n }}/{{ price_total_n }}」を確認</a>
         </div>
     </div>
 </div>
@@ -344,14 +344,16 @@ async function createStripePrices(){
         }else{
             var modeTxt = data.mode === 'live' ? '本番(LIVE)' : (data.mode === 'test' ? 'テスト(TEST)' : '不明');
             var lines = (data.env_lines||[]).join('\n');
+            // stripe-price-count-v1 : ★行数は数えない。返ってきた実数を使う
+            var nlines = (data.env_lines||[]).length;
             box.style.color = '#202124';
             box.innerHTML =
                 '<div style="margin-bottom:8px;">接続モード: <b>' + modeTxt + '</b>　'
                 + '作成 <b>' + data.made + '</b> / 再利用 <b>' + data.reused + '</b> / 失敗 <b style="color:'
                 + (data.failed? '#c5221f':'#188038') + '">' + data.failed + '</b>（合計 ' + (data.made+data.reused) + '）</div>'
-                + '<div style="margin-bottom:6px;color:#5f6368;">↓ この21行を Cloud Run の環境変数に設定してください（設定後 /dev/stripe_check で確認）</div>'
+                + '<div style="margin-bottom:6px;color:#5f6368;">↓ この' + nlines + '行を Cloud Run の環境変数に設定してください（設定後 /dev/stripe_check で確認）</div>'
                 + '<textarea readonly style="width:100%;height:150px;font-family:monospace;font-size:12px;padding:8px;border:1px solid #dadce0;border-radius:8px;" id="stripe-env-lines">' + escapeHtmlDev(lines) + '</textarea>'
-                + '<button class="btn" style="margin-top:8px;background:#1a73e8;color:#fff;border:none;" onclick="(function(){var t=document.getElementById(\'stripe-env-lines\');t.select();document.execCommand(\'copy\');})()">21行をコピー</button>';
+                + '<button class="btn" style="margin-top:8px;background:#1a73e8;color:#fff;border:none;" onclick="(function(){var t=document.getElementById(\'stripe-env-lines\');t.select();document.execCommand(\'copy\');})()">' + nlines + '行をコピー</button>';
         }
     }catch(e){
         box.style.color = '#c5221f';
