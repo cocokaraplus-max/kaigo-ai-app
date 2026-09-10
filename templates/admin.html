@@ -1217,11 +1217,13 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
 </div>
 
 <script>
-/* ===== export-busy-v1 =====
+/* ===== export-busy-v1 / export-busy-v2 =====
    ★割合は出さない。ZIPはサーバ側で作り終えてから一気に送られてくるので、
      途中の割合は本当は分からない。分からないものを棒グラフにすると、
      止まって見えたときに「フリーズした」と読まれる。
-     出すのは【経過秒】と【受け取ったMB】だけ。どちらも本当に分かる数字。 */
+     出すのは【受け取ったMB】だけ。本当に分かる数字はこれしかない。
+     ★経過秒は export-busy-v2 でやめた。動いていることは、
+       歩いているタスカル君のほうが伝える。 */
 var dxBusy = false, dxTimer = null;
 
 function dxHide() {
@@ -1252,8 +1254,10 @@ function dxStart() {
   dxTimer = setInterval(function () {
     var s = Math.floor((Date.now() - t0) / 1000);
     if (phase === 1) {
-      /* ★かかっている時間だけを出す。うそをつかない。 */
-      num.innerHTML = 'サーバーで集めています　<b>' + s + '</b> 秒';
+      /* ★秒数は出さない（export-busy-v2）。
+         歩いているタスカル君だけで「動いている」ことは伝わる。
+         数字が増えるのを見せると、待つ人はそっちを見て【遅い】と読む。
+         下の声かけは数字を出さないので残す。 */
       if (s === 20) lbl.textContent = 'まだ集めています';
       if (s === 60) sub.textContent = '記録が多いと1〜2分かかります';
     } else {
