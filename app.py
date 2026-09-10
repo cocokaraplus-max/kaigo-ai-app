@@ -35626,11 +35626,26 @@ def stripe_webhook():
                 if _sw_old and _sw_old != sub_id:
                     # 即時解約にしない。支払い済みの当月ぶんを取り上げないため。
                     # 無料期間中なら、無料のまま終わって課金は起きない。
+                    # stripe-switch-cancel-v2 : 止める前に状態を見る。
+                    #   ★解約後の再契約では、古いサブスクはもう canceled。
+                    #     そこへ modify を投げると失敗し、v1は「止められなかった」と
+                    #     読んで【まちがったLINE通知】を毎回出していた。
+                    #     通知が狼少年になると、本物の二重課金を見落とす。
                     try:
-                        stripe.Subscription.modify(
-                            _sw_old, cancel_at_period_end=True)
-                        print("[Stripe] old sub -> cancel_at_period_end", flush=True)
+                        _sw_cur = stripe.Subscription.retrieve(_sw_old)
+                        _sw_st = str(getattr(_sw_cur, "status", "") or "")
+                        if _sw_st in ("canceled", "incomplete_expired"):
+                            print("[Stripe] old sub already " + _sw_st, flush=True)
+                        elif getattr(_sw_cur, "cancel_at_period_end", False):
+                            print("[Stripe] old sub already scheduled to cancel",
+                                  flush=True)
+                        else:
+                            stripe.Subscription.modify(
+                                _sw_old, cancel_at_period_end=True)
+                            print("[Stripe] old sub -> cancel_at_period_end",
+                                  flush=True)
                     except Exception as _sw_e2:
+                        # 引けなかった・止められなかった → 止まった扱いにしない
                         _sw_done = False
                         print("[Stripe] old sub cancel error: " + str(_sw_e2),
                               flush=True)
