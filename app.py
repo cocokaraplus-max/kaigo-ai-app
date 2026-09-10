@@ -17555,9 +17555,98 @@ def api_add_staff():
         if job_title2: _ins["job_title2"] = job_title2
         if employment_type: _ins["employment_type"] = employment_type
         supabase.table("staffs").insert(_ins).execute()
-        return jsonify({"status": "success"})
+        # plan-staff-limit-v1: 登録は済んでいる。そのうえで、契約人数を
+        #   超えていたら知らせる。★止めない。現場の手を止めないため。
+        _notice = ""
+        try:
+            _notice = _plan_staff_notice(_plan_staff_usage(supabase, f_code))
+        except Exception as _ue:
+            print("[plan-staff-limit-v1] 追加後の人数を数えられません: %s" % _ue,
+                  flush=True)
+        return jsonify({"status": "success", "plan_notice": _notice})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# ══════════════════════════════════════════════════════════════════
+# plan-staff-limit-v1 : 契約した人数と、いまの職員数を突き合わせる
+#   ★超えても【登録は止めない】。現場は人が増えた日に登録する。
+#     そこで止めると仕事が止まる。お金の話で現場の手を止めない。
+#   ★staff_limit が空の事業所は【上限なし】。空欄を0と読まないこと。
+#     いま使っている事業所は staff_limit を持っていないので、
+#     0と読むと明日から全事業所が上限オーバーになる。
+# ══════════════════════════════════════════════════════════════════
+
+
+def _plan_facility_staff_limit(supabase, f_code):   # plan-staff-limit-v1
+    """契約した人数。決めていない事業所は None（＝上限なし）。"""
+    try:
+        r = (supabase.table("facilities").select("staff_limit")
+             .eq("facility_code", f_code).limit(1).execute())
+    except Exception as e:
+        # ★列がまだ無い／読めないときも【上限なし】に倒す。
+        #   読めないことを理由に「超過」と言わない。
+        print("[plan-staff-limit-v1] staff_limit を読めません: %s" % e, flush=True)
+        return None
+    if not r.data:
+        return None
+    v = r.data[0].get("staff_limit")
+    if v in (None, "", 0, "0"):
+        return None
+    try:
+        n = int(v)
+    except (ValueError, TypeError):
+        return None
+    return n if n > 0 else None
+
+
+def _plan_facility_staff_count(supabase, f_code):   # plan-staff-limit-v1
+    """いまの職員数。★消した人（is_active=False）は数えない。"""
+    rows = _fetch_all_paginated(
+        lambda: supabase.table("staffs").select("id")
+                .eq("facility_code", f_code).eq("is_active", True),
+        page_size=1000, max_pages=100)
+    return len(rows or [])
+
+
+def _plan_staff_usage(supabase, f_code):   # plan-staff-limit-v1
+    """人数の使いぐあい。画面と案内文の元。"""
+    limit = _plan_facility_staff_limit(supabase, f_code)
+    count = _plan_facility_staff_count(supabase, f_code)
+    over = 0 if limit is None else max(0, count - limit)
+    need = 0
+    if over > 0:
+        need = -(-over // PLAN_STEP_STAFF)   # 足りない口数（切り上げ）
+    return {"count": count, "limit": limit, "over": over,
+            "need_blocks": need,
+            "step": PLAN_STEP_STAFF,
+            "next_limit": (limit + PLAN_STEP_STAFF * need) if (limit and need) else limit}
+
+
+def _plan_staff_notice(usage):   # plan-staff-limit-v1
+    """超えているときの案内文。超えていなければ空。
+    ★「登録できません」とは書かない。登録は通っている。"""
+    if not usage or usage.get("over", 0) <= 0:
+        return ""
+    return ("ご契約は職員%d名までです（いま%d名・%d名超過）。"
+            "%d名ごとの追加をお申し込みください。"
+            % (usage["limit"], usage["count"], usage["over"], usage["step"]))
+
+
+@app.route('/api/plan/staff_usage')   # plan-staff-limit-v1
+@login_required
+def api_plan_staff_usage():
+    """いまの職員数と契約人数。画面の帯が使う。"""
+    try:
+        supabase = get_supabase()
+        usage = _plan_staff_usage(supabase, session["f_code"])
+        usage["notice"] = _plan_staff_notice(usage)
+        usage["status"] = "success"
+        return jsonify(usage)
+    except Exception as e:
+        print("[plan-staff-limit-v1] usage error: %s" % e, flush=True)
+        # ★数えられないときは黙る。まちがって「超過」と出すより出さない。
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route('/api/delete_staff', methods=['POST'])
 @login_required

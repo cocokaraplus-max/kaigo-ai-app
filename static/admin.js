@@ -296,6 +296,13 @@ async function addStaff() {
     });
     const data = await res.json();
     if (data.status === 'success') {
+        // plan-staff-limit-v1: 契約人数を超えたときは、読み込み直したあとに知らせる。
+        //   ★登録は成功している。ここで止めない。
+        try {
+            if (data.plan_notice) {
+                sessionStorage.setItem('planStaffNotice', data.plan_notice);
+            }
+        } catch (e) {}
         location.reload();
     } else {
         showErr(data.message || '登録に失敗しました');
