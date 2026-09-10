@@ -17685,6 +17685,35 @@ EXPORT_TABLES = (
 
 )
 
+# data-export-v2 : facility_code を持たない表を、親をたどって取る。
+#   {子の表: (親の表, 親の列, 子の列)}
+#   ★親は facility_code を持っていること。ここでも「絞らずに全件取る」はしない。
+EXPORT_VIA_PARENT = {
+    "meeting_icf_links": ("meetings",   "id", "meeting_id"),
+    "rec_expenses":      ("rec_events", "id", "event_id"),
+    "rec_places":        ("rec_events", "id", "event_id"),
+}
+
+# ★id をまとめて渡すと URL が長くなりすぎる。100件ずつに分ける。
+#   分け忘れると、件数が増えた事業所でだけ静かに落ちる。
+EXPORT_IN_CHUNK = 100
+
+
+def _export_via_parent(supabase, f_code, table):   # data-export-v2
+    """親の id をたどって、子の行を取る。"""
+    parent, pcol, ccol = EXPORT_VIA_PARENT[table]
+    ids = [r[pcol] for r in _fetch_all_paginated(
+        lambda: supabase.table(parent).select(pcol).eq("facility_code", f_code),
+        page_size=1000, max_pages=1000) if r.get(pcol) is not None]
+    rows = []
+    for i in range(0, len(ids), EXPORT_IN_CHUNK):
+        part = ids[i:i + EXPORT_IN_CHUNK]
+        rows.extend(_fetch_all_paginated(
+            lambda _p=part: supabase.table(table).select("*").in_(ccol, _p),
+            page_size=1000, max_pages=1000))
+    return rows
+
+
 # ★どの表でも落とす列。名前で見る（列の一覧を持たなくて済む）。
 #   職員の password_hash がそのまま出ていくのを止めるのが主な目的。
 EXPORT_SKIP_COL_PARTS = ("password", "secret", "token", "api_key", "apikey")
@@ -17733,15 +17762,19 @@ def _export_build_zip(supabase, f_code):   # data-export-v1
                 manifest.append((t, 0, "出していません", "設定・認証・キャッシュのため"))
                 continue
             try:
-                # ★必ず facility_code で絞る。列が無ければここで例外になり、
-                #   そのテーブルは出ない。＝絞らずに全件取ることが起きない。
-                rows = _fetch_all_paginated(
-                    lambda _t=t: supabase.table(_t).select("*")
-                                 .eq("facility_code", f_code),
-                    page_size=1000, max_pages=1000)
+                if t in EXPORT_VIA_PARENT:
+                    # data-export-v2: facility_code を持たない表。親をたどる。
+                    rows = _export_via_parent(supabase, f_code, t)
+                else:
+                    # ★必ず facility_code で絞る。列が無ければここで例外になり、
+                    #   そのテーブルは出ない。＝絞らずに全件取ることが起きない。
+                    rows = _fetch_all_paginated(
+                        lambda _t=t: supabase.table(_t).select("*")
+                                     .eq("facility_code", f_code),
+                        page_size=1000, max_pages=1000)
             except Exception as e:
                 manifest.append((t, 0, "出せませんでした",
-                                 "facility_code で絞れません: %s" % str(e)[:80]))
+                                 "取り出せません: %s" % str(e)[:80]))
                 continue
             rows = [_export_drop_cols(r) for r in (rows or [])]
             if not rows:
