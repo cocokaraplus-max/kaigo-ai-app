@@ -34296,12 +34296,14 @@ PLAN_PRICES = {   # stripe-price-v2
     # ★_l（一括）は【契約期間まるごと】＝ 割引後の月額 × 月数。
     #   1年12ヶ月 / 2年24ヶ月 / 3年36ヶ月。年払い（毎年1回）ではない。
     "starter":   {"monthly": 5980, "1y_m": 5000, "1y_l": 56400, "2y_m": 4100, "2y_l": 91200, "3y_m": 3200, "3y_l": 104400},
-    "standard":  {"monthly": 12800, "1y_m": 10800, "1y_l": 122400, "2y_m": 8900, "2y_l": 199200, "3y_m": 7000, "3y_l": 230400},
-    "pro":       {"monthly": 24800, "1y_m": 21000, "1y_l": 237600, "2y_m": 17300, "2y_l": 386400, "3y_m": 13600, "3y_l": 446400},
-    # 追加10名（職員+10名・録音+30時間）。プランに足して使う。
-    "addon":     {"monthly": 4000, "1y_m": 3400, "1y_l": 38400, "2y_m": 2800, "2y_l": 62400, "3y_m": 2200, "3y_l": 72000},
+    "standard":  {"monthly": 8800, "1y_m": 7400, "1y_l": 84000, "2y_m": 6100, "2y_l": 136800, "3y_m": 4800, "3y_l": 158400},
+    "pro":       {"monthly": 16800, "1y_m": 14200, "1y_l": 160800, "2y_m": 11700, "2y_l": 261600, "3y_m": 9200, "3y_l": 302400},
+    # plan-size-split-v1: 追加5名（職員+5名・録音+15時間）。プランに足して使う。
+    #   ★人数はプランに含めない。全プラン10名までが基本で、
+    #     11名以上はこれを必要な数だけ足す。
+    "addon":     {"monthly": 2000, "1y_m": 1700, "1y_l": 19200, "2y_m": 1400, "2y_l": 31200, "3y_m": 1100, "3y_l": 36000},
 }
-PLAN_LABELS = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ", "addon": "追加10名",   # stripe-price-v2
+PLAN_LABELS = {"starter": "スターター", "standard": "スタンダード", "pro": "プロ", "addon": "追加5名",   # plan-size-split-v1
                "monitor": "モニター", "free": "無料"}
 CANCEL_RATE = {1: 0.30, 2: 0.40, 3: 0.50}  # 年契約の違約率（1年30%/2年40%/3年50%）
 
@@ -34768,7 +34770,10 @@ def _resolve_price_id(env_key):  # stripe-price-setup-v1
 #   ★版（_V2）を付けているのは、Stripeの価格は金額を書き換えられず、
 #     作成処理が「同じ lookup_key があれば再利用」する作りだから。
 #     金額を変えるときは、必ずこの版を上げて別の価格として作り直す。
-PRICE_KEY_VER = "V2"   # stripe-price-v2
+PRICE_KEY_VER = "V3"   # plan-size-split-v1
+#   ★V2 には組み直し【前】の金額が入っている。版を上げないと、
+#     新しい料金表を出しながら古い金額で課金することになる。
+#     V3 の価格28本を作るまで決済は動かない。★止まるほうを選んでいる。
 
 # (キー, サフィックス, 表示名, 課金の種類, 決済モード)
 #   _M系＝毎月課金(subscription) / _L系＝契約期間まるごと1回払い(payment)
@@ -34828,7 +34833,7 @@ PLAN_CARDS = (
 
     {"key": "standard", "emoji": "\U0001f680", "name": "スタンダード",
      "desc": "送迎表まで使える、いちばん選ばれる形。",
-     "staff": 20, "audio": 60, "badge": "\u2b50 人気No.1", "primary": True,
+     "staff": 10, "audio": 30, "badge": "\u2b50 人気No.1", "primary": True,   # plan-size-split-v1
      "yes": ["スターターの全機能",
              "送迎表（配車・運行・記録表）",
              "生活機能チェックシート（様式3-2）",
@@ -34840,7 +34845,7 @@ PLAN_CARDS = (
 
     {"key": "pro", "emoji": "\U0001f451", "name": "プロ",
      "desc": "ご家族への連絡帳と勤怠まで。全機能が使えます。",
-     "staff": 30, "audio": 90, "badge": "", "primary": False,
+     "staff": 10, "audio": 30, "badge": "", "primary": False,   # plan-size-split-v1
      "yes": ["スタンダードの全機能",
              "連絡帳（LINEでご家族へ）",
              "タイムカード・職員の勤務予定・様式の出力",
@@ -34851,8 +34856,9 @@ PLAN_CARDS = (
      "no": []},
 )
 
-# pricing-card-v1 : 人数を超えたときの追加ぶん
-PLAN_CARD_ADDON = {"key": "addon", "staff": 10, "audio": 30}
+# pricing-card-v1 / plan-size-split-v1 : 人数を超えたときの追加ぶん
+#   ★5名ごと。録音は職員1名あたり月3時間なので 5×3＝15時間。
+PLAN_CARD_ADDON = {"key": "addon", "staff": 5, "audio": 15}
 
 
 def _plan_cards():   # pricing-card-v1
