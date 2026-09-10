@@ -51,6 +51,15 @@
   .loading { text-align: center; padding: 60px 20px; color: #666; }
   #form-area { display: none; }
   .trial-badge { display:inline-block; background:#2f6b5e; color:#fff; font-size:0.72rem; font-weight:700; border-radius:8px; padding:3px 8px; margin-left:6px; }
+  /* onboard-lump-trial-v1 : 一括払いを選んだときだけ出す赤い注意書き */
+  .lump-warn { display:none; margin-top:12px; background:#fdecea;
+    border:1.5px solid #ef9a9a; border-radius:12px; padding:12px 13px;
+    color:#8a1c19; font-size:0.82rem; line-height:1.65; }
+  .lump-warn-title { font-weight:800; color:#c5221f; margin-bottom:5px;
+    font-size:0.9rem; }
+  .lump-warn-ok { display:flex; align-items:center; gap:7px; margin:10px 0 0;
+    font-weight:700; color:#8a1c19; font-size:0.83rem; cursor:pointer; }
+  .lump-warn-ok input { width:17px; height:17px; flex:none; }
 </style>
 </head>
 <body>
@@ -59,7 +68,7 @@
       <span class="material-symbols-outlined">volunteer_activism</span>
       <b>TASUKARU</b>
     </div>
-    <div class="lead">施設のご登録<span class="trial-badge">2ヶ月無料</span></div>
+    <div class="lead">施設のご登録<span class="trial-badge" id="trial-badge">2ヶ月無料</span></div>
 
     <div id="loading" class="loading">
       <div class="material-symbols-outlined" style="font-size:2rem;">progress_activity</div>
@@ -116,7 +125,14 @@
           <div class="term" data-term="3y_m">3年契約<small>毎月払い</small></div>
           <div class="term" data-term="3y_l">3年契約<small>一括払い</small></div>
         </div>
-        <div class="note">2ヶ月間は無料でお試しいただけます。無料期間の終了後に、選択した条件で自動的に課金が始まります。やめる場合は無料期間の間に解約してください（一括払いを除く）。</div>
+        <div class="note" id="term-note">2ヶ月間は無料でお試しいただけます。無料期間の終了後に、選択した条件で自動的に課金が始まります。やめる場合は無料期間の間に解約してください。</div>
+        <!-- onboard-lump-trial-v1 : 一括払いのときだけ出す -->
+        <div class="lump-warn" id="lump-warn">
+          <div class="lump-warn-title">一括払いに無料期間はありません</div>
+          <div>お手続きが終わった時点で、契約期間ぶんの<b>全額をお支払いいただきます</b>。無料でお試しいただける期間はありません。また、契約期間の途中で解約された場合も<b>返金はできません</b>。</div>
+          <div style="margin-top:7px;">無料でお試しになりたい場合は、<b>月払い</b>をお選びください。</div>
+          <label class="lump-warn-ok"><input type="checkbox" id="lump-ok">上記を確認しました</label>
+        </div>
       </div>
 
       <div class="err" id="err"></div>
@@ -149,7 +165,27 @@
     var an = document.getElementById("admin_name").value.trim();
     var em = document.getElementById("email").value.trim();
     var ok = fn && an && emailValid(em) && state.plan && state.term && staffCount() > 0;   // plan-staff-count-v1
+    // onboard-lump-trial-v1 : 一括払いは「上記を確認しました」が必須
+    if(ok && isLump()){
+      var _c = document.getElementById("lump-ok");
+      ok = !!(_c && _c.checked);
+    }
     document.getElementById("submit-btn").disabled = !ok;
+  }
+
+  // onboard-lump-trial-v1 : 一括払い(_l)は無料期間が無い。
+  //   帯と注意書きを切り替え、確認のチェックが入るまで先へ進めなくする。
+  function isLump(){ return /_l$/.test(state.term || ""); }
+  function applyLumpNotice(){
+    var lump  = isLump();
+    var badge = document.getElementById("trial-badge");
+    var note  = document.getElementById("term-note");
+    var warn  = document.getElementById("lump-warn");
+    var chk   = document.getElementById("lump-ok");
+    if(badge) badge.style.display = lump ? "none" : "";
+    if(note)  note.style.display  = lump ? "none" : "";
+    if(warn)  warn.style.display  = lump ? "block" : "none";
+    if(!lump && chk) chk.checked = false;
   }
 
   // プラン選択
@@ -171,6 +207,7 @@
       document.querySelectorAll("#term-grid .term").forEach(function(o){ o.classList.remove("sel"); });
       el.classList.add("sel");
       state.term = el.getAttribute("data-term");
+      applyLumpNotice();   // onboard-lump-trial-v1
       refreshSubmit();
     });
   });
@@ -178,6 +215,9 @@
   document.getElementById("admin_name").addEventListener("input", refreshSubmit);
   document.getElementById("email").addEventListener("input", refreshSubmit);
   document.getElementById("staff_count").addEventListener("input", refreshSubmit);   // plan-staff-count-v1
+  // onboard-lump-trial-v1
+  document.getElementById("lump-ok").addEventListener("change", refreshSubmit);
+  applyLumpNotice();
 
   // 送信
   document.getElementById("submit-btn").addEventListener("click", function(){
