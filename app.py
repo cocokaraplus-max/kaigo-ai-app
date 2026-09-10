@@ -34958,9 +34958,21 @@ def _plan_cards():   # pricing-card-v1
     for c in PLAN_CARDS:
         d = dict(c)
         d["price"] = PLAN_PRICES[c["key"]]["monthly"]
-        d["yes"] = ["職員 %d名まで" % c["staff"],
-                    "録音 月%d時間（記録の音声入力・会議）" % c["audio"],
-                    "AI記録・写真の保存 無制限"] + list(c["yes"])
+        # pricing-card-off-v1: 人数と録音はカードに書かない。
+        #   ★プランと関係がなくなった（plan-size-split-v1）ので、
+        #     ここに固定で書くと、職員数を変えても直らず
+        #     「40名を選んだのに 職員10名まで」と出てしまう。
+        #     人数・録音は職員数の欄に1回だけ出す。
+        # pricing-card-off-v1: 「◯◯の全機能」は【土台の行】として分ける。
+        #   ★下のプランに何を足したものかが一目で分かるようにする。
+        #     土台がある段では、残りを「＋」で並べる。
+        _rest = list(c["yes"])
+        d["base"] = ""
+        if _rest and _rest[0].endswith("の全機能"):
+            d["base"] = _rest.pop(0)
+            d["yes"] = _rest          # ★AI記録の行は足さない。土台に含まれている
+        else:
+            d["yes"] = ["AI記録・写真の保存 無制限"] + _rest
         d["no"] = list(c["no"])
         out.append(d)
     return out
