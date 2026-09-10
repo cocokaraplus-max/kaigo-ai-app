@@ -17626,6 +17626,186 @@ def api_unblock_device():
         return jsonify({"status": "error"}), 500
 
 
+
+
+# ══════════════════════════════════════════════════════════════════
+# data-export-v1 : 事業所のデータをまとめて書き出す
+#   ★介護記録は「完結の日から2年」（自治体の条例で5年）の保存義務がある。
+#     解約した事業所が持ち出せないと、その事業所が法令違反になる。
+#   ★【出さないものだけ名指し】。新しい表が増えたら既定で書き出しに入る。
+#     プランの門とは向きが逆。あちらは漏れると穴が開くが、
+#     こちらは漏れると持ち出せないから。
+# ══════════════════════════════════════════════════════════════════
+
+# 出さない表。理由をそれぞれ書いておくこと（あとで「なぜ？」となるため）
+EXPORT_SKIP_TABLES = frozenset((
+    # 認証・端末。持ち出しても意味がなく、鍵が入りうる
+    "login_devices", "login_attempts", "login_requests", "blocked_devices",
+    "admin_2fa_codes", "password_resets", "invite_tokens", "timecard_devices",
+    # 設定。LINEのトークンなどが入りうる
+    "admin_settings", "line_settings", "line_friends", "line_friend_patients",
+    # 作業用・計測・キャッシュ
+    "claude_sessions", "draft_autosaves", "app_updates",
+    "ai_usage", "ai_categorize_history", "soge_geocode",
+    # 既読・リアクション。記録ではない
+    "record_reads", "board_reads", "board_checks", "board_comment_reads",
+    "board_reactions",
+    # 全事業所で共通のマスタ。その事業所のデータではない
+    "icf_codes",
+))
+
+# 出す表
+EXPORT_TABLES = (
+
+    "accounts", "bcp_manuals", "board_categories", "board_comments",
+    "board_posts", "body_weights", "calendar_events", "calendar_members",
+    "calendars", "cancellation_requests", "care_level_history",
+    "chat_members", "chat_messages", "chat_rooms", "daily_summaries",
+    "disaster_records", "facilities", "fitness_tests", "goal_history",
+    "jisseki_archive", "journal_entries", "ledger_credit_rules",
+    "ledger_division_rules", "ledger_divisions", "ledger_fiscal_closes",
+    "ledger_monthly_balances", "ledger_opening_balances",
+    "ledger_orico_cards", "ledger_orico_statements", "ledger_settings",
+    "life_check_appointments", "life_function_checks", "meeting_icf_links",
+    "meetings", "monitoring_reports", "patient_evaluations",
+    "patient_jihi_weekdays", "patient_profiles", "patient_visit_days",
+    "patients", "photo_albums", "photo_orders", "photos", "rec_cars",
+    "rec_events", "rec_expenses", "rec_places", "receipts",
+    "record_categories", "record_vas", "records", "renraku_notes",
+    "renraku_patient_settings", "renraku_settings", "renraku_shared_notes",
+    "service_time_settings", "soge_date_plans", "soge_date_routes",
+    "soge_day_locks", "soge_days", "soge_route_time", "soge_routes",
+    "soge_settings", "soge_stops", "staff_join_requests",
+    "staff_leave_days", "staff_meetings", "staff_settings",
+    "staff_shift_defaults", "staff_shift_plan", "staffs", "task_projects",
+    "tasks", "timecard_records", "visit_day_overrides", "visit_records",
+    "vital_alert_settings", "vital_daily_excludes", "vital_daily_includes",
+    "vital_recheck_schedules", "vitals", "youshiki_day_type",
+    "youshiki_excluded_days",
+
+)
+
+# ★どの表でも落とす列。名前で見る（列の一覧を持たなくて済む）。
+#   職員の password_hash がそのまま出ていくのを止めるのが主な目的。
+EXPORT_SKIP_COL_PARTS = ("password", "secret", "token", "api_key", "apikey")
+
+
+def _export_drop_cols(row):   # data-export-v1
+    """鍵やトークンらしき列を落とす。"""
+    out = {}
+    for k, v in row.items():
+        low = str(k).lower()
+        if any(p in low for p in EXPORT_SKIP_COL_PARTS):
+            continue
+        out[k] = v
+    return out
+
+
+def _export_csv_bytes(rows):   # data-export-v1
+    """CSVにする。★BOM付きUTF-8。付けないとExcelで開いたとき文字化けする。"""
+    import csv as _csv
+    import io as _io
+    cols = []
+    seen = set()
+    for r in rows:                      # ★列の並びは出てきた順。行ごとに列が違っても落とさない
+        for k in r.keys():
+            if k not in seen:
+                seen.add(k)
+                cols.append(k)
+    buf = _io.StringIO()
+    w = _csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
+    w.writeheader()
+    for r in rows:
+        w.writerow({k: ("" if r.get(k) is None else r.get(k)) for k in cols})
+    return ("\ufeff" + buf.getvalue()).encode("utf-8")
+
+
+def _export_build_zip(supabase, f_code):   # data-export-v1
+    """その事業所のデータを ZIP にして返す。(バイト列, 目録) を返す。"""
+    import io as _io
+    import zipfile as _zip
+
+    manifest = []          # (表の名前, 件数, 状態, 覚え書き)
+    buf = _io.BytesIO()
+    with _zip.ZipFile(buf, "w", _zip.ZIP_DEFLATED) as z:
+        for t in EXPORT_TABLES:
+            if t in EXPORT_SKIP_TABLES:
+                manifest.append((t, 0, "出していません", "設定・認証・キャッシュのため"))
+                continue
+            try:
+                # ★必ず facility_code で絞る。列が無ければここで例外になり、
+                #   そのテーブルは出ない。＝絞らずに全件取ることが起きない。
+                rows = _fetch_all_paginated(
+                    lambda _t=t: supabase.table(_t).select("*")
+                                 .eq("facility_code", f_code),
+                    page_size=1000, max_pages=1000)
+            except Exception as e:
+                manifest.append((t, 0, "出せませんでした",
+                                 "facility_code で絞れません: %s" % str(e)[:80]))
+                continue
+            rows = [_export_drop_cols(r) for r in (rows or [])]
+            if not rows:
+                manifest.append((t, 0, "中身なし", ""))
+                continue
+            z.writestr("data/%s.csv" % t, _export_csv_bytes(rows))
+            manifest.append((t, len(rows), "出しました", ""))
+
+        # 目録。★「全部入っています」を示せるようにする。
+        mrows = [{"表の名前": a, "件数": b, "状態": c, "覚え書き": d}
+                 for (a, b, c, d) in manifest]
+        z.writestr("目録.csv", _export_csv_bytes(mrows))
+
+        ok = sum(1 for m in manifest if m[2] == "出しました")
+        ng = [m[0] for m in manifest if m[2] == "出せませんでした"]
+        readme = (
+            "TASUKARU データの書き出し\r\n"
+            "事業所コード: %s\r\n"
+            "作成日時: %s\r\n"
+            "\r\n"
+            "・data/ の中に、表ごとのCSVが入っています（BOM付きUTF-8。Excelでそのまま開けます）。\r\n"
+            "・目録.csv に、何をいくつ出したかが入っています。\r\n"
+            "・出した表: %d ／ 出せなかった表: %d\r\n"
+            "\r\n"
+            "【入っていないもの】\r\n"
+            "・写真と録音の実体（ファイルそのもの）。置き場所のURLは表の中にあります。\r\n"
+            "・パスワードや連携用の鍵。安全のため落としています。\r\n"
+            "・画面の設定（LINEの連携情報などが含まれるため）。\r\n"
+            "\r\n"
+            "【出せなかった表】\r\n%s\r\n"
+        ) % (f_code, datetime.now().strftime("%Y-%m-%d %H:%M"), ok, len(ng),
+             ("\r\n".join("・" + x for x in ng) if ng else "（ありません）"))
+        z.writestr("はじめにお読みください.txt", readme.encode("utf-8"))
+
+    return buf.getvalue(), manifest
+
+
+@app.route("/api/admin/export/zip", methods=["GET"])   # data-export-v1
+@login_required
+def api_admin_export_zip():
+    """事業所のデータを ZIP で落とす。★管理者だけ。"""
+    from flask import send_file as _export_send
+    import io as _io
+    f_code = session["f_code"]
+    my_name = session.get("my_name", "")
+    supabase = get_supabase()
+    if not is_admin_user(supabase, f_code, my_name):
+        return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+    try:
+        data, manifest = _export_build_zip(supabase, f_code)
+    except Exception as e:
+        print("api_admin_export_zip error: %s" % e, flush=True)
+        # ★空のZIPを返さない。返すと「データが無い」と読めてしまう。
+        return jsonify({"status": "error",
+                        "message": "書き出しに失敗しました: %s" % e}), 500
+    ok = sum(1 for m in manifest if m[2] == "出しました")
+    rows = sum(m[1] for m in manifest)
+    print("[data-export-v1] %s : %d表 / %d行 / %.1fMB"
+          % (f_code, ok, rows, len(data) / 1024.0 / 1024.0), flush=True)
+    name = "%s_data_%s.zip" % (f_code, datetime.now().strftime("%Y%m%d"))
+    return _export_send(_io.BytesIO(data), mimetype="application/zip",
+                        as_attachment=True, download_name=name)
+
+
 # ==========================================
 # 掲示板
 # ==========================================

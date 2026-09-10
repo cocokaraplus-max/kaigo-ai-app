@@ -1100,6 +1100,22 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
     <span class="material-symbols-outlined" style="margin-left:auto;color:#2e7d32;">chevron_right</span>
   </a>
 
+
+  {# data-export-v1: 解約時にデータを持ち出せるようにする。
+     ★介護記録は保存義務がある（2年／自治体の条例で5年）。
+       持ち出せないと事業所が法令違反になる。 #}
+  <a href="/api/admin/export/zip"
+     onclick="return confirm('この事業所のデータをZIPで書き出します。\n件数によっては1〜2分かかります。よろしいですか？');"
+     style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:6px;background:#e8f0fe;border-radius:12px;border:2px solid #1a73e8;text-decoration:none;color:#1557b0;font-weight:700;font-size:0.95rem;">
+    <span class="material-symbols-outlined">download</span>データを書き出す（ZIP）
+    <span class="material-symbols-outlined" style="margin-left:auto;">chevron_right</span>
+  </a>
+  <div style="font-size:0.78rem;color:#5f6368;line-height:1.7;margin-bottom:12px;">
+    記録・利用者情報・送迎・実績・勤怠などを、表ごとのCSVにしてまとめて落とします。
+    Excelでそのまま開けます。<b>写真と録音のファイルそのものは入りません</b>（大きすぎるため。
+    置き場所のURLは表の中にあります）。<b>管理者だけ</b>が使えます。
+  </div>
+
 </div>{# /tab-data #}
 
 {# ==================== 運営・契約タブ（admin-tabs-v2） ==================== #}
