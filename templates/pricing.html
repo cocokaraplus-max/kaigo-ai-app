@@ -37,6 +37,20 @@
 .plan-price .unit { font-size:0.78rem; color:#5f6368; }
 .plan-price .original { font-size:0.78rem; color:#ea4335; text-decoration:line-through; margin-right:4px; }
 .plan-price .lump { font-size:0.78rem; color:#5f6368; margin-top:2px; }
+/* pricing-card-off-v1 : 「◯◯の全機能 ＋ …」の見せ方 */
+.plan-features li.base { font-weight:800; color:#1a3a5c; background:#eef3fa;
+  border-radius:8px; padding:6px 8px; margin-bottom:2px; }
+.plan-features li.base .material-symbols-outlined { color:#1a73e8; }
+.plan-features li.plus .material-symbols-outlined { color:#1a73e8; }
+/* pricing-card-off-v1 : 割引をはっきり見せる */
+.plan-off { display:inline-block; background:#d93025; color:#fff; font-size:1rem;
+  font-weight:800; padding:5px 14px; border-radius:999px; margin-bottom:6px;
+  letter-spacing:0.02em; }
+.plan-permonth { display:block; font-size:0.9rem; font-weight:700; color:#1a73e8;
+  margin-top:4px; }
+.plan-permonth s { color:#9aa0a6; font-weight:500; margin-left:6px; }
+.staff-total { display:block; margin-top:6px; font-size:0.82rem; color:#202124; }
+.staff-total b { color:#1a73e8; }
 .plan-features { list-style:none; padding:0; margin:0 0 14px; display:flex; flex-direction:column; gap:5px; }
 .plan-features li { font-size:0.78rem; color:#3c4043; display:flex; align-items:center; gap:6px; }
 .plan-features li .material-symbols-outlined { font-size:16px; color:#34a853; flex-shrink:0; }
@@ -199,7 +213,10 @@
                     <span class="amount">¥{{ "{:,}".format(c.price) }}</span><span class="unit">/月</span>
                 </div>
                 <ul class="plan-features">
-                    {% for f in c.yes %}<li><span class="material-symbols-outlined">check</span>{{ f }}</li>
+                    {# pricing-card-off-v1 : 「◯◯の全機能」を土台の行にして、
+                       残りを「＋」で並べる。下のプランとの差が一目で分かる。 #}
+                    {% if c.base %}<li class="base"><span class="material-symbols-outlined">layers</span>{{ c.base }}</li>
+                    {% endif %}{% for f in c.yes %}<li{% if c.base %} class="plus"{% endif %}><span class="material-symbols-outlined">{% if c.base %}add{% else %}check{% endif %}</span>{{ f }}</li>
                     {% endfor %}{% for f in c.no %}<li class="no"><span class="material-symbols-outlined">close</span>{{ f }}</li>
                     {% endfor %}
                 </ul>
@@ -277,6 +294,16 @@ function selectTerm(term) {
 var PLAN_BASE_STAFF = {{ addon.base_staff }};
 var PLAN_STEP_STAFF = {{ addon.staff }};
 
+/* pricing-card-off-v1 : 割引率。★数字を手で書かず、上のタブと同じ元から作る
+   （app.py の PRICE_TERM_TABS）。タブの表示とカードのバッジが食い違わない。 */
+var TERM_OFF = { {% for _k, _l, _o in term_tabs %}'{{ _k }}': {{ _o }}{% if not loop.last %}, {% endif %}{% endfor %} };
+
+function termMonths(t) {
+    /* '3y_l' → 36。★月数を別に持たない。契約期間の名前から作る。 */
+    var m = /^(\d+)y_/.exec(t);
+    return m ? parseInt(m[1], 10) * 12 : 1;
+}
+
 function staffCount() {
     var el = document.getElementById('staff-count');
     var n = parseInt(el && el.value, 10);
@@ -310,12 +337,30 @@ function updatePrices() {
         var monthly = MONTHLY_PRICES[plan] + MONTHLY_PRICES.addon * blocks;
         var el = document.getElementById('price-' + plan);
         var isLump = currentTerm.endsWith('_l');
+        var off = TERM_OFF[currentTerm] || 0;
         var html = '';
-        if (currentTerm !== 'monthly') {
-            html += '<span class="original">¥' + monthly.toLocaleString() + '</span>';
+
+        /* pricing-card-off-v1 : 割引をいちばん上に大きく出す */
+        if (off > 0) {
+            html += '<div><span class="plan-off">' + off + '%OFF</span></div>';
         }
         html += '<span class="amount">¥' + price.toLocaleString() + '</span>';
         html += '<span class="unit">' + (isLump ? '（一括）' : '/月') + '</span>';
+
+        /* ★一括のときは【月あたり】を必ず併記する。
+           大きい数字は36ヶ月ぶんの総額なので、そのままだと高く見える。
+           ★取り消し線は【月あたり】の隣に置く。総額の隣に月額を置くと
+             「17,980円が518,400円になる」＝値上げに読めてしまう。 */
+        if (isLump) {
+            var mo = termMonths(currentTerm);
+            html += '<span class="plan-permonth">月あたり ¥'
+                 + Math.round(price / mo).toLocaleString()
+                 + '<s>通常 ¥' + monthly.toLocaleString() + '</s></span>';
+        } else if (off > 0) {
+            html += '<span class="plan-permonth">'
+                 + '<s>通常 ¥' + monthly.toLocaleString() + '/月</s></span>';
+        }
+
         if (blocks > 0) {
             html += '<span class="plan-breakdown">基本 ¥'
                  + PRICES[plan][currentTerm].toLocaleString()
@@ -326,14 +371,17 @@ function updatePrices() {
     });
     var sn = document.getElementById('staff-note');
     if (sn) {
+        /* pricing-card-off-v1 : 人数と録音はここに1回だけ出す。
+           ★カードに書くと、職員数を変えても直らない。 */
         var limit = PLAN_BASE_STAFF + PLAN_STEP_STAFF * blocks;
-        if (blocks === 0) {
-            sn.innerHTML = '<b>' + PLAN_BASE_STAFF + '名まで</b>は追加料金なしでお使いいただけます。';
-        } else {
-            sn.innerHTML = '<b>' + limit + '名まで</b>の契約になります（追加'
-                + PLAN_STEP_STAFF + '名 × ' + blocks + '）。録音の時間も'
-                + '月' + (PLAN_STEP_STAFF * 3 * blocks) + '時間ぶん増えます。';
-        }
+        var hours = 3 * limit;          /* 職員1名あたり月3時間 */
+        var head = (blocks === 0)
+            ? '<b>' + PLAN_BASE_STAFF + '名まで</b>は追加料金なしでお使いいただけます。'
+            : '<b>' + limit + '名まで</b>の契約になります（追加'
+              + PLAN_STEP_STAFF + '名 × ' + blocks + '）。';
+        sn.innerHTML = head
+            + '<span class="staff-total">どのプランも <b>職員 ' + limit + '名まで</b>／'
+            + '<b>録音 月' + hours + '時間</b>／AI記録・保存は無制限です。</span>';
     }
     // pricing-card-v1 : 追加10名の金額も、同じ契約期間で動かす
     var ae = document.getElementById('addon-price');
