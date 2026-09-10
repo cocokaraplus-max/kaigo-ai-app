@@ -35604,6 +35604,56 @@ def stripe_webhook():
                 is_lump = term.endswith("_l")
                 payment_type = "lump" if is_lump else "monthly"
                 sub_id = session_data.get("subscription")
+                # stripe-switch-cancel-v1 : 乗り換えたら古いサブスクを止める。
+                #   ★止めないと【二重課金】になる。
+                #     月払い→一括 : 一括の全額を払った上に毎月の請求が続く
+                #     プラン変更   : Checkoutは毎回新しいサブスクを作るので、
+                #                    古いプランの請求も並んで残る
+                #   ★列を上書きすると古いIDを二度と辿れない。
+                #     だから【止められたときだけ】消す。
+                _sw_old = None
+                _sw_read_ok = False
+                try:
+                    _sw_res = supabase.table("facilities").select(
+                        "stripe_subscription_id").eq(
+                        "facility_code", f_code).execute()
+                    if _sw_res.data:
+                        _sw_old = _sw_res.data[0].get("stripe_subscription_id")
+                    _sw_read_ok = True
+                except Exception as _sw_e:
+                    print("[Stripe] 旧サブスクの確認に失敗: " + str(_sw_e), flush=True)
+                _sw_done = True
+                if _sw_old and _sw_old != sub_id:
+                    # 即時解約にしない。支払い済みの当月ぶんを取り上げないため。
+                    # 無料期間中なら、無料のまま終わって課金は起きない。
+                    try:
+                        stripe.Subscription.modify(
+                            _sw_old, cancel_at_period_end=True)
+                        print("[Stripe] old sub -> cancel_at_period_end", flush=True)
+                    except Exception as _sw_e2:
+                        _sw_done = False
+                        print("[Stripe] old sub cancel error: " + str(_sw_e2),
+                              flush=True)
+                if sub_id:
+                    _sw_field = sub_id
+                elif _sw_old and not _sw_done:
+                    _sw_field = _sw_old      # 止められなかった → 見失わないよう残す
+                else:
+                    _sw_field = None
+                if (_sw_old and not _sw_done) or not _sw_read_ok:
+                    try:
+                        line_notify_admin("\n".join([
+                            "【TASUKARU】★要確認: 古い契約を止められませんでした",
+                            "施設: " + str(f_code),
+                            "新しい契約: " + str(term),
+                            ("古いサブスク: ..." + str(_sw_old)[-8:]) if _sw_old
+                            else "古い契約を確認できませんでした（DBを引けず）",
+                            "",
+                            "Stripeで古いサブスクリプションを手で解約してください。",
+                            "放置すると二重課金になります。",
+                        ]))
+                    except Exception:
+                        pass
                 # pricing-rebuild-v1 : アクセス期限
                 #   一括=満了日 / subscription=期間末+猶予（invoice.paidで毎期延長）
                 if is_lump:
@@ -35621,9 +35671,14 @@ def stripe_webhook():
                     "contract_end": contract_end.date().isoformat(),
                     "contract_term": contract_term_years,
                     "payment_type": payment_type,
-                    "stripe_subscription_id": sub_id,
+                    # stripe-switch-cancel-v1 : 止められなかった古いIDは消さない
+                    "stripe_subscription_id": _sw_field,
                     "stripe_customer_id": session_data.get("customer"),
                 }
+                # stripe-switch-cancel-v1 : 古い契約を確認できなかったときは
+                #   この列に触らない。Noneで上書きすると見失うため。
+                if not sub_id and not _sw_read_ok:
+                    update_data.pop("stripe_subscription_id", None)
                 supabase.table("facilities").update(update_data).eq("facility_code", f_code).execute()
                 # plan-staff-count-v1: 契約人数を別に書く（上と同じ理由）
                 _plan_write_staff_limit(supabase, f_code, meta.get("staff_limit"))
