@@ -81,21 +81,25 @@
         <label>メールアドレス</label>
         <input type="email" id="email" placeholder="例: info@example.com" autocomplete="off" inputmode="email">
         <div class="note">ご連絡やお手続きの確認に使用します。</div>
+        <!-- plan-staff-count-v1 : ここで人数を決める。11名以上は追加5名ぶんが乗る -->
+        <label>ご利用になる職員数</label>
+        <input type="number" id="staff_count" value="10" min="1" max="200" step="1" inputmode="numeric">
+        <div class="note">10名まではどのプランも同じ料金です。11名以上は5名ごとに料金が加わります。</div>
       </div>
 
       <div class="card">
         <div class="section-title">プランを選ぶ</div>
         <div class="plan-grid" id="plan-grid">
           <div class="opt" data-plan="starter">
-            <div><div class="name">スターター</div><div class="desc">小規模施設向けの基本プラン</div></div>
+            <div><div class="name">スターター</div><div class="desc">記録と書類の基本セット</div></div>
             <span class="material-symbols-outlined check" style="color:#2f6b5e;visibility:hidden;">check_circle</span>
           </div>
           <div class="opt" data-plan="standard">
-            <div><div class="name">スタンダード</div><div class="desc">標準的な機能を一通り</div></div>
+            <div><div class="name">スタンダード</div><div class="desc">送迎表まで使えます</div></div>
             <span class="material-symbols-outlined check" style="color:#2f6b5e;visibility:hidden;">check_circle</span>
           </div>
           <div class="opt" data-plan="pro">
-            <div><div class="name">プロ</div><div class="desc">全機能・大規模施設向け</div></div>
+            <div><div class="name">プロ</div><div class="desc">連絡帳・勤怠まで。全機能</div></div>
             <span class="material-symbols-outlined check" style="color:#2f6b5e;visibility:hidden;">check_circle</span>
           </div>
         </div>
@@ -125,6 +129,11 @@
 (function(){
   var LIFF_ID = "2010588249-kQNvvhlg";
   var state = { userId: "", displayName: "", plan: "", term: "" };
+  // plan-staff-count-v1 : 職員数（1〜200）。入っていないと先へ進めない。
+  function staffCount(){
+    var n = parseInt(document.getElementById("staff_count").value, 10);
+    return (isNaN(n) || n < 1 || n > 200) ? 0 : n;
+  }
 
   function showErr(msg){
     var e = document.getElementById("err");
@@ -139,7 +148,7 @@
     var fn = document.getElementById("facility_name").value.trim();
     var an = document.getElementById("admin_name").value.trim();
     var em = document.getElementById("email").value.trim();
-    var ok = fn && an && emailValid(em) && state.plan && state.term;
+    var ok = fn && an && emailValid(em) && state.plan && state.term && staffCount() > 0;   // plan-staff-count-v1
     document.getElementById("submit-btn").disabled = !ok;
   }
 
@@ -168,6 +177,7 @@
   document.getElementById("facility_name").addEventListener("input", refreshSubmit);
   document.getElementById("admin_name").addEventListener("input", refreshSubmit);
   document.getElementById("email").addEventListener("input", refreshSubmit);
+  document.getElementById("staff_count").addEventListener("input", refreshSubmit);   // plan-staff-count-v1
 
   // 送信
   document.getElementById("submit-btn").addEventListener("click", function(){
@@ -180,7 +190,8 @@
       email: document.getElementById("email").value.trim(),
       line_user_id: state.userId,
       plan: state.plan,
-      term: state.term
+      term: state.term,
+      staff: staffCount()
     };
     fetch("/api/onboard/create_checkout", {
       method: "POST",

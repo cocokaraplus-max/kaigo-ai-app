@@ -34880,7 +34880,88 @@ def _plan_cards():   # pricing-card-v1
 def _plan_card_addon():   # pricing-card-v1
     d = dict(PLAN_CARD_ADDON)
     d["price"] = PLAN_PRICES["addon"]["monthly"]
+    # plan-staff-count-v1: 画面のJSが使う。★数字をテンプレートに書かない。
+    d["base_staff"] = PLAN_BASE_STAFF
     return d
+
+
+# ══════════════════════════════════════════════════════════════════
+# plan-staff-count-v1 : 契約するときに職員数を受け取り、追加ぶんを決済に積む
+#   ★人数はプランから外した（plan-size-split-v1）。11名以上は全員が
+#     追加を買う。ここが無いと10名ぶんの金額で40名が契約できてしまう。
+# ══════════════════════════════════════════════════════════════════
+PLAN_BASE_STAFF = 10     # 全プラン共通の基本人数
+PLAN_STEP_STAFF = 5      # 追加の単位
+PLAN_STAFF_MAX = 200     # 入力の上限（打ち間違いを止めるため）
+
+
+def _plan_addon_blocks(staff):   # plan-staff-count-v1
+    """職員数 → 追加の口数。10名までは0口、11〜15名で1口、16〜20名で2口。"""
+    n = int(staff or 0)
+    if n <= PLAN_BASE_STAFF:
+        return 0
+    return -(-(n - PLAN_BASE_STAFF) // PLAN_STEP_STAFF)   # 切り上げ
+
+
+def _plan_staff_limit(staff):   # plan-staff-count-v1
+    """契約する人数の上限。10 / 15 / 20 …"""
+    return PLAN_BASE_STAFF + PLAN_STEP_STAFF * _plan_addon_blocks(staff)
+
+
+def _plan_staff_from_request(data):   # plan-staff-count-v1
+    """申し込みから職員数を読む。
+    ★入っていなければ基本人数にする。多く取るほうへは倒さない。"""
+    raw = data.get("staff")
+    if raw in (None, "", "None"):
+        return PLAN_BASE_STAFF
+    try:
+        n = int(str(raw).strip())
+    except (ValueError, TypeError):
+        raise ValueError("職員数は数字で入力してください")
+    if n < 1 or n > PLAN_STAFF_MAX:
+        raise ValueError("職員数は1〜%d名で入力してください" % PLAN_STAFF_MAX)
+    return n
+
+
+def _plan_checkout_items(plan, suffix, staff):   # plan-staff-count-v1
+    """Checkout に渡す line_items を作る。
+    返り値: (line_items, 口数, 契約人数)
+    ★追加の価格が見つからないときは【例外】。基本だけ売らない。
+      黙って基本だけ通すと、人数が足りないまま契約が成立してしまう。"""
+    base_key = _price_key(plan, suffix)
+    base_id = _resolve_price_id(base_key)
+    if not base_id:
+        raise ValueError("price not configured: " + base_key)
+    items = [{"price": base_id, "quantity": 1}]
+    blocks = _plan_addon_blocks(staff)
+    if blocks:
+        add_key = _price_key("addon", suffix)
+        add_id = _resolve_price_id(add_key)
+        if not add_id:
+            raise ValueError("price not configured: " + add_key)
+        items.append({"price": add_id, "quantity": blocks})
+    return items, blocks, _plan_staff_limit(staff)
+
+
+def _plan_write_staff_limit(supabase, f_code, staff_limit):   # plan-staff-count-v1
+    """契約人数を facilities に書く。
+    ★列がまだ無くても契約そのものは止めない。決済は済んでいるので、
+      ここで落ちると【払ったのに使えない】になる。
+      書けなかったことは必ずログに残す。"""
+    try:
+        n = int(staff_limit or 0)
+    except (ValueError, TypeError):
+        n = 0
+    if n <= 0:
+        return False
+    try:
+        (supabase.table("facilities").update({"staff_limit": n})
+         .eq("facility_code", f_code).execute())
+        return True
+    except Exception as e:
+        print("[plan-staff-count-v1] staff_limit を書けません"
+              "（列がまだ無い？ f_code=%s n=%s）: %s" % (f_code, n, e), flush=True)
+        return False
 
 
 def _price_key(plan, suffix):   # stripe-price-v2
@@ -35076,10 +35157,13 @@ def stripe_create_checkout():
         return jsonify({"error": "invalid term: " + term}), 400
     suffix, checkout_mode = TERM_MAP[term]
 
-    env_key = _price_key(plan, suffix)   # stripe-price-v2: 組み立ては1箇所だけ
-    price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
-    if not price_id:
-        return jsonify({"error": "price not configured: " + env_key}), 400
+    # plan-staff-count-v1: 職員数を受け取り、11名以上なら追加ぶんを積む
+    try:
+        staff = _plan_staff_from_request(data)
+        line_items, addon_blocks, staff_limit = _plan_checkout_items(
+            plan, suffix, staff)
+    except ValueError as _pe:
+        return jsonify({"error": str(_pe)}), 400
 
     # --- 任意割引クーポンの自動適用判定 ---
     # facilities.discount_rate（0.5/0.3/0.2）と discount_until（期限・空なら無期限）を見る
@@ -35119,7 +35203,7 @@ def stripe_create_checkout():
     try:
         params = dict(
             mode=checkout_mode,
-            line_items=[{"price": price_id, "quantity": 1}],
+            line_items=line_items,   # plan-staff-count-v1
             success_url=base_url + "/pricing?stripe=success",
             cancel_url=base_url + "/pricing?stripe=cancel",
             metadata={
@@ -35127,6 +35211,9 @@ def stripe_create_checkout():
                 "plan": plan,
                 "term": term,
                 "discount_rate": str(applied_discount_rate),
+                "staff": str(staff),                  # plan-staff-count-v1
+                "staff_limit": str(staff_limit),      # plan-staff-count-v1
+                "addon_blocks": str(addon_blocks),    # plan-staff-count-v1
             },
             locale="ja",
         )
@@ -35178,16 +35265,20 @@ def onboard_create_checkout():
     if term not in TERM_MAP:
         return jsonify({"error": "invalid term: " + term}), 400
     suffix, checkout_mode = TERM_MAP[term]
-    env_key = _price_key(plan, suffix)   # stripe-price-v2: 組み立ては1箇所だけ
-    price_id = _resolve_price_id(env_key)  # stripe-price-setup-v1: 環境変数 or lookup_key
-    if not price_id:
-        return jsonify({"error": "price not configured: " + env_key}), 400
+    # plan-staff-count-v1: 申込フォームの職員数から追加ぶんを積む
+    #   ★こちらも直さないと、新規の申し込みだけ10名ぶんで通ってしまう。
+    try:
+        staff = _plan_staff_from_request(data)
+        line_items, addon_blocks, staff_limit = _plan_checkout_items(
+            plan, suffix, staff)
+    except ValueError as _pe:
+        return jsonify({"error": str(_pe)}), 400
 
     onboard_id = _oc_secrets.token_urlsafe(24)
     try:
         params = dict(
             mode=checkout_mode,
-            line_items=[{"price": price_id, "quantity": 1}],
+            line_items=line_items,   # plan-staff-count-v1
             success_url=base_url + "/onboard/done?st=success",
             cancel_url=base_url + "/onboard/done?st=cancel",
             metadata={
@@ -35198,6 +35289,9 @@ def onboard_create_checkout():
                 "plan": plan,
                 "term": term,
                 "email": contact_email,
+                "staff": str(staff),                  # plan-staff-count-v1
+                "staff_limit": str(staff_limit),      # plan-staff-count-v1
+                "addon_blocks": str(addon_blocks),    # plan-staff-count-v1
             },
             locale="ja",
         )
@@ -35337,6 +35431,10 @@ def stripe_webhook():
                         _fac_row["contract_end"] = (
                             _ob_now + _ob_td(days=365 * ob_term_years)).date().isoformat()
                 supabase.table("facilities").insert(_fac_row).execute()
+                # plan-staff-count-v1: 契約人数を別に書く。
+                #   ★行そのものに混ぜない。列がまだ無いと insert ごと失敗し、
+                #     【払ったのに施設が作られない】になるため。
+                _plan_write_staff_limit(supabase, new_code, meta.get("staff_limit"))
                 # 管理者職員を作成(パスワードは未設定=空。初回設定リンクで本人が設定する)
                 setup_token = _ob_secrets.token_urlsafe(32)
                 setup_exp = (_ob_now + _ob_td(hours=24)).isoformat()
@@ -35426,7 +35524,9 @@ def stripe_webhook():
                     "stripe_customer_id": session_data.get("customer"),
                 }
                 supabase.table("facilities").update(update_data).eq("facility_code", f_code).execute()
-                print(f"[Stripe] facility {f_code} activated (plan={plan}, term={term})", flush=True)
+                # plan-staff-count-v1: 契約人数を別に書く（上と同じ理由）
+                _plan_write_staff_limit(supabase, f_code, meta.get("staff_limit"))
+                print(f"[Stripe] facility {f_code} activated (plan={plan}, term={term}, staff_limit={meta.get('staff_limit')})", flush=True)
                 line_notify_admin(
                     "\n".join([
                         "【TASUKARU】新規契約",

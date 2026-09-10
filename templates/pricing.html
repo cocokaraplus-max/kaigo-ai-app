@@ -49,6 +49,18 @@
 .plan-btn-outline { background:#fff; color:#1a73e8; border:1.5px solid #1a73e8; }
 .plan-btn-outline:hover { background:#e8f0fe; }
 /* pricing-card-v1 : 追加10名の案内 */
+/* plan-staff-count-v1 : 職員数の入力 */
+.staff-box { background:#fff; border:1.5px solid #dfe6f2; border-radius:14px; padding:14px 16px; margin-bottom:12px; }
+.staff-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.staff-row b { font-size:0.9rem; color:#202124; margin-right:auto; }
+.staff-row .material-symbols-outlined { color:#1a73e8; font-size:20px; }
+.staff-btn { width:34px; height:34px; border-radius:9px; border:1.5px solid #c6d9f5; background:#f4f8ff; color:#1a73e8; font-size:1rem; font-weight:800; font-family:inherit; cursor:pointer; }
+#staff-count { width:72px; text-align:center; font-size:1rem; font-weight:800; padding:6px 4px; border:1.5px solid #dfe6f2; border-radius:9px; font-family:inherit; }
+.staff-unit { font-size:0.85rem; color:#5f6368; }
+.staff-note { font-size:0.78rem; color:#5f6368; line-height:1.7; margin-top:8px; }
+.staff-note b { font-size:0.78rem; color:#1a73e8; }
+.plan-breakdown { display:block; font-size:0.72rem; color:#5f6368; margin-top:4px; line-height:1.5; }
+
 .addon-note { display:flex; gap:10px; align-items:flex-start; background:#fff; border:1.5px dashed #c6d9f5; border-radius:14px; padding:14px 16px; margin-top:12px; }
 .addon-note .material-symbols-outlined { font-size:20px; color:#1a73e8; flex-shrink:0; }
 .addon-note b { font-size:0.85rem; color:#202124; }
@@ -151,6 +163,21 @@
     </div>
     {% endif %}
 
+    {# plan-staff-count-v1 : 契約する職員数。ここで入れた人数で金額が決まる。
+       ★看板の金額と実際の請求が違う、という形にしない。 #}
+    <div class="staff-box">
+        <div class="staff-row">
+            <span class="material-symbols-outlined">groups</span>
+            <b>ご利用になる職員数</b>
+            <button type="button" class="staff-btn" onclick="staffStep(-1)">－</button>
+            <input type="number" id="staff-count" value="10" min="1" max="200" step="1"
+                   inputmode="numeric" oninput="updatePrices()" onchange="updatePrices()">
+            <span class="staff-unit">名</span>
+            <button type="button" class="staff-btn" onclick="staffStep(1)">＋</button>
+        </div>
+        <div class="staff-note" id="staff-note"></div>
+    </div>
+
     <!-- 契約期間タブ -->
     <div class="term-tabs" id="term-tabs">
         {# pricing-discount-label-v1 : 並びも名前も割引率も app.py の PRICE_TERM_TABS から。ここに数字を書かない #}
@@ -246,10 +273,41 @@ function selectTerm(term) {
     }
 }
 
+/* plan-staff-count-v1 : 職員数 → 追加の口数。app.py の _plan_addon_blocks と同じ式。 */
+var PLAN_BASE_STAFF = {{ addon.base_staff }};
+var PLAN_STEP_STAFF = {{ addon.staff }};
+
+function staffCount() {
+    var el = document.getElementById('staff-count');
+    var n = parseInt(el && el.value, 10);
+    if (isNaN(n) || n < 1) n = 1;
+    if (n > 200) n = 200;
+    return n;
+}
+function staffBlocks() {
+    var n = staffCount();
+    if (n <= PLAN_BASE_STAFF) return 0;
+    return Math.ceil((n - PLAN_BASE_STAFF) / PLAN_STEP_STAFF);
+}
+function staffStep(d) {
+    var el = document.getElementById('staff-count');
+    if (!el) return;
+    var n = staffCount() + d;
+    if (n < 1) n = 1;
+    if (n > 200) n = 200;
+    el.value = n;
+    updatePrices();
+}
+
 function updatePrices() {
+    var blocks = staffBlocks();
+    var isLump0 = currentTerm.endsWith('_l');
     PLAN_CARD_KEYS.forEach(function(plan) {   // pricing-card-v1
-        var price = PRICES[plan][currentTerm];
-        var monthly = MONTHLY_PRICES[plan];
+        /* plan-staff-count-v1 : 入れた人数での金額を出す。
+           ★基本だけ出すと、決済の画面で金額が増えて驚かれる。 */
+        var addOne = PRICES.addon[currentTerm];
+        var price = PRICES[plan][currentTerm] + addOne * blocks;
+        var monthly = MONTHLY_PRICES[plan] + MONTHLY_PRICES.addon * blocks;
         var el = document.getElementById('price-' + plan);
         var isLump = currentTerm.endsWith('_l');
         var html = '';
@@ -258,8 +316,25 @@ function updatePrices() {
         }
         html += '<span class="amount">¥' + price.toLocaleString() + '</span>';
         html += '<span class="unit">' + (isLump ? '（一括）' : '/月') + '</span>';
+        if (blocks > 0) {
+            html += '<span class="plan-breakdown">基本 ¥'
+                 + PRICES[plan][currentTerm].toLocaleString()
+                 + ' ＋ 追加' + PLAN_STEP_STAFF + '名 × ' + blocks + ' ＝ ¥'
+                 + (addOne * blocks).toLocaleString() + '</span>';
+        }
         el.innerHTML = html;
     });
+    var sn = document.getElementById('staff-note');
+    if (sn) {
+        var limit = PLAN_BASE_STAFF + PLAN_STEP_STAFF * blocks;
+        if (blocks === 0) {
+            sn.innerHTML = '<b>' + PLAN_BASE_STAFF + '名まで</b>は追加料金なしでお使いいただけます。';
+        } else {
+            sn.innerHTML = '<b>' + limit + '名まで</b>の契約になります（追加'
+                + PLAN_STEP_STAFF + '名 × ' + blocks + '）。録音の時間も'
+                + '月' + (PLAN_STEP_STAFF * 3 * blocks) + '時間ぶん増えます。';
+        }
+    }
     // pricing-card-v1 : 追加10名の金額も、同じ契約期間で動かす
     var ae = document.getElementById('addon-price');
     if (ae) {
@@ -286,7 +361,7 @@ async function startCheckout(plan) {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             credentials: 'include',
-            body: JSON.stringify({plan: plan, term: currentTerm})
+            body: JSON.stringify({plan: plan, term: currentTerm, staff: staffCount()})   // plan-staff-count-v1
         });
         var data = await res.json();
         if (data.url) {
