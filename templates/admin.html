@@ -1226,6 +1226,17 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
        歩いているタスカル君のほうが伝える。 */
 var dxBusy = false, dxTimer = null;
 
+/* export-names-v1: Content-Disposition から名前を取り出す。
+   日本語のファイル名は filename*=UTF-8'' のほうに入る。
+   古い書き方の filename= しか無いときは、そちらを使う。 */
+function dxFileName(cd) {
+  if (!cd) return '';
+  var m = /filename\*=UTF-8''([^;]+)/i.exec(cd);
+  if (m) { try { return decodeURIComponent(m[1]); } catch (e) {} }
+  m = /filename="?([^";]+)"?/i.exec(cd);
+  return m ? m[1].trim() : '';
+}
+
 function dxHide() {
   var ov = document.getElementById('dx-loading-overlay');
   ov.classList.remove('is-active');
@@ -1250,7 +1261,7 @@ function dxStart() {
   num.innerHTML = '';
   ov.classList.add('is-active');
 
-  var t0 = Date.now(), got = 0, phase = 1;
+  var t0 = Date.now(), got = 0, phase = 1, dxName = '';
   dxTimer = setInterval(function () {
     var s = Math.floor((Date.now() - t0) / 1000);
     if (phase === 1) {
@@ -1281,6 +1292,7 @@ function dxStart() {
   fetch('/api/admin/export/zip', { credentials: 'include' })
     .then(function (r) {
       if (!r.ok) { throw new Error('サーバーが ' + r.status + ' を返しました'); }
+      dxName = dxFileName(r.headers.get('Content-Disposition'));  /* export-names-v1 */
       phase = 2;
       /* 受け取り始めたら、届いたぶんを出す（ここは本当に分かる） */
       var reader = r.body && r.body.getReader ? r.body.getReader() : null;
@@ -1301,7 +1313,11 @@ function dxStart() {
       var d = new Date();
       var ymd = d.getFullYear()
         + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
-      a.href = url; a.download = 'tasukaru_data_' + ymd + '.zip';
+      /* export-names-v1: サーバーが付けた名前をそのまま使う。
+         ★ここを自分で組み立てていたのが間違いだった（export-busy-v1）。
+           事業所名の入った名前を捨てて、どこのものか分からなくしていた。
+           引けなかったときだけ、下の名前に落ちる。 */
+      a.href = url; a.download = dxName || ('TASUKARU_' + ymd + '.zip');
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
       finish('できました！', 'ダウンロードのフォルダをご確認ください',
