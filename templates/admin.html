@@ -1104,12 +1104,14 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
   {# data-export-v1: 解約時にデータを持ち出せるようにする。
      ★介護記録は保存義務がある（2年／自治体の条例で5年）。
        持ち出せないと事業所が法令違反になる。 #}
-  <a href="/api/admin/export/zip"
-     onclick="return confirm('この事業所のデータをZIPで書き出します。\n件数によっては1〜2分かかります。よろしいですか？');"
-     style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:6px;background:#e8f0fe;border-radius:12px;border:2px solid #1a73e8;text-decoration:none;color:#1557b0;font-weight:700;font-size:0.95rem;">
+  {# export-busy-v1: リンクを踏むのをやめ、押している間タスカル君を歩かせる。
+     ★リンクのままだと、サーバがZIPを作り終えるまで画面が動かない。
+       現場は「壊れた」と思って何度も押す。 #}
+  <button type="button" id="dxBtn" onclick="dxStart()"
+     style="width:100%;display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:6px;background:#e8f0fe;border-radius:12px;border:2px solid #1a73e8;color:#1557b0;font-weight:700;font-size:0.95rem;font-family:inherit;cursor:pointer;">
     <span class="material-symbols-outlined">download</span>データを書き出す（ZIP）
     <span class="material-symbols-outlined" style="margin-left:auto;">chevron_right</span>
-  </a>
+  </button>
   <div style="font-size:0.78rem;color:#5f6368;line-height:1.7;margin-bottom:12px;">
     記録・利用者情報・送迎・実績・勤怠などを、表ごとのCSVにしてまとめて落とします。
     Excelでそのまま開けます。<b>写真と録音のファイルそのものは入りません</b>（大きすぎるため。
@@ -1117,6 +1119,199 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
   </div>
 
 </div>{# /tab-data #}
+{# ===== export-busy-v1: 書き出し中の案内 =====
+   書類出力（print_output.html）の .po-loading-overlay と同じ動き。
+   タスカル君が左から右へ歩いて横切る。★あちらを直したらここも直す。 #}
+<style>
+.dx-loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.92);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    z-index: 12000;
+    overflow: hidden;
+}
+.dx-loading-overlay.is-active {
+    display: flex;
+}
+.dx-tasukaru-lane {
+    position: relative;
+    width: 100%;
+    height: 160px;
+}
+.dx-tasukaru-walker {
+    position: absolute;
+    top: 50%;
+    margin-top: -70px;
+    width: 140px;
+    height: 140px;
+    animation: dxTasukaruWalk 3s linear infinite;
+}
+.dx-tasukaru-walker img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: brightness(0) opacity(0.5);
+    animation: dxTasukaruBob 0.4s ease-in-out infinite;
+    transform-origin: bottom center;
+}
+/* ★終わったら歩くのをやめて、真ん中で止める。動いたままだと終わりが分からない。 */
+.dx-loading-overlay.is-done .dx-tasukaru-walker { animation: none; left: calc(50% - 70px); }
+.dx-loading-overlay.is-done .dx-tasukaru-walker img { animation: none; }
+.dx-loading-label {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #202124;
+}
+.dx-loading-sub {
+    font-size: 0.78rem;
+    color: #5f6368;
+}
+/* ★本当に分かる数字だけを出す欄（経過秒・受け取ったMB）。割合は出さない。 */
+.dx-loading-num {
+    font-size: 0.78rem;
+    color: #5f6368;
+    margin-top: 2px;
+    min-height: 1.2em;
+}
+.dx-loading-num b { font-variant-numeric: tabular-nums; color: #1a73e8; }
+.dx-loading-close {
+    margin-top: 16px;
+    border: 1.5px solid #dadce0;
+    background: #fff;
+    color: #3c4043;
+    border-radius: 10px;
+    padding: 9px 18px;
+    font-family: inherit;
+    font-weight: 700;
+    font-size: 0.86rem;
+    cursor: pointer;
+    display: none;
+}
+.dx-loading-close.is-active { display: inline-block; }
+@keyframes dxTasukaruWalk {
+    0%   { left: -120px; }
+    100% { left: calc(100% + 120px); }
+}
+@keyframes dxTasukaruBob {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-8px); }
+}
+</style>
+
+<div class="dx-loading-overlay" id="dx-loading-overlay" aria-live="polite">
+    <div class="dx-tasukaru-lane">
+        <div class="dx-tasukaru-walker">
+            <img src="{{ url_for('static', filename='tasukaruカラー.png') }}" alt="">
+        </div>
+    </div>
+    <div class="dx-loading-label" id="dx-loading-label">準備中…</div>
+    <div class="dx-loading-sub" id="dx-loading-sub">タスカルくんが届けています</div>
+    <div class="dx-loading-num" id="dx-loading-num"></div>
+    <button type="button" class="dx-loading-close" id="dx-loading-close"
+            onclick="dxHide()">閉じる</button>
+</div>
+
+<script>
+/* ===== export-busy-v1 =====
+   ★割合は出さない。ZIPはサーバ側で作り終えてから一気に送られてくるので、
+     途中の割合は本当は分からない。分からないものを棒グラフにすると、
+     止まって見えたときに「フリーズした」と読まれる。
+     出すのは【経過秒】と【受け取ったMB】だけ。どちらも本当に分かる数字。 */
+var dxBusy = false, dxTimer = null;
+
+function dxHide() {
+  var ov = document.getElementById('dx-loading-overlay');
+  ov.classList.remove('is-active');
+  ov.classList.remove('is-done');
+  document.getElementById('dx-loading-close').classList.remove('is-active');
+}
+
+function dxStart() {
+  if (dxBusy) return;                     /* ★二度押しを止める */
+  if (!confirm('この事業所のデータをZIPで書き出します。\n件数によっては1〜2分かかります。よろしいですか？')) return;
+  dxBusy = true;
+  var btn = document.getElementById('dxBtn');
+  if (btn) btn.disabled = true;
+  var ov  = document.getElementById('dx-loading-overlay');
+  var lbl = document.getElementById('dx-loading-label');
+  var sub = document.getElementById('dx-loading-sub');
+  var num = document.getElementById('dx-loading-num');
+  ov.classList.remove('is-done');
+  document.getElementById('dx-loading-close').classList.remove('is-active');
+  lbl.textContent = 'データを集めています';
+  sub.textContent = 'タスカルくんが届けています';
+  num.innerHTML = '';
+  ov.classList.add('is-active');
+
+  var t0 = Date.now(), got = 0, phase = 1;
+  dxTimer = setInterval(function () {
+    var s = Math.floor((Date.now() - t0) / 1000);
+    if (phase === 1) {
+      /* ★かかっている時間だけを出す。うそをつかない。 */
+      num.innerHTML = 'サーバーで集めています　<b>' + s + '</b> 秒';
+      if (s === 20) lbl.textContent = 'まだ集めています';
+      if (s === 60) sub.textContent = '記録が多いと1〜2分かかります';
+    } else {
+      num.innerHTML = '受け取っています　<b>'
+        + (got / 1024 / 1024).toFixed(1) + '</b> MB';
+    }
+  }, 250);
+
+  function finish(title, subMsg, numMsg, isErr) {
+    clearInterval(dxTimer);
+    dxBusy = false;
+    if (btn) btn.disabled = false;
+    ov.classList.add('is-done');           /* ★歩くのを止める */
+    lbl.textContent = title;
+    sub.textContent = subMsg;
+    num.innerHTML = numMsg;
+    document.getElementById('dx-loading-close').classList.add('is-active');
+    if (!isErr) setTimeout(dxHide, 4000);  /* ★うまくいったときだけ自動で閉じる */
+  }
+
+  fetch('/api/admin/export/zip', { credentials: 'include' })
+    .then(function (r) {
+      if (!r.ok) { throw new Error('サーバーが ' + r.status + ' を返しました'); }
+      phase = 2;
+      /* 受け取り始めたら、届いたぶんを出す（ここは本当に分かる） */
+      var reader = r.body && r.body.getReader ? r.body.getReader() : null;
+      if (!reader) return r.blob();
+      var chunks = [];
+      return (function pump() {
+        return reader.read().then(function (res) {
+          if (res.done) return new Blob(chunks, { type: 'application/zip' });
+          chunks.push(res.value); got += res.value.length;
+          return pump();
+        });
+      })();
+    })
+    .then(function (blob) {
+      var mb = (blob.size / 1024 / 1024).toFixed(1);
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      var d = new Date();
+      var ymd = d.getFullYear()
+        + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2);
+      a.href = url; a.download = 'tasukaru_data_' + ymd + '.zip';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 60000);
+      finish('できました！', 'ダウンロードのフォルダをご確認ください',
+             '<b>' + mb + '</b> MB を書き出しました', false);
+    })
+    .catch(function (e) {
+      /* ★黙って終わらせない。何が起きたかを必ず出す。 */
+      finish('書き出せませんでした',
+             '時間をおいて、もう一度お試しください',
+             String(e && e.message ? e.message : e), true);
+    });
+}
+</script>
+
 
 {# ==================== 運営・契約タブ（admin-tabs-v2） ==================== #}
 <div class="tab-panel" id="tab-keiyaku">
