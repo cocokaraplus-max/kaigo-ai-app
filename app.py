@@ -26754,6 +26754,12 @@ def api_save_weekday_nth():
             return jsonify({"status": "error", "message": "第N週は1〜5です"}), 400
 
         supabase = get_supabase()
+        # visit-days-id-fix-v2 : ★v1 で塞ぎ漏らした5つ目の入り口。
+        #   第N週もこの表に書くのに、離れた場所にあって当たらなかった。
+        #   同じ表に書く所は【全部数えてから】塞ぐこと。
+        patient_id = _vd_patient_int_id(supabase, f_code, patient_id) or ""
+        if not patient_id:
+            return jsonify({"status": "error", "message": _VD_ID_NG}), 400
         existing = (supabase.table("patient_visit_days")
                     .select("id,nth_per_day")
                     .eq("facility_code", f_code).eq("patient_id", patient_id).execute())
