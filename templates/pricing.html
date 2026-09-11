@@ -116,7 +116,18 @@
 <div class="pricing-wrap">
     <div class="pricing-header">
         <h1>プランを選択</h1>
-        <p>2ヶ月間は無料でお試しいただけます</p>
+        {# plan-trial-carry-v1 : ★「2ヶ月無料」を無条件に出していた。
+           この画面からの契約に2ヶ月の無料期間は付かない（付くのはLIFFの新規申込だけ）。
+           出せるのは【いま残っている無料期間】の話だけ。
+           ★3日以上残っているときだけ「引き継がれる」と言う。
+             Stripeが48時間より先しか受け付けないため、言い切れない。 #}
+        {% if contract.in_trial and (contract.trial_days_left or 0) >= 3 %}
+        <p>無料期間は残り{{ contract.trial_days_left }}日です。ここでプランを選び直しても、<b>残りの無料期間はそのまま引き継がれます</b>。</p>
+        {% elif contract.in_trial %}
+        <p>無料期間はまもなく終わります。ここでお申し込みになると、<b>すぐに課金が始まります</b>。</p>
+        {% else %}
+        <p>お申し込みの手続きが終わると、<b>すぐに課金が始まります</b>。</p>
+        {% endif %}
     </div>
 
     {% if request.args.get('stripe') == 'success' %}

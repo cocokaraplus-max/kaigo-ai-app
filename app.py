@@ -35278,14 +35278,18 @@ def stripe_create_checkout():
     # plan-contract-guard-v1 : ★割引を確かめられないまま決済に進まない。
     #   黙って満額を取ると、返金と謝罪になる。止まるほうがまし。
     _disc_fail = None
+    # plan-trial-carry-v1 : 残りの無料期間を新しい契約へ引き継ぐための元の値。
+    #   ★割引を見るときの問い合わせに相乗りする。Stripeにも DB にも回数を増やさない。
+    _trial_raw = None
     try:
         supabase = get_supabase()
         fres = supabase.table("facilities").select(
-            "discount_rate,discount_until"
+            "discount_rate,discount_until,trial_ends_at"   # plan-trial-carry-v1
         ).eq("facility_code", f_code).execute()
         if fres.data:
             d_rate = fres.data[0].get("discount_rate") or 0
             d_until = fres.data[0].get("discount_until")
+            _trial_raw = fres.data[0].get("trial_ends_at")   # plan-trial-carry-v1
             in_period = True
             if d_until not in (None, "", "None"):
                 try:
@@ -35328,6 +35332,23 @@ def stripe_create_checkout():
                                  "満額でのご契約にならないよう手続きを止めています。"
                                  "少し時間をおいてお試しいただくか、ご連絡ください。"}), 503
 
+    # plan-trial-carry-v1 : 無料期間の途中で契約し直したとき、残りをそのまま渡す。
+    #   ★渡さないと、新しいサブスクがその場で課金を始め、
+    #     残っていた無料の日数が消える。「無料のうちに試して決める」が壊れる。
+    #   ★Stripeは trial_end を【48時間以上先】しか受け付けない。
+    #     余裕を見て49時間。足りなければ渡さない（すぐ課金・画面もそう書く）。
+    #   ★一括(payment)に無料期間の仕組みは無いので渡さない。
+    _trial_ts = None
+    if checkout_mode == "subscription" and _trial_raw not in (None, "", "None"):
+        try:
+            _te = datetime.fromisoformat(str(_trial_raw).replace("Z", "+00:00"))
+            if (_te - datetime.now(timezone.utc)).total_seconds() > 49 * 3600:
+                _trial_ts = int(_te.timestamp())
+        except (ValueError, TypeError, OSError, OverflowError) as _te_err:
+            # ★読めなかったら引き継がない。ここで落として契約を止めない。
+            print("[Stripe] 無料期間の終わりが読めません（引き継ぎません）: "
+                  + str(_te_err), flush=True)
+
     try:
         params = dict(
             mode=checkout_mode,
@@ -35347,6 +35368,8 @@ def stripe_create_checkout():
         )
         if discounts:
             params["discounts"] = discounts
+        if _trial_ts:   # plan-trial-carry-v1
+            params["subscription_data"] = {"trial_end": _trial_ts}
         checkout = stripe.checkout.Session.create(**params)
         return jsonify({"url": checkout.url})
     except Exception as e:
