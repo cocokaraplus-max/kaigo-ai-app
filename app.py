@@ -34439,6 +34439,7 @@ def _contract_overview(f_code):
         "expires_at": None, "trial_ends_at": None,
         "in_trial": False, "trial_days_left": None, "is_monitor": False,
         "monthly_price": None, "cancel_kind": "none",
+        "staff_limit": None, "addon_blocks": 0,   # plan-penalty-staff-v1
         "remaining_months": 0, "penalty": 0, "penalty_rate": 0, "note": "",
     }
     try:
@@ -34486,6 +34487,29 @@ def _contract_overview(f_code):
             out["monthly_price"] = PLAN_PRICES.get(plan, {}).get("%dy_m" % term)
         elif term == 0:
             out["monthly_price"] = PLAN_PRICES.get(plan, {}).get("monthly")
+
+        # plan-penalty-staff-v1 : 11名以上は【追加5名】ぶんが毎月かかっている。
+        #   ★プランの表だけ見ると、40名の事業所でも10名ぶんの金額になる。
+        #     画面の「¥◯◯/月」も違約金も実際より安く出る。
+        #     安く見せたあとで正しい額を請求すると、必ずもめる。
+        #   ★staff_limit は【別の問い合わせ】で読む。上の一括SELECTに混ぜない。
+        #     列が1つ欠けるとSELECTごと失敗し、契約情報が丸ごと空になる。
+        #   ★読めなければ10名ぶんのまま出す。ここで落として画面を止めない。
+        try:
+            _sl = (supabase.table("facilities").select("staff_limit")
+                   .eq("facility_code", f_code).execute())
+            _slim = int((_sl.data[0].get("staff_limit") if _sl.data else 0) or 0)
+        except Exception as _sle:
+            _slim = 0
+            print("[contract] 契約人数を読めません（10名ぶんで出します）: %s"
+                  % _sle, flush=True)
+        # 口数の計算は既存の関数をそのまま使う（式を書き写さない）
+        _blocks = _plan_addon_blocks(_slim) if _slim else 0
+        out["staff_limit"] = _slim or None
+        out["addon_blocks"] = _blocks
+        if _blocks and out["monthly_price"]:
+            _akey = ("%dy_m" % term) if term >= 1 else "monthly"
+            out["monthly_price"] += PLAN_PRICES.get("addon", {}).get(_akey, 0) * _blocks
 
         # トライアル中は違約金なし
         if out["in_trial"]:

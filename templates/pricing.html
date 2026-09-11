@@ -160,6 +160,11 @@
     <div class="contract-box">
         <div class="contract-title"><span class="material-symbols-outlined" style="font-size:19px;color:#1a73e8;">receipt_long</span>現在の契約状況</div>
         <div class="contract-row"><span>プラン</span><b>{{ contract.plan_label }}</b></div>
+        {# plan-penalty-staff-v1 : 金額の根拠を見せる。
+           これが無いと「なぜこの額？」に答えられない。 #}
+        {% if contract.addon_blocks %}
+        <div class="contract-row"><span>契約人数</span><b>{{ contract.staff_limit }}名まで（追加5名 ×{{ contract.addon_blocks }}）</b></div>
+        {% endif %}
         {% if contract.in_trial %}
         <div class="contract-row"><span>無料期間</span><b>残り{{ contract.trial_days_left }}日（{{ contract.trial_ends_at }}まで）</b></div>
         <div class="contract-note trial">無料期間の終了後、選択中のプランで<b>自動的に課金</b>が始まります。継続しない場合は<b>無料期間の間に</b>解約してください。</div>
