@@ -35233,6 +35233,11 @@ def stripe_create_checkout():
     f_code = session.get("f_code")
     if not f_code:
         return jsonify({"error": "not logged in"}), 401
+    # plan-contract-guard-v1 : 契約は管理者だけ。
+    #   ★解約には鍵があるのに契約に無いのは向きが逆。お金が出ていくほうを守る。
+    #     文言は解約(/api/cancel_subscription)とそろえる。
+    if not session.get("admin_authenticated"):
+        return jsonify({"error": "管理者メニューから操作してください。"}), 403
     stripe.api_key = get_secret("STRIPE_SECRET_KEY")
     data = request.get_json()
     plan = (data.get("plan") or "starter").lower()
@@ -35270,6 +35275,9 @@ def stripe_create_checkout():
     # facilities.discount_rate（0.5/0.3/0.2）と discount_until（期限・空なら無期限）を見る
     discounts = None
     applied_discount_rate = 0
+    # plan-contract-guard-v1 : ★割引を確かめられないまま決済に進まない。
+    #   黙って満額を取ると、返金と謝罪になる。止まるほうがまし。
+    _disc_fail = None
     try:
         supabase = get_supabase()
         fres = supabase.table("facilities").select(
@@ -35295,11 +35303,30 @@ def stripe_create_checkout():
                         applied_discount_rate = d_rate
                     else:
                         print("[Stripe] coupon env not set: " + coupon_env, flush=True)
+                        _disc_fail = "クーポンが未設定"   # plan-contract-guard-v1
                 else:
                     # 想定外の割引率は誤割引防止のため適用しない
                     print("[Stripe] unsupported discount_rate (skipped): " + str(d_rate), flush=True)
+                    _disc_fail = "割引率が想定外"          # plan-contract-guard-v1
     except Exception as e:
         print("[Stripe] discount lookup error: " + str(e), flush=True)
+        _disc_fail = "割引を読めなかった"                  # plan-contract-guard-v1
+    if _disc_fail:
+        # plan-contract-guard-v1 : 割引が付けられないと分かったので、ここで止める。
+        #   ★このまま進むと【満額で決済が通ってしまう】。
+        try:
+            line_notify_admin("\n".join([
+                "【TASUKARU】★要確認: 割引を付けられず、契約を止めました",
+                "施設: " + str(f_code),
+                "理由: " + _disc_fail,
+                "",
+                "facilities.discount_rate と STRIPE_COUPON_* を確認してください。",
+            ]))
+        except Exception:
+            pass
+        return jsonify({"error": "お約束の割引を、いま確認できませんでした。"
+                                 "満額でのご契約にならないよう手続きを止めています。"
+                                 "少し時間をおいてお試しいただくか、ご連絡ください。"}), 503
 
     try:
         params = dict(
