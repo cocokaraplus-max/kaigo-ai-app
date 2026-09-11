@@ -20934,13 +20934,19 @@ def _sl_notify_admins_device_request(supabase, f_code, device_label, who):
 
     ★通知が送れなくても、申請そのものは成立させる。
       ここで失敗を理由に申請を止めると、通知の不調が業務を止める。
+
+    device-notice-honest-v1:
+    ★返り値は【実際に送れた人数】。呼ぶ側はこれを見て画面の文を変える。
+      0人なのに「お知らせしました」と出すと、申請した人は
+      【届いていない知らせ】を待ち続ける。できていないことを、できたと言わない。
     """
+    sent = 0   # device-notice-honest-v1
     try:
         names = get_admin_managers(supabase, f_code) or []
         targets = _sl_staff_line_ids(supabase, f_code, names)
         if not targets:
             print("[login-device] 管理者のLINE連絡先が見つからない（通知なし）", flush=True)
-            return
+            return 0
         msg = ("【TASUKARU】ログイン端末の許可をお願いします\\n\\n"
                "端末: %s\\n"
                "頼んだ人: %s\\n\\n"
@@ -20949,10 +20955,13 @@ def _sl_notify_admins_device_request(supabase, f_code, device_label, who):
                "管理者MENU →「ログイン端末の管理」から許可できます。"
                % (device_label or "（名前なし）", who or "（名乗りなし）"))
         for nm, uid in targets:
-            _sl_line_push(uid, [{"type": "text", "text": msg}], "端末申請の知らせ")
+            # device-notice-honest-v1: 送れたものだけ数える
+            if _sl_line_push(uid, [{"type": "text", "text": msg}], "端末申請の知らせ"):
+                sent += 1
     except Exception as e:
         # ★知らせられなくても申請は成立している。ここで例外を外へ出さない。
         print("[login-device] 申請の知らせに失敗: %s" % e, flush=True)
+    return sent   # device-notice-honest-v1
 
 
 def _sl_notify_requester_approved(supabase, f_code, device_label, who):
@@ -21552,11 +21561,35 @@ def shared_login_device_request():
         # sl-flow-v1: 管理者に知らせる。★これが無いと、管理者は
         #   管理画面を自分で見に行くまで気づけない。職員は電話で頼むことになる。
         #   ★知らせに失敗しても申請は成立している（中で握りつぶしている）。
-        _sl_notify_admins_device_request(supabase, f_code, label or "新しい端末", who)
+        _dn_sent = _sl_notify_admins_device_request(
+            supabase, f_code, label or "新しい端末", who)
 
-        return jsonify({"status": "ok",
-                        "message": "申請しました。管理者の承認をお待ちください。"
-                                   "（事業所の管理者のLINEにお知らせしました）"})
+        # device-notice-honest-v1: ★送れていないのに「お知らせしました」と言わない。
+        #   0人だと、申請した人は届かない知らせを待ち続け、
+        #   管理者は管理画面を見に行くまで気づかない。
+        if _dn_sent:
+            _dn_msg = ("申請しました。管理者の承認をお待ちください。"
+                       "（事業所の管理者のLINEにお知らせしました）")
+        else:
+            _dn_msg = ("申請しました。"
+                       "ただし、管理者へ自動でお知らせできませんでした。"
+                       "お手数ですが、事業所の管理者に直接お伝えください。"
+                       "（管理者MENU →「ログイン端末の管理」から許可できます）")
+            # ★誰にも届かない申請を埋もれさせない。開発者にも知らせる。
+            #   ★載せるのは施設コードと端末名だけ。人の名前は載せない。
+            try:
+                line_notify_admin("\n".join([
+                    "【TASUKARU】★要確認: 端末申請を誰にも知らせられません",
+                    "施設: " + str(f_code),
+                    "端末: " + str(label or "新しい端末"),
+                    "",
+                    "その事業所の管理者にLINEが繋がっていない可能性があります。",
+                    "このままだと申請が誰にも気づかれません。",
+                ]))
+            except Exception:
+                pass
+
+        return jsonify({"status": "ok", "message": _dn_msg})
     except Exception as e:
         print("shared_login_device_request error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
