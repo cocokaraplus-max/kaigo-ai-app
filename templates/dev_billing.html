@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+{% block title %}入金の消し込み - TASUKARU{% endblock %}
+{% block nav_admin %}active{% endblock %}
+
+{% block content %}
+{# dev-billing-v1 #}
+<style>
+.bl-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.bl-head h1 { font-size:1.05rem; margin:0; }
+.bl-src { font-size:0.74rem; color:#5f6368; }
+.bl-src b { color:#202124; }
+.bl-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; }
+.bl-bar input[type=month] { padding:8px 10px; border:1.5px solid #d5dddb; border-radius:10px;
+  font-size:0.9rem; font-family:inherit; }
+.bl-btn { border:1.5px solid #1a73e8; background:#fff; color:#1a73e8; border-radius:10px;
+  padding:8px 13px; font-size:0.8rem; font-weight:800; cursor:pointer; font-family:inherit;
+  min-height:38px; }
+.bl-btn.pri { background:#1a73e8; color:#fff; }
+.bl-btn:disabled { opacity:.5; cursor:default; }
+.bl-tabs { display:flex; gap:6px; margin-bottom:12px; }
+.bl-tab { border:1.5px solid #d5dddb; background:#fff; border-radius:999px; padding:7px 14px;
+  font-size:0.82rem; font-weight:700; cursor:pointer; font-family:inherit; }
+.bl-tab.sel { border-color:#1a73e8; background:#e8f0fe; color:#1a73e8; }
+.bl-sum { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+.bl-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:12px; padding:10px 14px;
+  min-width:130px; }
+.bl-card .k { font-size:0.7rem; color:#5f6368; }
+.bl-card .v { font-size:1.02rem; font-weight:800; margin-top:2px; }
+.bl-note { background:#fff8e1; border:1.5px solid #fdd835; border-radius:10px;
+  padding:10px 12px; font-size:0.8rem; color:#5f4b00; margin-bottom:12px; line-height:1.6; }
+.bl-wrap { overflow-x:auto; }
+table.bl { width:100%; border-collapse:collapse; background:#fff; font-size:0.8rem;
+  border:1.5px solid #e0e0e0; border-radius:12px; overflow:hidden; }
+table.bl th, table.bl td { padding:8px 10px; border-bottom:1px solid #eceff1; white-space:nowrap; }
+table.bl th { background:#f6f8fa; font-size:0.74rem; color:#5f6368; text-align:left; }
+table.bl td.n, table.bl th.n { text-align:right; }
+tr.po { background:#f3f6fb; font-weight:800; cursor:pointer; }
+tr.po td { border-top:1.5px solid #d6e0ee; }
+tr.it td:first-child { padding-left:24px; color:#5f6368; }
+.bl-warn { color:#c5221f; font-weight:800; }
+.bl-empty { color:#9aa3b2; padding:26px 8px; text-align:center; }
+</style>
+
+<div class="bl-head">
+  <h1>入金の消し込み</h1>
+  <span class="bl-src" id="blSrc"></span>
+</div>
+
+<div class="bl-bar">
+  <input type="month" id="blYm" value="{{ ym_now }}">
+  <button class="bl-btn pri" id="blLoad">表示する</button>
+  <button class="bl-btn" id="blForce" title="返金やチャージバックは後から過去の月に効きます">読み直す</button>
+  <span style="flex:1;"></span>
+  <button class="bl-btn" id="blCsv">CSV</button>
+  <button class="bl-btn" id="blPdf">PDF</button>
+</div>
+
+<div class="bl-tabs">
+  <button class="bl-tab sel" data-tab="payout">入金（振込）ごと</button>
+  <button class="bl-tab" data-tab="charge">施設・請求ごと</button>
+</div>
+
+<div id="blNote"></div>
+<div class="bl-sum" id="blSum"></div>
+<div class="bl-wrap"><div id="blBody"><div class="bl-empty">「表示する」を押してください</div></div></div>
+
+<script>
+(function () {
+  var tab = 'payout', data = null, busy = false;
+  function $(id) { return document.getElementById(id); }
+  function yen(n) { return '¥' + (Number(n) || 0).toLocaleString(); }
+  function esc(s) { var d = document.createElement('div'); d.textContent = (s == null ? '' : s); return d.innerHTML; }
+
+  function load(force) {
+    if (busy) return;
+    busy = true;
+    $('blLoad').disabled = $('blForce').disabled = true;
+    $('blBody').innerHTML = '<div class="bl-empty">Stripeに聞いています…（期間が長いと時間がかかります）</div>';
+    fetch('/api/dev/billing?ym=' + encodeURIComponent($('blYm').value) + (force ? '&force=1' : ''))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        busy = false; $('blLoad').disabled = $('blForce').disabled = false;
+        if (j.status !== 'success') {
+          $('blBody').innerHTML = '<div class="bl-empty">' + esc(j.message || '読めませんでした') + '</div>';
+          return;
+        }
+        data = j.data; render();
+      })
+      .catch(function (e) {
+        busy = false; $('blLoad').disabled = $('blForce').disabled = false;
+        $('blBody').innerHTML = '<div class="bl-empty">通信に失敗しました</div>';
+      });
+  }
+
+  function render() {
+    if (!data) return;
+    /* ★どこから読んだデータかを必ず出す。分からないと数字を信用できない。 */
+    var srcTxt = { 'stripe': 'たった今 Stripe から取得',
+                   'file': '保存してある控えから表示',
+                   'file-fallback': '★Stripeに繋がらないため控えを表示' }[data.source] || '';
+    $('blSrc').innerHTML = esc(srcTxt) + '（取得 <b>' + esc(data.fetched_at || '') + '</b>）'
+      + (data._versions ? ' ／ 控え ' + data._versions + '版' : '');
+
+    var notes = [];
+    if (data.cut) notes.push('★件数が多いため途中で打ち切りました。期間を短くしてください。');
+    if (data.unknown) notes.push('★どの施設か分からない請求が ' + data.unknown + ' 件あります（施設のStripe顧客IDが未登録の可能性）。');
+    (data.payouts || []).forEach(function (p) {
+      if (p.diff) notes.push('★入金 ' + p.date + ' は、中身の合計と振込額が ' + yen(p.diff) + ' ずれています。');
+    });
+    $('blNote').innerHTML = notes.length
+      ? '<div class="bl-note">' + notes.map(esc).join('<br>') + '</div>' : '';
+
+    $('blSum').innerHTML =
+      card('入金の合計（通帳）', yen(data.total_payout)) +
+      card('売上（請求の合計）', yen(data.total_gross)) +
+      card('Stripe手数料', yen(data.total_fee)) +
+      card('差引', yen(data.total_net));
+
+    $('blBody').innerHTML = (tab === 'payout') ? payoutTable() : chargeTable();
+    document.querySelectorAll('tr.po').forEach(function (tr) {
+      tr.onclick = function () {
+        var k = tr.getAttribute('data-k');
+        document.querySelectorAll('tr.it[data-k="' + k + '"]').forEach(function (r) {
+          r.hidden = !r.hidden;
+        });
+      };
+    });
+  }
+  function card(k, v) { return '<div class="bl-card"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v) + '</div></div>'; }
+
+  function payoutTable() {
+    var ps = data.payouts || [];
+    if (!ps.length) return '<div class="bl-empty">この月に入金はありません</div>';
+    var h = '<table class="bl"><tr><th>入金日</th><th>区分／施設</th><th class="n">売上</th>'
+          + '<th class="n">手数料</th><th class="n">入金額</th><th>状態</th></tr>';
+    ps.forEach(function (p, i) {
+      h += '<tr class="po" data-k="' + i + '"><td>' + esc(p.date) + '</td>'
+        + '<td>▼ この振込の中身（' + (p.items || []).length + '件）</td>'
+        + '<td class="n">' + yen(p.sum_gross) + '</td>'
+        + '<td class="n">' + yen(p.sum_fee) + '</td>'
+        + '<td class="n">' + yen(p.amount) + '</td>'
+        + '<td>' + esc(p.status) + (p.diff ? ' <span class="bl-warn">ずれ ' + yen(p.diff) + '</span>' : '') + '</td></tr>';
+      (p.items || []).forEach(function (it) {
+        h += '<tr class="it" data-k="' + i + '" hidden><td>' + esc(it.date) + '</td>'
+          + '<td>' + esc(it.type) + '　' + esc(it.facility_name) + '</td>'
+          + '<td class="n">' + yen(it.gross) + '</td>'
+          + '<td class="n">' + yen(it.fee) + '</td>'
+          + '<td class="n">' + yen(it.net) + '</td><td></td></tr>';
+      });
+    });
+    return h + '</table>';
+  }
+
+  function chargeTable() {
+    var cs = data.charges || [];
+    if (!cs.length) return '<div class="bl-empty">この月に請求はありません</div>';
+    var h = '<table class="bl"><tr><th>決済日</th><th>施設</th><th class="n">売上</th>'
+          + '<th class="n">返金</th><th class="n">手数料</th><th class="n">差引</th>'
+          + '<th>入金日</th><th>状態</th></tr>';
+    cs.forEach(function (c) {
+      h += '<tr><td>' + esc(c.date) + '</td><td>' + esc(c.facility_name) + '</td>'
+        + '<td class="n">' + yen(c.gross) + '</td>'
+        + '<td class="n">' + (c.refunded ? yen(c.refunded) : '') + '</td>'
+        + '<td class="n">' + yen(c.fee) + '</td>'
+        + '<td class="n">' + yen(c.net) + '</td>'
+        + '<td>' + (c.payout_date ? esc(c.payout_date) : '<span style="color:#9aa3b2;">未入金</span>') + '</td>'
+        + '<td>' + esc(c.status) + '</td></tr>';
+    });
+    return h + '</table>';
+  }
+
+  document.querySelectorAll('.bl-tab').forEach(function (b) {
+    b.onclick = function () {
+      document.querySelectorAll('.bl-tab').forEach(function (o) { o.classList.remove('sel'); });
+      b.classList.add('sel'); tab = b.getAttribute('data-tab'); render();
+    };
+  });
+  $('blLoad').onclick = function () { load(false); };
+  $('blForce').onclick = function () { load(true); };
+  function dl(kind) {
+    location.href = '/api/dev/billing/export?ym=' + encodeURIComponent($('blYm').value)
+      + '&tab=' + tab + '&kind=' + kind;
+  }
+  $('blCsv').onclick = function () { dl('csv'); };
+  $('blPdf').onclick = function () { dl('pdf'); };
+  load(false);
+})();
+</script>
+{% endblock %}

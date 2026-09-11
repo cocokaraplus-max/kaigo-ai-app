@@ -34439,6 +34439,7 @@ def _contract_overview(f_code):
         "expires_at": None, "trial_ends_at": None,
         "in_trial": False, "trial_days_left": None, "is_monitor": False,
         "monthly_price": None, "cancel_kind": "none",
+        "staff_limit": None, "addon_blocks": 0,   # plan-penalty-staff-v1
         "remaining_months": 0, "penalty": 0, "penalty_rate": 0, "note": "",
     }
     try:
@@ -34486,6 +34487,29 @@ def _contract_overview(f_code):
             out["monthly_price"] = PLAN_PRICES.get(plan, {}).get("%dy_m" % term)
         elif term == 0:
             out["monthly_price"] = PLAN_PRICES.get(plan, {}).get("monthly")
+
+        # plan-penalty-staff-v1 : 11名以上は【追加5名】ぶんが毎月かかっている。
+        #   ★プランの表だけ見ると、40名の事業所でも10名ぶんの金額になる。
+        #     画面の「¥◯◯/月」も違約金も実際より安く出る。
+        #     安く見せたあとで正しい額を請求すると、必ずもめる。
+        #   ★staff_limit は【別の問い合わせ】で読む。上の一括SELECTに混ぜない。
+        #     列が1つ欠けるとSELECTごと失敗し、契約情報が丸ごと空になる。
+        #   ★読めなければ10名ぶんのまま出す。ここで落として画面を止めない。
+        try:
+            _sl = (supabase.table("facilities").select("staff_limit")
+                   .eq("facility_code", f_code).execute())
+            _slim = int((_sl.data[0].get("staff_limit") if _sl.data else 0) or 0)
+        except Exception as _sle:
+            _slim = 0
+            print("[contract] 契約人数を読めません（10名ぶんで出します）: %s"
+                  % _sle, flush=True)
+        # 口数の計算は既存の関数をそのまま使う（式を書き写さない）
+        _blocks = _plan_addon_blocks(_slim) if _slim else 0
+        out["staff_limit"] = _slim or None
+        out["addon_blocks"] = _blocks
+        if _blocks and out["monthly_price"]:
+            _akey = ("%dy_m" % term) if term >= 1 else "monthly"
+            out["monthly_price"] += PLAN_PRICES.get("addon", {}).get(_akey, 0) * _blocks
 
         # トライアル中は違約金なし
         if out["in_trial"]:
@@ -35578,6 +35602,418 @@ def _stripe_sub_expiry(sub_id, grace_days=SUB_GRACE_DAYS):
     except Exception as e:
         print("[Stripe] sub expiry lookup error: " + str(e), flush=True)
     return None
+
+
+# ══════════════════════════════════════════════════════════════
+# dev-billing-v1 : 入金の消し込み（開発者MENU）
+#   Stripeは複数の決済を【1本の振込】にまとめて入金する。
+#   施設が増えると通帳にはまとまった金額しか乗らないので、
+#   その1行の中身を開けるようにする。
+# ══════════════════════════════════════════════════════════════
+BILLING_PREFIX = "billing"     # 置き場所は既存バケットの中（新バケットを作らない）
+BILLING_MAX_ROWS = 5000        # 暴走よけ。これを超えたら打ち切って画面に出す
+
+
+def _bill_jst():
+    from datetime import timezone as _tz, timedelta as _td
+    return _tz(_td(hours=9))
+
+
+def _bill_ym_now():
+    from datetime import datetime as _dt
+    return _dt.now(_bill_jst()).strftime("%Y-%m")
+
+
+def _bill_month_range(ym):
+    """'2026-09' → (開始, 終わり) のUNIX秒。日本時間の1日0時〜翌月1日0時。
+    ★ここを日本時間にしないと、月初と月末の1日ぶんが隣の月に落ちる。"""
+    from datetime import datetime as _dt
+    y, m = int(str(ym)[:4]), int(str(ym)[5:7])
+    jst = _bill_jst()
+    s = _dt(y, m, 1, tzinfo=jst)
+    e = _dt(y + 1, 1, 1, tzinfo=jst) if m == 12 else _dt(y, m + 1, 1, tzinfo=jst)
+    return int(s.timestamp()), int(e.timestamp())
+
+
+def _bill_day(ts):
+    from datetime import datetime as _dt
+    if not ts:
+        return ""
+    try:
+        return _dt.fromtimestamp(int(ts), _bill_jst()).strftime("%Y-%m-%d")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ""
+
+
+def _bill_facility_map(supabase):
+    """Stripeの顧客ID → 施設。
+    ★列を欲張らない。1つ欠けるとSELECTごと落ちて、表が丸ごと空になる。"""
+    out = {}
+    try:
+        res = supabase.table("facilities").select(
+            "facility_code,facility_name,stripe_customer_id").execute()
+        for f in (res.data or []):
+            cid = (f.get("stripe_customer_id") or "").strip()
+            if cid:
+                out[cid] = {"code": f.get("facility_code") or "",
+                            "name": f.get("facility_name") or ""}
+    except Exception as e:
+        print("[billing] 施設の一覧を読めません: %s" % e, flush=True)
+    return out
+
+
+def _bill_who(obj, fmap):
+    """Stripeのオブジェクトから施設を引く。分からなければ正直にそう書く。"""
+    cid = obj if isinstance(obj, str) else _sv_get(obj, "customer")
+    if not isinstance(cid, str):
+        cid = _sv_get(cid, "id")
+    f = fmap.get(cid or "")
+    if f:
+        return f.get("code") or "", f.get("name") or ""
+    return "", "（施設が分かりません）"
+
+
+def _bill_fetch(ym):
+    """Stripeから1か月ぶんを取る。返り値はそのまま控えに保存できる形。"""
+    stripe.api_key = get_secret("STRIPE_SECRET_KEY")
+    s, e = _bill_month_range(ym)
+    fmap = _bill_facility_map(get_supabase())
+    cut = False
+
+    # ── 先に請求を取る ───────────────────────────────
+    #   ★順番に意味がある。返金の行は顧客を持たないので、
+    #     元の請求から施設を引く。そのために請求を先に集める。
+    raw_charges, cmap, rows = [], {}, 0
+    for c in stripe.Charge.list(created={"gte": s, "lt": e}, limit=100,
+                                expand=["data.balance_transaction"]).auto_paging_iter():
+        rows += 1
+        if rows > BILLING_MAX_ROWS:
+            cut = True
+            break
+        cid = _sv_get(c, "id") or ""
+        code, name = _bill_who(c, fmap)
+        raw_charges.append((cid, c, code, name))
+        if cid:
+            cmap[cid] = (code, name)
+
+    def _src_who(t, srcobj):
+        """明細1行の相手先。分からないときは正直にそう書く。"""
+        typ = _sv_get(t, "type") or ""
+        if typ == "payout":
+            return "", "（振込手数料）"       # 顧客ではない。施設不明ではない
+        code, name = _bill_who(srcobj, fmap)
+        if code:
+            return code, name
+        # 返金・チャージバックは顧客を持たない。元の請求から引く
+        ch = _sv_get(srcobj, "charge")
+        if not isinstance(ch, str):
+            ch = _sv_get(ch, "id")
+        if ch:
+            if ch in cmap:
+                return cmap[ch]
+            try:
+                return _bill_who(stripe.Charge.retrieve(ch), fmap)
+            except Exception as _ce:
+                print("[billing] 元の請求を引けません(%s): %s" % (ch, _ce), flush=True)
+        return "", "（施設が分かりません）"
+
+    # ── 入金（振込）ごと。通帳の1行に当たる ──────────────────
+    #   ★arrival_date（口座に入った日）で絞る。created ではない。
+    #     通帳と突き合わせるのだから、通帳に乗る日で数える。
+    payouts, charge_payout = [], {}
+    for p in stripe.Payout.list(arrival_date={"gte": s, "lt": e},
+                                limit=100).auto_paging_iter():
+        items, g, fe, nt, tfee = [], 0, 0, 0, 0
+        try:
+            for t in stripe.BalanceTransaction.list(
+                    payout=_sv_get(p, "id"), limit=100,
+                    expand=["data.source"]).auto_paging_iter():
+                rows += 1
+                if rows > BILLING_MAX_ROWS:
+                    cut = True
+                    break
+                srcobj = _sv_get(t, "source")
+                sid = srcobj if isinstance(srcobj, str) else (_sv_get(srcobj, "id") or "")
+                code, name = _src_who(t, srcobj)
+                r = {"type": _sv_get(t, "type") or "",
+                     "source_id": sid,
+                     "facility_code": code, "facility_name": name,
+                     "gross": int(_sv_get(t, "amount") or 0),
+                     "fee": int(_sv_get(t, "fee") or 0),
+                     "net": int(_sv_get(t, "net") or 0),
+                     "date": _bill_day(_sv_get(t, "created")),
+                     "note": _sv_get(t, "description") or ""}
+                items.append(r)
+                nt += r["net"]
+                # ★振込そのものの行は「売上」ではない。混ぜると合計が意味を失う。
+                if r["type"] == "payout":
+                    tfee += r["net"]
+                else:
+                    g += r["gross"]
+                    fe += r["fee"]
+                if r["type"] in ("charge", "payment") and sid:
+                    charge_payout[sid] = {
+                        "id": _sv_get(p, "id") or "",
+                        "date": _bill_day(_sv_get(p, "arrival_date"))}
+        except Exception as pe:
+            print("[billing] 入金の中身を読めません(%s): %s"
+                  % (_sv_get(p, "id"), pe), flush=True)
+        amt = int(_sv_get(p, "amount") or 0)
+        payouts.append({
+            "id": _sv_get(p, "id") or "",
+            "date": _bill_day(_sv_get(p, "arrival_date")),
+            "status": _sv_get(p, "status") or "",
+            "amount": amt,
+            "sum_gross": g, "sum_fee": fe, "sum_net": nt,
+            "transfer_fee": tfee,   # 振込そのものの手数料（マイナス）
+            # ★中身の合計と振込額がずれていないか。ずれたら画面に出す。
+            "diff": nt - amt,
+            "items": items,
+        })
+        if cut:
+            break
+
+    # ── 施設・請求ごと ────────────────────────────────
+    charges = []
+    for cid, c, code, name in raw_charges:
+        bt = _sv_get(c, "balance_transaction")
+        po = charge_payout.get(cid) or {}
+        charges.append({
+            "id": cid,
+            "date": _bill_day(_sv_get(c, "created")),
+            "facility_code": code, "facility_name": name,
+            "gross": int(_sv_get(c, "amount") or 0),
+            "refunded": int(_sv_get(c, "amount_refunded") or 0),
+            "fee": int(_sv_get(bt, "fee") or 0),
+            "net": int(_sv_get(bt, "net") or 0),
+            "status": _sv_get(c, "status") or "",
+            "payout_id": po.get("id", ""),
+            "payout_date": po.get("date", ""),
+            "note": _sv_get(c, "description") or "",
+        })
+
+    from datetime import datetime as _dt
+    return {
+        "ym": ym,
+        "fetched_at": _dt.now(_bill_jst()).strftime("%Y-%m-%d %H:%M"),
+        "cut": cut,                     # 打ち切ったかどうか。黙って減らさない
+        "payouts": payouts,
+        "charges": charges,
+        "total_payout": sum(p["amount"] for p in payouts),
+        "total_gross": sum(c["gross"] for c in charges),
+        "total_fee": sum(c["fee"] for c in charges),
+        "total_net": sum(c["net"] for c in charges),
+        "unknown": sum(1 for c in charges if not c["facility_code"]),
+    }
+
+
+def _bill_dir(ym):
+    return "%s/%s" % (BILLING_PREFIX, ym)
+
+
+def _bill_save(ym, data):
+    """控えを保存する。★上書きしない（このバケットは新規作成のみの運用）。
+    取得のたびに新しい名前で置くので、履歴がそのまま残る。"""
+    from datetime import datetime as _dt
+    name = _dt.now(_bill_jst()).strftime("%Y%m%d_%H%M%S")
+    path = "%s/%s.json" % (_bill_dir(ym), name)
+    try:
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        get_supabase().storage.from_(BCP_BUCKET).upload(
+            path=path, file=body,
+            file_options={"content-type": "application/json"})
+        return path
+    except Exception as e:
+        # ★保存できなくても画面は出す。控えは「あれば助かる」もの。
+        print("[billing] 控えを保存できません(%s): %s" % (path, e), flush=True)
+        return ""
+
+
+def _bill_load(ym):
+    """一番新しい控えを読む。無ければ None。"""
+    try:
+        st = get_supabase().storage.from_(BCP_BUCKET)
+        names = [x.get("name") for x in (st.list(_bill_dir(ym)) or [])
+                 if (x.get("name") or "").endswith(".json")]
+        if not names:
+            return None
+        names.sort(reverse=True)
+        blob = st.download("%s/%s" % (_bill_dir(ym), names[0]))
+        d = json.loads(blob.decode("utf-8"))
+        d["_versions"] = len(names)
+        return d
+    except Exception as e:
+        print("[billing] 控えを読めません(%s): %s" % (ym, e), flush=True)
+        return None
+
+
+def _bill_get(ym, force=False):
+    """当月は毎回Stripeから。先月以前は控えから。返り値は (中身, どこから読んだか)。"""
+    if not force and ym < _bill_ym_now():
+        d = _bill_load(ym)
+        if d:
+            return d, "file"
+    try:
+        d = _bill_fetch(ym)
+        _bill_save(ym, d)
+        return d, "stripe"
+    except Exception as e:
+        # ★Stripeに繋がらなくても、控えがあれば出す。空の表を見せない。
+        print("[billing] Stripeから取れません(%s): %s" % (ym, e), flush=True)
+        d = _bill_load(ym)
+        if d:
+            return d, "file-fallback"
+        raise
+
+
+@app.route('/dev/billing')     # dev-billing-v1
+@login_required
+def dev_billing():
+    if not session.get("dev_authenticated"):
+        return redirect(url_for("dev_login"))
+    return render_template("dev_billing.html", ym_now=_bill_ym_now())
+
+
+@app.route('/api/dev/billing')     # dev-billing-v1
+@login_required
+def api_dev_billing():
+    if not session.get("dev_authenticated"):
+        return jsonify({"status": "error", "message": "unauthorized"}), 403
+    ym = (request.args.get("ym") or _bill_ym_now()).strip()
+    import re as _bre
+    if not _bre.match(r"^\d{4}-\d{2}$", ym):
+        return jsonify({"status": "error", "message": "年月の形が違います"}), 400
+    force = (request.args.get("force") or "") == "1"
+    try:
+        data, src = _bill_get(ym, force)
+    except Exception as e:
+        return jsonify({"status": "error",
+                        "message": "Stripeから取れませんでした: %s" % e}), 502
+    data["source"] = src
+    return jsonify({"status": "success", "data": data})
+
+
+def _bill_csv(data, tab):
+    """CSV。★ExcelのためにBOM付きUTF-8。無いと日本語が化ける。"""
+    import csv as _csv
+    import io as _io
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    if tab == "payout":
+        w.writerow(["入金ID", "入金日", "状態", "区分", "施設", "施設コード",
+                    "売上", "手数料", "入金額", "発生日", "備考"])
+        for p in data.get("payouts", []):
+            for it in p.get("items", []):
+                w.writerow([p["id"], p["date"], p["status"], it["type"],
+                            it["facility_name"], it["facility_code"],
+                            it["gross"], it["fee"], it["net"], it["date"], it["note"]])
+            w.writerow([p["id"], p["date"], p["status"], "＝この振込の合計", "", "",
+                        p["sum_gross"], p["sum_fee"], p["sum_net"], "", "通帳の1行"])
+    else:
+        w.writerow(["請求ID", "決済日", "施設", "施設コード", "売上", "返金",
+                    "手数料", "差引", "状態", "入金ID", "入金日", "備考"])
+        for c in data.get("charges", []):
+            w.writerow([c["id"], c["date"], c["facility_name"], c["facility_code"],
+                        c["gross"], c["refunded"], c["fee"], c["net"],
+                        c["status"], c["payout_id"], c["payout_date"], c["note"]])
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def _bill_pdf_html(data, tab):
+    def esc(v):
+        return (str(v).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+    def yen(n):
+        return "{:,}".format(int(n or 0))
+
+    ttl = "入金（振込）ごと" if tab == "payout" else "施設・請求ごと"
+    rows = []
+    if tab == "payout":
+        head = ["入金日", "入金ID", "区分", "施設", "売上", "手数料", "入金額"]
+        for p in data.get("payouts", []):
+            for it in p.get("items", []):
+                rows.append([p["date"], p["id"][-10:], it["type"],
+                             it["facility_name"], yen(it["gross"]),
+                             yen(it["fee"]), yen(it["net"])])
+            rows.append(["", "", "この振込の合計", "",
+                         yen(p["sum_gross"]), yen(p["sum_fee"]), yen(p["sum_net"])])
+    else:
+        head = ["決済日", "施設", "売上", "返金", "手数料", "差引", "入金日"]
+        for c in data.get("charges", []):
+            rows.append([c["date"], c["facility_name"], yen(c["gross"]),
+                         yen(c["refunded"]), yen(c["fee"]), yen(c["net"]),
+                         c["payout_date"] or "（未入金）"])
+    body = "".join(
+        "<tr>" + "".join("<td>" + esc(v) + "</td>" for v in r) + "</tr>" for r in rows)
+    # ★CSSに % が入るので、書式指定（%s）では組まない。
+    #   ここを % 書式にすると width:100% が書式文字と読まれて【必ず落ちる】。
+    #   最初そう書いて、テストで落ちた。文字をつなぐだけにする。
+    css = ('body{font-family:"Noto Sans CJK JP","IPAexGothic",sans-serif;'
+           'font-size:9pt;color:#202124;}'
+           'h1{font-size:13pt;margin:0 0 2mm;}'
+           '.sub{font-size:8pt;color:#5f6368;margin-bottom:3mm;}'
+           'table{width:100%;border-collapse:collapse;}'
+           'th,td{border:0.4pt solid #c9ced6;padding:2.2mm 2mm;}'
+           'th{background:#eef1f5;font-size:8pt;}td{font-size:8pt;}'
+           'td:nth-last-child(-n+3){text-align:right;}')
+    return ('<html><head><meta charset="utf-8"><style>' + css + '</style></head><body>'
+            + '<h1>TASUKARU 入金の消し込み　' + esc(data.get("ym", "")) + '</h1>'
+            + '<div class="sub">区分 ' + esc(ttl)
+            + ' ／ 取得 ' + esc(data.get("fetched_at", "")) + '</div>'
+            + '<table><tr>'
+            + "".join("<th>" + esc(h) + "</th>" for h in head)
+            + '</tr>' + body + '</table></body></html>')
+
+
+@app.route('/api/dev/billing/export')     # dev-billing-v1
+@login_required
+def api_dev_billing_export():
+    if not session.get("dev_authenticated"):
+        return jsonify({"status": "error", "message": "unauthorized"}), 403
+    import re as _bre
+    ym = (request.args.get("ym") or _bill_ym_now()).strip()
+    if not _bre.match(r"^\d{4}-\d{2}$", ym):
+        return jsonify({"status": "error", "message": "年月の形が違います"}), 400
+    tab = "payout" if (request.args.get("tab") or "payout") == "payout" else "charge"
+    kind = "pdf" if (request.args.get("kind") or "csv") == "pdf" else "csv"
+    try:
+        data, _src = _bill_get(ym, False)
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 502
+
+    jp = "入金ごと" if tab == "payout" else "施設ごと"
+    base = "TASUKARU_入金消し込み_%s_%s" % (ym, jp)
+    if kind == "csv":
+        blob, ctype, ext = _bill_csv(data, tab), "text/csv; charset=utf-8", "csv"
+    else:
+        try:
+            import pdfkit
+            import shutil as _sh
+            options = {"encoding": "UTF-8", "no-outline": None, "quiet": "",
+                       "orientation": "Landscape",
+                       "margin-top": "10mm", "margin-right": "8mm",
+                       "margin-bottom": "10mm", "margin-left": "8mm"}
+            wk = _sh.which("wkhtmltopdf") or "/usr/local/bin/wkhtmltopdf"
+            blob = pdfkit.from_string(_bill_pdf_html(data, tab), False,
+                                      options=options,
+                                      configuration=pdfkit.configuration(wkhtmltopdf=wk))
+        except Exception as e:
+            return jsonify({"status": "error",
+                            "message": "PDFを作れませんでした: %s" % e}), 500
+        ctype, ext = "application/pdf", "pdf"
+
+    # ★make_response はファイル先頭で import されていない。
+    #   ここで入れる（既存の keiyaku-print-makeresp-fix-v1 と同じ作法）。
+    #   入れ忘れると、出力ボタンを押した瞬間に落ちる。
+    from flask import make_response
+    from urllib.parse import quote as _q
+    resp = make_response(blob)
+    resp.headers["Content-Type"] = ctype
+    # ★日本語のファイル名は filename* で渡す（受け取る側が名前を捨てないように）
+    resp.headers["Content-Disposition"] = (
+        "attachment; filename=billing_%s_%s.%s; filename*=UTF-8''%s.%s"
+        % (ym, tab, ext, _q("%s" % base), ext))
+    return resp
 
 
 # --- Stripe Webhook ---

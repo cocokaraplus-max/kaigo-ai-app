@@ -24,6 +24,13 @@
 
 /* プランカード */
 .plan-cards { display:flex; flex-direction:column; gap:12px; }
+/* pricing-monitor-guard-v1 : モニター施設への歯止め */
+.mon-guard { background:#fff8e1; border:1.5px solid #fdd835; border-radius:12px;
+  padding:12px 14px; margin-bottom:12px; color:#5f4b00; font-size:0.83rem; line-height:1.65; }
+.mon-guard-title { font-weight:800; margin-bottom:4px; font-size:0.88rem; }
+.mon-guard-ok { display:flex; align-items:center; gap:8px; margin-top:9px;
+  font-weight:700; cursor:pointer; }
+.mon-guard-ok input { width:17px; height:17px; flex:none; }
 .plan-card { background:#fff; border:1.5px solid #e0e0e0; border-radius:16px; overflow:hidden; transition:all 0.2s; }
 .plan-card.popular { border-color:#1a73e8; box-shadow:0 2px 12px rgba(26,115,232,0.15); }
 .plan-card.current { border-color:#34a853; }
@@ -160,6 +167,11 @@
     <div class="contract-box">
         <div class="contract-title"><span class="material-symbols-outlined" style="font-size:19px;color:#1a73e8;">receipt_long</span>現在の契約状況</div>
         <div class="contract-row"><span>プラン</span><b>{{ contract.plan_label }}</b></div>
+        {# plan-penalty-staff-v1 : 金額の根拠を見せる。
+           これが無いと「なぜこの額？」に答えられない。 #}
+        {% if contract.addon_blocks %}
+        <div class="contract-row"><span>契約人数</span><b>{{ contract.staff_limit }}名まで（追加5名 ×{{ contract.addon_blocks }}）</b></div>
+        {% endif %}
         {% if contract.in_trial %}
         <div class="contract-row"><span>無料期間</span><b>残り{{ contract.trial_days_left }}日（{{ contract.trial_ends_at }}まで）</b></div>
         <div class="contract-note trial">無料期間の終了後、選択中のプランで<b>自動的に課金</b>が始まります。継続しない場合は<b>無料期間の間に</b>解約してください。</div>
@@ -212,6 +224,17 @@
     </div>
 
     <!-- プランカード -->
+    {# pricing-monitor-guard-v1 : モニターのときだけ出す。
+       ★「無料です」と書いてある画面の下に、押すと有料になるボタンが
+         並んでいる状態をやめる。押し間違いを防ぐのが目的。 #}
+    {% if contract.cancel_kind == 'monitor' %}
+    <div class="mon-guard" id="mon-guard">
+      <div class="mon-guard-title">この施設はモニター（無料）です</div>
+      <div>下のプランを申し込むと<b>モニターが終わり、その条件で課金が始まります</b>。お試しではありません。</div>
+      <label class="mon-guard-ok"><input type="checkbox" id="mon-ok">モニターをやめて有料プランに切り替えます</label>
+    </div>
+    {% endif %}
+
     <div class="plan-cards" id="plan-cards">
         <!-- スターター -->
         {% for c in plan_cards %}{# pricing-card-v1 : 中身は app.py の PLAN_CARDS #}
@@ -244,6 +267,30 @@
         </div>
         {% endfor %}
     </div>
+    {# pricing-monitor-guard-v1 : ★カードの直後・独立した script。
+       下の大きな script の中に入れると、そこで不具合が1つ起きただけで
+       歯止めごと外れる。安全側の仕掛けは、他に巻き込まれない場所に置く。 #}
+    {% if contract.cancel_kind == 'monitor' %}
+    <script>
+    (function () {
+      function monGuardApply() {
+        var ok = document.getElementById('mon-ok');
+        var on = !!(ok && ok.checked);
+        var btns = document.querySelectorAll('#plan-cards .plan-btn');
+        for (var i = 0; i < btns.length; i++) {
+          var b = btns[i];
+          if (b.classList.contains('plan-btn-current')) continue;  // 「現在のプラン」は触らない
+          b.disabled = !on;
+          b.style.opacity = on ? '' : '0.45';
+          b.style.cursor = on ? '' : 'not-allowed';
+        }
+      }
+      var ok = document.getElementById('mon-ok');
+      if (ok) ok.addEventListener('change', monGuardApply);
+      monGuardApply();   // ★すぐ効かせる。待つと、待っている間だけ押せる。
+    })();
+    </script>
+    {% endif %}
 
     <div class="addon-note">{# pricing-card-v1 #}
         <span class="material-symbols-outlined">group_add</span>
