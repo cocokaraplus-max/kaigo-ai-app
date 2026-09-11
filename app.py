@@ -6984,6 +6984,49 @@ def api_get_all_visit_days():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+# visit-days-id-fix-v1 ══════════════════════════════════════════
+#   patient_visit_days.patient_id は【patients.id（整数）】。
+#   送迎はここを整数で引くので、UUIDが入ると
+#   行はできるのに【送迎表に一生出てこない】。エラーも出ない。
+_VD_ID_NG = ("利用者を特定できませんでした。"
+             "画面を開き直してから、もう一度お試しください。")
+
+
+def _vd_patient_int_id(supabase, f_code, raw):   # visit-days-id-fix-v1
+    """利用曜日の patient_id を patients.id（整数）にそろえる。
+    返り値は文字列。そろえられなければ None（＝保存しない）。"""
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    if s.isdigit():
+        # ★整数でも、その施設に本当に居るか確かめる。
+        try:
+            r = (supabase.table("patients").select("id")
+                 .eq("facility_code", f_code).eq("id", int(s)).execute())
+            return str(r.data[0]["id"]) if r.data else None
+        except Exception as e:
+            # ★読めなかったら通さない。「読めない」と「居ない」は別だが、
+            #   どちらにせよ、確かめられないまま書いてはいけない。
+            print("[visit-days] 利用者を確かめられません: %s" % e, flush=True)
+            return None
+    # UUID（patient_profiles.id）で来たら、名前をたどって整数IDへ直す
+    try:
+        pr = (supabase.table("patient_profiles").select("user_name")
+              .eq("facility_code", f_code).eq("id", s).execute())
+        nm = ((pr.data[0].get("user_name") if pr.data else "") or "").strip()
+        if not nm:
+            return None
+        p = (supabase.table("patients").select("id")
+             .eq("facility_code", f_code).eq("user_name", nm).execute())
+        if p.data:
+            print("[visit-days] UUIDで来たので整数IDに直しました: %s → %s"
+                  % (s, p.data[0]["id"]), flush=True)
+            return str(p.data[0]["id"])
+    except Exception as e:
+        print("[visit-days] 整数IDに直せません: %s" % e, flush=True)
+    return None
+
+
 @app.route('/api/save_visit_day', methods=['POST'])
 @login_required
 def api_save_visit_day():
@@ -6992,20 +7035,24 @@ def api_save_visit_day():
         data = request.json
         f_code = session["f_code"]
         supabase = get_supabase()
+        # visit-days-id-fix-v1 : 書く前に整数IDへそろえる
+        _vd_pid = _vd_patient_int_id(supabase, f_code, data.get("patient_id"))
+        if not _vd_pid:
+            return jsonify({"status": "error", "message": _VD_ID_NG}), 400
         # 後方互換: ampm_per_day が来ていれば一緒に保存
         raw_wd = data.get("weekdays", "") or ""
         normalized_wd = "".join(sorted(set(raw_wd.replace(",",""))))
         update_payload = {"weekdays": normalized_wd}
         insert_payload = {
             "facility_code": f_code,
-            "patient_id": data["patient_id"],
+            "patient_id": _vd_pid,
             "user_name": data["user_name"],
             "weekdays": normalized_wd,
         }
         if "ampm_per_day" in data:
             update_payload["ampm_per_day"] = data["ampm_per_day"]
             insert_payload["ampm_per_day"] = data["ampm_per_day"]
-        existing = supabase.table("patient_visit_days").select("id").eq("facility_code", f_code).eq("patient_id", data["patient_id"]).execute()
+        existing = supabase.table("patient_visit_days").select("id").eq("facility_code", f_code).eq("patient_id", _vd_pid).execute()
         if existing.data:
             supabase.table("patient_visit_days").update(update_payload).eq("id", existing.data[0]["id"]).execute()
         else:
@@ -7030,6 +7077,10 @@ def api_save_visit_type_start():
         half = (str(data.get("half_start_date") or "").strip() or None)
         full = (str(data.get("full_start_date") or "").strip() or None)
         supabase = get_supabase()
+        # visit-days-id-fix-v1 : 書く前に整数IDへそろえる
+        patient_id = _vd_patient_int_id(supabase, f_code, patient_id) or ""
+        if not patient_id:
+            return jsonify({"status": "error", "message": _VD_ID_NG}), 400
         payload = {"half_start_date": half, "full_start_date": full}
         existing = (supabase.table("patient_visit_days").select("id")
                     .eq("facility_code", f_code).eq("patient_id", patient_id).execute())
@@ -7063,6 +7114,10 @@ def api_save_weekday_ampm():
         if state not in ("AM", "PM", "ALL", "NONE"):
             return jsonify({"status": "error", "message": "invalid state"}), 400
         supabase = get_supabase()
+        # visit-days-id-fix-v1 : 書く前に整数IDへそろえる
+        patient_id = _vd_patient_int_id(supabase, f_code, patient_id) or ""
+        if not patient_id:
+            return jsonify({"status": "error", "message": _VD_ID_NG}), 400
         existing = supabase.table("patient_visit_days").select("id,ampm_per_day,weekdays,user_name").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
         if existing.data:
             row = existing.data[0]
@@ -7114,6 +7169,9 @@ def api_remove_visit_day():
         patient_id = str(data["patient_id"])
         weekday = str(data["weekday"])
         supabase = get_supabase()
+        # visit-days-id-fix-v1 : ★消すときは、直せなくても元の値で探す。
+        #   すでに入っている壊れた行を、消せなくしてはいけない。
+        patient_id = _vd_patient_int_id(supabase, f_code, patient_id) or patient_id
         existing = supabase.table("patient_visit_days").select("id,weekdays").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
         if existing.data:
             old_days = existing.data[0].get("weekdays") or ""
@@ -26696,6 +26754,12 @@ def api_save_weekday_nth():
             return jsonify({"status": "error", "message": "第N週は1〜5です"}), 400
 
         supabase = get_supabase()
+        # visit-days-id-fix-v2 : ★v1 で塞ぎ漏らした5つ目の入り口。
+        #   第N週もこの表に書くのに、離れた場所にあって当たらなかった。
+        #   同じ表に書く所は【全部数えてから】塞ぐこと。
+        patient_id = _vd_patient_int_id(supabase, f_code, patient_id) or ""
+        if not patient_id:
+            return jsonify({"status": "error", "message": _VD_ID_NG}), 400
         existing = (supabase.table("patient_visit_days")
                     .select("id,nth_per_day")
                     .eq("facility_code", f_code).eq("patient_id", patient_id).execute())
