@@ -6605,11 +6605,17 @@ def api_visit_month():
                     _mark_leave(r.get('leave_date_start'), r.get('leave_date_end'), r.get('id'))
         except Exception as _le:
             print(f"visit month leave fetch error: {_le}", flush=True)
+        # visit-weekday-history-v1: その月に有効だった設定で描く。
+        #   ★履歴が無い・読めないときは、今までどおり今の設定を使う。
+        #     空の月を見せない。「読めなかった」を「予定が無かった」にしない。
+        _vw_rules = _vw_rules_for(supabase, f_code, patient_int_id) if patient_int_id else None
         # 日ごとに組み立て
         days = []
         for d in range(1, ndays + 1):
             ds = '%04d-%02d-%02d' % (year, month, d)
             wd = _visit_weekday_of(ds)
+            if _vw_rules:
+                weekdays, ampm_per_day, nth = vw_snapshot_on(_vw_rules, ds)
             # visit-type-start-v1: 予定＝自費(有効期間内) or 保険予定日(型別開始日を満たす)
             is_jihi = jihi_active_on(jihi_rules, wd, ds)
             planned = False
@@ -6984,6 +6990,169 @@ def api_get_all_visit_days():
     except Exception as e:
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
+# visit-weekday-history-v1 ═════════════════════════════════════
+#   利用曜日の履歴（patient_visit_weekdays）。自費と同じ「有効期間つき」。
+#   ★patient_visit_days が「今の設定」、この表が「いつからいつまでどうだったか」。
+#   ★patient_id は patients.id（整数）を文字列で。patient_visit_days と同じ鍵。
+#   ★valid_to はその日を【含まない】（自費の jihi_active_on と同じ約束）。
+VW_TABLE = "patient_visit_weekdays"
+
+
+def _vw_today():
+    return datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+
+
+def _vw_day(v, dflt=""):
+    s = str(v or "")[:10]
+    return s if len(s) == 10 and s[4] == "-" and s[7] == "-" else dflt
+
+
+def _vw_rules_for(supabase, f_code, pid):
+    """その人の履歴を全部。★読めなければ None（空リストと区別する）。"""
+    try:
+        r = (supabase.table(VW_TABLE)
+             .select("id,weekday,state,nth,valid_from,valid_to")
+             .eq("facility_code", f_code).eq("patient_id", str(pid)).execute())
+        return r.data or []
+    except Exception as e:
+        print("[visit-wd] 履歴を読めません(%s): %s" % (pid, e), flush=True)
+        return None
+
+
+def vw_snapshot_on(rules, date_str):
+    """その日時点の (weekdays文字列, ampm_per_day, nth_per_day)。
+    ★UNSET は ampm_per_day に入れない＝今までの「型未設定」と同じ扱いになる。"""
+    ds = _vw_day(date_str)
+    wds, apd, nth = set(), {}, {}
+    for r in (rules or []):
+        try:
+            w = str(int(r.get("weekday")))
+        except (TypeError, ValueError):
+            continue
+        vf = _vw_day(r.get("valid_from"), "1900-01-01")
+        vt = _vw_day(r.get("valid_to")) or None
+        if ds < vf:
+            continue
+        if vt and ds >= vt:      # valid_to はその日を含まない
+            continue
+        wds.add(w)
+        st = str(r.get("state") or "").upper()
+        if st in ("AM", "PM", "ALL"):
+            apd[w] = st
+        try:
+            n = int(r.get("nth") or 0)
+        except (TypeError, ValueError):
+            n = 0
+        if 1 <= n <= 5:
+            nth[w] = n
+    return "".join(sorted(wds)), apd, nth
+
+
+def _vw_current(supabase, f_code, pid):
+    """今の設定（patient_visit_days の1行）。無ければ None。"""
+    try:
+        r = (supabase.table("patient_visit_days")
+             .select("weekdays,ampm_per_day,nth_per_day")
+             .eq("facility_code", f_code).eq("patient_id", str(pid)).execute())
+        return (r.data or [None])[0]
+    except Exception as e:
+        print("[visit-wd] 今の設定を読めません(%s): %s" % (pid, e), flush=True)
+        return None
+
+
+def _vw_desired(row):
+    """今の設定 → {曜日: (state, nth)}。
+    ★AM/PM/ALL 以外は UNSET。落とすと予定が消える。"""
+    out = {}
+    apd = (row or {}).get("ampm_per_day")
+    apd = apd if isinstance(apd, dict) else {}
+    nth = _visit_norm_nth((row or {}).get("nth_per_day"))
+    for ch in str((row or {}).get("weekdays") or ""):
+        if ch not in "0123456":
+            continue
+        st = str(apd.get(ch) or "").upper()
+        out[ch] = (st if st in ("AM", "PM", "ALL") else "UNSET",
+                   int(nth.get(ch) or 0))
+    return out
+
+
+def _vw_seed(supabase, f_code, pid):
+    """履歴が1行も無い人だけ、今の設定を「1900-01-01から」で記録する。
+    ★必ず変更する【前】に呼ぶ。あとで呼んでも、前の状態はもう分からない。"""
+    rules = _vw_rules_for(supabase, f_code, pid)
+    if rules is None or rules:
+        return                       # 読めない or すでに在る
+    cur = _vw_current(supabase, f_code, pid)
+    if not cur:
+        return
+    rows = [{"facility_code": f_code, "patient_id": str(pid), "weekday": int(w),
+             "state": st, "nth": n, "valid_from": "1900-01-01",
+             "created_by": "seed"}
+            for w, (st, n) in _vw_desired(cur).items()]
+    if not rows:
+        return
+    try:
+        supabase.table(VW_TABLE).insert(rows).execute()
+    except Exception as e:
+        print("[visit-wd] 種まきに失敗(%s): %s" % (pid, e), flush=True)
+
+
+def _vw_sync(supabase, f_code, pid, apply_from=None, who=""):
+    """今の設定に合わせて履歴を直す。★必ず変更した【後】に呼ぶ。
+    apply_from の日から新しい内容が有効になり、それ以前は閉じて残る。"""
+    ds = _vw_day(apply_from) or _vw_today()
+    rules = _vw_rules_for(supabase, f_code, pid)
+    if rules is None:
+        return False                 # ★読めないなら触らない。半端に書かない
+    cur = _vw_current(supabase, f_code, pid)
+    if cur is None:
+        return False
+    desired = _vw_desired(cur)
+    open_now = {}
+    for r in rules:
+        vf = _vw_day(r.get("valid_from"), "1900-01-01")
+        vt = _vw_day(r.get("valid_to")) or None
+        if vt and vt <= ds:
+            continue                 # すでに閉じている過去の行はそのまま
+        if vf >= ds:
+            # apply_from 以降に始まる行＝まだ効いていない。作り直すので消す
+            try:
+                supabase.table(VW_TABLE).delete().eq("id", r["id"]).execute()
+            except Exception as e:
+                print("[visit-wd] 作り直しの削除に失敗: %s" % e, flush=True)
+            continue
+        try:
+            open_now[str(int(r.get("weekday")))] = r
+        except (TypeError, ValueError):
+            continue
+    # ★中身が同じなら何もしない。押すたびに履歴を増やさない。
+    same = len(open_now) == len(desired) and all(
+        w in desired
+        and str(r.get("state") or "").upper() == desired[w][0]
+        and int(r.get("nth") or 0) == desired[w][1]
+        for w, r in open_now.items())
+    if same:
+        return True
+    for r in open_now.values():
+        try:
+            (supabase.table(VW_TABLE).update({"valid_to": ds})
+             .eq("id", r["id"]).execute())
+        except Exception as e:
+            print("[visit-wd] 締めに失敗: %s" % e, flush=True)
+    rows = [{"facility_code": f_code, "patient_id": str(pid), "weekday": int(w),
+             "state": st, "nth": n, "valid_from": ds,
+             "created_by": str(who or "")[:60]}
+            for w, (st, n) in desired.items()]
+    if not rows:
+        return True                  # 全部やめた＝閉じただけ。これで正しい
+    try:
+        supabase.table(VW_TABLE).insert(rows).execute()
+    except Exception as e:
+        print("[visit-wd] 履歴の追加に失敗: %s" % e, flush=True)
+        return False
+    return True
+
+
 # visit-days-id-fix-v1 ══════════════════════════════════════════
 #   patient_visit_days.patient_id は【patients.id（整数）】。
 #   送迎はここを整数で引くので、UUIDが入ると
@@ -7052,11 +7221,14 @@ def api_save_visit_day():
         if "ampm_per_day" in data:
             update_payload["ampm_per_day"] = data["ampm_per_day"]
             insert_payload["ampm_per_day"] = data["ampm_per_day"]
+        _vw_seed(supabase, f_code, _vd_pid)   # visit-weekday-history-v1（★変更の前）
         existing = supabase.table("patient_visit_days").select("id").eq("facility_code", f_code).eq("patient_id", _vd_pid).execute()
         if existing.data:
             supabase.table("patient_visit_days").update(update_payload).eq("id", existing.data[0]["id"]).execute()
         else:
             supabase.table("patient_visit_days").insert(insert_payload).execute()
+        _vw_sync(supabase, f_code, _vd_pid, data.get("apply_from"),
+                 session.get("my_name", ""))   # visit-weekday-history-v1（★変更の後）
         return jsonify({"status": "success"})
     except Exception as e:
         print(f"save_visit_day error: {e}", flush=True)
@@ -7118,6 +7290,7 @@ def api_save_weekday_ampm():
         patient_id = _vd_patient_int_id(supabase, f_code, patient_id) or ""
         if not patient_id:
             return jsonify({"status": "error", "message": _VD_ID_NG}), 400
+        _vw_seed(supabase, f_code, patient_id)   # visit-weekday-history-v1（★変更の前）
         existing = supabase.table("patient_visit_days").select("id,ampm_per_day,weekdays,user_name").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
         if existing.data:
             row = existing.data[0]
@@ -7138,6 +7311,8 @@ def api_save_weekday_ampm():
                 "ampm_per_day": current_map,
                 "weekdays": new_weekdays,
             }).eq("id", row["id"]).execute()
+            _vw_sync(supabase, f_code, patient_id, data.get("apply_from"),
+                     session.get("my_name", ""))   # visit-weekday-history-v1
             return jsonify({"status": "success", "ampm_per_day": current_map, "weekdays": new_weekdays})
         else:
             user_name = data.get("user_name", "")
@@ -7154,6 +7329,8 @@ def api_save_weekday_ampm():
                 "weekdays": initial_weekdays,
                 "ampm_per_day": initial_map,
             }).execute()
+            _vw_sync(supabase, f_code, patient_id, data.get("apply_from"),
+                     session.get("my_name", ""))   # visit-weekday-history-v1
             return jsonify({"status": "success", "ampm_per_day": initial_map, "weekdays": initial_weekdays})
     except Exception as e:
         print(f"save_weekday_ampm error: {e}", flush=True)
@@ -7172,11 +7349,14 @@ def api_remove_visit_day():
         # visit-days-id-fix-v1 : ★消すときは、直せなくても元の値で探す。
         #   すでに入っている壊れた行を、消せなくしてはいけない。
         patient_id = _vd_patient_int_id(supabase, f_code, patient_id) or patient_id
+        _vw_seed(supabase, f_code, patient_id)   # visit-weekday-history-v1（★変更の前）
         existing = supabase.table("patient_visit_days").select("id,weekdays").eq("facility_code", f_code).eq("patient_id", patient_id).execute()
         if existing.data:
             old_days = existing.data[0].get("weekdays") or ""
             new_days = old_days.replace(weekday, "")
             supabase.table("patient_visit_days").update({"weekdays": new_days}).eq("id", existing.data[0]["id"]).execute()
+            _vw_sync(supabase, f_code, patient_id, data.get("apply_from"),
+                     session.get("my_name", ""))   # visit-weekday-history-v1
         return jsonify({"status": "success"})
     except Exception as e:
         print(f"remove_visit_day error: {e}", flush=True)
@@ -14090,6 +14270,9 @@ def api_bulk_register_patients():
                                 "ampm":          ampm,
                                 "ampm_per_day":  ampm_per_day_init,
                             }).execute()
+                            # visit-weekday-history-v1: 取り込んだ人は「ずっと前から」。
+                            #   いつから来ていたかは分からないので、推測しない。
+                            _vw_seed(supabase, f_code, pid)
                         except:
                             pass
             registered += 1
@@ -26760,6 +26943,7 @@ def api_save_weekday_nth():
         patient_id = _vd_patient_int_id(supabase, f_code, patient_id) or ""
         if not patient_id:
             return jsonify({"status": "error", "message": _VD_ID_NG}), 400
+        _vw_seed(supabase, f_code, patient_id)   # visit-weekday-history-v1（★変更の前）
         existing = (supabase.table("patient_visit_days")
                     .select("id,nth_per_day")
                     .eq("facility_code", f_code).eq("patient_id", patient_id).execute())
@@ -26772,6 +26956,8 @@ def api_save_weekday_nth():
             else:
                 cur[weekday] = nth
             supabase.table("patient_visit_days").update({"nth_per_day": cur}).eq("id", row["id"]).execute()
+            _vw_sync(supabase, f_code, patient_id, data.get("apply_from"),
+                     session.get("my_name", ""))   # visit-weekday-history-v1
             return jsonify({"status": "success", "nth_per_day": cur})
 
         # 曜日設定がまだ無い利用者。行だけ作る（weekdays は曜日トグル側が入れる）
@@ -26790,6 +26976,8 @@ def api_save_weekday_nth():
             "ampm_per_day": {},
             "nth_per_day": initial,
         }).execute()
+        _vw_sync(supabase, f_code, patient_id, data.get("apply_from"),
+                 session.get("my_name", ""))   # visit-weekday-history-v1
         return jsonify({"status": "success", "nth_per_day": initial})
     except Exception as e:
         print("save_weekday_nth error: %s" % e, flush=True)
