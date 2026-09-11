@@ -471,14 +471,26 @@ button.sr-pl { width:100%; border:none; font-family:inherit; text-align:left;
 .sr-bar.wait { top:0; background:#FEF7E0; color:#7A5200; border-bottom:2px solid #F0B429; }
 /* 赤と黄が同時に出るときは、赤を上に重ねる */
 .sr-bar.wait.under { top:auto; }
+/* soge-bar-safearea-v1 : いちばん上に来る帯は、時計と電池のぶんを空ける。
+   ★base.html は viewport-fit=cover。top:0 の固定要素は【時計の下に潜る】。
+     潜ると文の1行目が読めず、右端の「閉じる」が電池に隠れて押せない。
+   ★2本目の帯には付けない。1本目の【下】に置くので、付けると二重に下がる。
+   ★同じファイルの .sr-toast には env() が入っていた。帯だけ入れ忘れ。 */
+.sr-bar.sr-top1 { padding-top: calc(10px + env(safe-area-inset-top, 0px)); }
 .sr-bar .t { flex:1; min-width:120px; }
 .sr-bar button { border:1px solid currentColor; background:#fff; color:inherit;
   font-family:inherit; font-size:0.8rem; font-weight:800; border-radius:8px;
   padding:7px 13px; cursor:pointer; white-space:nowrap; }
 .sr-bar button:disabled { opacity:.6; cursor:default; }
+/* soge-bar-safearea-v1 : 運転席で押すので、指の幅ぶんを確保する */
+.sr-bar button { min-height:44px; padding-left:16px; padding-right:16px; }
 /* 帯が出ているあいだ、本文が隠れないように上を空ける */
-body.sr-hasbar .sr-wrap { padding-top:60px; }
-body.sr-hasbar2 .sr-wrap { padding-top:112px; }
+/* soge-bar-safearea-v1 : 高さは【測って】入れる（--sr-bars）。
+   ★60px/112px の決め打ちは、文が2行3行に折り返すと足りない。
+     足りないと、いちばん上のボタンが帯の下に隠れて押せなくなる。
+     測れなかったときのために、これまでの値を控えとして残す。 */
+body.sr-hasbar .sr-wrap { padding-top: var(--sr-bars, 60px); }
+body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
 /* まだ送れていない打刻の印 */
 .sr-pend { font-size:0.68rem; font-weight:800; color:#7A5200; background:#FEF7E0;
   border:1px solid #F0B429; border-radius:6px; padding:2px 6px; white-space:nowrap; }
@@ -1150,7 +1162,7 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     if (srErrMsg) {
       var e1 = document.createElement('div');
       e1.id = 'srBarErr';
-      e1.className = 'sr-bar err';
+      e1.className = 'sr-bar err sr-top1';   // soge-bar-safearea-v1
       e1.innerHTML = '<span class="t">' + esc(srErrMsg) + '</span>'
                    + '<button type="button" id="srBarErrX">閉じる</button>';
       host.appendChild(e1);
@@ -1160,7 +1172,8 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     if (n > 0) {
       var e2 = document.createElement('div');
       e2.id = 'srBarWait';
-      e2.className = 'sr-bar wait';
+      /* soge-bar-safearea-v1: 上に来るのが自分のときだけ、時計のぶんを空ける */
+      e2.className = 'sr-bar wait' + (top ? '' : ' sr-top1');
       e2.style.top = top + 'px';
       e2.innerHTML = '<span class="t">まだ送れていない打刻が ' + n + ' 件あります。'
                    + '電波が戻ると自動で送ります。</span>'
@@ -1172,6 +1185,18 @@ body.sr-hasbar2 .sr-wrap { padding-top:112px; }
     }
     document.body.classList.toggle('sr-hasbar', !!(srErrMsg || n));
     document.body.classList.toggle('sr-hasbar2', !!(srErrMsg && n));
+    /* soge-bar-safearea-v1: 本文を空ける高さは、実際の帯を測って決める。
+       ★決め打ちだと、文が折り返した日にボタンが隠れて押せなくなる。 */
+    var _srH = 0;
+    var _b1 = document.getElementById('srBarErr');
+    var _b2 = document.getElementById('srBarWait');
+    if (_b1) _srH = Math.max(_srH, _b1.getBoundingClientRect().bottom);
+    if (_b2) _srH = Math.max(_srH, _b2.getBoundingClientRect().bottom);
+    if (_srH > 0) {
+      document.body.style.setProperty('--sr-bars', Math.ceil(_srH + 8) + 'px');
+    } else {
+      document.body.style.removeProperty('--sr-bars');
+    }
   }
 
   /* 電波が戻ったら送る／開いたときにも送る／残っているあいだは30秒ごとに試す */
