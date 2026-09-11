@@ -94,6 +94,20 @@
 {% endblock %}
 
 {% block content %}
+{# dev-billing-v1 : 入金の消し込みへの入口。いちばん上に置く。
+   お金の突き合わせは毎月やる作業なので、探させない。 #}
+<div style="background:#fff;border:1.5px solid #9c27b0;border-radius:14px;
+     padding:14px 16px;margin-bottom:1rem;display:flex;align-items:center;gap:12px;">
+  <span class="material-symbols-outlined" style="color:#9c27b0;">account_balance</span>
+  <div style="flex:1;">
+    <div style="font-weight:800;font-size:0.9rem;">入金の消し込み</div>
+    <div style="font-size:0.75rem;color:#5f6368;margin-top:2px;">
+      通帳の1行が、どの施設のどの請求の合計かを確かめる。CSV・PDFで出せます。</div>
+  </div>
+  <a href="/dev/billing" style="background:#9c27b0;color:#fff;text-decoration:none;
+     border-radius:10px;padding:9px 14px;font-size:0.82rem;font-weight:800;">開く</a>
+</div>
+
 <div class="dev-header">
     <span class="material-symbols-outlined">code</span>
     <div>
