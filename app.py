@@ -7100,7 +7100,19 @@ def _vw_seed(supabase, f_code, pid):
 def _vw_sync(supabase, f_code, pid, apply_from=None, who=""):
     """今の設定に合わせて履歴を直す。★必ず変更した【後】に呼ぶ。
     apply_from の日から新しい内容が有効になり、それ以前は閉じて残る。"""
-    ds = _vw_day(apply_from) or _vw_today()
+    # visit-weekday-applyfrom-v1 : "all"＝過去にさかのぼって全部。
+    #   1900-01-01 を指定日にすると、下のループが
+    #   「まだ効いていない行（vf >= ds）」として既存の履歴を全部消し、
+    #   今の設定を 1900-01-01 から1本だけ作り直す。自費の "all" と同じ意味。
+    _vw_all = (str(apply_from or "").strip().lower() == "all")
+    ds = "1900-01-01" if _vw_all else (_vw_day(apply_from) or _vw_today())
+    # visit-weekday-applyfrom-v1 : ★未来の日付は受けない。
+    #   patient_visit_days（今の設定）は送迎がその場で見ている。
+    #   先の日付にすると「送迎からは今日消えるのに、
+    #   利用管理では来月まで予定が出る」食い違いが起きる。
+    if ds > _vw_today():
+        print("[visit-wd] 未来の適用開始日は受けません(%s → 今日)" % ds, flush=True)
+        ds = _vw_today()
     rules = _vw_rules_for(supabase, f_code, pid)
     if rules is None:
         return False                 # ★読めないなら触らない。半端に書かない
