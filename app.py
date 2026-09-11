@@ -35411,18 +35411,87 @@ def onboard_create_checkout():
         return jsonify({"error": str(e)}), 500
 
 
+# stripe-api-version-v1 : Stripeの値の置き場所は版によって動く。
+#   取り出し方をここ1箇所に閉じ込める。★呼ぶ側で getattr を書かない。
+def _sv_get(obj, key):
+    """StripeObjectでも素のdictでも同じように1つ取り出す。
+    ★キーで引くこと。obj.items という書き方は辞書のメソッド名とぶつかり、
+      ライブラリの版によって別のものを掴む。キーなら必ず中身が取れる。"""
+    if obj is None:
+        return None
+    try:
+        return obj[key]
+    except Exception:
+        pass
+    try:
+        return getattr(obj, key, None)
+    except Exception:
+        return None
+
+
+def _stripe_period_end(sub):   # stripe-api-version-v1
+    """サブスクの「今の期間の終わり」(UNIX秒)。見つからなければ None。
+    ★2025年以降のAPIでは、この値はサブスク本体から【明細の側】へ移った。
+      古い置き場所だけを見ていると、いつも None になり、
+      アクセス期限が一度も延びず、払っている施設が締め出される。"""
+    cpe = _sv_get(sub, "current_period_end")   # 古い置き場所
+    if cpe:
+        try:
+            return int(cpe)
+        except (TypeError, ValueError):
+            pass
+    data = _sv_get(_sv_get(sub, "items"), "data") or []   # 新しい置き場所
+    ends = []
+    for it in data:
+        v = _sv_get(it, "current_period_end")
+        if v:
+            try:
+                ends.append(int(v))
+            except (TypeError, ValueError):
+                pass
+    if ends:
+        return max(ends)   # 明細が複数(基本＋追加人数)あるので、いちばん遅いもの
+    return None
+
+
+def _stripe_invoice_sub_id(inv):   # stripe-api-version-v1
+    """請求書が、どのサブスクのものか。見つからなければ None。
+    ★invoice.subscription も版によって場所が変わっている。
+      新 → 旧 → 明細 の順に探す。"""
+    for path in (("subscription",),
+                 ("parent", "subscription_details", "subscription")):
+        cur = inv
+        for k in path:
+            cur = _sv_get(cur, k)
+        if isinstance(cur, str) and cur:
+            return cur
+        vid = _sv_get(cur, "id")
+        if isinstance(vid, str) and vid:
+            return vid
+    for ln in (_sv_get(_sv_get(inv, "lines"), "data") or []):
+        cur = _sv_get(_sv_get(_sv_get(ln, "parent"),
+                              "subscription_item_details"), "subscription")
+        if isinstance(cur, str) and cur:
+            return cur
+    return None
+
+
 # pricing-rebuild-v1 : Stripeサブスクの期間末+猶予を expires_at 用ISOで返す
 def _stripe_sub_expiry(sub_id, grace_days=SUB_GRACE_DAYS):
-    """current_period_end + 猶予日数 をISO文字列で返す（取得失敗時 None）。
-    トライアル中は current_period_end = トライアル終了日 なので、そのまま使える。"""
+    """期間末 + 猶予日数 をISO文字列で返す（取得失敗時 None）。
+    トライアル中は期間末＝トライアル終了日なので、そのまま使える。"""
     try:
         if not sub_id:
             return None
         sub = stripe.Subscription.retrieve(sub_id)
-        cpe = getattr(sub, "current_period_end", None)
+        cpe = _stripe_period_end(sub)   # stripe-api-version-v1
         if cpe:
             from datetime import datetime as _dt, timedelta as _td, timezone as _tz
             return (_dt.fromtimestamp(int(cpe), _tz.utc) + _td(days=grace_days)).isoformat()
+        # stripe-api-version-v1 : ★ここで黙ると、期限が延びないまま
+        #   施設が締め出される。分からなかったことを必ず残す。
+        print("[Stripe] ★期間末を取り出せません（APIの版が変わった可能性）: "
+              + str(sub_id), flush=True)
     except Exception as e:
         print("[Stripe] sub expiry lookup error: " + str(e), flush=True)
     return None
@@ -35713,11 +35782,15 @@ def stripe_webhook():
 
     elif event["type"] == "invoice.paid":
         # pricing-rebuild-v1 : 継続課金の成功（毎月/更新/トライアル明け）→ アクセス期限を延長
+        # stripe-api-version-v1 : 置き場所が版で変わるので、専用の関数で探す。
+        #   ★ここを取りこぼすと expires_at が延びず、
+        #     【払っているのにログインできない】施設が出る。黙らせない。
         inv = event["data"]["object"]
+        inv_sub_id = None
         try:
-            inv_sub_id = inv.get("subscription") if isinstance(inv, dict) else None
-        except Exception:
-            inv_sub_id = None
+            inv_sub_id = _stripe_invoice_sub_id(inv)
+        except Exception as e:
+            print(f"[Stripe webhook] invoice sub lookup error: {e}", flush=True)
         if inv_sub_id:
             try:
                 supabase = get_supabase()
@@ -35728,18 +35801,77 @@ def stripe_webhook():
                         "expires_at": new_exp,
                     }).eq("stripe_subscription_id", inv_sub_id).execute()
                     print(f"[Stripe] invoice.paid → expires extended (sub {inv_sub_id})", flush=True)
+                else:
+                    print("[Stripe] ★invoice.paid だが期間末が分からず、"
+                          "期限を延ばせませんでした", flush=True)
+                    try:
+                        line_notify_admin("\n".join([
+                            "【TASUKARU】★要確認: 入金はあったが期限を延ばせません",
+                            "サブスク: ..." + str(inv_sub_id)[-8:],
+                            "",
+                            "そのままだと、払っている施設がログインできなくなります。",
+                            "開発者MENUから期限を手で延ばしてください。",
+                        ]))
+                    except Exception:
+                        pass
             except Exception as e:
                 print(f"[Stripe webhook] invoice.paid error: {e}", flush=True)
+        else:
+            # サブスクに紐づかない請求書（一括の領収など）もここへ来る。
+            # 判別できないものだけを知らせる。
+            print("[Stripe] invoice.paid : サブスクを特定できず（一括の請求なら正常）",
+                  flush=True)
+
+    elif event["type"] == "invoice.payment_failed":
+        # stripe-api-version-v1 : 支払い失敗を知らせるだけ。DBは変えない。
+        #   ★ここで即座に止めない。カードの再試行中に現場の手を止めない。
+        #     期限(expires_at)は入金で延びる作りなので、
+        #     払われないままなら猶予のあとで自然に締まる。
+        try:
+            _fi = event["data"]["object"]
+            _fsub = _stripe_invoice_sub_id(_fi)
+            line_notify_admin("\n".join([
+                "【TASUKARU】お支払いが失敗しました",
+                "サブスク: " + ("..." + str(_fsub)[-8:] if _fsub else "（不明）"),
+                "",
+                "Stripeで再試行の状況を確認してください。",
+                "払われないままだと、猶予のあとで施設が使えなくなります。",
+            ]))
+            print("[Stripe] invoice.payment_failed", flush=True)
+        except Exception as e:
+            print(f"[Stripe webhook] payment_failed error: {e}", flush=True)
 
     elif event["type"] == "customer.subscription.deleted":
         # サブスク解約時
         sub_id = event["data"]["object"]["id"]
         try:
             supabase = get_supabase()
-            supabase.table("facilities").update({
-                "is_active": False
-            }).eq("stripe_subscription_id", sub_id).execute()
-            print(f"[Stripe] subscription {sub_id} cancelled", flush=True)
+            # stripe-api-version-v1 : ★前払い(lump)の施設は止めない。
+            #   乗り換えのときに古いサブスクを止められずIDを残した施設があると、
+            #   そのIDをあとから手で解約した瞬間に、
+            #   【3年ぶん払った施設がログインできなくなる】。
+            #   お金を受け取った側が締め出すのは、いちばんやってはいけない。
+            # ★契約種別が読めないときも止めない。
+            #   使わせ続けるのは取り返しがつくが、締め出しは取り返しがつかない。
+            _cd_skip = False
+            try:
+                _cd = supabase.table("facilities").select(
+                    "facility_code,payment_type").eq(
+                    "stripe_subscription_id", sub_id).execute()
+                for _cr in (_cd.data or []):
+                    if str(_cr.get("payment_type") or "") == "lump":
+                        _cd_skip = True
+                        print("[Stripe] 前払いの施設なので無効化しません: "
+                              + str(_cr.get("facility_code")), flush=True)
+            except Exception as _cde:
+                _cd_skip = True
+                print("[Stripe] 契約種別を確認できず、無効化を見送ります: "
+                      + str(_cde), flush=True)
+            if not _cd_skip:
+                supabase.table("facilities").update({
+                    "is_active": False
+                }).eq("stripe_subscription_id", sub_id).execute()
+                print(f"[Stripe] subscription {sub_id} cancelled", flush=True)
         except Exception as e:
             print(f"[Stripe webhook] cancel error: {e}", flush=True)
 
