@@ -231,8 +231,11 @@
     </div>
 
     <div class="cfg-sec">
-      <h4>サービス提供時間</h4>
-      <p class="cfg-hint">運営している単位の時間帯(参考)</p>
+      <h4>サービス提供時間（表示用）</h4>
+      <!-- timecard-config-history-v1 : どちらが帳票に出るのか分かるようにする -->
+      <p class="cfg-hint"><b style="color:#b3261e;">★ここは様式には使われません。</b>
+      参考様式4に出る時間は、下の「型ごとのサービス提供時間」です。
+      提供時間を変えたときは<b>両方</b>直してください。</p>
       <div id="cfg-svc-list"></div>
       <button class="cfg-add" id="cfg-svc-add">+ 時間帯を追加</button>
     </div>
@@ -246,8 +249,9 @@
     </div>
 
     <div class="cfg-sec"><!-- 型別-svc-v2: 型ごとのサービス提供時間(複数単位可) -->
-      <h4>型ごとのサービス提供時間</h4>
-      <p class="cfg-hint">半日型・1日型それぞれの提供時間帯（単位）。「＋」で午後などを追加できます。空欄可。</p>
+      <h4>型ごとのサービス提供時間<span style="color:#b3261e;">（★様式に出るのはこちら）</span></h4>
+      <p class="cfg-hint">半日型・1日型それぞれの提供時間帯（単位）。「＋」で午後などを追加できます。
+      <b>参考様式4の打刻はここから作られます。</b></p>
       <div style="font-size:.85rem;font-weight:700;color:#555;margin:6px 0 4px;">半日型</div>
       <div id="cfg-half-svc-list"></div>
       <button class="cfg-add" id="cfg-half-svc-add" type="button">＋ 時間帯を追加</button>
@@ -328,6 +332,16 @@
       <div class="cfg-row2">
         <label>法定休日 割増率 <input type="number" id="cfg-rate-hol" class="cfg-num" min="1" max="3" step="0.05"></label>
       </div>
+    </div>
+
+    <!-- timecard-config-history-v1 -->
+    <div class="cfg-sec" style="background:#fff8e1;border:1px solid #ffe0a3;border-radius:10px;padding:10px 12px;">
+      <h4 style="color:#8a6d1f;">この設定はいつから？</h4>
+      <p class="cfg-hint">様式や給与は<b>その月に有効だった設定</b>で作ります。
+      提供時間や割増を変えたときは、<b>変わった日</b>を入れてください。
+      それより前の月は、前の設定のまま出ます（先の日付は選べません）。</p>
+      <input type="date" id="cfg-apply-from" class="cfg-inp">
+      <div class="cfg-hint" id="cfg-apply-hint" style="margin-top:6px;"></div>
     </div>
 
     <button class="cfg-save" id="cfg-save">保存する</button>
@@ -932,6 +946,11 @@
     try{
       var res=await fetch("/admin/timecard/config"); var j=await res.json();
       var c=(j&&j.config)||{};
+      // timecard-config-history-v1 : 適用開始日。既定は今日、先の日付は選べない
+      (function(){ var a=$("cfg-apply-from"); if(!a) return;
+        var n=new Date(), p=function(x){ return String(x).padStart(2,"0"); };
+        var t=n.getFullYear()+"-"+p(n.getMonth()+1)+"-"+p(n.getDate());
+        a.max=t; a.value=t; cfgApplyHint(); })();
       $("cfg-split").value=(c.work_split_times&&c.work_split_times[0])||"";
       $("cfg-half").value=c.half_slot_hours!=null?c.half_slot_hours:4;
       $("cfg-full").value=c.full_slot_hours!=null?c.full_slot_hours:8;
@@ -955,6 +974,13 @@
       $("cfg-rate-night").value=(c.rate_night==null?0.25:c.rate_night);
       $("cfg-rate-hol").value=(c.rate_holiday==null?1.35:c.rate_holiday);
     }catch(e){ alert("設定の読み込みに失敗しました"); }
+  }
+  // timecard-config-history-v1 : いつから効くのかを、押す前に見せる
+  function cfgApplyHint(){
+    var a=$("cfg-apply-from"), h=$("cfg-apply-hint"); if(!a||!h) return;
+    h.textContent = a.value
+      ? (a.value+" 以降の様式・給与が新しい設定になります。それより前の月は今までのままです。")
+      : "日付が空のときは、今日から有効になります。";
   }
   function collectConfig(){
     var svc=[];
@@ -1004,6 +1030,8 @@
   $("tcr-config").addEventListener("click", openConfig);
   $("cfg-close").addEventListener("click",function(){ $("cfg-back").classList.remove("show"); });
   $("cfg-back").addEventListener("click",function(e){ if(e.target===$("cfg-back")) $("cfg-back").classList.remove("show"); });
+  // timecard-config-history-v1
+  (function(){ var a=$("cfg-apply-from"); if(a) a.addEventListener("change", cfgApplyHint); })();
   $("cfg-svc-add").addEventListener("click",function(){ $("cfg-svc-list").appendChild(cfgSvcRow()); });
   $("cfg-half-svc-add").addEventListener("click",function(){ $("cfg-half-svc-list").appendChild(cfgTypeSvcRow()); });
   $("cfg-full-svc-add").addEventListener("click",function(){ $("cfg-full-svc-list").appendChild(cfgTypeSvcRow()); });
@@ -1011,7 +1039,7 @@
   $("cfg-save").addEventListener("click",async function(){
     var btn=this; btn.disabled=true; var old=btn.textContent; btn.textContent="保存中…";
     try{
-      var res=await fetch("/admin/timecard/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(collectConfig())});
+      var res=await fetch("/admin/timecard/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(Object.assign(collectConfig(),{apply_from:(($("cfg-apply-from")||{}).value||"")}))});
       var j=await res.json();
       if(j.status==="success"){ btn.textContent="保存しました"; setTimeout(function(){ btn.textContent=old; btn.disabled=false; $("cfg-back").classList.remove("show"); },900); }
       else{ alert(j.message||"保存に失敗しました"); btn.textContent=old; btn.disabled=false; }

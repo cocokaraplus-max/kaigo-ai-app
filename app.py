@@ -22368,7 +22368,8 @@ def admin_timecard_monthly():
                     d0["excluded"] = (_nn, str(d0.get("date"))) in yx_set
 
         # youshiki-daytype-v1: 各日に型情報（手動指定・自動判定結果）を付与
-        _dt_cfg = _tc_get_config(supabase, f_code)
+        # timecard-config-history-v1 : その月に有効だった設定で振り分ける
+        _dt_cfg = _tc_get_config(supabase, f_code, "%04d-%02d-01" % (year, month))
         _dt_staff_def = _ys_staff_default_types(supabase, f_code)
         _dt_plan = _ys_plan_day_types(supabase, f_code, year, month)
         _dt_manual = _ys_manual_day_types(supabase, f_code, year, month)
@@ -23149,25 +23150,139 @@ _TC_CONFIG_DEFAULT = {
 }
 
 
-def _tc_get_config(supabase, f_code):
-    """事業所の勤怠設定を取得(無ければデフォルト)。"""
+# timecard-config-history-v1 ════════════════════════════════════
+#   勤怠設定の履歴（いつからこの設定だったか）。
+#   timecard_config(admin_settings) が「今の設定」、この表が「いつからの分」。
+#   ★valid_to は持たない。「その日以前でいちばん新しい行」が、その日の設定。
+TC_HIST_TABLE = "timecard_config_history"
+
+
+def _tc_today():
+    return _tc_now_jst().strftime("%Y-%m-%d")
+
+
+def _tc_day(v):
+    """YYYY-MM-DD だけ受ける。それ以外は空。"""
+    s = str(v or "")[:10]
+    return s if len(s) == 10 and s[4] == "-" and s[7] == "-" else ""
+
+
+def _tc_merge_cfg(cfg):
+    """既定値で埋めて、旧フィールドしか無い設定を slots に移す。"""
+    merged = dict(_TC_CONFIG_DEFAULT)
+    if not isinstance(cfg, dict):
+        return merged
+    merged.update(cfg)
+    # 型別-svc-v2: 旧単一フィールドしか無い設定を slots に移行
+    for _pre in ("half", "full"):
+        _sk = _pre + "_service_slots"
+        if _sk not in cfg:
+            _st = cfg.get(_pre + "_service_start"); _en = cfg.get(_pre + "_service_end")
+            if _st and _en:
+                merged[_sk] = [{"start": _st, "end": _en}]
+    return merged
+
+
+def _tc_hist_rows(supabase, f_code):
+    """その施設の履歴を全部。★読めなければ None（空リストと区別する）。"""
+    try:
+        r = (supabase.table(TC_HIST_TABLE).select("id,valid_from,value")
+             .eq("facility_code", f_code).order("valid_from").execute())
+        return r.data or []
+    except Exception as e:
+        print("[tc-hist] 履歴を読めません(%s): %s" % (f_code, e), flush=True)
+        return None
+
+
+def _tc_pick(rows, date_str):
+    """その日に有効だった設定。無ければ None（呼び側が今の設定に落とす）。"""
+    ds = _tc_day(date_str)
+    if not ds:
+        return None
+    best_vf, best_val = None, None
+    for r in (rows or []):
+        vf = _tc_day(r.get("valid_from"))
+        if not vf or vf > ds:
+            continue
+        if best_vf is None or vf >= best_vf:
+            best_vf, best_val = vf, r.get("value")
+    if best_vf is None:
+        return None
+    if isinstance(best_val, str):
+        try:
+            best_val = _tcfg_json.loads(best_val)
+        except Exception:
+            return None
+    if not isinstance(best_val, dict):
+        return None
+    return _tc_merge_cfg(best_val)
+
+
+def _tc_hist_seed(supabase, f_code):
+    """履歴が1本も無いときだけ、今（＝変更前）の設定を1900-01-01から記録する。
+    ★必ず設定を書き換える【前】に呼ぶ。あとでは変更前がもう分からない。"""
+    rows = _tc_hist_rows(supabase, f_code)
+    if rows is None or rows:
+        return
+    prev = _tc_get_config(supabase, f_code)
+    try:
+        supabase.table(TC_HIST_TABLE).insert({
+            "facility_code": f_code, "valid_from": "1900-01-01",
+            "value": prev, "created_by": "seed"}).execute()
+    except Exception as e:
+        print("[tc-hist] 種まきに失敗(%s): %s" % (f_code, e), flush=True)
+
+
+def _tc_hist_write(supabase, f_code, cfg, apply_from=None, who=""):
+    """新しい設定を履歴に記録する。★必ず書き換えた【後】に呼ぶ。"""
+    ds = _tc_day(apply_from) or _tc_today()
+    if ds > _tc_today():
+        # ★未来は受けない。今の設定はその場で効くので、先の日付にすると
+        #   「画面は新しい時間なのに、帳票は来月まで古い時間」になる。
+        print("[tc-hist] 未来の適用開始日は受けません(%s → 今日)" % ds, flush=True)
+        ds = _tc_today()
+    rows = _tc_hist_rows(supabase, f_code)
+    if rows is None:
+        return False                       # 読めないなら触らない
+    new_cfg = _tc_merge_cfg(cfg)
+    cur = _tc_pick(rows, ds)
+    _dump = lambda d: _tcfg_json.dumps(d, ensure_ascii=False, sort_keys=True)
+    if cur is not None and _dump(cur) == _dump(new_cfg):
+        return True                        # 中身が同じ。押すたびに増やさない
+    same_day = [r for r in rows if _tc_day(r.get("valid_from")) == ds]
+    try:
+        if same_day:
+            # 同じ日に2本置かない。その日の分は差し替える
+            (supabase.table(TC_HIST_TABLE)
+             .update({"value": new_cfg, "created_by": str(who or "")[:60]})
+             .eq("id", same_day[0]["id"]).execute())
+            for _extra in same_day[1:]:
+                supabase.table(TC_HIST_TABLE).delete().eq("id", _extra["id"]).execute()
+        else:
+            supabase.table(TC_HIST_TABLE).insert({
+                "facility_code": f_code, "valid_from": ds,
+                "value": new_cfg, "created_by": str(who or "")[:60]}).execute()
+    except Exception as e:
+        print("[tc-hist] 履歴の書き込みに失敗(%s): %s" % (f_code, e), flush=True)
+        return False
+    return True
+
+
+def _tc_get_config(supabase, f_code, on_date=None):
+    """事業所の勤怠設定を取得(無ければデフォルト)。
+    timecard-config-history-v1: on_date を渡すと【その日に有効だった設定】。
+    ★履歴が無い・読めないときは今の設定を返す。空を返さない。"""
+    if on_date:
+        _h = _tc_pick(_tc_hist_rows(supabase, f_code), on_date)
+        if _h is not None:
+            return _h
     try:
         res = supabase.table("admin_settings").select("value").eq(
             "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
         if res.data and res.data[0].get("value"):
             cfg = _tcfg_json.loads(res.data[0]["value"])
             if isinstance(cfg, dict):
-                # デフォルトにマージ(欠けたキーを補完)
-                merged = dict(_TC_CONFIG_DEFAULT)
-                merged.update(cfg)
-                # 型別-svc-v2: 旧単一フィールドしか無い設定を slots に移行
-                for _pre in ("half", "full"):
-                    _sk = _pre + "_service_slots"
-                    if _sk not in cfg:
-                        _st = cfg.get(_pre + "_service_start"); _en = cfg.get(_pre + "_service_end")
-                        if _st and _en:
-                            merged[_sk] = [{"start": _st, "end": _en}]
-                return merged
+                return _tc_merge_cfg(cfg)
     except Exception as e:
         print(f"_tc_get_config error: {e}", flush=True)
     return dict(_TC_CONFIG_DEFAULT)
@@ -23323,6 +23438,7 @@ def admin_timecard_config_save():
             cfg["day_type_rule"] = _clean_dtr
 
         value_json = _tcfg_json.dumps(cfg, ensure_ascii=False)
+        _tc_hist_seed(supabase, f_code)   # timecard-config-history-v1（★書き換えの前）
         existing = supabase.table("admin_settings").select("id").eq(
             "facility_code", f_code).eq("key", _TC_CONFIG_KEY).execute()
         if existing.data:
@@ -23332,6 +23448,9 @@ def admin_timecard_config_save():
             supabase.table("admin_settings").insert({
                 "facility_code": f_code, "key": _TC_CONFIG_KEY, "value": value_json,
             }).execute()
+        # timecard-config-history-v1（★書き換えの後）
+        _tc_hist_write(supabase, f_code, cfg, data.get("apply_from"),
+                       session.get("my_name", ""))
         return jsonify({"status": "success", "config": cfg})
     except Exception as e:
         print(f"admin_timecard_config_save error: {e}", flush=True)
@@ -23659,7 +23778,9 @@ def admin_timecard_youshiki():
         if not _ys_os.path.exists(_YS_TEMPLATE):
             return jsonify({"status": "error", "message": "様式テンプレートが見つかりません。"}), 500
 
-        cfg = _tc_get_config(supabase, f_code)
+        # timecard-config-history-v1 : その月に有効だった設定で様式を作る
+        cfg = _tc_get_config(supabase, f_code, "%04d-%02d-01" % (year, month))
+        _ys_hist = _tc_hist_rows(supabase, f_code)   # 日ごとの解決用。読むのは1回だけ
         split_min = None
         if cfg.get("work_split_times"):
             split_min = _ys_hm(cfg["work_split_times"][0])
@@ -23706,10 +23827,13 @@ def admin_timecard_youshiki():
                     _d = datetime.strptime(ds, "%Y-%m-%d")
                     _wd = _ys_weekday_rule_type(cfg, _d)
                     _rt = _ys_resolve_day_type(name_norm, ds, _wd, _dt_manual, _dt_plan, _dt_staff_def)[0]
+                    # timecard-config-history-v1 : 月の途中で時間が変わっていても、
+                    #   その日に有効だった時間で打刻を作る。
+                    _dcfg = _tc_pick(_ys_hist, ds) or cfg
                     if _rt == "half":
-                        _slots = cfg.get("half_service_slots")
+                        _slots = _dcfg.get("half_service_slots")
                     elif _rt == "full":
-                        _slots = cfg.get("full_service_slots")
+                        _slots = _dcfg.get("full_service_slots")
                 except Exception:
                     _slots = None
                 _added = False
@@ -24411,7 +24535,8 @@ def pay_export_simple_csv():
         if pr is None:
             return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
         year, month, scope, staff_name = pr
-        cfg = _tc_get_config(supabase, f_code)
+        # timecard-config-history-v1 : その月に有効だった設定で計算する
+        cfg = _tc_get_config(supabase, f_code, "%04d-%02d-01" % (year, month))
         s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
@@ -24496,7 +24621,8 @@ def pay_export_simple_excel():
         if pr is None:
             return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
         year, month, scope, staff_name = pr
-        cfg = _tc_get_config(supabase, f_code)
+        # timecard-config-history-v1 : その月に有効だった設定で計算する
+        cfg = _tc_get_config(supabase, f_code, "%04d-%02d-01" % (year, month))
         s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
@@ -24670,7 +24796,8 @@ def pay_export_payroll_csv():
         if pr is None:
             return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
         year, month, scope, staff_name = pr
-        cfg = _tc_get_config(supabase, f_code)
+        # timecard-config-history-v1 : その月に有効だった設定で計算する
+        cfg = _tc_get_config(supabase, f_code, "%04d-%02d-01" % (year, month))
         s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
@@ -24737,7 +24864,8 @@ def pay_export_payroll_excel():
         if pr is None:
             return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
         year, month, scope, staff_name = pr
-        cfg = _tc_get_config(supabase, f_code)
+        # timecard-config-history-v1 : その月に有効だった設定で計算する
+        cfg = _tc_get_config(supabase, f_code, "%04d-%02d-01" % (year, month))
         s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
@@ -24832,7 +24960,8 @@ def pay_export_payroll_pdf():
         if pr is None:
             return jsonify({"status": "error", "message": "\u30d1\u30e9\u30e1\u30fc\u30bf\u4e0d\u6b63"}), 400
         year, month, scope, staff_name = pr
-        cfg = _tc_get_config(supabase, f_code)
+        # timecard-config-history-v1 : その月に有効だった設定で計算する
+        cfg = _tc_get_config(supabase, f_code, "%04d-%02d-01" % (year, month))
         s_start, s_end, label, d_start, d_end = _pay_period_range_jst(year, month, cfg.get("closing_day", 0))
         staff = _pay_build_monthly_range(supabase, f_code, s_start, s_end)
         staff = _pay_filter_scope(staff, scope, staff_name)
