@@ -718,12 +718,18 @@
         <!-- jihi-validfrom-v1 -->
         <div style="margin-top:10px;padding:8px 10px;background:#fff8e1;border:1px solid #ffe0a3;border-radius:8px;">
           <div style="font-size:0.75rem;font-weight:700;color:#8a6d1f;margin-bottom:5px;">
-            自費設定の適用開始日
+            曜日設定の適用開始日（保険・自費 共通）
+          </div>
+          <!-- visit-weekday-applyfrom-v1 -->
+          <div style="font-size:0.7rem;color:#8a6d1f;margin-bottom:5px;line-height:1.5;">
+            上の3段（保険の ×/AM/PM/ALL・自費・第N週）すべてに効きます。
+            <b>いつから変わったのかを先に選んでから</b>、曜日のボタンを押してください。
+            過去の分だけ直せます（先の日付は選べません）。
           </div>
           <select id="pp-jihi-apply" class="form-control" style="font-size:0.82rem;">
             <option value="today">今日から（過去の実績は変わりません）</option>
             <option value="month">今月1日から</option>
-            <option value="date">日付を指定</option>
+            <option value="date">日付を指定（今日まで）</option>
             <option value="all">過去にさかのぼって全部変更</option>
           </select>
           <input type="date" id="pp-jihi-date" class="form-control" style="display:none;margin-top:6px;font-size:0.82rem;">
@@ -732,7 +738,7 @@
         <!-- visit-type-start-v1: 半日型/1日型の利用開始日 -->
         <div style="margin-top:10px;padding:8px 10px;background:#eef4ff;border:1px solid #cfe0fb;border-radius:8px;">
           <div style="font-size:0.75rem;font-weight:700;color:#185FA5;margin-bottom:5px;">利用開始日（型別・任意）</div>
-          <div style="font-size:0.7rem;color:#5f6368;margin-bottom:6px;">設定日より前は、その型の予定・実績を表示しません（月途中から開始した場合などに使用）。未設定なら従来どおり。自費は上の「自費設定の適用開始日」で管理します。</div>
+          <div style="font-size:0.7rem;color:#5f6368;margin-bottom:6px;">設定日より前は、その型の予定・実績を表示しません（月途中から開始した場合などに使用）。未設定なら従来どおり。曜日そのものを変えた日は、上の「曜日設定の適用開始日」で指定します。</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             <label style="flex:1;min-width:130px;font-size:0.78rem;color:#3c4043;">半日型 開始日
               <input type="date" id="pp-half-start" class="form-control" style="font-size:0.82rem;margin-top:3px;">
@@ -1459,7 +1465,7 @@ function ppJihiApplyHint() {
   document.getElementById('pp-jihi-date').style.display = (mode === 'date') ? 'block' : 'none';
   var hint = document.getElementById('pp-jihi-apply-hint');
   if (mode === 'all') {
-    hint.textContent = '過去の実績も自費として集計し直されます。訂正のときだけ使ってください。';
+    hint.textContent = '過去の実績も新しい設定で集計し直されます。訂正のときだけ使ってください。';
   } else {
     var d = ppJihiApplyFrom();
     hint.textContent = d ? (d + ' 以降の来所が新しい設定になります。それより前は今までのままです。') : '日付を選んでください。';
@@ -1467,6 +1473,12 @@ function ppJihiApplyHint() {
 }
 
 (function initPPJihi(){
+  // visit-weekday-applyfrom-v1 : 未来の日付は選べないようにする（歯止め）
+  var _ppMax = document.getElementById('pp-jihi-date');
+  if (_ppMax) {
+    var _n = new Date(), _p = function(x){ return String(x).padStart(2,'0'); };
+    _ppMax.max = _n.getFullYear() + '-' + _p(_n.getMonth()+1) + '-' + _p(_n.getDate());
+  }
   if (!PROFILE_UUID) return;
   var sel = document.getElementById('pp-jihi-apply');
   if (sel) {
@@ -1488,6 +1500,11 @@ function ppJihiApplyHint() {
 })();
 async function togglePPJihi(btn){
   if (!PROFILE_UUID) { alert('\u5229\u7528\u8005\u3092\u4fdd\u5b58\u3057\u3066\u304b\u3089\u8a2d\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044'); return; }
+  // visit-weekday-applyfrom-v1 : 「日付を指定」で空のまま押させない
+  if (ppJihiApplyFrom() === null) {
+    alert('適用開始日を選んでから、自費を押してください。');
+    return;
+  }
   btn.dataset.jihi = (btn.dataset.jihi === '1') ? '0' : '1';
   // \u73fe\u5728\u306e\u81ea\u8cbb\u66dc\u65e5\u3092\u96c6\u3081\u3066\u4fdd\u5b58
   var wds = [];
@@ -1521,12 +1538,21 @@ async function togglePPWeekday(btn) {
     return;
   }
   const day = btn.dataset.day;
+  // visit-weekday-applyfrom-v1 : 「日付を指定」で空のまま押させない。
+  //   空で押すと今日として保存され、直したかった日が直らない。
+  if (ppJihiApplyFrom() === null) {
+    btn.dataset.state = cur;
+    btn.textContent = labels[cur];
+    alert('適用開始日を選んでから、曜日を押してください。');
+    return;
+  }
   const user_name = document.getElementById('user_name')?.value || '';
   try {
     const res = await fetch('/api/save_weekday_ampm', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({patient_id: PATIENT_ID, user_name: user_name, weekday: day, state: next})
+      // visit-weekday-applyfrom-v1 : いつから有効かを一緒に送る
+      body: JSON.stringify({patient_id: PATIENT_ID, user_name: user_name, weekday: day, state: next, apply_from: ppJihiApplyFrom()})
     });
     const data = await res.json();
     if (data.status === 'success') {
@@ -1549,12 +1575,20 @@ async function togglePPNth(btn) {
     alert('この利用者の基本情報を一度保存してから、曜日を設定してください。');
     return;
   }
+  // visit-weekday-applyfrom-v1 : 「日付を指定」で空のまま押させない
+  if (ppJihiApplyFrom() === null) {
+    btn.dataset.nth = String(cur);
+    btn.textContent = cur === 0 ? '毎週' : ('第' + cur);
+    alert('適用開始日を選んでから、第N週を押してください。');
+    return;
+  }
   const user_name = document.getElementById('user_name')?.value || '';
   try {
     const res = await fetch('/api/save_weekday_nth', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({patient_id: PATIENT_ID, user_name: user_name, weekday: btn.dataset.day, nth: next})
+      // visit-weekday-applyfrom-v1 : いつから有効かを一緒に送る
+      body: JSON.stringify({patient_id: PATIENT_ID, user_name: user_name, weekday: btn.dataset.day, nth: next, apply_from: ppJihiApplyFrom()})
     });
     const data = await res.json();
     if (data.status === 'success') {
