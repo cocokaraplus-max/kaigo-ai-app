@@ -466,60 +466,102 @@ td.sp-stops { position: relative; padding-right: 68px; }
     return true;
   }
 
-  // 出発 / 帰着 … その場で時刻入力に変わる
-  function bindTime(el) {
-    el.onclick = function () {
-      var dayId = el.dataset.day, fld = el.dataset.fld;
-      var cell = el.parentNode;
-      var cur = (el.tagName === 'SPAN') ? el.textContent.trim() : '';
-      var inp = document.createElement('input');
-      inp.type = 'time';
-      inp.value = cur;
-      inp.style.cssText = 'width:64px;border:1px solid #1a73e8;border-radius:6px;padding:2px 3px;font-size:0.75rem;';
-      cell.innerHTML = '';
-      cell.appendChild(inp);
-      inp.focus();
-      var done = false, tmr = null;
+  /* ===== soge-print-daytime-v2: 出発 / 帰着 を直す =====
+     ★［保存］を押したときだけ書き込む。
 
-      /* soge-time-edit-v1: マスを元の見た目に戻す（保存の有無にかかわらず使う） */
-      function paint(v) {
-        cell.innerHTML = v
-          ? ('<span class="sp-time" data-day="' + dayId + '" data-fld="' + fld + '">' + v + '</span>')
-          : ('<button class="sp-tap" data-day="' + dayId + '" data-fld="' + fld + '">入力</button>');
-        bindTime(cell.firstElementChild);
+     前の作りは input[type=time] の change を 0.9秒待って【自動で確定】していた。
+     端末の時刻ホイールは「時」を選んだ時点でも change を投げるので、
+     分を選ぶ前に確定して、入力欄ごと消える。現場で実際に起きた。
+     0.9秒を延ばしても直らない。考える手が止まれば同じことが起きる。
+     ★blur でも確定してはいけない。端末によってはホイールを触った瞬間に飛ぶ。
+
+     ★運行画面（soge-run-time-edit-v1）は、同じ事故のあとすでに
+       ［決定］方式に直してあった。【同じ画面に2つの作法があった】のが間違い。
+       こちらを合わせる。
+
+     ★見た目は、同じ画面にある到着時刻のパネル(.sp-ep)をそのまま使う。
+       仕掛けを2つ持たない。 */
+  function openDayTimePanel(el) {
+    var dayId = el.dataset.day, fld = el.dataset.fld;
+    if (!dayId || !fld) return;                 /* 過ぎた日などで口が外されている */
+    var jp = (fld === 'returned') ? '帰着' : '出発';
+    var cell = el.parentNode;
+    var cur = (el.tagName === 'SPAN') ? el.textContent.trim() : '';
+    if (!/^\d{2}:\d{2}$/.test(cur)) cur = '';
+
+    /* ★どの日のどの便かを出す。押し間違いに、保存する前に気づけるようにする。 */
+    var tr = el.closest('tr'), sub = '';
+    if (tr) {
+      var trip = ((tr.querySelector('.fix2') || {}).textContent || '').trim();
+      var d = tr, lbl = '';
+      while (d) {
+        var f1 = ((d.querySelector('.fix1') || {}).textContent || '').trim();
+        if (f1) { lbl = f1; break; }
+        d = d.previousElementSibling;
       }
+      sub = (lbl ? lbl + '\u3000' : '') + trip;
+    }
 
-      async function commit() {
-        if (done) return;
-        var t = inp.value || '';
-        /* ★何も変えていないなら送らない。触っただけで保存しない。 */
-        if (t === cur) { done = true; clearTimeout(tmr); paint(cur); return; }
-        /* ★空にするのは【消す】操作。触った拍子に実績が消えないよう、確認する。 */
-        if (!t && cur) {
-          if (!confirm('入っている時刻（' + cur + '）を消しますか？')) {
-            inp.value = cur;
-            return;
-          }
-        }
-        done = true;
-        clearTimeout(tmr);
-        var body = {};
-        body[fld] = t;
-        var ok = await saveDay(dayId, body);
-        if (ok) toast(t ? (t + ' に記録しました') : '時刻を消しました');
-        paint(ok ? t : cur);
-      }
+    var back = document.createElement('div');
+    back.className = 'sp-ep-back no-print';
+    back.innerHTML =
+      '<div class="sp-ep">'
+      + '<h4>' + jp + 'の時刻</h4>'
+      + '<div class="sub">' + sub + '</div>'
+      + '<div class="row"><label>' + jp + '</label>'
+      + '<input type="time" class="tv" value="' + cur + '"></div>'
+      + '<div class="btns">'
+      + '<button class="main ok">保存</button>'
+      + (cur ? '<button class="warn clr">空にする</button>' : '')
+      + '<button class="cancel no">やめる</button>'
+      + '</div></div>';
+    document.body.appendChild(back);
+    var inp = back.querySelector('.tv');
+    inp.focus();
 
-      /* ★change ですぐ確定しない。
-         input[type=time] は「時」を選んだ時点でも change を投げるので、
-         そこで確定すると「分」を選ぶ前に入力欄ごと消える（実際に起きた）。
-         少し待って、続きの操作が無ければ確定する。 */
-      inp.onchange = function () { clearTimeout(tmr); tmr = setTimeout(commit, 900); };
-      /* 指を離したときは待たない。 */
-      inp.onblur = commit;
+    function close() { back.remove(); }
+    back.onclick = function (e) { if (e.target === back) close(); };
+    back.querySelector('.no').onclick = close;
+    function busy(on) {
+      back.querySelectorAll('button').forEach(function (b) { b.disabled = on; });
+    }
+    /* マスを元の見た目に戻す。押せる口(data-day/data-fld)も付け直す。 */
+    function paint(v) {
+      cell.innerHTML = v
+        ? ('<span class="sp-time" data-day="' + dayId + '" data-fld="' + fld + '">' + v + '</span>')
+        : ('<button class="sp-tap" data-day="' + dayId + '" data-fld="' + fld + '">入力</button>');
+      bindDayTime(cell.firstElementChild);
+    }
+
+    back.querySelector('.ok').onclick = async function () {
+      var v = (inp.value || '').trim();
+      /* ★空で保存させない。消すのは別のボタン。
+         直すつもりが記録を消した、にならないようにする。 */
+      if (!v) { toast('時刻を入れてください（消すなら「空にする」）', true); return; }
+      if (v === cur) { close(); return; }        /* 変えていないなら送らない */
+      busy(true);
+      var body = {}; body[fld] = v;
+      if (await saveDay(dayId, body)) {
+        paint(v); toast(jp + 'を ' + v + ' にしました'); close();
+      } else { busy(false); }
+    };
+
+    var clr = back.querySelector('.clr');
+    if (clr) clr.onclick = async function () {
+      if (!confirm('入っている' + jp + 'の時刻（' + cur + '）を消しますか？')) return;
+      busy(true);
+      var body = {}; body[fld] = '';
+      if (await saveDay(dayId, body)) {
+        paint(''); toast(jp + 'の時刻を消しました'); close();
+      } else { busy(false); }
     };
   }
-  document.querySelectorAll('[data-fld]').forEach(bindTime);
+
+  function bindDayTime(el) {
+    if (!el) return;
+    el.onclick = function () { openDayTimePanel(el); };
+  }
+  document.querySelectorAll('[data-fld]').forEach(bindDayTime);
 
   /* soge-print-driver-v1: 運転手のマス。押すと選べる。 */
   document.querySelectorAll('[data-drvday]').forEach(function (el) {
