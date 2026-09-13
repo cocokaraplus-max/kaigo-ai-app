@@ -1022,6 +1022,14 @@ html, body { overflow-x: hidden !important; max-width: 100vw; }
           </div>
           <div class="birth-result" id="sbf-result-{{ loop.index }}"></div>
         </div>
+        {# staff-kana-v1: 数秘の D・S・P・M・IT・LL は【名前のふりがな】から出す。
+           ★別のボタンにしない。同じ「保存」で一緒に入る。 #}
+        <div class="form-group" style="margin-bottom:8px;">
+          <label class="form-label" style="font-size:0.75rem;">{{ s.name }}のふりがな<span style="color:#80868b;font-weight:400;">（数秘で使います）</span></label>
+          <input type="text" id="sbf-kana-{{ loop.index }}" class="form-control"
+            placeholder="例: やまだ たろう" value="{{ s.kana or '' }}"
+            oninput="this.value=kataToHira(this.value)" autocomplete="off">
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
           <button class="btn btn-primary btn-sm" onclick="saveStaffBirth('{{ s.name }}','{{ loop.index }}')">
             <span class="material-symbols-outlined" style="font-size:15px;color:white;">save</span>保存
