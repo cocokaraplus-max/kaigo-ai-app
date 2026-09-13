@@ -23298,7 +23298,23 @@ def admin_timecard_config_get():
         supabase = get_supabase()
         if not is_admin_user(supabase, f_code, my_name):
             return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
-        return jsonify({"status": "success", "config": _tc_get_config(supabase, f_code)})
+        # timecard-config-effective-v1 : いま効いている設定が「いつから」なのかも返す。
+        #   画面の日付欄は【これから入れる変更】の適用日なので毎回今日に戻る。
+        #   それだけだと保存できたのか分からないので、効いている日を別に出す。
+        _eff_rows = _tc_hist_rows(supabase, f_code) or []
+        _eff_today = _tc_today()
+        _eff_from = ""
+        _eff_all = []
+        for _r in _eff_rows:
+            _vf = _tc_day(_r.get("valid_from"))
+            if not _vf:
+                continue
+            _eff_all.append(_vf)
+            if _vf <= _eff_today and (not _eff_from or _vf >= _eff_from):
+                _eff_from = _vf
+        return jsonify({"status": "success", "config": _tc_get_config(supabase, f_code),
+                        "effective_from": _eff_from,
+                        "history_from": sorted(set(_eff_all))})
     except Exception as e:
         print(f"admin_timecard_config_get error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500

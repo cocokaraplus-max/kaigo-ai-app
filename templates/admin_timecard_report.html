@@ -336,12 +336,18 @@
 
     <!-- timecard-config-history-v1 -->
     <div class="cfg-sec" style="background:#fff8e1;border:1px solid #ffe0a3;border-radius:10px;padding:10px 12px;">
-      <h4 style="color:#8a6d1f;">この設定はいつから？</h4>
+      <!-- timecard-config-effective-v1 -->
+      <h4 style="color:#8a6d1f;">この<u>変更</u>はいつから？</h4>
       <p class="cfg-hint">様式や給与は<b>その月に有効だった設定</b>で作ります。
       提供時間や割増を変えたときは、<b>変わった日</b>を入れてください。
       それより前の月は、前の設定のまま出ます（先の日付は選べません）。</p>
+      <!-- timecard-config-effective-v1 : 保存できたかを画面で分かるようにする -->
+      <p class="cfg-hint" style="margin-top:6px;"><b>★この欄は、いま画面で直した内容を
+      いつから効かせるかの指定です。</b>開くたびに今日に戻ります（前に入れた日付が
+      残っていると、次の変更が知らないうちに過去へさかのぼるため）。</p>
       <input type="date" id="cfg-apply-from" class="cfg-inp">
       <div class="cfg-hint" id="cfg-apply-hint" style="margin-top:6px;"></div>
+      <div id="cfg-eff" style="margin-top:8px;font-size:.8rem;font-weight:700;color:#2f6b5e;"></div>
     </div>
 
     <button class="cfg-save" id="cfg-save">保存する</button>
@@ -951,6 +957,13 @@
         var n=new Date(), p=function(x){ return String(x).padStart(2,"0"); };
         var t=n.getFullYear()+"-"+p(n.getMonth()+1)+"-"+p(n.getDate());
         a.max=t; a.value=t; cfgApplyHint(); })();
+      // timecard-config-effective-v1 : いま効いている設定がいつからのものか
+      (function(){ var e=$("cfg-eff"); if(!e) return;
+        var ef=(j&&j.effective_from)||"", hs=(j&&j.history_from)||[];
+        if(!ef){ e.textContent="いま効いている設定：記録はまだありません（次の保存で残ります）"; return; }
+        e.textContent="いま効いている設定："+ef+" から"
+          + (hs.length>1 ? "（記録は"+hs.length+"件："+hs.join(" / ")+"）" : "");
+      })();
       $("cfg-split").value=(c.work_split_times&&c.work_split_times[0])||"";
       $("cfg-half").value=c.half_slot_hours!=null?c.half_slot_hours:4;
       $("cfg-full").value=c.full_slot_hours!=null?c.full_slot_hours:8;
