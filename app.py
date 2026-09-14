@@ -13335,7 +13335,17 @@ def numerology():
     except:
         pass
     try:
-        res_s = supabase.table("staffs").select("staff_name,birth_date").eq("facility_code", f_code).eq("is_active", True).execute()
+        # staff-kana-v1: ★ふりがなも読む。
+        #   数秘の D・S・P・M・IT・LL は【名前のローマ字】から出す。
+        #   ふりがなが空だとローマ字が作れず、6つまとめて出なくなる。
+        #   ここで "" を渡していたのが原因だった。
+        # ★列がまだ無い環境では、ふりがな抜きで読み直す。
+        #   ここで例外にすると外の try が丸ごと飛び、【職員が1人も出なくなる】。
+        try:
+            res_s = supabase.table("staffs").select("staff_name,birth_date,staff_kana").eq("facility_code", f_code).eq("is_active", True).execute()
+        except Exception as _sk_e:
+            print("[staff-kana-v1] staff_kana を読めません(%s): %s" % (f_code, _sk_e), flush=True)
+            res_s = supabase.table("staffs").select("staff_name,birth_date").eq("facility_code", f_code).eq("is_active", True).execute()
         for r in res_s.data:
             name  = r["staff_name"]
             birth = r.get("birth_date") or ""
@@ -13344,7 +13354,7 @@ def numerology():
                 "value": label,
                 "label": label,
                 "user_name": name,
-                "user_kana": "",
+                "user_kana": r.get("staff_kana") or "",   # staff-kana-v1
                 "birth_date": birth,
                 "type": "staff"
             })
@@ -14338,7 +14348,8 @@ def admin():
                     "birth_text": birth_to_wareki_text(bd) if bd else "",
                     "job_title": _jr.get("job_title") or "",
                     "job_title2": _jr.get("job_title2") or "",
-                    "employment_type": _jr.get("employment_type") or ""
+                    "employment_type": _jr.get("employment_type") or "",
+                    "kana": _jr.get("staff_kana") or ""   # staff-kana-v1
                 })
         except: pass
         try:
@@ -17937,6 +17948,32 @@ def api_update_staff_birth():
         return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error"}), 500
+
+@app.route('/api/update_staff_kana', methods=['POST'])  # staff-kana-v1
+@login_required
+def api_update_staff_kana():
+    """職員のふりがな。数秘の D・S・P・M・IT・LL は名前のローマ字から出すので、
+    これが無いと生年月日から出る LP と B しか出ない。"""
+    try:
+        data = request.json or {}
+        f_code = session["f_code"]
+        name = (data.get("name") or "").strip()
+        kana = (data.get("kana") or "").strip()[:100]
+        if not name:
+            return jsonify({"status": "error", "message": "対象がありません"}), 400
+        # ★カタカナはひらがなへ寄せる。ローマ字に直す処理がひらがなしか見ていない。
+        kana = "".join(chr(ord(c) - 0x60) if "\u30a1" <= c <= "\u30f6" else c
+                       for c in kana)
+        supabase = get_supabase()
+        supabase.table("staffs").update({"staff_kana": kana or None}) \
+            .eq("facility_code", f_code).eq("staff_name", name).execute()
+        return jsonify({"status": "success", "kana": kana})
+    except Exception as e:
+        # ★黙って成功にしない。列がまだ無いときは、そう分かるように返す。
+        print("api_update_staff_kana error: %s" % e, flush=True)
+        return jsonify({"status": "error",
+                        "message": "ふりがなを保存できませんでした（%s）" % e}), 500
+
 
 @app.route('/api/update_staff_job', methods=['POST'])
 @login_required

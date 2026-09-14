@@ -229,6 +229,22 @@ async function saveStaffBirth(name, idx) {
     var orig = btn ? btn.innerHTML : '';
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined kaigo-spin" style="font-size:15px;color:white;">progress_activity</span>保存中...'; }
     try {
+        // staff-kana-v1: ふりがなも一緒に保存する。
+        //   ★失敗したら「保存しました」と言わない。
+        //     誕生日だけ入って、ふりがなは入っていない状態を黙って作らない。
+        const kanaEl = document.getElementById('sbf-kana-' + idx);
+        if (kanaEl) {
+            const kr = await fetch('/api/update_staff_kana', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ name, kana: kanaEl.value.trim() })
+            });
+            const kj = await kr.json();
+            if (kj.status !== 'success') {
+                alert(kj.message || 'ふりがなを保存できませんでした');
+                return;
+            }
+        }
         const res = await fetch('/api/update_staff_birth', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},

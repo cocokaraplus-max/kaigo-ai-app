@@ -328,13 +328,67 @@ window.searchPerson = function(q) {
     ).join('');
     cands.querySelectorAll('[data-idx]').forEach((el, i) => {
         const p = hits[i];
-        el.addEventListener('mousedown', e => { e.preventDefault(); selectPerson(p.value, p.user_name, p.birth_date||'', p.user_kana||''); });
-        el.addEventListener('touchend', e => { e.preventDefault(); selectPerson(p.value, p.user_name, p.birth_date||'', p.user_kana||''); });
+        /* staff-kana-v1: 職員か利用者かも渡す。ふりがなが無いときの案内が変わる。 */
+        el.addEventListener('mousedown', e => { e.preventDefault(); selectPerson(p.value, p.user_name, p.birth_date||'', p.user_kana||'', p.type||''); });
+        el.addEventListener('touchend', e => { e.preventDefault(); selectPerson(p.value, p.user_name, p.birth_date||'', p.user_kana||'', p.type||''); });
     });
     cands.classList.add('show');
 };
 
-window.selectPerson = function(val, name, birth, kana) {
+/* staff-kana-v1: ふりがなが無い人に、その場で入れてもらう。
+   ★生年月日から出る LP と B は出ているのに、名前から出る6つが出ない。
+     画面には理由が出ていなかったので「壊れている」と見える。
+   ★気づくのはこの画面。ここで直せないと、結局いつまでも入らない。 */
+window.numAskKana = function (name, birth, ptype) {
+    var host = document.getElementById('search-result');
+    if (!host) return;
+    var box = document.createElement('div');
+    box.className = 'alert alert-warning';
+    box.style.cssText = 'margin-top:12px;';
+    box.innerHTML =
+        '<div style="font-weight:700;margin-bottom:4px;">ふりがなが登録されていません</div>'
+        + '<div style="font-size:0.82rem;color:#5f6368;line-height:1.7;">'
+        + '生年月日から出る <b>LP</b>・<b>B</b> は出ています。'
+        + '<b>D・S・P・M・IT・LL</b> は<b>名前のふりがな</b>から計算するので、'
+        + '入れると全部そろいます。</div>'
+        + (ptype === 'staff'
+            ? '<div style="display:flex;gap:6px;margin-top:10px;">'
+              + '<input type="text" class="form-control nk-in" placeholder="例：やまだ たろう" style="flex:1;">'
+              + '<button type="button" class="btn btn-primary nk-ok">保存</button></div>'
+              + '<div style="font-size:0.75rem;color:#5f6368;margin-top:6px;">'
+              + '一度入れると、次からは自動で出ます。</div>'
+            : '<div style="font-size:0.82rem;color:#5f6368;margin-top:10px;">'
+              + '管理者MENUの利用者管理から、ふりがなを登録してください。</div>');
+    host.appendChild(box);
+    var btn = box.querySelector('.nk-ok');
+    if (!btn) return;
+    btn.onclick = async function () {
+        var v = (box.querySelector('.nk-in').value || '').trim();
+        if (!v) { alert('ふりがなを入れてください'); return; }
+        btn.disabled = true;
+        try {
+            var r = await fetch('/api/update_staff_kana', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name, kana: v })
+            });
+            var j = await r.json();
+            if (j.status !== 'success') throw new Error(j.message || '保存できませんでした');
+            v = j.kana || v;                    /* サーバがひらがなへ寄せた形を使う */
+        } catch (e) {
+            alert(e.message || '保存できませんでした');
+            btn.disabled = false;
+            return;
+        }
+        /* ★開いたままのこの画面の控えも直す。
+           直さないと、同じ人をもう一度選んだときにまた「未登録」と出る。 */
+        PATIENTS.forEach(function (p) {
+            if (p.type === 'staff' && p.user_name === name) p.user_kana = v;
+        });
+        renderSushi(name, birth, kanaToRomaji(v), 'search-result');
+    };
+};
+
+window.selectPerson = function(val, name, birth, kana, ptype) {
     document.getElementById('num-candidates').classList.remove('show');
     document.getElementById('num-search').value = '';
     document.getElementById('search-selected').style.display = 'flex';
@@ -343,9 +397,18 @@ window.selectPerson = function(val, name, birth, kana) {
     const roman = kanaToRomaji(kana);
     if (birth) {
         renderSushi(name, birth, roman, 'search-result');
+        /* staff-kana-v1: ふりがなが無いと、名前から出る6つが出ない。
+           黙って欠けたままにしない。 */
+        if (!roman) numAskKana(name, birth, ptype || '');
     } else {
+        /* staff-kana-v2: ★職員に「利用者管理から」と案内していた。
+           そこには職員がいないので、探して見つからない時間を作る。
+           画面が嘘をつかないように、どちらの一覧かで書き分ける。 */
+        const _where = (ptype === 'staff')
+            ? '管理者MENUの職員一覧で、その人のケーキのボタンから登録してください。'
+            : '管理者MENUの利用者管理から登録してください。';
         document.getElementById('search-result').innerHTML =
-            `<div class="alert alert-warning" style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;"><span class="material-symbols-outlined">warning</span><div><b>${name}</b>さんの生年月日が登録されていません。<br><span style="font-size:0.82rem;color:#5f6368;">管理者MENUの利用者管理から登録してください。</span></div></div>`;
+            `<div class="alert alert-warning" style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;"><span class="material-symbols-outlined">warning</span><div><b>${name}</b>さんの生年月日が登録されていません。<br><span style="font-size:0.82rem;color:#5f6368;">${_where}</span></div></div>`;
     }
 };
 
