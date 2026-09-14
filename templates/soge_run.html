@@ -1449,6 +1449,9 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
       box.className = 'sr-lock' + (locked || past ? ' on' : '');
       box.innerHTML = '<span class="st">'
         + (past ? '過ぎた日' : (locked ? '確定済み' : '未確定')) + '</span>'
+        /* soge-dateplan-notice-v1: 運転中でも【どちらの配車で動く日か】は出す。
+           ★押せるボタンは出さない。運転席に置いてよいものではない。 */
+        + srDatePlanNote()
         + '<span class="ex">確定や作り直しは「一覧」に切り替えてください。</span>';
       return;
     }
@@ -1495,8 +1498,13 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
                ★下の2つのボタンは【すでに直してある配車表を持ってくる】ため。
                  これから直す人向けではないので、条件を書き分ける。 */
             ? 'この日はもう、運行画面で<b>打刻や並べ替え</b>がされています。<br>'
-              + '<b>いつもの配車</b>を変更しても、運行画面には反映されません。'
-              + '運行画面を変えたい場合は<b>「今日だけの配車」</b>から変更してください。<br>'
+              + '<b>いつもの配車</b>を変更しても、この日の運行画面には自動では反映されません。<br>'
+              /* soge-dateplan-notice-v1: ★前はここで、直したい人をみな
+                 【今日だけの配車】へ送っていた。ずっと変えたい人がそれを読むと、
+                 その日限りの設定が毎週増えていく。行き先を書き分ける。 */
+              + '<b>ずっとその配車にしたい</b>ときは、<b>いつもの配車</b>を直したうえで、'
+              + '下の<b>［配車表を取り込む］</b>を押してください。<br>'
+              + '<b>今日だけ</b>変えたいときは<b>「今日だけの配車」</b>から変更してください。<br>'
               + 'すでに直した配車表を、この日に取り込みたい場合は、下のどちらかを押してください。<br>'
               + '<b>配車表を取り込む</b>＝並び順や人の入れ替えだけを当てます'
               + '（<b>打刻・欠席・臨時便はそのまま</b>）。ふだんはこちら。<br>'
@@ -1512,9 +1520,13 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
               + '走っている間は、まだ押していなくて大丈夫です。')
         + '</span>';
     }
-    box.innerHTML = h;
+    /* soge-dateplan-notice-v1: どちらの配車で動く日なのかを、いちばん上に出す。 */
+    box.innerHTML = srDatePlanNote() + h;
 
     srAddLockHelp(box);   // soge-lock-help-v1: ？をボタンの右に足す
+    /* soge-dateplan-notice-v1: 「いつもの配車に戻す」 */
+    var bdp = $('srDatePlanOff');
+    if (bdp) bdp.onclick = doDatePlanOff;
     var b1 = $('srLockBtn');
     if (b1) b1.onclick = function () { setLock(true); };
     var b2 = $('srUnlock');
@@ -1528,6 +1540,60 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
     if (b3m) b3m.onclick = doMerge;
     var b4 = $('srReplan');
     if (b4) b4.onclick = doReplan;
+  }
+
+  /* soge-dateplan-notice-v1: この日がどちらの配車で動くのかを1行で出す。
+     ★この値は true / false / null の3つ。
+       null は「確かめられなかった」。そのときは【何も出さない】。
+       読めなかっただけの日に「いつもの配車で動いています」と出すと嘘になる。 */
+  function srDatePlanNote() {
+    /* soge-dateplan-notice-v2: ★サーバーから来たものは state ではなく
+       【state.data】に入る。v1 は data を挟まずに読んでいたので
+       いつも undefined になり、案内が一度も出なかった。
+       確定済み・過ぎた日の判定も同じ間違いをしていた。
+       この画面の他の所はすべて var d = state.data で読む。そこに合わせる。 */
+    var d = state.data || {};
+    if (d.date_plan !== true) return '';
+    var canEdit = (state.mode !== 'drive') && !d.locked && !d.past;
+    return '<span class="ex" style="display:block;background:#fff8e1;'
+      + 'border:1px solid #ffd54f;border-radius:8px;padding:8px 10px;margin:6px 0;'
+      + 'color:#795548;line-height:1.7;">'
+      + '★この日は<b>「今日だけの配車」</b>を使っています。<br>'
+      + '<b>いつもの配車を直しても、この日には届きません。</b>'
+      + (canEdit
+          ? '<br><button class="main" id="srDatePlanOff" style="margin-top:6px;">'
+            + 'いつもの配車に戻す</button>'
+          : '')
+      + '</span>';
+  }
+
+  /* soge-dateplan-notice-v1: その日の「今日だけの配車」を取り消す。
+     ★取り消しの口（/api/soge/date DELETE）は、消したあとに
+       当日の運行表へ差分を当てるところまでやってくれる。
+       打刻は消えない。だから運転中でなければ押してよい。 */
+  async function doDatePlanOff() {
+    if (!confirm('この日の「今日だけの配車」をやめて、'
+      + 'いつもの配車に戻します。\n\n'
+      + '・いつもの配車の内容が、この日の運行表にも入ります\n'
+      + '・すでに入っている打刻は消えません\n'
+      + '・この日だけのために作った配車は失われます\n\nよろしいですか。')) return;
+    var b = $('srDatePlanOff');
+    if (b) { b.disabled = true; b.textContent = '戻しています…'; }
+    try {
+      var r = await fetch('/api/soge/date?date=' + encodeURIComponent(state.date),
+                          { method: 'DELETE' });
+      var j = await r.json();
+      if (j.status !== 'success') {
+        toast(j.message || '戻せませんでした', 'err');
+        if (b) { b.disabled = false; b.textContent = 'いつもの配車に戻す'; }
+        return;
+      }
+      toast(j.message || 'いつもの配車に戻しました');
+      await load();
+    } catch (e) {
+      toast('戻せませんでした（通信エラー）', 'err');
+      if (b) { b.disabled = false; b.textContent = 'いつもの配車に戻す'; }
+    }
   }
 
   /* soge-leave-plan-v1: 休みの人を抜いた並びで、到着予定時刻を引き直す。

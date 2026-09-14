@@ -3433,10 +3433,27 @@ document.addEventListener('input', function(e) {
 
 <script>
 // === Session 31 task-1: 手動カテゴリピッカー ===
-const AIC_MANUAL_CATEGORIES = [
+/* rec-cat-single-source-v2: 施設のカテゴリ表から読み直すので const にしない。
+   ★ここは読み込む前の受け皿。読めなかったときもこのまま動く。 */
+let AIC_MANUAL_CATEGORIES = [
     '入浴', '食事', '排泄', 'コミュニケーション',
     '心身状況', '訓練状況', 'ヒヤリハット', '休み連絡', 'その他'
 ];
+/* ★専用フォームを持つカテゴリ。表に無くても付け替え先として残す。 */
+const AIC_CAT_KEEP = ['休み連絡', '追加利用連絡', 'その他'];
+(async function recCatLoadForDailyView() {
+    try {
+        const r = await fetch('/api/record_categories');
+        const j = await r.json();
+        const got = ((j && j.categories) || [])
+            .map(c => String((c && c.name) || '').trim()).filter(Boolean);
+        if (!got.length) return;
+        const next = got.slice();
+        AIC_CAT_KEEP.forEach(n => { if (next.indexOf(n) < 0) next.push(n); });
+        AIC_MANUAL_CATEGORIES.forEach(n => { if (next.indexOf(n) < 0) next.push(n); });
+        AIC_MANUAL_CATEGORIES = next;
+    } catch (e) { /* 読めなければ今までの一覧のまま */ }
+})();
 let _aicManualPickerCtx = null;  // {recordId, currentCategory, anchorBtn}
 
 function aicManualPickerOpen(recordId, anchorBtn) {

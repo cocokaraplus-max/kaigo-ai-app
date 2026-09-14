@@ -342,7 +342,9 @@ body.report-preview-open nav { display:none !important; }
 </div>
 
 <script>
-const CATEGORIES = [
+/* rec-cat-single-source-v2: 施設のカテゴリ表から読み直すので const にしない。
+   ★ここは読み込む前の受け皿。読めなかったときもこのまま動く。 */
+let CATEGORIES = [
   {name:"心身状況", color:"#c62828", bg:"#fce8e6"},
   {name:"食事",     color:"#2e7d32", bg:"#e8f5e9"},
   {name:"入浴",     color:"#1565c0", bg:"#e3f2fd"},
@@ -375,6 +377,35 @@ function initCatGrid() {
   });
 }
 initCatGrid();
+
+/* rec-cat-single-source-v2: 施設のカテゴリ（/api/record_categories）で作り直す。
+   ★読めなければ今までの一覧のまま。空にはしない。
+   ★表に無い古いカテゴリも後ろに足す。過去の記録を落とさないため。
+   ★色は表に登録された色を使い、背景はその薄い色にする（8桁の #RRGGBBAA）。 */
+(async function recCatLoadForMonitoring() {
+  try {
+    const r = await fetch('/api/record_categories');
+    const j = await r.json();
+    const rows = (j && j.categories) || [];
+    const names = rows.map(c => String((c && c.name) || '').trim()).filter(Boolean);
+    if (!names.length) return;
+    const known = {}; CATEGORIES.forEach(c => { known[c.name] = c; });
+    const colorOf = {};
+    rows.forEach(c => {
+      const n = String((c && c.name) || '').trim();
+      const col = String((c && c.color) || '').trim();
+      if (n) colorOf[n] = /^#[0-9a-fA-F]{6}$/.test(col) ? col : '';
+    });
+    const next = names.map(n => known[n] || {
+      name: n,
+      color: colorOf[n] || '#37474f',
+      bg: colorOf[n] ? (colorOf[n] + '1a') : '#eceff1'
+    });
+    CATEGORIES.forEach(c => { if (names.indexOf(c.name) < 0) next.push(c); });
+    CATEGORIES = next;
+    initCatGrid();
+  } catch (e) { /* 読めなければ今までの一覧のまま */ }
+})();
 
 // モード切替
 function setMode(mode) {
