@@ -25276,18 +25276,24 @@ def _tk_rows(v):  # tsusho-keikaku-v1
     return v[:TK_MAX_ROWS] if isinstance(v, list) else []
 
 
-def _tk_plan_full(supabase, f_code, plan_id):  # tsusho-keikaku-v1
-    """計画書1枚を、目標・週間計画・プログラムごと返す。無ければ None。
+def _tk_plan_full(supabase, f_code, plan_id):  # tsusho-keikaku-v1 / v2
+    """計画書1枚を、目標・週間計画・プログラムごと返す。
 
-    ★読めなかったときも None。空の計画書を返して「中身が消えた」と
-      見せるより、開けないほうがまし。
+    返り値は (計画書 または None, 確かめられたか)。
+
+    ★tsusho-keikaku-v2: 「無かった」と「読めなかった」を分ける。
+      同じ None にしていたので、消した計画書を開いたときに
+      「いま開けませんでした。少し時間をおいて」と出ていた。
+      消えているのだから、待っても開かない。画面が嘘をついていた。
+    ★送迎の _soge_date_plan_row と同じ形にそろえる。
+      同じ考えを2通りに書くと、片方だけ直したときに必ず食い違う。
     """
     try:
         r = (supabase.table("tsusho_plans").select("*")
              .eq("facility_code", f_code).eq("id", plan_id).limit(1).execute())
         rows = r.data or []
         if not rows:
-            return None
+            return None, True          # 確かめたうえで「無い」
         plan = rows[0]
         g = (supabase.table("tsusho_plan_goals").select("*")
              .eq("plan_id", plan_id).order("kind").order("seq").execute())
@@ -25297,11 +25303,11 @@ def _tk_plan_full(supabase, f_code, plan_id):  # tsusho-keikaku-v1
              .eq("plan_id", plan_id).order("service_seq").order("seq").execute())
     except Exception as e:
         print("[tsusho] 計画書を読めません(%s): %s" % (f_code, e), flush=True)
-        return None
+        return None, False             # 確かめられなかった
     plan["goals"] = g.data or []
     plan["services"] = s.data or []
     plan["programs"] = p.data or []
-    return plan
+    return plan, True
 
 
 @app.route("/tsusho_keikaku")  # tsusho-keikaku-v1
@@ -25381,11 +25387,18 @@ def api_tsusho_plan_get():
         _b = _tk_guard(supabase, f_code)
         if _b:
             return _b
-        plan = _tk_plan_full(supabase, f_code, _tk_txt(request.args.get("id"), 64))
-        if plan is None:
+        plan, ok = _tk_plan_full(supabase, f_code, _tk_txt(request.args.get("id"), 64))
+        # tsusho-keikaku-v2: ★起きたことに合わせて書き分ける。
+        #   読めなかった → 待てば開くかもしれない
+        #   無い         → 待っても開かない。消された可能性を言う
+        if not ok:
             return jsonify({"status": "error",
                             "message": "いま開けませんでした。"
                                        "少し時間をおいて、もう一度お試しください。"}), 503
+        if plan is None:
+            return jsonify({"status": "error",
+                            "message": "この計画書はありません。"
+                                       "消された可能性があります。一覧に戻って確かめてください。"}), 404
         return jsonify({"status": "success", "plan": plan})
     except Exception as e:
         print("api_tsusho_plan_get error: %s" % e, flush=True)
