@@ -1214,8 +1214,12 @@ async function inpSendToGemini() {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     // asr-name-hint-v1: 選択中の利用者を渡して聞き取り精度を上げる（サーバー側で名簿照合）
+                    /* rec-asr-nurse-v1: いま選んでいるカテゴリも渡す。
+                       看護のときだけ、サーバーが看護の言葉を聞き取りのヒントに足す。
+                       ★足すだけ。介護の言葉は外れない。 */
                     body: JSON.stringify({ audio_data: base64, audio_mime: inpMimeType,
-                                           patient: (document.getElementById('patient-value')||{}).value || '' }),
+                                           patient: (document.getElementById('patient-value')||{}).value || '',
+                                           category: (document.getElementById('selected-category')||{}).value || '' }),
                     signal: controller.signal
                 });
                 clearTimeout(tid);
