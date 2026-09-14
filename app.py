@@ -14206,6 +14206,18 @@ def api_admin_patient_bulk_import():
             if not isinstance(r, dict):
                 continue
             row = dict(r)
+            # none-string-guard-v1: ★「文字としての None」をここで落とす。
+            #   本番で 郵便番号14件・担当ケアマネ7件 が "None" になっていた。
+            #   入口はここ。他のソフトから出したCSVにそのまま入っている。
+            #   ★落とすのは【空にする】だけ。値は作らない。
+            #   ★facility_code と updated_at は下で入れ直すので触らない。
+            for _k in list(row.keys()):
+                if isinstance(row.get(_k), str):
+                    _c = _junk_to_blank(row[_k])
+                    if _c != row[_k]:
+                        print("[import] 意味のない文字を空にしました: %s=%r"
+                              % (_k, row[_k]), flush=True)
+                    row[_k] = _c
             # facility_code はフロント由来を捨ててsession値で強制
             row["facility_code"] = f_code
             row["updated_at"] = now_iso
@@ -25598,17 +25610,28 @@ def api_tsusho_program_template():
     except Exception as e:
         print("api_tsusho_program_template error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
-#   tsusho-keikaku-print-v2: 取り込みの失敗で入った「文字としての None」。
-#     ★本当の直しはデータを洗うこと。これは紙に出さないための応急手当。
-#     ★空欄にする。「None」より空欄のほうがまし。
-#       空欄なら入れ忘れだと分かるが、None は壊れて見える。
-_TK_JUNK = {"none", "null", "nan", "undefined", "nil", "-"}
+#   none-string-guard-v1: 取り込みの失敗で入る「文字としての None」。
+#     ★一覧はここ【1か所だけ】。取り込みで塞ぐのも、紙に出すときに落とすのも、
+#       同じ一覧を見る。別々に持つと、片方だけ直したときに必ず食い違う。
+#     ★「-」は入れない。人が「なし」のつもりで書く字なので、
+#       消すと書いた人の意図まで消える（print-v2 で入れたが引っ込めた）。
+#     ★「0」も入れない。数量や番号として正しい値なので。
+_JUNK_TEXT = {"none", "null", "nan", "undefined", "nil"}
 
 
-def _tk_clean(v):  # tsusho-keikaku-print-v2
-    """画面や紙に出す前に、意味のない文字を空にする。"""
+def _junk_to_blank(v):  # none-string-guard-v1
+    """意味のない文字を空にする。それ以外はそのまま返す。
+
+    ★判断は「その文字がそれだけで入っているか」。中に含まれるかでは見ない。
+      「None」を含む住所（例: Noneville）を壊さないため。
+    """
     s = str(v if v is not None else "").strip()
-    return "" if s.lower() in _TK_JUNK else s
+    return "" if s.lower() in _JUNK_TEXT else s
+
+
+def _tk_clean(v):  # tsusho-keikaku-print-v2 / none-string-guard-v1
+    """画面や紙に出す前に、意味のない文字を空にする。"""
+    return _junk_to_blank(v)
 
 
 def _tk_wareki(v):  # tsusho-keikaku-print-v1
