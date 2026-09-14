@@ -196,6 +196,21 @@
         <span id="search-selected-label"></span>
         <span style="margin-left:auto;cursor:pointer;font-size:0.78rem;color:#80868b;" onclick="clearSearch()">変更</span>
     </div>
+    {# numerology-hepburn-v1: ★自動変換は下敷き。人が直せるようにする。
+       長音かどうかは言葉の切れ目が分からないと決められない（井上・松浦）。
+       日本語の側だけを見て正しく決める方法は無いので、直せる場所を置く。 #}
+    <div id="search-roman-box" style="display:none;margin:10px 0 4px;">
+        <label style="display:block;font-size:0.78rem;font-weight:700;color:#5f6368;margin-bottom:4px;">
+            ローマ字（D・S・P・M・IT・LL の計算に使います）
+        </label>
+        <input type="text" id="search-roman" class="form-control"
+               style="text-transform:uppercase;" oninput="onSearchRomanInput()">
+        <div style="font-size:0.72rem;color:#80868b;margin-top:3px;line-height:1.7;">
+            ふりがなからヘボン式で自動変換しています（佐藤＝SATO）。<br>
+            <b>井上（INOUE）や松浦（MATSUURA）のように、言葉の切れ目に「う」が来る名前は
+            自動では外れます。</b>そのときはここで直してください。直すとすぐ計算し直します。
+        </div>
+    </div>
     <div id="search-result"></div>
 </div>
 
@@ -302,6 +317,19 @@ function kanaToRomaji(kana) {
     ];
     let result = hira;
     for (const [k, r] of map) result = result.split(k).join(r);
+    /* numerology-hepburn-v1: ★ヘボン式は長音を書かない。
+         佐藤 = SATO（SATOU ではない）。数秘ラボもこの決まりで計算している。
+       ここを入れていなかったので、かとう→KATOU となり、
+       Uが1つ余分に入って D・S・M が全部ずれていた。
+       ★Pだけ合っていたのは、子音しか足さないのでUが関係ないから。
+       ・お段/う段のうしろの「う」は落とす（tou→to, yuu→yu, shuu→shu）
+       ・「おお」は言葉の途中なら詰める（大野 oono→ono）。
+         終わりは残す（高遠 takatoo）。 */
+    result = result.split(' ').map(function (w) {
+        w = w.replace(/([ou])u/g, '$1');
+        w = w.replace(/oo(?=.)/g, 'o');
+        return w;
+    }).join(' ');
     return result.toUpperCase().replace(/[^A-Z ]/g, '');
 }
 
@@ -388,6 +416,17 @@ window.numAskKana = function (name, birth, ptype) {
     };
 };
 
+/* numerology-hepburn-v1: ローマ字を直したときに出し直すので、
+   いま誰を見ているのかを覚えておく。 */
+var NUM_SEL = { name: '', birth: '' };
+
+window.onSearchRomanInput = function() {
+    if (!NUM_SEL.birth) return;
+    const r = (document.getElementById('search-roman').value || '')
+              .toUpperCase().replace(/[^A-Z ]/g, '');
+    renderSushi(NUM_SEL.name, NUM_SEL.birth, r, 'search-result');
+};
+
 window.selectPerson = function(val, name, birth, kana, ptype) {
     document.getElementById('num-candidates').classList.remove('show');
     document.getElementById('num-search').value = '';
@@ -395,6 +434,13 @@ window.selectPerson = function(val, name, birth, kana, ptype) {
     document.getElementById('search-selected-label').textContent = name;
     // ふりがなからローマ字を自動生成
     const roman = kanaToRomaji(kana);
+    /* numerology-hepburn-v1: ローマ字は自動変換を下敷きにして、人が直せる。
+       ★ふりがなが無い人では空のまま。そのときは箱を出さない
+         （直す前に、まずふりがなを登録してもらう案内が出る）。 */
+    NUM_SEL = { name: name, birth: birth || '' };
+    document.getElementById('search-roman').value = roman;
+    document.getElementById('search-roman-box').style.display =
+        (birth && roman) ? '' : 'none';
     if (birth) {
         renderSushi(name, birth, roman, 'search-result');
         /* staff-kana-v1: ふりがなが無いと、名前から出る6つが出ない。
@@ -415,6 +461,8 @@ window.selectPerson = function(val, name, birth, kana, ptype) {
 window.clearSearch = function() {
     document.getElementById('search-selected').style.display = 'none';
     document.getElementById('search-result').innerHTML = '';
+    document.getElementById('search-roman-box').style.display = 'none';   // numerology-hepburn-v1
+    NUM_SEL = { name: '', birth: '' };
 };
 
 // ========== 手入力 ==========
@@ -476,18 +524,24 @@ function calcFromName(roman) {
     const P = reduceNum(consonNums.length ? consonNums.reduce((a,b)=>a+b,0) : 0);
 
     // IT: 1〜9で最も多く出る数
+    /* numerology-hepburn-v1: ★同じ回数が並ぶことがある。並んだぶんは【全部】出す。
+       find() で最初の1つだけ拾っていたので、1・2 と出るはずが 1 だけになっていた。
+       LL（無い数字）は最初から並びで出していたのに、ITだけ揃っていなかった。 */
     const freq = {};
     for (let i=1;i<=9;i++) freq[i]=0;
     nums.forEach(n => { if(n>=1&&n<=9) freq[n]++; });
     const maxFreq = Math.max(...Object.values(freq));
-    const IT = maxFreq > 0 ? parseInt(Object.keys(freq).find(k=>freq[k]===maxFreq)) : null;
+    const ITS = maxFreq > 0
+        ? Object.keys(freq).filter(k=>freq[k]===maxFreq).map(Number).sort((a,b)=>a-b)
+        : [];
+    const IT = ITS.length ? ITS[0] : null;   // 詳細パネル用（代表の1つ）
 
     // LL: 1〜9で一度も出ない数
     const present = new Set(nums.filter(n=>n>=1&&n<=9));
     const LL = [];
     for (let i=1;i<=9;i++) { if (!present.has(i)) LL.push(i); }
 
-    return { D, S, P, IT, LL };
+    return { D, S, P, IT, ITS, LL };   // numerology-hepburn-v1: ITS=並んだぶん全部
 }
 
 // ========== メインレンダリング ==========
@@ -532,11 +586,12 @@ function renderSushi(name, birthIso, roman, targetId) {
         <div class="sushi-cell-label">成熟とともに</div>
     </div>` : `<div class="sushi-cell"><div class="sushi-cell-code">M</div><div class="sushi-cell-num">—</div><div class="sushi-cell-label">成熟とともに</div></div>`;
 
-    const itNum = nm?.IT ?? '—';
+    /* numerology-hepburn-v1: 並んだぶんを「1・2」の形で出す（LLと同じ見せ方）。 */
+    const itNum = (nm && nm.ITS && nm.ITS.length) ? nm.ITS.join('・') : '—';
     const llNums = llWithNote.length ? llWithNote.map(l=>l.num).join('・') : 'なし';
     const itCell = `<div class="sushi-cell sushi-cell-it" onclick="toggleDetail('detail-IT')">
         <div class="sushi-cell-code" style="color:#0288d1;">IT</div>
-        <div class="sushi-cell-num" style="color:#0288d1;">${itNum}</div>
+        <div class="sushi-cell-num" style="color:#0288d1;font-size:${String(itNum).length>4?'1.1rem':'1.4rem'}">${itNum}</div>
         <div class="sushi-cell-label">意識的に磨く傾向</div>
     </div>`;
     const llCell = `<div class="sushi-cell sushi-cell-ll" onclick="toggleDetail('detail-LL')">
