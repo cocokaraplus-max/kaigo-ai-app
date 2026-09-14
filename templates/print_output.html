@@ -329,16 +329,10 @@ select.po-select { font-size: 0.85rem; padding: 6px 10px; border-radius: 8px; bo
             </div>
             <!-- モニタリング（ケース記録カテゴリ） -->
             <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">モニタリング（ケース記録）</div>
-            <div class="po-toggle-grid">
-                <button class="po-toggle-btn on" id="tog-cat-心身状況" onclick="poToggleCat('心身状況')">心身状況</button>
-                <button class="po-toggle-btn on" id="tog-cat-食事" onclick="poToggleCat('食事')">食事</button>
-                <button class="po-toggle-btn on" id="tog-cat-入浴" onclick="poToggleCat('入浴')">入浴</button>
-                <button class="po-toggle-btn on" id="tog-cat-排泄" onclick="poToggleCat('排泄')">排泄</button>
-                <button class="po-toggle-btn on" id="tog-cat-コミュニケーション" onclick="poToggleCat('コミュニケーション')">コミュニケーション</button>
-                <button class="po-toggle-btn on" id="tog-cat-訓練状況" onclick="poToggleCat('訓練状況')">訓練状況</button>
-                <button class="po-toggle-btn on" id="tog-cat-ヒヤリハット" onclick="poToggleCat('ヒヤリハット')">ヒヤリハット</button>
-                <button class="po-toggle-btn on" id="tog-cat-その他" onclick="poToggleCat('その他')">その他</button>
-            </div>
+            {# rec-cat-single-source-v2: ボタンは施設のカテゴリ表から作る。
+               ★ここに8つ書いていたので、管理者MENUで足したカテゴリは
+                 画面に出ず、選べなかった（＝書類にも出なかった）。 #}
+            <div class="po-toggle-grid" id="po-cat-grid"></div>
             <!-- 訓練記録（評価） -->
             <div style="font-size:0.75rem;color:#5f6368;margin:8px 0 4px;">訓練記録（評価）</div>
             <div class="po-toggle-grid">
@@ -421,7 +415,48 @@ var poChartStyle = parseInt(localStorage.getItem('po_chart_style') || '1');
 var poChartSize  = parseInt(localStorage.getItem('po_chart_size')  || '2');
 
 var poItems = { changes: true, issues: true, goals: true, hope: true, weight: true, grip: true, tug: true, cs30: true, walk: true, walk_max: true, balance: true, special: true, no_record: false, images: false };
-var poCats = { '心身状況': true, '食事': true, '入浴': true, '排泄': true, 'コミュニケーション': true, '訓練状況': true, 'ヒヤリハット': true, 'その他': true };
+// rec-cat-single-source-v2: カテゴリは施設の表（/api/record_categories）から読む。
+//   ★ここは読み込む【前】の受け皿。読めなかったときもこのまま動く。
+var PO_CAT_FALLBACK = ['心身状況', '食事', '入浴', '排泄', 'コミュニケーション', '訓練状況', 'ヒヤリハット', 'その他'];
+var poCats = {};
+PO_CAT_FALLBACK.forEach(function (n) { poCats[n] = true; });
+
+/* rec-cat-single-source-v2: 施設のカテゴリを読んで、ボタンを作り直す。
+   ★読めなければ今までの8つのまま。空にはしない。
+   ★表に無い古いカテゴリも後ろに足す。過去の記録を書類から落とさないため。 */
+async function poLoadCats() {
+    var names = PO_CAT_FALLBACK.slice();
+    try {
+        var r = await fetch('/api/record_categories');
+        var j = await r.json();
+        var got = ((j && j.categories) || [])
+            .map(function (c) { return String((c && c.name) || '').trim(); })
+            .filter(function (n) { return !!n; });
+        if (got.length) {
+            names = got.slice();
+            PO_CAT_FALLBACK.forEach(function (n) { if (names.indexOf(n) < 0) names.push(n); });
+        }
+    } catch (e) { /* 読めなければ今までの一覧のまま */ }
+
+    var saved = {};
+    try { saved = JSON.parse(localStorage.getItem('po_cats') || '{}') || {}; } catch (e) {}
+    var next = {};
+    names.forEach(function (n) { next[n] = (n in saved) ? !!saved[n] : true; });
+    poCats = next;
+
+    var grid = document.getElementById('po-cat-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    names.forEach(function (n) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'po-toggle-btn' + (poCats[n] ? ' on' : '');
+        b.id = 'tog-cat-' + n;
+        b.textContent = n;
+        b.onclick = function () { poToggleCat(n); };
+        grid.appendChild(b);
+    });
+}
 // localStorageから設定を復元
 (function() {
     try {
@@ -502,6 +537,7 @@ function poSetAuthor(v) { poAuthor = v; }
         var el = document.getElementById('tog-cat-' + k);
         if (el) el.classList.toggle('on', poCats[k]);
     });
+    poLoadCats();   // rec-cat-single-source-v2: 施設のカテゴリでボタンを作る
     poLoadCheck();
     if (fCode === 'cocokaraplus-5526') {
         var cocoCard = document.querySelector('.po-tmpl-coco');
