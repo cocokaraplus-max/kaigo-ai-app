@@ -25719,6 +25719,202 @@ def tsusho_keikaku_print():
                   services=(plan.get("services") or []),
                   warns=warns,
                   facility_name=fac)
+# ----- tsusho-monitoring-v1 : 通所介護モニタリング表 -----
+
+def _tk_month_last(ym):  # tsusho-monitoring-v1
+    """'YYYY-MM' の月末日を 'YYYY-MM-DD' で返す。おかしければ空。"""
+    s = str(ym or "").strip()
+    if len(s) != 7 or s[4] != "-":
+        return ""
+    try:
+        y, m = int(s[:4]), int(s[5:])
+        nxt = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
+        return (nxt - timedelta(days=1)).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+def _tk_plan_on(supabase, f_code, patient_id, on_date):  # tsusho-monitoring-v1
+    """その日に効いている計画書を返す。返り値は (計画書 または None, 確かめられたか)。
+
+    ★その日以前でいちばん新しいもの。終わりの日は持たない
+      （勤怠設定の履歴と同じ考え方）。
+    ★ここでも「無かった」と「読めなかった」を分ける。
+    """
+    if not on_date:
+        return None, True
+    try:
+        r = (supabase.table("tsusho_plans").select("id")
+             .eq("facility_code", f_code).eq("patient_id", patient_id)
+             .lte("created_on", on_date)
+             .order("created_on", desc=True).limit(1).execute())
+        rows = r.data or []
+    except Exception as e:
+        print("[tsusho-mon] 計画書を探せません: %s" % e, flush=True)
+        return None, False
+    if not rows:
+        return None, True
+    return _tk_plan_full(supabase, f_code, rows[0]["id"])
+
+
+def _tk_user_name(supabase, f_code, patient_id):  # tsusho-monitoring-v1
+    """評価は user_name で引く作りなので、名前を取る。読めなければ空。"""
+    try:
+        r = (supabase.table("patient_profiles").select("user_name")
+             .eq("facility_code", f_code).eq("id", patient_id).limit(1).execute())
+        return _tk_clean((r.data or [{}])[0].get("user_name"))
+    except Exception as e:
+        print("[tsusho-mon] 利用者名を読めません: %s" % e, flush=True)
+        return ""
+
+
+#   ★評価の満足度から、②の下敷きを作る。
+#     「やや不満(△)」は下敷きにしない。紙の②は 満足／不満足 の2つしかなく、
+#     △をどちらかに寄せると書類が事実と違うものになる。
+_TK_SATIS_TO_Q2 = {"○": 1, "×": 2}
+
+
+@app.route("/api/tsusho/monitoring", methods=["GET"])  # tsusho-monitoring-v1
+@login_required
+def api_tsusho_monitoring_get():
+    """その月のモニタリング表。無ければ空＋下敷きを返す。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        pid = _tk_txt(request.args.get("patient_id"), 64)
+        ym = _tk_txt(request.args.get("ym"), 7)
+        last = _tk_month_last(ym)
+        if not pid or not last:
+            return jsonify({"status": "error", "message": "利用者と対象月を選んでください。"}), 400
+
+        mon = None
+        try:
+            r = (supabase.table("tsusho_monitorings").select("*")
+                 .eq("facility_code", f_code).eq("patient_id", pid)
+                 .eq("year_month", ym).limit(1).execute())
+            mon = (r.data or [None])[0]
+        except Exception as e:
+            print("[tsusho-mon] 読めません: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "いま開けませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+
+        # その月に効いている計画書（①の判断はこの目標に対して答える）
+        plan, ok = _tk_plan_on(supabase, f_code, pid, last)
+        plan_out = None
+        if ok and plan:
+            plan_out = {
+                "id": plan.get("id"),
+                "created_on": plan.get("created_on"),
+                "short_from": plan.get("short_from"), "short_to": plan.get("short_to"),
+                "goals": [g for g in (plan.get("goals") or []) if g.get("kind") == "short"],
+            }
+
+        # ②の下敷き（評価ページの満足度）
+        hint = {"satisfaction": "", "q2": None, "note": ""}
+        u_name = _tk_user_name(supabase, f_code, pid)
+        if u_name:
+            try:
+                er = (supabase.table("patient_evaluations")
+                      .select("satisfaction,service_appropriateness")
+                      .eq("facility_code", f_code).eq("user_name", u_name)
+                      .eq("year_month", ym).limit(1).execute())
+                ev = (er.data or [{}])[0]
+                s = _tk_clean(ev.get("satisfaction"))
+                hint["satisfaction"] = s
+                if s in _TK_SATIS_TO_Q2:
+                    hint["q2"] = _TK_SATIS_TO_Q2[s]
+                    hint["note"] = "評価ページの満足度は「%s」でした。" % (
+                        "満足" if s == "○" else "不満")
+                elif s:
+                    # ★△は寄せない。人に決めてもらう。
+                    hint["note"] = ("評価ページの満足度は「やや不満」でした。"
+                                    "この表は 満足／不満足 の2つしかないので、"
+                                    "どちらにするかは選んでください。")
+                else:
+                    hint["note"] = "この月の評価に、満足度がまだ入っていません。"
+            except Exception as e:
+                print("[tsusho-mon] 評価を読めません: %s" % e, flush=True)
+                hint["note"] = "評価を読めませんでした。手で選んでください。"
+
+        return jsonify({"status": "success", "monitoring": mon,
+                        "plan": plan_out, "plan_read_ok": bool(ok), "hint": hint})
+    except Exception as e:
+        print("api_tsusho_monitoring_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/tsusho/monitoring", methods=["POST"])  # tsusho-monitoring-v1
+@login_required
+def api_tsusho_monitoring_save():
+    """モニタリング表を保存する（無ければ作る）。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        d = request.json or {}
+        pid = _tk_txt(d.get("patient_id"), 64)
+        ym = _tk_txt(d.get("ym"), 7)
+        if not pid or not _tk_month_last(ym):
+            return jsonify({"status": "error", "message": "利用者と対象月を選んでください。"}), 400
+
+        def _pick(key, allowed):
+            """選択肢。★空文字は None（0にしない・当てずっぽうで埋めない）。"""
+            v = d.get(key)
+            try:
+                if v is None or str(v).strip() == "":
+                    return None
+                n = int(v)
+            except Exception:
+                return None
+            return n if n in allowed else None
+
+        row = {
+            "facility_code": f_code,
+            "patient_id": pid,
+            "year_month": ym,
+            "plan_id": _tk_txt(d.get("plan_id"), 64) or None,
+            "done_on": _tk_day(d.get("done_on")) or None,
+            "doer": _tk_txt(d.get("doer"), 100),
+            "q1_choice": _pick("q1_choice", (1, 2, 3)), "q1_note": _tk_txt(d.get("q1_note")),
+            "q2_choice": _pick("q2_choice", (1, 2)),    "q2_note": _tk_txt(d.get("q2_note")),
+            "q3_choice": _pick("q3_choice", (1, 2)),    "q3_note": _tk_txt(d.get("q3_note")),
+            "q4_choice": _pick("q4_choice", (1, 2)),    "q4_note": _tk_txt(d.get("q4_note")),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        try:
+            # ★あるかどうかは先に読んで確かめる（update の戻りに頼らない）
+            ex = (supabase.table("tsusho_monitorings").select("id")
+                  .eq("facility_code", f_code).eq("patient_id", pid)
+                  .eq("year_month", ym).limit(1).execute())
+            rows = ex.data or []
+            if rows:
+                (supabase.table("tsusho_monitorings").update(row)
+                 .eq("facility_code", f_code).eq("id", rows[0]["id"]).execute())
+                mon_id = rows[0]["id"]
+            else:
+                row["confirmed_by"] = my_name
+                row["confirmed_at"] = datetime.now(timezone.utc).isoformat()
+                ins = supabase.table("tsusho_monitorings").insert(row).execute()
+                mon_id = (ins.data or [{}])[0].get("id")
+        except Exception as e:
+            print("[tsusho-mon] 保存に失敗: %s" % e, flush=True)
+            return jsonify({"status": "error", "message": "保存できませんでした。"}), 500
+
+        return jsonify({"status": "success", "id": mon_id, "message": "保存しました。"})
+    except Exception as e:
+        print("api_tsusho_monitoring_save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+# ----- /tsusho-monitoring-v1 -----
+
+
 # ===== /tsusho-keikaku-v1 =====
 
 
