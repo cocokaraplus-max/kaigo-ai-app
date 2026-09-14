@@ -179,10 +179,13 @@
 
     <div class="tk-acts" style="margin-top:16px;">
       <button type="button" class="tk-btn main" id="tk-saveBtn" onclick="tkSave()">保存する</button>
+      {# tsusho-keikaku-print-v1 #}
+      <button type="button" class="tk-btn" id="tk-printBtn" onclick="tkPrint()" style="display:none;">印刷</button>
       <button type="button" class="tk-btn" onclick="tkBack()">一覧へ戻る</button>
       <button type="button" class="tk-btn del" id="tk-delBtn" onclick="tkDelete()" style="margin-left:auto;">この計画書を消す</button>
     </div>
-    <div class="tk-note">★印刷は次の版で入れます。</div>
+    <div class="tk-note">★［印刷］で出るのは<b>保存された中身</b>です。
+      書きかけのものは紙に出ません。</div>
   </div>
 
   <div id="tk-nopatient" class="tk-note">利用者を選んでください。</div>
@@ -460,6 +463,7 @@ async function tkNew(){
   ['issue','long','short'].forEach(function(k){ tkAddGoal(k, ''); });
   tkAddSvc();
   $('tk-delBtn').style.display = 'none';
+  $('tk-printBtn').style.display = 'none';   // tsusho-keikaku-print-v1: まだ保存前
   TK.dirty = false;
   await tkHeader();
   tkShowEdit();
@@ -493,6 +497,7 @@ async function tkOpen(id){
     if(!(p.services || []).length) tkAddSvc();
     (p.programs || []).forEach(function(x){ tkAddPrg(x); });
     $('tk-delBtn').style.display = '';
+    $('tk-printBtn').style.display = '';     // tsusho-keikaku-print-v1
     TK.dirty = false;
     await tkHeader();
     tkShowEdit();
@@ -505,6 +510,17 @@ async function tkBack(){
 }
 
 /* ── 保存・削除 ── */
+/* tsusho-keikaku-print-v1: 紙に出す。
+   ★出るのは保存された中身。書きかけは出ない。押す前に伝える。
+     出してから気づくのでは遅い。 */
+function tkPrint(){
+  if(!TK.planId){ tkToast('先に保存してください', true); return; }
+  if(TK.dirty && !confirm('保存していない変更があります。\n\n'
+      + '★紙に出るのは【保存された中身】です。\n'
+      + '　いまの書きかけは出ません。\n\nこのまま印刷しますか。')) return;
+  window.open('/tsusho_keikaku/print?id=' + encodeURIComponent(TK.planId), '_blank');
+}
+
 async function tkSave(){
   if(!TK.patient){ tkToast('利用者を選んでください', true); return; }
   if(!$('tk-createdOn').value){ tkToast('作成年月日を入れてください', true); return; }
@@ -543,6 +559,7 @@ async function tkSave(){
     TK.planId = j.id;
     TK.dirty = false;
     $('tk-delBtn').style.display = '';
+    $('tk-printBtn').style.display = '';     // tsusho-keikaku-print-v1
     tkToast(j.message || '保存しました');
   }catch(e){ tkToast('保存できませんでした（通信エラー）', true); }
   finally{ b.disabled = false; b.textContent = '保存する'; }

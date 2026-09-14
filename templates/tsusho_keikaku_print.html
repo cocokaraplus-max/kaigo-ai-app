@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>通所介護計画書 - {{ pt.user_name or '' }}</title>
+{# tsusho-keikaku-print-v1
+   ★base.html を使わない。base.html は body{height:100vh;overflow:hidden} を
+     入れてあるので、被せると印刷が画面1枚分で切れる。
+     書類出力・送迎の記録表と同じく、もとから被せない。 #}
+<style>
+* { box-sizing: border-box; }
+body { margin:0; background:#f1f3f4; font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
+       color:#000; font-size:10.5pt; line-height:1.5; }
+.bar { background:#fff; border-bottom:1px solid #dadce0; padding:10px 14px; display:flex;
+       gap:10px; align-items:center; position:sticky; top:0; z-index:5; }
+.bar b { font-size:.95rem; }
+.bar button, .bar a { background:#fff; border:1px solid #dadce0; border-radius:8px; padding:7px 14px;
+                      font-size:.83rem; font-weight:700; color:#202124; cursor:pointer;
+                      text-decoration:none; font-family:inherit; }
+.bar .main { background:#0F6E56; border-color:#0F6E56; color:#fff; }
+.sheet { width:210mm; min-height:297mm; margin:12px auto; background:#fff; padding:10mm;
+         box-shadow:0 1px 4px rgba(0,0,0,.2); }
+h1 { text-align:center; font-size:13pt; margin:0 0 6px; letter-spacing:.2em; }
+.head-right { text-align:right; font-size:9.5pt; margin-bottom:4px; }
+table { width:100%; border-collapse:collapse; }
+th, td { border:1px solid #000; padding:3px 5px; vertical-align:top; white-space:pre-wrap; word-break:break-word; }
+th { background:#eee; font-weight:700; text-align:center; white-space:nowrap; }
+.lbl { background:#eee; font-weight:700; text-align:center; white-space:nowrap; width:26mm; }
+.sec { font-weight:700; margin:9px 0 3px; font-size:10pt; }
+.g-line { margin:0; }
+.note-sm { font-size:9pt; }
+.pg { text-align:center; font-size:9pt; margin-top:6px; }
+.maru { display:inline-block; border:1px solid #000; border-radius:50%; padding:0 4px; }
+.empty { color:#999; }
+@media print {
+  body { background:#fff; }
+  .bar { display:none !important; }
+  .sheet { width:auto; min-height:0; margin:0; padding:0; box-shadow:none; }
+  .sheet + .sheet { page-break-before:always; }
+  table, tr, td, th { page-break-inside:avoid; }
+  @page { size:A4 portrait; margin:10mm; }
+}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <b>通所介護計画書</b>
+  <span class="note-sm">保存された中身を出しています</span>
+  <button class="main" onclick="window.print()">印刷する</button>
+  <a href="/tsusho_keikaku">戻る</a>
+</div>
+
+{# ══════════ 1枚目 ══════════ #}
+<div class="sheet">
+  <h1>通所介護計画書</h1>
+  <div class="head-right">作成年月日　{{ wa.created_on }}</div>
+
+  <table>
+    <tr>
+      <td class="lbl">利用者名</td><td colspan="3">{{ pt.user_name or '' }}　様</td>
+      <td class="lbl">性別</td><td>{{ pt.gender or '' }}</td>
+      <td class="lbl">生年月日</td><td>{{ wa.birth }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">要介護度</td><td colspan="3">{{ pt.care_level or '' }}</td>
+      <td class="lbl">認定有効期間</td><td colspan="3">{{ wa.cert_from }}{% if wa.cert_to %} ～ {{ wa.cert_to }}{% endif %}</td>
+    </tr>
+    <tr>
+      <td class="lbl">住所</td><td colspan="7">{% if pt.postal_code %}〒{{ pt.postal_code }}　{% endif %}{{ pt.address or '' }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">事業者名</td><td colspan="3">{{ facility_name }}</td>
+      <td class="lbl">計画作成者氏名</td><td colspan="3">{{ plan.planner_name or '' }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">居宅介護支援事業者</td><td colspan="3">{{ pt.support_office or '' }}</td>
+      <td class="lbl">担当</td><td colspan="3">{{ pt.care_manager_name or '' }}{% if pt.care_manager_name %}　様{% endif %}</td>
+    </tr>
+  </table>
+
+  <div class="sec">【援助目標】</div>
+  <table>
+    <tr>
+      <td class="lbl" style="width:30mm;">解決すべき課題</td>
+      <td>{% for g in goals.issue %}<div class="g-line">{{ loop.index }}　{{ g.body }}</div>{% else %}<span class="empty">（記入なし）</span>{% endfor %}</td>
+    </tr>
+    <tr>
+      <td class="lbl">援助目標<br>長期目標</td>
+      <td>{% if wa.long_from or wa.long_to %}<div class="g-line">※長期目標期間　{{ wa.long_from }} ～ {{ wa.long_to }}</div>{% endif %}{% for g in goals.long %}<div class="g-line">{{ loop.index }}　{{ g.body }}</div>{% else %}<span class="empty">（記入なし）</span>{% endfor %}</td>
+    </tr>
+    <tr>
+      <td class="lbl">援助目標<br>短期目標</td>
+      <td>{% if wa.short_from or wa.short_to %}<div class="g-line">※短期目標期間　{{ wa.short_from }} ～ {{ wa.short_to }}</div>{% endif %}{% for g in goals.short %}<div class="g-line">{{ loop.index }}　{{ g.body }}</div>{% else %}<span class="empty">（記入なし）</span>{% endfor %}</td>
+    </tr>
+    <tr>
+      <td class="lbl">本人・家族の希望</td>
+      <td>{% if plan.wish_self %}<div class="g-line">ご本人：{{ plan.wish_self }}</div>{% endif %}{% if plan.wish_family %}<div class="g-line">ご家族{% if plan.wish_family_rel %}（{{ plan.wish_family_rel }}）{% endif %}：{{ plan.wish_family }}</div>{% endif %}{% if not plan.wish_self and not plan.wish_family %}<span class="empty">（記入なし）</span>{% endif %}</td>
+    </tr>
+    <tr>
+      <td class="lbl">留意点</td>
+      <td>{% if plan.notes %}{{ plan.notes }}{% else %}<span class="empty">（記入なし）</span>{% endif %}</td>
+    </tr>
+  </table>
+
+  <div class="sec">【週間計画表】</div>
+  <table>
+    <tr><th style="width:20mm;">サービス</th><th style="width:34mm;">提供時間</th><th>報酬区分</th><th style="width:46mm;">利用予定</th></tr>
+    {% for s in services %}
+    <tr>
+      <td style="text-align:center;">{{ s.seq }}</td>
+      <td style="text-align:center;">{{ s.time_from or '' }}{% if s.time_to %}～{{ s.time_to }}{% endif %}</td>
+      <td>{{ s.reward_class or '' }}</td>
+      <td>{{ s.weekdays or '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="empty">（記入なし）</td></tr>
+    {% endfor %}
+  </table>
+
+  <div class="pg">1/2</div>
+</div>
+
+{# ══════════ 2枚目 ══════════ #}
+<div class="sheet">
+  <div class="sec">【援助内容・個別援助内容】</div>
+  {% for s in services %}
+  <table>
+    <tr><th colspan="5">プログラム（サービス{{ s.seq }}）</th></tr>
+    <tr>
+      <th style="width:10mm;">No</th><th style="width:18mm;">時間</th>
+      <th style="width:40mm;">プログラム名</th><th>内容</th><th style="width:48mm;">留意事項</th>
+    </tr>
+    <tr>
+      <td colspan="5">迎え（{% if s.pickup %}<span class="maru">有</span>　無{% else %}有　<span class="maru">無</span>{% endif %}）</td>
+    </tr>
+    {% if s.time_from %}
+    <tr><td></td><td style="text-align:center;">{{ s.time_from }}</td><td colspan="3">サービス提供開始</td></tr>
+    {% endif %}
+    {% for x in progs.get(s.seq, []) %}
+    <tr>
+      <td style="text-align:center;">{{ loop.index }}</td>
+      <td style="text-align:center;">{{ x.time_hm or '' }}</td>
+      <td>{{ x.name or '' }}</td>
+      <td>{{ x.body or '' }}</td>
+      <td>{{ x.note or '' }}</td>
+    </tr>
+    {% endfor %}
+    {% if s.time_to %}
+    <tr><td></td><td style="text-align:center;">{{ s.time_to }}</td><td colspan="3">サービス提供終了</td></tr>
+    {% endif %}
+    <tr>
+      <td colspan="2">送り（{% if s.dropoff %}<span class="maru">有</span>　無{% else %}有　<span class="maru">無</span>{% endif %}）</td>
+      <td class="lbl">評価</td><td colspan="2" style="height:14mm;"></td>
+    </tr>
+  </table>
+  <div style="height:6px;"></div>
+  {% else %}
+  <table><tr><td class="empty">（週間計画表が入っていないので、プログラムを出せません）</td></tr></table>
+  {% endfor %}
+
+  <div class="note-sm" style="margin:6px 0 3px;">上記の計画書に基づきサービス提供を行います。</div>
+
+  <table>
+    <tr>
+      <td class="lbl">備考</td><td colspan="3">{{ plan.remarks or '' }}</td>
+      <td rowspan="3" style="width:70mm;">
+        <div class="note-sm" style="margin-bottom:4px;">説明を受け、内容に同意し交付を受けました。</div>
+        <table>
+          <tr><td class="lbl" style="width:26mm;">署名・捺印</td><td style="height:12mm;"></td><td style="width:10mm;text-align:center;">印</td></tr>
+          <tr><td class="lbl">代筆（本人との関係）</td><td>{% if plan.consent_proxy_rel %}（　{{ plan.consent_proxy_rel }}　）{% else %}（　　　　）{% endif %}</td><td style="text-align:center;">印</td></tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td class="lbl">説明日</td><td>{{ wa.explained_on }}</td>
+      <td class="lbl">説明者</td><td>{{ plan.explainer or '' }}</td>
+    </tr>
+    <tr>
+      <td class="lbl">事業者名</td><td colspan="3">{{ facility_name }}</td>
+    </tr>
+  </table>
+
+  <div class="pg">2/2</div>
+</div>
+
+</body>
+</html>

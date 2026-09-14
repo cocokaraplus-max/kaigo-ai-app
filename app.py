@@ -25598,6 +25598,77 @@ def api_tsusho_program_template():
     except Exception as e:
         print("api_tsusho_program_template error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+def _tk_wareki(v):  # tsusho-keikaku-print-v1
+    """YYYY-MM-DD を和暦にする。空なら空。
+
+    ★実物の紙が和暦。ケアマネや家族が、他の書類と並べて見る。
+      西暦で出すと、そこだけ読み替えることになる。
+    """
+    s = _tk_day(v)
+    return birth_to_wareki_text(s) if s else ""
+
+
+@app.route("/tsusho_keikaku/print")  # tsusho-keikaku-print-v1
+@login_required
+def tsusho_keikaku_print():
+    """計画書を紙の形で出す。
+
+    ★出るのは【保存された中身】。画面で書きかけのものは出ない。
+    ★base.html は使わない（印刷で画面1枚分に切れるため）。
+    """
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    if not is_tsusho_keikaku_enabled(supabase, f_code):
+        return redirect("/top")
+
+    plan, ok = _tk_plan_full(supabase, f_code, _tk_txt(request.args.get("id"), 64))
+    if not ok or plan is None:
+        # ★紙の画面でエラーを出しても仕方がない。一覧へ戻す。
+        return redirect("/tsusho_keikaku")
+
+    pt = {}
+    try:
+        r = (supabase.table("patient_profiles")
+             .select("user_name,gender,birth_date,care_level,address,postal_code,"
+                     "certification_start_date,certification_end_date,"
+                     "support_office,care_manager_name")
+             .eq("facility_code", f_code).eq("id", plan.get("patient_id"))
+             .limit(1).execute())
+        pt = (r.data or [{}])[0]
+    except Exception as e:
+        print("[tsusho-print] 利用者を読めません: %s" % e, flush=True)
+
+    # 目標を 課題／長期／短期 に分ける（並びは seq のまま）
+    goals = {"issue": [], "long": [], "short": []}
+    for g in (plan.get("goals") or []):
+        if g.get("kind") in goals:
+            goals[g["kind"]].append(g)
+    for k in goals:
+        goals[k].sort(key=lambda x: x.get("seq") or 0)
+
+    # プログラムは、どのサービスのものかで分ける
+    progs = {}
+    for x in (plan.get("programs") or []):
+        progs.setdefault(x.get("service_seq") or 1, []).append(x)
+    for k in progs:
+        progs[k].sort(key=lambda x: x.get("seq") or 0)
+
+    wa = {
+        "created_on": _tk_wareki(plan.get("created_on")),
+        "explained_on": _tk_wareki(plan.get("explained_on")),
+        "birth": _tk_wareki(pt.get("birth_date")),
+        "cert_from": _tk_wareki(pt.get("certification_start_date")),
+        "cert_to": _tk_wareki(pt.get("certification_end_date")),
+        "long_from": _tk_wareki(plan.get("long_from")),
+        "long_to": _tk_wareki(plan.get("long_to")),
+        "short_from": _tk_wareki(plan.get("short_from")),
+        "short_to": _tk_wareki(plan.get("short_to")),
+    }
+
+    return render("tsusho_keikaku_print.html",
+                  plan=plan, pt=pt, goals=goals, progs=progs, wa=wa,
+                  services=(plan.get("services") or []),
+                  facility_name=(_sj_facility_name(supabase, f_code) or ""))
 # ===== /tsusho-keikaku-v1 =====
 
 
