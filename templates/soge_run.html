@@ -1543,12 +1543,18 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
   }
 
   /* soge-dateplan-notice-v1: この日がどちらの配車で動くのかを1行で出す。
-     ★state.date_plan は true / false / null。
+     ★この値は true / false / null の3つ。
        null は「確かめられなかった」。そのときは【何も出さない】。
        読めなかっただけの日に「いつもの配車で動いています」と出すと嘘になる。 */
   function srDatePlanNote() {
-    if (state.date_plan !== true) return '';
-    var canEdit = (state.mode !== 'drive') && !state.locked && !state.past;
+    /* soge-dateplan-notice-v2: ★サーバーから来たものは state ではなく
+       【state.data】に入る。v1 は data を挟まずに読んでいたので
+       いつも undefined になり、案内が一度も出なかった。
+       確定済み・過ぎた日の判定も同じ間違いをしていた。
+       この画面の他の所はすべて var d = state.data で読む。そこに合わせる。 */
+    var d = state.data || {};
+    if (d.date_plan !== true) return '';
+    var canEdit = (state.mode !== 'drive') && !d.locked && !d.past;
     return '<span class="ex" style="display:block;background:#fff8e1;'
       + 'border:1px solid #ffd54f;border-radius:8px;padding:8px 10px;margin:6px 0;'
       + 'color:#795548;line-height:1.7;">'
