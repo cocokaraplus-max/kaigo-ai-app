@@ -562,6 +562,15 @@ var A2 = {
 
 function $(id){ return document.getElementById(id); }
 
+/* eval-three-entrances-v2: 画面ごとの見出し（名前・対象月・介護区分）の置き場所。
+   ★ここに接頭辞を1つ足せば、名前も月も区分もまとめて出るようになる。
+     v1 では名前・月・区分がそれぞれ別の一覧にベタ書きされていて、
+     画面D（看護）を足したときに3か所とも足し忘れ、
+     【看護のページだけ名前も月も空】になった。
+   ★同じ一覧を離れた所に何度も書かない。今週これで5件目。
+     a2-who … 入口の画面 / a2-b … 評価担当 / a2-c … 機能訓練指導員 / a2-d … 看護 */
+var A2_HEADS = ['a2-who', 'a2-b', 'a2-c', 'a2-d'];
+
 /* 知らせの帯。★「終わりました」専用。止める必要のあるものには使わない。 */
 function a2Toast(msg, ok){
   var t = $('a2-toast');
@@ -631,7 +640,7 @@ function a2SetCls(v){ A2.cls = v; a2CloseCls(); a2DrawCls(); a2DrawGoals(); }
 function a2DrawCls(){
   var lv = (A2.patient && A2.patient.care_level) || '';
   var show = A2.cls ? (A2.cls + (lv && a2ClsFromLevel(lv) === A2.cls ? '（'+lv+'）' : '（手で変更）')) : '未設定';
-  ['a2-whoCls','a2-bCls','a2-cCls'].forEach(function(id){ if($(id)) $(id).textContent = show; });
+  A2_HEADS.forEach(function(p){ var e = $(p + 'Cls'); if(e) e.textContent = show; });
 }
 
 /* ── 評価を読み込む ── */
@@ -642,8 +651,10 @@ async function a2Load(){
   $('a2-entries').style.display='';
   // tkg-anchor-optin-v1: 入口カードはここで初めて出るので、「?」を付け直す
   if(window.tkgRefreshHints) window.tkgRefreshHints();
-  ['a2-whoName','a2-bName','a2-cName'].forEach(function(id){ if($(id)) $(id).textContent = A2.patient.name + ' さん'; });
-  ['a2-whoYm','a2-bYm','a2-cYm'].forEach(function(id){ if($(id)) $(id).textContent = ym; });
+  A2_HEADS.forEach(function(p){
+    var n = $(p + 'Name'); if(n) n.textContent = A2.patient.name + ' さん';
+    var y = $(p + 'Ym');   if(y) y.textContent = ym;
+  });
 
   try{
     var r = await fetch('/api/get_patient_evaluation?user_name='+encodeURIComponent(A2.patient.name)
