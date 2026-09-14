@@ -30926,6 +30926,23 @@ def soge_materialize_day(supabase, f_code, date_str, force=False):  # soge-run-v
     return {"built": True, "reason": "built"}
 
 
+def _soge_date_plan_on(supabase, f_code, date_str):  # soge-dateplan-notice-v1
+    """その日が【今日だけの配車】で動いているか。
+
+    True  … 今日だけの配車がある（いつもの配車はこの日に届かない）
+    False … 無い（いつもの配車で動く）
+    None  … 確かめられなかった
+
+    ★None を False にしない。読めなかっただけの日に
+      「いつもの配車で動いています」と出すと、それは嘘になる。
+      分からないときは、画面に何も出さない。
+    """
+    _row, _ok = _soge_date_plan_row(supabase, f_code, date_str)
+    if not _ok:
+        return None
+    return bool(_row)
+
+
 def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
     """運行画面のデータ。車ごとにまとめる（運転手は自分の車だけ見ればいい）。"""
     dr = (supabase.table("soge_days").select("*")
@@ -30934,6 +30951,8 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
     if not days:
         return {"date": date_str, "vehicles": [],
                 "locked": _soge_day_locked(supabase, f_code, date_str), "touched": False,
+                # soge-dateplan-notice-v1: どちらの配車で動く日なのかを画面に渡す
+                "date_plan": _soge_date_plan_on(supabase, f_code, date_str),
                 "past": date_str < datetime.now(_soge_jst()).strftime("%Y-%m-%d")}
 
     ids = [d["id"] for d in days]
@@ -31065,6 +31084,8 @@ def _soge_run_payload(supabase, f_code, date_str):  # soge-run-v1
     _can = _soge_past_admin_ok(supabase, f_code, date_str, session.get("my_name", ""))
     return {"date": date_str, "vehicles": list(vehicles.values()),
             "can_edit": bool(_can),                      # soge-past-admin-v1
+            # soge-dateplan-notice-v1: どちらの配車で動く日なのかを画面に渡す
+            "date_plan": _soge_date_plan_on(supabase, f_code, date_str),
             "locked": st["locked"], "touched": st["touched"], "past": st["past"]}
 
 
