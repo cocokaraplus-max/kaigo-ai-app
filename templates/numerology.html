@@ -401,8 +401,14 @@ window.selectPerson = function(val, name, birth, kana, ptype) {
            黙って欠けたままにしない。 */
         if (!roman) numAskKana(name, birth, ptype || '');
     } else {
+        /* staff-kana-v2: ★職員に「利用者管理から」と案内していた。
+           そこには職員がいないので、探して見つからない時間を作る。
+           画面が嘘をつかないように、どちらの一覧かで書き分ける。 */
+        const _where = (ptype === 'staff')
+            ? '管理者MENUの職員一覧で、その人のケーキのボタンから登録してください。'
+            : '管理者MENUの利用者管理から登録してください。';
         document.getElementById('search-result').innerHTML =
-            `<div class="alert alert-warning" style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;"><span class="material-symbols-outlined">warning</span><div><b>${name}</b>さんの生年月日が登録されていません。<br><span style="font-size:0.82rem;color:#5f6368;">管理者MENUの利用者管理から登録してください。</span></div></div>`;
+            `<div class="alert alert-warning" style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;"><span class="material-symbols-outlined">warning</span><div><b>${name}</b>さんの生年月日が登録されていません。<br><span style="font-size:0.82rem;color:#5f6368;">${_where}</span></div></div>`;
     }
 };
 
