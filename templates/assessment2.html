@@ -256,6 +256,24 @@
         <div class="meta"><span id="a2-metaEval">読み込み中…</span></div>
       </button>
 
+      {# eval-three-entrances-v1: 看護師の入口。
+         ★並びは「ご本人に聞く → 体調を看る → 体の評価」。
+           人の目に触れる順番が、そのまま記録の順番になる。 #}
+      <button type="button" class="a2-ent" id="a2-entNs" onclick="a2Enter('ns')">
+        <div class="top">
+          <div class="ic blue">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1558d6" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M2 12h20"/></svg>
+          </div>
+          <div class="tt">
+            <div class="t1" data-tkg-anchor="a2-entNs">体調を看て記録する</div>
+            <div class="t2">体調・皮膚・服薬など、看護師が見たこと</div>
+          </div>
+          <span class="a2-chip" id="a2-chipNs">—</span>
+        </div>
+        <div class="meta"><span id="a2-metaNs">読み込み中…</span></div>
+      </button>
+
       <button type="button" class="a2-ent" id="a2-entFt" onclick="a2Enter('ft')">
         <div class="top">
           <div class="ic green">
@@ -423,7 +441,8 @@
     </div></div>
 
     <div class="a2-sec"><h3>3. 報告文を作る</h3><div class="bd">
-      <div class="a2-warn">AIは<b>体の評価と、聞き取った内容の両方を読んで</b>作ります。</div>
+      {# eval-three-entrances-v1: 読む材料が3つになった #}
+      <div class="a2-warn">AIは<b>体の評価・看護の記録・聞き取った内容の3つを読んで</b>作ります。</div>
       <div class="a2-inline"><span class="a2-lab">長さ</span>
         <!-- a2-len-v1: 150〜500文字の50刻み。★200は選んだままにする
              （開いたときの見え方を変えないため）。 -->
@@ -453,6 +472,38 @@
       <button type="button" class="a2-del" onclick="a2ClearSection('ft')">このページの入力を消す</button>
       <div class="a2-note">体の評価・訓練による変化・課題とその要因・特記事項が消えます。
         <b>評価担当ページの入力は消えません。</b></div>
+    </div>
+  </div>
+
+  {# ── 画面D：体調を看て記録する（eval-three-entrances-v1） ── #}
+  <div id="a2-scD" style="display:none;">
+    <div class="a2-bar"><button type="button" onclick="a2Back()">← 戻る</button><b>体調を看て記録する</b></div>
+
+    <div class="a2-who small">
+      <div class="nm" id="a2-dName"></div>
+      <div class="sub"><span id="a2-dYm"></span><span class="auto" id="a2-dCls">—</span></div>
+    </div>
+
+    <div class="a2-sec"><h3>1. 体調を看て記録する</h3><div class="bd">
+      <textarea id="a2-nsdata" rows="8"
+        placeholder="バイタル・皮膚の状態・服薬・食事量・排泄・受診や往診のことなど、見たままを記録します"></textarea>
+      <div class="a2-note">★この内容は<b>報告文を作るときにAIが読みます</b>。
+        機能訓練指導員の画面からも読めます。</div>
+    </div></div>
+
+    <div class="a2-sec"><h3>2. 評価担当者が聞き取った内容</h3><div class="bd">
+      <div class="a2-other"><div class="h" id="a2-nsMirrorH">（まだ記入がありません）</div>
+        <div class="tx" id="a2-nsMirror"></div></div>
+      <div class="a2-note">★ここでは<b>直せません</b>。直すのは書いた本人の画面です。</div>
+    </div></div>
+
+    <button type="button" class="a2-btn save" onclick="a2Save('ns')">保存する</button>
+    <div class="a2-note center">★保存されるのは、この画面にある欄だけです。相手の入力は触りません。</div>
+
+    <div class="a2-secdel">
+      <button type="button" class="a2-del" onclick="a2ClearSection('ns')">このページの入力を消す</button>
+      <div class="a2-note">看護の記録が消えます。
+        <b>評価担当ページ・機能訓練指導員ページの入力は消えません。</b></div>
     </div>
   </div>
 
@@ -655,6 +706,10 @@ function a2DrawStatus(){
   ];
   set('a2-chipEval','a2-metaEval', evalItems.filter(Boolean).length, 4,
       ev.evaluator_name, ev.editing_by_eval);
+  // eval-three-entrances-v1: 看護師：看護の記録 の1つ
+  var nsItems = [(ev.source_data_ns||'').trim()];
+  set('a2-chipNs','a2-metaNs', nsItems.filter(Boolean).length, 1,
+      ev.evaluator_name, ev.editing_by_ns);
   // 機能訓練指導員：体の評価・訓練による変化・課題とその要因 の3つ
   var ftItems = [(ev.source_data||'').trim(), (ev.changes_by_training||'').trim(), (ev.issues_and_causes||'').trim()];
   set('a2-chipFt','a2-metaFt', ftItems.filter(Boolean).length, 3,
@@ -813,6 +868,7 @@ function a2FillForms(){
   var ev = A2.ev;
   $('a2-intake').value    = ev.source_data_eval || '';
   $('a2-ftdata').value    = ev.source_data || '';
+  $('a2-nsdata').value    = ev.source_data_ns || '';   // eval-three-entrances-v1
   $('a2-changes').value   = ev.changes_by_training || '';
   $('a2-issues').value    = ev.issues_and_causes || '';
   $('a2-special').value   = ev.special_notes || '';
@@ -835,6 +891,9 @@ function a2FillForms(){
   $('a2-mirrorH').textContent = mv
       ? ((ev.evaluator_name || '担当者') + ' が記入（読むだけ）')
       : '（まだ記入がありません）';
+  // eval-three-entrances-v1: 看護のページにも同じものを出す
+  $('a2-nsMirror').textContent = mv;
+  $('a2-nsMirrorH').textContent = $('a2-mirrorH').textContent;
 }
 
 /* ── 体重・出席を自動で引く ── */
@@ -1320,9 +1379,14 @@ async function a2SeqTablet(){
 async function a2AiFill(){
   var ft = ($('a2-ftdata').value || '').trim();
   var iv = ($('a2-intake').value || '').trim();
-  if(!ft && !iv){ alert('先に、体の評価か聞き取った内容を入れてください。'); return; }
+  /* eval-three-entrances-v1: 看護の記録も材料に入れる。
+     ★入れなければ、入口を増やした意味がない。
+       看護師が書いたことが、報告文にもモニタリングにも出てこなくなる。 */
+  var ns = ($('a2-nsdata').value || '').trim();
+  if(!ft && !iv && !ns){ alert('先に、体の評価・聞き取った内容・看護の記録のどれかを入れてください。'); return; }
   var parts = [];
   if(ft) parts.push('【体の評価（機能訓練指導員が記録）】\n' + ft);
+  if(ns) parts.push('【体調・看護の記録（看護師が記録）】\n' + ns);
   if(iv) parts.push('【ご本人から聞き取った内容（評価担当者が記録）】\n' + iv);
   var btn = $('a2-aiBtn'), old = btn.textContent;
   btn.disabled = true; btn.textContent = '作っています…';
@@ -1362,7 +1426,12 @@ async function a2Enter(section){
   $('a2-scA').style.display = 'none';
   $('a2-scB').style.display = (section === 'eval') ? '' : 'none';
   $('a2-scC').style.display = (section === 'ft')   ? '' : 'none';
-  a2EvaluatorLock(section === 'ft');   // eval-evaluator-owner-v1
+  $('a2-scD').style.display = (section === 'ns')   ? '' : 'none';   // eval-three-entrances-v1
+  /* eval-evaluator-owner-v1 / eval-three-entrances-v1:
+     評価者名を書けるのは【評価担当者の入口だけ】。
+     ★「ftのとき閉じる」と書いていると、入口が増えるたびに直すことになる。
+       「eval以外は閉じる」に直した。 */
+  a2EvaluatorLock(section !== 'eval');
   window.scrollTo(0,0);
   await a2AcquireLock();
 }
@@ -1371,6 +1440,7 @@ async function a2Back(){
   await a2ReleaseLock();
   A2.section = null;
   $('a2-scB').style.display='none'; $('a2-scC').style.display='none';
+  $('a2-scD').style.display='none';   // eval-three-entrances-v1
   $('a2-scA').style.display='';
   a2EvaluatorLock(false);              // eval-evaluator-owner-v1
   if(A2.patient) await a2Load();
@@ -1423,13 +1493,21 @@ async function a2ClearSection(section){
   if(!A2.patient){ alert('利用者を選んでください。'); return; }
   if(!A2.evalId){ alert('この月の評価はまだありません。消すものがありません。'); return; }
   var ym = $('a2-ym').value;
+  /* eval-three-entrances-v1: 入口が3つになったので、名前と中身を表で持つ。
+     ★「そうでなければ機能訓練指導員」と書いていると、入口が増えたときに
+       看護のページを消したのに「機能訓練指導員ページを消しました」と出る。 */
+  var A2_SEC_LBL = { eval: '評価担当ページ', ns: '看護ページ', ft: '機能訓練指導員ページ' };
   var isEval = (section === 'eval');
-  var lbl  = isEval ? '評価担当ページ' : '機能訓練指導員ページ';
-  var other= isEval ? '機能訓練指導員ページ' : '評価担当ページ';
-  var items = isEval
+  var lbl  = A2_SEC_LBL[section] || 'このページ';
+  var other = Object.keys(A2_SEC_LBL)
+      .filter(function(k){ return k !== section; })
+      .map(function(k){ return A2_SEC_LBL[k]; }).join('と');
+  var items = (section === 'eval')
     ? '・目標がどこまでできたか（新しい目標も）\n・聞き取りメモ\n'
       + '・満足度／サービスの適切さ／新しいご希望\n・体重／出席\n・評価者名'
-    : '・体の評価\n・訓練による変化\n・課題とその要因\n・特記事項';
+    : (section === 'ns')
+      ? '・看護の記録'
+      : '・体の評価\n・訓練による変化\n・課題とその要因\n・特記事項';
   /* ★何が消えるかを並べて出す。「本当に削除しますか？」だけでは、
        どこまで消えるのか分からないまま押すことになる。 */
   if(!confirm(A2.patient.name + ' さんの【' + ym + '】から、\n'
@@ -1454,6 +1532,8 @@ async function a2ClearSection(section){
     /* ★介護区分(care_classification)は送らない＝消さない。
          利用者情報から引くもので、この画面で書いたものではない。
          消すと目標の出し分けが崩れる。 */
+  } else if(section === 'ns'){
+    d.source_data_ns      = '';       // eval-three-entrances-v1
   } else {
     d.source_data         = '';
     d.changes_by_training = '';
@@ -1496,6 +1576,10 @@ async function a2Save(section){
       if($(x[1])) d[x[1]] = $(x[1]).value;
       if($(x[2])) d[x[2]] = $(x[2]).value;
     });
+  } else if(section === 'ns'){
+    // eval-three-entrances-v1: 看護のページは、この欄だけを送る。
+    //   ★他の欄は送らない。送らなければサーバは触らない＝消し合わない。
+    d.source_data_ns     = $('a2-nsdata').value;
   } else {
     d.source_data        = $('a2-ftdata').value;
     d.changes_by_training= $('a2-changes').value;

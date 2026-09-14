@@ -376,12 +376,19 @@ def get_initial_care_classification(supabase, facility_code: str, user_name: str
 _LOCK_COLS = {
     "eval": ("editing_by_eval", "editing_started_at_eval"),
     "ft":   ("editing_by_ft",   "editing_started_at_ft"),
+    # eval-three-entrances-v1: 看護師の入口。
+    #   ★1つの列を共有しない。共有すると、看護師が開いている間
+    #     評価担当者が保存できなくなる。
+    "ns":   ("editing_by_ns",   "editing_started_at_ns"),
     None:   ("editing_by",      "editing_started_at"),
 }
 
+_EVAL_SECTIONS = ("eval", "ft", "ns")   # eval-three-entrances-v1
+
+
 def _lock_cols(section):
     """section から (誰が, いつから) の列名を返す。知らない値は旧列にする。"""
-    return _LOCK_COLS.get(section if section in ("eval", "ft") else None)
+    return _LOCK_COLS.get(section if section in _EVAL_SECTIONS else None)
 
 
 def acquire_edit_lock(supabase, evaluation_id: int, current_user: str,
@@ -654,6 +661,9 @@ ALLOWED_UPSERT_KEYS = (
     #   source_data（機能訓練指導員の材料）とは別の列。
     #   2人が同時に書いてもぶつからないように分けてある。
     "source_data_eval",
+    # eval-three-entrances-v1: 看護師が書く欄。
+    #   source_data（機能訓練指導員）/ source_data_eval（評価担当者）とは別の列。
+    "source_data_ns",
     # 目標達成ステータス
     "short_goal_function_status", "short_goal_activity_status", "short_goal_participation_status",
     "long_goal_function_status", "long_goal_activity_status", "long_goal_participation_status",
@@ -685,9 +695,12 @@ def eval_lock_holder(row: dict, current_user: str):   # eval-delete-v1
     ★保存の競合判定（upsert_patient_evaluation）と同じ規則にすること。
       別々に書くと、保存はできるのに消せない（またはその逆）が起きる。
     """
+    # eval-three-entrances-v1: 看護師の入口も見る。
+    #   ★ここを足し忘れると、看護師が開いている最中に評価が消せてしまう。
     for _b, _a in (("editing_by", "editing_started_at"),
                    ("editing_by_eval", "editing_started_at_eval"),
-                   ("editing_by_ft", "editing_started_at_ft")):
+                   ("editing_by_ft", "editing_started_at_ft"),
+                   ("editing_by_ns", "editing_started_at_ns")):
         holder = row.get(_b)
         started = row.get(_a)
         if not (holder and holder != current_user and started):
@@ -739,7 +752,8 @@ def delete_patient_evaluation(supabase, facility_code: str, user_name: str,
             "created_at", "updated_at",
             "editing_by", "editing_started_at",
             "editing_by_eval", "editing_started_at_eval",
-            "editing_by_ft", "editing_started_at_ft")
+            "editing_by_ft", "editing_started_at_ft",
+            "editing_by_ns", "editing_started_at_ns")   # eval-three-entrances-v1
     filled = sorted(k for k, v in row.items()
                     if k not in skip and v not in (None, "", 0))
 
@@ -836,7 +850,8 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str,
         existing_res = supabase.table("patient_evaluations") \
             .select("id, editing_by, editing_started_at, "
                     "editing_by_eval, editing_started_at_eval, "
-                    "editing_by_ft, editing_started_at_ft") \
+                    "editing_by_ft, editing_started_at_ft, "
+                    "editing_by_ns, editing_started_at_ns") \
             .eq("facility_code", clean["facility_code"]) \
             .eq("user_name", clean["user_name"]) \
             .eq("year_month", clean["year_month"]) \
@@ -905,6 +920,8 @@ def upsert_patient_evaluation(supabase, payload: dict, current_user: str,
         clean["editing_started_at_eval"] = None
         clean["editing_by_ft"] = None
         clean["editing_started_at_ft"] = None
+        clean["editing_by_ns"] = None                    # eval-three-entrances-v1
+        clean["editing_started_at_ns"] = None
         try:
             res = supabase.table("patient_evaluations").insert(clean).execute()
             new_id = (res.data or [{}])[0].get("id")
