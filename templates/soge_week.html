@@ -279,6 +279,11 @@
    ★オレンジのままだと、悪いことが起きるように読める。落ち着いた色にする。 */
 .sg-warn.ok { background:#E6F4EA; border-color:#a8d5b5; color:#1E6B36; }
 .sg-warn b { font-weight:800; }
+/* soge-dateplan-list-v3: 届かない日の並び */
+.sg-dp-list { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.sg-dp-item { display:inline-flex; align-items:center; gap:6px;
+              background:#fff; border:1px solid #fed7aa; border-radius:8px;
+              padding:4px 6px 4px 10px; }
 .sg-info { font-size:0.75rem; color:#8a93a0; line-height:1.6; }
 
 .sg-toast { position:fixed; left:50%; top:calc(env(safe-area-inset-top, 0px) + 12px); transform:translate(-50%,-140%); z-index:9999;
@@ -333,6 +338,10 @@
 
   <div class="sg-days" id="sgDays"></div>
 
+  {# soge-dateplan-list-v3: この曜日のうち「今日だけの配車」が入っている日。
+     ★曜日タブのすぐ下に置く。直す前に目に入る場所でないと意味がない。 #}
+  <div id="sgDatePlanNote"></div>
+
   {# soge-week-preview-v1: 編集／見るだけ の切り替え。
      ★便タブの【上】に置く。プレビューでは便タブを出さない（全部の便を出すので）。 #}
   <div class="sg-view" id="sgView">
@@ -359,7 +368,10 @@
     { n: 1, label: '月' }, { n: 2, label: '火' }, { n: 3, label: '水' },
     { n: 4, label: '木' }, { n: 5, label: '金' }, { n: 6, label: '土' }, { n: 0, label: '日' }
   ];
+  /* soge-dateplan-list-v3: datePlans は 配列 または null。
+     null は「まだ読んでいない／確かめられなかった」。そのときは何も出さない。 */
   var state = { weekday: 1, data: null, staff: [], vehicles: [], patients: [], dirty: false,
+                datePlans: null,
                 tripTab: 0,   // soge-week-tab-v1: 表示中の便（d.trips の本当の位置）
                 /* soge-week-preview-v1: 'edit'=直す / 'trip'=便で見る / 'car'=車で見る。
                    ★覚えない。画面を開いたら必ず「編集」から始める。
@@ -475,6 +487,7 @@
         state.weekday = Number(el.dataset.wd);
         state.dirty = false;
         renderDays();
+        sgRenderDatePlanNote();   // soge-dateplan-list-v3: 曜日ごとに中身が変わる
         load();
       };
     });
@@ -553,6 +566,77 @@
       await load();
     } catch (e) { toast('戻せませんでした', 'err'); }
     finally { if (b) { b.disabled = false; b.textContent = '今日だけの配車をやめる'; } }
+  }
+
+  /* ===== soge-dateplan-list-v3 : この曜日には届かない日がある =====
+     ★運行画面には帯を出した（soge-dateplan-notice-v2）。けれど
+       配車を直している人は運行画面にいない。この画面にいる。
+       ここに出さないと、保存しても届いていないことに気づけない。
+     ★checked が false（確かめられなかった）ときは【何も出さない】。
+       読めなかっただけで「どの日にも届きます」と言うと嘘になる。 */
+  async function sgLoadDatePlans() {
+    if (IS_DATE) return;
+    try {
+      var r = await fetch('/api/soge/date_plans');
+      var j = await r.json();
+      state.datePlans = (j.status === 'success' && j.checked) ? (j.dates || []) : null;
+    } catch (e) {
+      state.datePlans = null;
+    }
+    sgRenderDatePlanNote();
+  }
+
+  function sgDatePlanLabel(ds) {
+    var w = ['日', '月', '火', '水', '木', '金', '土'][wdOf(ds)];
+    return Number(ds.slice(5, 7)) + '/' + Number(ds.slice(8, 10)) + '(' + w + ')';
+  }
+
+  function sgRenderDatePlanNote() {
+    var box = $('sgDatePlanNote');
+    if (!box) return;
+    if (IS_DATE || !state.datePlans) { box.innerHTML = ''; return; }
+    var mine = state.datePlans.filter(function (x) { return x.weekday === state.weekday; });
+    if (!mine.length) { box.innerHTML = ''; return; }
+    box.innerHTML = '<div class="sg-warn">'
+      + '★この曜日には、<b>「今日だけの配車」</b>が入っている日があります。<br>'
+      + '<b>ここを直しても、その日には届きません。</b>'
+      + 'いつもの配車で回りたい日は、［いつもの配車に戻す］を押してください。'
+      + '<div class="sg-dp-list">'
+      + mine.map(function (x) {
+          return '<span class="sg-dp-item"><b>' + esc(sgDatePlanLabel(x.date)) + '</b>'
+            + '<button type="button" class="sg-btn sg-btn-sm" data-dp="' + esc(x.date) + '">'
+            + 'いつもの配車に戻す</button></span>';
+        }).join('')
+      + '</div></div>';
+    box.querySelectorAll('[data-dp]').forEach(function (el) {
+      el.onclick = function () { sgDropPlanFor(el.dataset.dp, el); };
+    });
+  }
+
+  /* soge-dateplan-list-v3: その日の「今日だけの配車」をやめる。
+     ★取り消しの口（/api/soge/date DELETE）は、消したあとに
+       その日の運行表へ差分を当てるところまでやってくれる。打刻は消えない。 */
+  async function sgDropPlanFor(ds, btn) {
+    if (!confirm(sgDatePlanLabel(ds) + ' の「今日だけの配車」をやめて、\n'
+      + 'いつもの配車に戻します。\n\n'
+      + '・いつもの配車の内容が、その日の運行表にも入ります\n'
+      + '・すでに入っている打刻は消えません\n'
+      + '・その日だけのために作った配車は失われます\n\nよろしいですか。')) return;
+    btn.disabled = true; btn.textContent = '戻しています…';
+    try {
+      var r = await fetch('/api/soge/date?date=' + encodeURIComponent(ds), { method: 'DELETE' });
+      var j = await r.json();
+      if (j.status !== 'success') {
+        toast(j.message || '戻せませんでした', 'err');
+        btn.disabled = false; btn.textContent = 'いつもの配車に戻す';
+        return;
+      }
+      toast(j.message || 'いつもの配車に戻しました');
+      await sgLoadDatePlans();
+    } catch (e) {
+      toast('戻せませんでした（通信エラー）', 'err');
+      btn.disabled = false; btn.textContent = 'いつもの配車に戻す';
+    }
   }
 
   // ---------- 読み込み ----------
@@ -1818,6 +1902,7 @@
     state.patients = (p && p.patients) ? p.patients : [];
 
     await load();
+    sgLoadDatePlans();   // soge-dateplan-list-v3: ★待たない。配車の表示を遅らせない
   })();
 
   window.addEventListener('beforeunload', function (e) {

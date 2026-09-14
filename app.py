@@ -29465,6 +29465,46 @@ def api_soge_date_delete():
     except Exception as e:
         print("api_soge_date_delete error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+@app.route("/api/soge/date_plans", methods=["GET"])  # soge-dateplan-list-v3
+@login_required
+def api_soge_date_plans():
+    """これから来る日のうち、「今日だけの配車」が入っている日を並べて返す。
+
+    いつもの配車の画面で「この日には届きません」と出すために使う。
+
+    ★過ぎた日は出さない。もう走った日なので、いまさら戻す話ではない。
+    ★読めなかったときは checked を False にして返す。空の一覧を返してはいけない。
+      「1日も無い」と読まれると、いつもの配車の画面が
+      【どの日にも届きます】と黙って嘘をつくことになる。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _now = datetime.now(_soge_jst())
+        today = _now.strftime("%Y-%m-%d")
+        # 先は90日まで。これより先の配車を入れている事業所は無く、
+        # 長くすると一覧が読み切れなくなる。
+        until = (_now + timedelta(days=90)).strftime("%Y-%m-%d")
+        try:
+            r = (supabase.table("soge_date_plans").select("service_date")
+                 .eq("facility_code", f_code)
+                 .gte("service_date", today).lte("service_date", until)
+                 .order("service_date").execute())
+            rows = r.data or []
+        except Exception as e:
+            print("[soge-dateplan-list] 読めません(%s): %s" % (f_code, e), flush=True)
+            return jsonify({"status": "success", "checked": False, "dates": []})
+        out = []
+        for x in rows:
+            d = _soge_date_ok(x.get("service_date"))
+            if d:
+                out.append({"date": d, "weekday": _soge_date_weekday(d)})
+        return jsonify({"status": "success", "checked": True, "dates": out})
+    except Exception as e:
+        print("api_soge_date_plans error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ===== /soge-date-plan-v1 =====
 
 
