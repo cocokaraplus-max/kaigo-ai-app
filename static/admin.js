@@ -217,55 +217,70 @@ async function blockStaff(name) {
     if ((await res.json()).status === 'success') location.reload();
 }
 
-function toggleStaffBirth(idx, name, currentBirth) {
-    const el = document.getElementById('sbf-' + idx);
-    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+// staff-info-panel-v1: 職員の情報は【1か所】にまとめる。
+//   ふりがな・誕生日・職種・兼務・勤務形態を1つの板で開き、1回の保存で入れる。
+//   ★前は「誕生日設定」と「職種設定」の2つのボタンに分かれていて、
+//     ふりがなは誕生日の側にいた。同じ人の情報が2か所にあると、
+//     どちらを開けばよいのか毎回考えることになる。
+function toggleStaffInfo(idx) {
+    var el = document.getElementById('sif-' + idx);
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
-async function saveStaffBirth(name, idx) {
+async function saveStaffInfo(name, idx) {
     _ensureSpinStyle();
-    const birth = document.getElementById('sbf-date-' + idx).value;
-    var btn = document.querySelector('#sbf-' + idx + ' .btn-primary');
+    var kanaEl = document.getElementById('sif-kana-' + idx);
+    var birth  = (document.getElementById('sif-date-' + idx) || {}).value || '';
+    var job    = (document.getElementById('sif-job-'  + idx) || {}).value || '';
+    var job2   = (document.getElementById('sif-job2-' + idx) || {}).value || '';
+    var emp    = (document.getElementById('sif-emp-'  + idx) || {}).value || '';
+    var btn = document.querySelector('#sif-' + idx + ' .btn-primary');
     var orig = btn ? btn.innerHTML : '';
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined kaigo-spin" style="font-size:15px;color:white;">progress_activity</span>保存中...'; }
-    try {
-        // staff-kana-v1: ふりがなも一緒に保存する。
-        //   ★失敗したら「保存しました」と言わない。
-        //     誕生日だけ入って、ふりがなは入っていない状態を黙って作らない。
-        const kanaEl = document.getElementById('sbf-kana-' + idx);
-        if (kanaEl) {
-            const kr = await fetch('/api/update_staff_kana', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ name, kana: kanaEl.value.trim() })
-            });
-            const kj = await kr.json();
-            if (kj.status !== 'success') {
-                alert(kj.message || 'ふりがなを保存できませんでした');
-                return;
-            }
-        }
-        const res = await fetch('/api/update_staff_birth', {
+
+    async function _post(url, body) {
+        var r = await fetch(url, {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ name, birth })
+            body: JSON.stringify(body)
         });
-        const j = await res.json();
-        if (j.status === 'success') {
-            var sub = document.getElementById('sbt-' + idx);
-            if (sub) {
-                var txt = '';
-                if (birth) { var p = birth.split('-'); txt = toWareki(parseInt(p[0])) + parseInt(p[1]) + '月' + parseInt(p[2]) + '日'; }
-                sub.textContent = txt;
-                sub.style.display = txt ? '' : 'none';
+        var j = await r.json();
+        if (j.status !== 'success') throw new Error(j.message || '保存に失敗しました');
+        return j;
+    }
+
+    try {
+        // ★どれか1つでも入らなかったら、そこで止めて「保存しました」と言わない。
+        //   半分だけ入った状態を、黙って作らない。
+        if (kanaEl) await _post('/api/update_staff_kana', { name: name, kana: kanaEl.value.trim() });
+        await _post('/api/update_staff_birth', { name: name, birth: birth });
+        await _post('/api/update_staff_job', {
+            name: name, job_title: job, job_title2: job2, employment_type: emp
+        });
+
+        var sbt = document.getElementById('sbt-' + idx);
+        if (sbt) {
+            var btxt = '';
+            if (birth) {
+                var p = birth.split('-');
+                btxt = toWareki(parseInt(p[0])) + parseInt(p[1]) + '月' + parseInt(p[2]) + '日';
             }
-            var form = document.getElementById('sbf-' + idx); if (form) form.style.display = 'none';
-            showJobToast('保存しました');
-        } else {
-            alert('保存に失敗しました');
+            sbt.textContent = btxt;
+            sbt.style.display = btxt ? '' : 'none';
         }
+        var sjt = document.getElementById('sjt-' + idx);
+        if (sjt) {
+            var jtxt = job + (job2 ? '／' + job2 : '');
+            sjt.textContent = jtxt;
+            sjt.style.display = jtxt ? '' : 'none';
+        }
+        var s1 = document.getElementById('sif-job-'  + idx); if (s1) s1.dataset.current = job;
+        var s2 = document.getElementById('sif-job2-' + idx); if (s2) s2.dataset.current = job2;
+        var s3 = document.getElementById('sif-emp-'  + idx); if (s3) s3.dataset.current = emp;
+        var form = document.getElementById('sif-' + idx); if (form) form.style.display = 'none';
+        showJobToast('保存しました');
     } catch (e) {
-        alert('保存に失敗しました（通信エラー）');
+        alert(e.message || '保存に失敗しました（通信エラー）');
     } finally {
         if (btn) { btn.disabled = false; btn.innerHTML = orig; }
     }
@@ -633,10 +648,6 @@ if (document.readyState === 'loading') {
 } else {
     initJobSelects();
 }
-function toggleStaffJob(idx) {
-    var el = document.getElementById('sjf-' + idx);
-    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
-}
 function _ensureSpinStyle() {
     if (document.getElementById('kaigo-spin-style')) return;
     var st = document.createElement('style');
@@ -652,39 +663,4 @@ function showJobToast(msg) {
     requestAnimationFrame(function(){ t.style.opacity = '1'; });
     setTimeout(function(){ t.style.opacity = '0'; setTimeout(function(){ t.remove(); }, 250); }, 1600);
 }
-async function saveStaffJob(name, idx) {
-    _ensureSpinStyle();
-    var job = document.getElementById('sjf-job-' + idx).value;
-    var job2 = document.getElementById('sjf-job2-' + idx).value;
-    var emp = document.getElementById('sjf-emp-' + idx).value;
-    var btn = document.querySelector('#sjf-' + idx + ' .btn-primary');
-    var orig = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined kaigo-spin" style="font-size:15px;color:white;">progress_activity</span>保存中...'; }
-    try {
-        var res = await fetch('/api/update_staff_job', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ name: name, job_title: job, job_title2: job2, employment_type: emp })
-        });
-        var j = await res.json();
-        if (j.status === 'success') {
-            var sub = document.getElementById('sjt-' + idx);
-            if (sub) {
-                var txt = job + (job2 ? '／' + job2 : '');
-                sub.textContent = txt;
-                sub.style.display = txt ? '' : 'none';
-            }
-            var s1 = document.getElementById('sjf-job-' + idx); if (s1) s1.dataset.current = job;
-            var s2 = document.getElementById('sjf-job2-' + idx); if (s2) s2.dataset.current = job2;
-            var s3 = document.getElementById('sjf-emp-' + idx); if (s3) s3.dataset.current = emp;
-            var form = document.getElementById('sjf-' + idx); if (form) form.style.display = 'none';
-            showJobToast('保存しました');
-        } else {
-            alert(j.message || '保存に失敗しました');
-        }
-    } catch (e) {
-        alert('保存に失敗しました（通信エラー）');
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-    }
-}
+
