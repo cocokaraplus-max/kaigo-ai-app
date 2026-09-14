@@ -15396,7 +15396,8 @@ def api_generate_monitoring():
         if not u_name or not month_val:
             return jsonify({"error": "利用者と対象月を指定してください"}), 400
 
-        CATEGORIES = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
+        # rec-cat-single-source-v1: 施設のカテゴリ表から読む
+        CATEGORIES = _rec_categories(supabase, f_code)
         target_cats = selected_cats if selected_cats else CATEGORIES
 
         y, m = map(int, month_val.split("-"))
@@ -19389,6 +19390,47 @@ def api_board_categories_delete():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ===== ケース記録カテゴリ管理API(Session 21)=====
+# rec-cat-single-source-v1 ═════════════════════════════════════
+#   ケース記録のカテゴリは record_categories（施設ごと・管理者MENUで足せる）が
+#   唯一の出どころ。コードの中に一覧をベタ書きしない。
+#   ★ベタ書きが6か所あり、管理者MENUで足したカテゴリが
+#     モニタリングにも書類にも出てこなかった。記録は入るのに、出ない。
+_REC_CAT_FALLBACK = ["心身状況", "食事", "入浴", "排泄",
+                     "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
+#   ★専用フォームを持つ2つ。カテゴリ表に無くても必ず通す。
+_REC_CAT_SPECIAL = ["休み連絡", "追加利用連絡"]
+
+
+def _rec_categories(supabase, f_code):
+    """その事業所の記録カテゴリ（登録された並び順のまま）。
+
+    ★読めない・1件も無いときは、これまでの一覧に倒す。空は返さない。
+      空を返すと「カテゴリが1つも無い」と同じ意味になり、書類が丸ごと空になる。
+    ★登録に無い古いカテゴリも後ろに足す。管理者が消したカテゴリで
+      書かれた過去の記録を、書類から黙って落とさないため。
+    """
+    names = []
+    try:
+        r = (supabase.table("record_categories").select("name,sort_order")
+             .eq("facility_code", f_code).order("sort_order").order("id").execute())
+        names = [str(x.get("name") or "").strip() for x in (r.data or [])]
+        names = [n for n in names if n]
+    except Exception as e:
+        print("[rec-cat] カテゴリを読めません(%s): %s" % (f_code, e), flush=True)
+    if not names:
+        return list(_REC_CAT_FALLBACK)
+    for n in _REC_CAT_FALLBACK:
+        if n not in names:
+            names.append(n)
+    return names
+
+
+def _rec_categories_valid(supabase, f_code):
+    """保存・付け替えを許すカテゴリ。★広げるだけ。狭めない。
+    狭めると、いま実際に使われているカテゴリが弾かれて保存できなくなる。"""
+    return set(_rec_categories(supabase, f_code)) | set(_REC_CAT_SPECIAL)
+
+
 @app.route("/api/record_categories", methods=["GET"])
 @login_required
 def api_record_categories_list():
@@ -32509,8 +32551,9 @@ def api_admin_ai_categorize_apply():
     if len(items) > 100:
         return jsonify({"ok": False, "error": "一度に適用できるのは100件までです"}), 400
 
-    # Session 33: 「休み連絡」を含む
-    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット", "休み連絡", "追加利用連絡"}  # extra-valid-categories-v1
+    # rec-cat-single-source-v1: 施設のカテゴリ表から読む。
+    #   ★広げるだけ。狭めない。休み連絡・追加利用連絡は専用フォームがあるので必ず通す。
+    VALID_CATEGORIES = _rec_categories_valid(get_supabase(), f_code)  # extra-valid-categories-v1
 
     normalized = []
     for it in items:
@@ -32808,8 +32851,9 @@ def api_records_apply_ai_category(record_id):
     new_cat = (payload.get("new_category") or "").strip()
     ai_reason = str(payload.get("ai_reason") or "")[:200]
 
-    # Session 33: 「休み連絡」を含む
-    VALID_CATEGORIES = {"入浴", "食事", "排泄", "その他", "コミュニケーション", "心身状況", "訓練状況", "ヒヤリハット", "休み連絡", "追加利用連絡"}  # extra-valid-categories-v1
+    # rec-cat-single-source-v1: 施設のカテゴリ表から読む。
+    #   ★広げるだけ。狭めない。休み連絡・追加利用連絡は専用フォームがあるので必ず通す。
+    VALID_CATEGORIES = _rec_categories_valid(get_supabase(), f_code)  # extra-valid-categories-v1
     if new_cat not in VALID_CATEGORIES:
         return jsonify({"ok": False, "error": "不正なカテゴリです"}), 400
 
@@ -36987,7 +37031,8 @@ def _auto_generate_monitoring(supabase, f_code, u_name, year_month, my_name):
         if not records:
             return {}
 
-        CATEGORIES = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
+        # rec-cat-single-source-v1: 施設のカテゴリ表から読む
+        CATEGORIES = _rec_categories(supabase, f_code)
         cat_records = {}
         for r in records:
             cat = r.get("category") or "その他"
@@ -37124,7 +37169,8 @@ def print_pdf():
         cats = {}
     # cats-default-init: cats が空の場合、全カテゴリをデフォルト true で初期化
     if not cats:
-        CATEGORIES_PRINT = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
+        # rec-cat-single-source-v1: 施設のカテゴリ表から読む
+        CATEGORIES_PRINT = _rec_categories(supabase, f_code)
         cats = {cat: True for cat in CATEGORIES_PRINT}
 
     # 利用者一覧取得
@@ -37361,7 +37407,8 @@ def print_preview():
         cats = {}
     # cats-default-init: cats が空の場合、全カテゴリをデフォルト true で初期化
     if not cats:
-        CATEGORIES_PRINT = ["心身状況", "食事", "入浴", "排泄", "コミュニケーション", "訓練状況", "ヒヤリハット", "その他"]
+        # rec-cat-single-source-v1: 施設のカテゴリ表から読む
+        CATEGORIES_PRINT = _rec_categories(supabase, f_code)
         cats = {cat: True for cat in CATEGORIES_PRINT}
 
     # 利用者一覧取得
