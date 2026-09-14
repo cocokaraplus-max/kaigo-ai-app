@@ -33,9 +33,12 @@ th { background:#eee; font-weight:700; text-align:center; white-space:nowrap; }
 .pg { text-align:center; font-size:9pt; margin-top:6px; }
 .maru { display:inline-block; border:1px solid #000; border-radius:50%; padding:0 4px; }
 .empty { color:#999; }
+/* tsusho-keikaku-print-v2: 空欄になるところの知らせ。印刷には出さない。 */
+.warn-bar { background:#fef7e0; border:1px solid #fdd663; color:#7a5200; border-radius:9px;
+            max-width:210mm; margin:10px auto 0; padding:10px 13px; font-size:.82rem; line-height:1.8; }
 @media print {
   body { background:#fff; }
-  .bar { display:none !important; }
+  .bar, .warn-bar { display:none !important; }   /* tsusho-keikaku-print-v2 */
   .sheet { width:auto; min-height:0; margin:0; padding:0; box-shadow:none; }
   .sheet + .sheet { page-break-before:always; }
   table, tr, td, th { page-break-inside:avoid; }
@@ -51,6 +54,16 @@ th { background:#eee; font-weight:700; text-align:center; white-space:nowrap; }
   <button class="main" onclick="window.print()">印刷する</button>
   <a href="/tsusho_keikaku">戻る</a>
 </div>
+
+{# tsusho-keikaku-print-v2: 紙で空欄になるところを、押す前に伝える。
+   ★紙には出さない（この帯は印刷されない）。
+     渡してから気づくのでは遅いので、画面で言う。 #}
+{% if warns %}
+<div class="warn-bar">
+  <b>⚠ このまま印刷すると、空欄になるところがあります</b>
+  {% for w in warns %}<div>・{{ w }}</div>{% endfor %}
+</div>
+{% endif %}
 
 {# ══════════ 1枚目 ══════════ #}
 <div class="sheet">

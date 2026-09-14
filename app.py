@@ -25598,6 +25598,19 @@ def api_tsusho_program_template():
     except Exception as e:
         print("api_tsusho_program_template error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+#   tsusho-keikaku-print-v2: 取り込みの失敗で入った「文字としての None」。
+#     ★本当の直しはデータを洗うこと。これは紙に出さないための応急手当。
+#     ★空欄にする。「None」より空欄のほうがまし。
+#       空欄なら入れ忘れだと分かるが、None は壊れて見える。
+_TK_JUNK = {"none", "null", "nan", "undefined", "nil", "-"}
+
+
+def _tk_clean(v):  # tsusho-keikaku-print-v2
+    """画面や紙に出す前に、意味のない文字を空にする。"""
+    s = str(v if v is not None else "").strip()
+    return "" if s.lower() in _TK_JUNK else s
+
+
 def _tk_wareki(v):  # tsusho-keikaku-print-v1
     """YYYY-MM-DD を和暦にする。空なら空。
 
@@ -25635,6 +25648,8 @@ def tsusho_keikaku_print():
              .eq("facility_code", f_code).eq("id", plan.get("patient_id"))
              .limit(1).execute())
         pt = (r.data or [{}])[0]
+        # tsusho-keikaku-print-v2: 「None」という文字が紙に出ないようにする
+        pt = {k: _tk_clean(v) for k, v in pt.items()}
     except Exception as e:
         print("[tsusho-print] 利用者を読めません: %s" % e, flush=True)
 
@@ -25665,10 +25680,22 @@ def tsusho_keikaku_print():
         "short_to": _tk_wareki(plan.get("short_to")),
     }
 
+    # tsusho-keikaku-print-v2: 事業者名は紙に2か所出る。
+    #   ★無いときに施設コードなどで埋めない。正式な名前でなければ意味がない。
+    #   ★代わりに、押す前に画面で伝える。渡してから気づくのでは遅い。
+    fac = _tk_clean(_sj_facility_name(supabase, f_code))
+    warns = []
+    if not fac:
+        warns.append("事業者名が登録されていないので、紙では空欄になります。"
+                     "管理者MENUで施設名を登録してください。")
+    if not _tk_clean(pt.get("address")):
+        warns.append("住所が登録されていないので、紙では空欄になります。")
+
     return render("tsusho_keikaku_print.html",
                   plan=plan, pt=pt, goals=goals, progs=progs, wa=wa,
                   services=(plan.get("services") or []),
-                  facility_name=(_sj_facility_name(supabase, f_code) or ""))
+                  warns=warns,
+                  facility_name=fac)
 # ===== /tsusho-keikaku-v1 =====
 
 
