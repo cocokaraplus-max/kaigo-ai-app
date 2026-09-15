@@ -33,6 +33,13 @@ th { background:#eee; font-weight:700; text-align:center; white-space:nowrap; }
 .pg { text-align:center; font-size:9pt; margin-top:6px; }
 .maru { display:inline-block; border:1px solid #000; border-radius:50%; padding:0 4px; }
 .empty { color:#999; }
+/* tsusho-keikaku-print-v3 */
+/* ★折り返さないと決めた欄。幅を広げるだけだと、字の大きさを変えたときにまた折れる。 */
+.nowrap { white-space:nowrap; }
+/* 印の枠は細く。実物と同じ。 */
+.sign .in { width:9mm; text-align:center; }
+/* 署名の欄は、左右が同じ3行で揃う。入れ子にしない。 */
+.sign td { vertical-align:middle; }
 /* tsusho-keikaku-print-v2: 空欄になるところの知らせ。印刷には出さない。 */
 .warn-bar { background:#fef7e0; border:1px solid #fdd663; color:#7a5200; border-radius:9px;
             max-width:210mm; margin:10px auto 0; padding:10px 13px; font-size:.82rem; line-height:1.8; }
@@ -146,7 +153,8 @@ th { background:#eee; font-weight:700; text-align:center; white-space:nowrap; }
       <th style="width:40mm;">プログラム名</th><th>内容</th><th style="width:48mm;">留意事項</th>
     </tr>
     <tr>
-      <td colspan="5">迎え（{% if s.pickup %}<span class="maru">有</span>　無{% else %}有　<span class="maru">無</span>{% endif %}）</td>
+      {# tsusho-keikaku-print-v3: 送りと同じ。ここも折り返さない。 #}
+      <td colspan="5" class="nowrap">迎え（{% if s.pickup %}<span class="maru">有</span>　無{% else %}有　<span class="maru">無</span>{% endif %}）</td>
     </tr>
     {% if s.time_from %}
     <tr><td></td><td style="text-align:center;">{{ s.time_from }}</td><td colspan="3">サービス提供開始</td></tr>
@@ -163,9 +171,14 @@ th { background:#eee; font-weight:700; text-align:center; white-space:nowrap; }
     {% if s.time_to %}
     <tr><td></td><td style="text-align:center;">{{ s.time_to }}</td><td colspan="3">サービス提供終了</td></tr>
     {% endif %}
+    {# tsusho-keikaku-print-v3: ★実物ではこの欄はプログラム名の列まで使う（3列ぶん）。
+       2列ぶん(28mm)に押し込んでいたので「送り（有」で折れて、
+       次の段に「無）」が落ちていた。括弧が離れて読めない。
+       ★幅を広げるだけでは足りない。字の大きさを変えたときにまた折れる。
+         この欄は【折り返さない】と決める。 #}
     <tr>
-      <td colspan="2">送り（{% if s.dropoff %}<span class="maru">有</span>　無{% else %}有　<span class="maru">無</span>{% endif %}）</td>
-      <td class="lbl">評価</td><td colspan="2" style="height:14mm;"></td>
+      <td colspan="3" class="nowrap">送り（{% if s.dropoff %}<span class="maru">有</span>　無{% else %}有　<span class="maru">無</span>{% endif %}）</td>
+      <td class="lbl" style="width:20mm;">評価</td><td style="height:14mm;"></td>
     </tr>
   </table>
   <div style="height:6px;"></div>
@@ -175,23 +188,29 @@ th { background:#eee; font-weight:700; text-align:center; white-space:nowrap; }
 
   <div class="note-sm" style="margin:6px 0 3px;">上記の計画書に基づきサービス提供を行います。</div>
 
-  <table>
+  {# tsusho-keikaku-print-v3: ★表の入れ子をやめた。
+     右の枠に表を入れ子にしていたので、左の3行と高さが合わず、
+     右だけが間延びしていた。入れ子は「中の高さ」と「外の高さ」が
+     別々に決まるので、必ずずれる。
+     ★実物と同じく、1つの表の同じ行に左右を並べる。 #}
+  <table class="sign">
     <tr>
-      <td class="lbl">備考</td><td colspan="3">{{ plan.remarks or '' }}</td>
-      <td rowspan="3" style="width:70mm;">
-        <div class="note-sm" style="margin-bottom:4px;">説明を受け、内容に同意し交付を受けました。</div>
-        <table>
-          <tr><td class="lbl" style="width:26mm;">署名・捺印</td><td style="height:12mm;"></td><td style="width:10mm;text-align:center;">印</td></tr>
-          <tr><td class="lbl">代筆（本人との関係）</td><td>{% if plan.consent_proxy_rel %}（　{{ plan.consent_proxy_rel }}　）{% else %}（　　　　）{% endif %}</td><td style="text-align:center;">印</td></tr>
-        </table>
-      </td>
+      <td class="lbl">備考</td>
+      <td colspan="3">{{ plan.remarks or '' }}</td>
+      <td colspan="3" class="note-sm">説明を受け、内容に同意し交付を受けました。</td>
     </tr>
     <tr>
-      <td class="lbl">説明日</td><td>{{ wa.explained_on }}</td>
-      <td class="lbl">説明者</td><td>{{ plan.explainer or '' }}</td>
+      <td class="lbl">説明日</td><td style="width:36mm;">{{ wa.explained_on }}</td>
+      <td class="lbl" style="width:18mm;">説明者</td><td>{{ plan.explainer or '' }}</td>
+      <td class="lbl" style="width:24mm;">署名・捺印</td>
+      <td style="height:11mm;"></td>
+      <td class="in">印</td>
     </tr>
     <tr>
       <td class="lbl">事業者名</td><td colspan="3">{{ facility_name }}</td>
+      <td class="lbl">代筆（本人との関係）</td>
+      <td class="nowrap">{% if plan.consent_proxy_rel %}（　{{ plan.consent_proxy_rel }}　）{% else %}（　　　　　）{% endif %}</td>
+      <td class="in">印</td>
     </tr>
   </table>
 
