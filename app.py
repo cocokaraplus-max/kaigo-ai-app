@@ -25719,6 +25719,148 @@ def tsusho_keikaku_print():
                   services=(plan.get("services") or []),
                   warns=warns,
                   facility_name=fac)
+@app.route("/api/tsusho/plan/ocr", methods=["POST"])  # tsusho-keikaku-ocr-v1
+@login_required
+def api_tsusho_plan_ocr():
+    """紙の通所介護計画書の写真を読み取って、項目に分けて返す。
+
+    ★写真は保存しない。読み取りに使うだけ（評価の音声と同じ）。
+      利用者の氏名・住所・病歴が写った紙なので、置き場所を増やさない。
+    ★返すだけ。保存はしない。人が画面で見て直してから［保存する］を押す。
+    ★読めない欄は空で返させる。もっともらしい嘘が入ると、
+      人はそれを直さずに確定してしまう。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        data = request.get_json(silent=True) or {}
+        images = data.get("images") or []
+        if not images:
+            return jsonify({"status": "error", "message": "写真がありません。"}), 400
+
+        import json as _json
+        import re as _re
+        from utils import get_generative_model
+        model = get_generative_model()
+
+        prompt = (
+            "あなたは介護事業所の【通所介護計画書】の紙を読み取るアシスタントです。"
+            "画像から実際に読み取れる内容だけを、次のJSONで返してください。\n"
+            "★読み取れない項目は空文字\"\"、配列は[]。推測や補完は【禁止】。\n"
+            "★日付は西暦 YYYY-MM-DD（令和・平成などの和暦は西暦へ直す）。\n"
+            "★目標や課題が①②③…と番号で並んでいるときは、番号を外して"
+            "本文だけを、並び順のまま配列に入れる。\n\n"
+            "{\n"
+            "  \"作成年月日\":\"\", \"計画作成者\":\"\",\n"
+            "  \"解決すべき課題\":[], \"長期目標\":[], \"短期目標\":[],\n"
+            "  \"長期目標期間開始\":\"\", \"長期目標期間終了\":\"\",\n"
+            "  \"短期目標期間開始\":\"\", \"短期目標期間終了\":\"\",\n"
+            "  \"本人の希望\":\"\", \"家族の希望\":\"\", \"家族の続柄\":\"\",\n"
+            "  \"留意点\":\"\",\n"
+            "  \"週間計画\":[ {\"提供時間開始\":\"\",\"提供時間終了\":\"\","
+            "\"報酬区分\":\"\",\"利用予定\":\"\",\"迎え\":true,\"送り\":true} ],\n"
+            "  \"プログラム\":[ {\"時間\":\"\",\"プログラム名\":\"\","
+            "\"内容\":\"\",\"留意事項\":\"\"} ]\n"
+            "}\n\n"
+            "「迎え」「送り」は（有）に丸が付いていれば true、（無）なら false、"
+            "どちらとも読めなければ省く。\n"
+            "JSON以外は一切出力しないこと。"
+        )
+
+        parts = []
+        for im in images[:6]:          # 紙は多くて2〜3枚。6枚で足りる
+            b64 = im.get("data") if isinstance(im, dict) else im
+            mt = (im.get("mime_type") if isinstance(im, dict) else None) or "image/jpeg"
+            if b64:
+                parts.append({"mime_type": mt, "data": b64})
+        if not parts:
+            return jsonify({"status": "error", "message": "写真を読めませんでした。"}), 400
+        parts.append(prompt)
+
+        try:
+            resp = model.generate_content(parts)
+            text = (resp.text or "").strip()
+        except Exception as e:
+            print("[tsusho-ocr] 読み取りに失敗: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "読み取れませんでした。"
+                                       "明るい所で、まっすぐ撮り直してみてください。"}), 500
+
+        m = _re.search(r"\{.*\}", text, _re.DOTALL)
+        if not m:
+            return jsonify({"status": "error",
+                            "message": "読み取れませんでした。"
+                                       "明るい所で、まっすぐ撮り直してみてください。"}), 500
+        try:
+            g = _json.loads(m.group())
+        except Exception as e:
+            print("[tsusho-ocr] 形が読めません: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "読み取れませんでした。もう一度お試しください。"}), 500
+
+        def _s(k, limit=4000):
+            return _tk_clean(g.get(k))[:limit]
+
+        def _list(k):
+            v = g.get(k)
+            if not isinstance(v, list):
+                return []
+            out = []
+            for x in v[:TK_MAX_ROWS]:
+                t = _tk_clean(x if isinstance(x, str) else "")
+                if t:
+                    out.append(t)
+            return out
+
+        # ★日付は形を確かめる。読めない形は空にする（そのまま入れない）。
+        out = {
+            "created_on": _tk_day(_s("作成年月日")),
+            "planner_name": _s("計画作成者", 100),
+            "issue": _list("解決すべき課題"),
+            "long": _list("長期目標"),
+            "short": _list("短期目標"),
+            "long_from": _tk_day(_s("長期目標期間開始")),
+            "long_to": _tk_day(_s("長期目標期間終了")),
+            "short_from": _tk_day(_s("短期目標期間開始")),
+            "short_to": _tk_day(_s("短期目標期間終了")),
+            "wish_self": _s("本人の希望"),
+            "wish_family": _s("家族の希望"),
+            "wish_family_rel": _s("家族の続柄", 40),
+            "notes": _s("留意点"),
+            "services": [],
+            "programs": [],
+        }
+        for x in (g.get("週間計画") or [])[:TK_MAX_ROWS]:
+            if not isinstance(x, dict):
+                continue
+            out["services"].append({
+                "time_from": _tk_clean(x.get("提供時間開始"))[:10],
+                "time_to": _tk_clean(x.get("提供時間終了"))[:10],
+                "reward_class": _tk_clean(x.get("報酬区分"))[:60],
+                "weekdays": _tk_clean(x.get("利用予定"))[:40],
+                "pickup": bool(x.get("迎え")),
+                "dropoff": bool(x.get("送り")),
+            })
+        for x in (g.get("プログラム") or [])[:TK_MAX_ROWS]:
+            if not isinstance(x, dict):
+                continue
+            out["programs"].append({
+                "time_hm": _tk_clean(x.get("時間"))[:10],
+                "name": _tk_clean(x.get("プログラム名"))[:200],
+                "body": _tk_clean(x.get("内容")),
+                "note": _tk_clean(x.get("留意事項")),
+            })
+
+        # ★ここで写真をどこにも書かない。Storageにも上げない。
+        return jsonify({"status": "success", "read": out})
+    except Exception as e:
+        print("api_tsusho_plan_ocr error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 # ----- tsusho-monitoring-v1 : 通所介護モニタリング表 -----
 
 def _tk_month_last(ym):  # tsusho-monitoring-v1

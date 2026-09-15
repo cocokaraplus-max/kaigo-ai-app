@@ -120,6 +120,18 @@
       <div class="sub" id="tk-eSub"></div>
     </div>
 
+    {# tsusho-keikaku-ocr-v1: 紙からの取り込み。★編集のいちばん上に置く。
+       あとから押すと「入らなかった」ばかりになる（空いている欄にしか入れないので）。 #}
+    <div class="tk-sec"><h3>紙の計画書から取り込む</h3><div class="bd">
+      <input type="file" id="tk-ocrFile" accept="image/*" multiple
+             style="font-size:.82rem;" onchange="tkOcrRun()">
+      <div class="tk-note">★<b>空いている欄にだけ入れます。</b>すでに書いてある欄は触りません。<br>
+        ★入れるだけで、保存はしません。目で見て直してから［保存する］を押してください。<br>
+        ★<b>写真は保存されません。</b>読み取りに使うだけです。<br>
+        ★読み取りは間違えます。特に日付と数字は必ず見てください。</div>
+      <div id="tk-ocrMsg" class="tk-note"></div>
+    </div></div>
+
     <div class="tk-sec"><h3>1. 計画書の基本</h3><div class="bd">
       <div class="tk-2">
         <div class="tk-row"><span class="tk-lab">作成年月日</span>
@@ -830,6 +842,122 @@ async function tkBack(){
 }
 
 /* ── 保存・削除 ── */
+/* ===== tsusho-keikaku-ocr-v1: 紙の計画書から取り込む ===== */
+/* ★写真は画面側で小さくしてから送る。そのまま送ると、
+     現場のスマホの写真（1枚5MB超）で毎回詰まる。 */
+function tkShrink(file){
+  return new Promise(function(resolve, reject){
+    var fr = new FileReader();
+    fr.onerror = function(){ reject(new Error('read')); };
+    fr.onload = function(){
+      var img = new Image();
+      img.onerror = function(){ reject(new Error('img')); };
+      img.onload = function(){
+        var MAX = 1600;
+        var w = img.width, h = img.height;
+        if(w > MAX || h > MAX){
+          if(w >= h){ h = Math.round(h * MAX / w); w = MAX; }
+          else      { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        var d = c.toDataURL('image/jpeg', 0.8);
+        resolve({mime_type:'image/jpeg', data: d.split(',')[1]});
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+async function tkOcrRun(){
+  var inp = $('tk-ocrFile');
+  var files = [].slice.call(inp.files || []).slice(0, 6);
+  if(!files.length) return;
+  var msg = $('tk-ocrMsg');
+  msg.textContent = '読み取っています…（写真の枚数によっては30秒ほどかかります）';
+  try{
+    var imgs = [];
+    for(var i = 0; i < files.length; i++){ imgs.push(await tkShrink(files[i])); }
+    var j = await fetch('/api/tsusho/plan/ocr', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({images: imgs})})
+      .then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ msg.textContent = j.message || '読み取れませんでした'; return; }
+    msg.innerHTML = tkOcrApply(j.read || {});
+  }catch(e){
+    msg.textContent = '読み取れませんでした。もう一度お試しください。';
+  }finally{
+    inp.value = '';   // 同じ写真をもう一度選べるように
+  }
+}
+
+/* ★空いている欄にだけ入れる。すでに書いてある欄は触らない。
+     読み取りは必ず間違える。間違いで、人が書いたものを消してはいけない。
+   ★入れなかった欄は【名前を挙げて】伝える。黙って飛ばさない。 */
+function tkOcrApply(r){
+  var put = [], skip = [];
+  function txt(id, val, label){
+    if(!val) return;
+    var el = $(id);
+    if(!el) return;
+    if((el.value || '').trim()){ skip.push(label); return; }
+    el.value = val; put.push(label);
+  }
+  txt('tk-createdOn', r.created_on, '作成年月日');
+  txt('tk-planner',   r.planner_name, '計画作成者');
+  txt('tk-longFrom',  r.long_from, '長期目標期間（開始）');
+  txt('tk-longTo',    r.long_to,   '長期目標期間（終了）');
+  txt('tk-shortFrom', r.short_from, '短期目標期間（開始）');
+  txt('tk-shortTo',   r.short_to,   '短期目標期間（終了）');
+  txt('tk-wishSelf',  r.wish_self, '本人の希望');
+  txt('tk-wishRel',   r.wish_family_rel, 'ご家族の続柄');
+  txt('tk-wishFamily', r.wish_family, 'ご家族の希望');
+  txt('tk-notes',     r.notes, '留意点');
+
+  /* 番号付きの並び。★1つでも書いてあれば触らない。 */
+  [['issue','課題'], ['long','長期目標'], ['short','短期目標']].forEach(function(p){
+    var kind = p[0], label = p[1];
+    var arr = r[kind] || [];
+    if(!arr.length) return;
+    var has = tkGoals(kind).filter(function(t){ return (t || '').trim(); }).length;
+    if(has){ skip.push(label); return; }
+    $('tk-' + kind).innerHTML = '';
+    arr.forEach(function(b){ tkAddGoal(kind, b); });
+    put.push(label + '（' + arr.length + '件）');
+  });
+
+  /* 週間計画表・プログラム。★1行でも書いてあれば触らない。 */
+  function rows(id, arr, label, add){
+    if(!arr || !arr.length) return;
+    var cur = $(id).querySelectorAll('tr').length;
+    var filled = [].slice.call($(id).querySelectorAll('input,textarea'))
+                   .some(function(e){ return (e.value || '').trim() && e.getAttribute('data-k') !== 'label'; });
+    if(cur && filled){ skip.push(label); return; }
+    $(id).innerHTML = '';
+    arr.forEach(function(x){ add(x); });
+    put.push(label + '（' + arr.length + '行）');
+  }
+  rows('tk-svc', r.services, '週間計画表', tkAddSvc);
+  rows('tk-prg', r.programs, 'プログラム', tkAddPrg);
+
+  TK.dirty = true;
+  var h = '';
+  if(put.length){
+    h += '<b style="color:#1e6b36;">入れたもの：</b>' + esc(put.join('、'));
+  }else{
+    h += '<b style="color:#7a5200;">入れられる欄がありませんでした。</b>';
+  }
+  if(skip.length){
+    h += '<br><b style="color:#7a5200;">すでに書いてあるので入れなかったもの：</b>'
+       + esc(skip.join('、'))
+       + '<br><span style="color:#80868b;">入れ直したいときは、その欄を空にしてからもう一度取り込んでください。</span>';
+  }
+  h += '<br><b>★日付と数字は必ず目で確かめてください。</b>読み取りは間違えます。'
+     + 'このままでは保存されていません。［保存する］を押すまで残りません。';
+  return h;
+}
+
 /* tsusho-keikaku-print-v1: 紙に出す。
    ★出るのは保存された中身。書きかけは出ない。押す前に伝える。
      出してから気づくのでは遅い。 */
