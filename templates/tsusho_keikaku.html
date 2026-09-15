@@ -56,6 +56,17 @@
 .tk-q{display:flex;flex-direction:column;gap:7px;margin-top:8px;}
 .tk-q label{display:flex;align-items:flex-start;gap:8px;font-size:.86rem;line-height:1.6;cursor:pointer;}
 .tk-q input{width:auto;margin-top:3px;}
+/* tsusho-monitoring-v3 */
+.tk-mlist{margin-top:8px;}
+.tk-mlist .it{display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid #e8eaed;
+              border-radius:8px;margin-bottom:5px;cursor:pointer;background:#fff;font-size:.85rem;}
+.tk-mlist .it:hover{background:#f8f9fa;}
+.tk-mlist .it.on{border-color:#1a73e8;background:#e8f0fe;}
+.tk-mlist .nm{font-weight:700;flex:1 1 auto;min-width:0;}
+.tk-mlist .st{flex:0 0 auto;font-size:.76rem;font-weight:800;border-radius:6px;padding:2px 8px;}
+.tk-mlist .st.done{background:#e6f4ea;color:#1e6b36;}
+.tk-mlist .st.part{background:#fef7e0;color:#7a5200;}
+.tk-mlist .st.none{background:#f1f3f4;color:#80868b;}
 .tk-hint{background:#e8f0fe;border:1px solid #aecbfa;color:#1558d6;border-radius:8px;
          padding:9px 11px;font-size:.8rem;line-height:1.7;margin-top:8px;}
 .tk-hint b{font-weight:800;}
@@ -216,6 +227,18 @@
     <div class="tk-sec"><h3>対象月</h3><div class="bd">
       <input type="month" id="tk-monYm" onchange="tkMonLoad()" style="max-width:220px;">
       <div class="tk-note">★月末に、その月をふり返って書くものです。</div>
+    </div></div>
+
+    {# tsusho-monitoring-v3: 月末の一覧。★利用者を選んでいなくても見られる。 #}
+    <div class="tk-sec"><h3>月末の一覧</h3><div class="bd">
+      <div class="tk-acts" style="margin-top:0;">
+        <button type="button" class="tk-btn sm" onclick="tkMonListLoad()">この月の一覧を出す</button>
+        <button type="button" class="tk-btn sm" id="tk-monAllBtn" onclick="tkMonPrintAll()" style="display:none;">保存ずみを全員分まとめて印刷</button>
+      </div>
+      <div id="tk-monCount" class="tk-note"></div>
+      <div id="tk-monList" class="tk-mlist"></div>
+      <div class="tk-note">★押すと、その方の①〜④へ入ります。<br>
+        ★まとめて印刷では<b>まだ書いていない方の紙は出しません</b>（空欄の紙を刷らないため）。</div>
     </div></div>
 
     <div class="tk-sec"><h3>この月の計画書（読むだけ）</h3><div class="bd">
@@ -450,6 +473,51 @@ async function tkMonLoad(){
   }catch(e){ $('tk-monPlan').textContent = '開けませんでした'; }
 }
 
+/* ===== tsusho-monitoring-v3: 月末の一覧 ===== */
+async function tkMonListLoad(){
+  var ym = $('tk-monYm').value;
+  if(!ym){ tkToast('対象月を選んでください', true); return; }
+  $('tk-monCount').textContent = '読み込み中…';
+  $('tk-monList').innerHTML = '';
+  try{
+    var j = await fetch('/api/tsusho/monitoring/list?ym=' + encodeURIComponent(ym),
+                        {credentials:'same-origin'}).then(function(r){ return r.json(); });
+    if(j.status !== 'success'){
+      /* ★「0人」と見せない。読めなかったと言う。 */
+      $('tk-monCount').textContent = j.message || '読めませんでした';
+      $('tk-monAllBtn').style.display = 'none';
+      return;
+    }
+    var saved = (j.items || []).filter(function(x){ return x.has; }).length;
+    $('tk-monCount').innerHTML = '在籍 <b>' + j.total + '</b> 名　'
+      + '書き終わり <b>' + j.done + '</b> 名　'
+      + 'あと <b>' + j.todo + '</b> 名';
+    $('tk-monAllBtn').style.display = saved ? '' : 'none';
+    $('tk-monList').innerHTML = (j.items || []).map(function(x){
+      var cls = !x.has ? 'none' : (x.filled === 4 ? 'done' : 'part');
+      var lab = !x.has ? '未記入' : (x.filled === 4 ? '記入ずみ' : 'あと' + (4 - x.filled) + 'つ');
+      return '<div class="it" data-pid="' + esc(x.id) + '">'
+           + '<span class="nm">' + (x.chart ? '(No.' + esc(x.chart) + ') ' : '') + esc(x.name) + '</span>'
+           + '<span class="st ' + cls + '">' + lab + '</span></div>';
+    }).join('');
+    $('tk-monList').querySelectorAll('[data-pid]').forEach(function(el){
+      el.onclick = async function(){
+        await tkPick(el.dataset.pid);
+        var p = $('tk-monPlan'); if(p) p.scrollIntoView({behavior:'smooth', block:'start'});
+      };
+    });
+  }catch(e){
+    $('tk-monCount').textContent = '読めませんでした';
+    $('tk-monAllBtn').style.display = 'none';
+  }
+}
+
+function tkMonPrintAll(){
+  var ym = $('tk-monYm').value;
+  if(!ym){ tkToast('対象月を選んでください', true); return; }
+  window.open('/tsusho_keikaku/monitoring/print_all?ym=' + encodeURIComponent(ym), '_blank');
+}
+
 /* tsusho-monitoring-v2: 紙に出す。★出るのは保存された中身。 */
 function tkMonPrint(){
   if(!TK.patient || !$('tk-monYm').value){ tkToast('利用者と対象月を選んでください', true); return; }
@@ -476,6 +544,7 @@ async function tkMonDelete(){
     if(j.status !== 'success'){ tkToast(j.message || '消せませんでした', true); return; }
     tkToast('消しました');
     await tkMonLoad();
+    if($('tk-monList').innerHTML) tkMonListLoad();   // tsusho-monitoring-v3
   }catch(e){ tkToast('消せませんでした', true); }
 }
 
@@ -502,6 +571,8 @@ async function tkMonSave(){
     $('tk-monPrintBtn').style.display = '';
     $('tk-monDelBtn').style.display = '';
     tkToast(j.message || '保存しました');
+    // tsusho-monitoring-v3: 一覧を出しているなら、数え直す
+    if($('tk-monList').innerHTML) tkMonListLoad();
   }catch(e){ tkToast('保存できませんでした（通信エラー）', true); }
   finally{ b.disabled = false; b.textContent = '保存する'; }
 }

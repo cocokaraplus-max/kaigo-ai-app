@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>通所介護モニタリング表 - {{ pt.user_name or '' }}</title>
-{# tsusho-monitoring-v2
+<title>通所介護モニタリング表 - {{ head }}</title>
+{# tsusho-monitoring-v2 / tsusho-monitoring-v3
    ★base.html を使わない。被せると印刷が画面1枚分で切れる。
-     計画書の印刷と同じにそろえる。 #}
+   ★1人分と全員分で【同じ紙】を使う。渡すのが1人か何人かだけの違い。
+     別々に作ると、片方だけ直したときに必ず食い違う。 #}
 <style>
 * { box-sizing: border-box; }
 body { margin:0; background:#f1f3f4; font-family:"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;
@@ -30,7 +31,6 @@ th, td { border:1px solid #000; padding:4px 6px; vertical-align:top; white-space
 th { background:#eee; font-weight:700; text-align:center; }
 .lbl { background:#eee; font-weight:700; text-align:center; white-space:nowrap; width:32mm; }
 .sec { font-weight:700; margin:9px 0 3px; font-size:10pt; }
-.q-head { font-weight:700; }
 .ch { margin:1px 0; }
 .maru { display:inline-block; border:1.5px solid #000; border-radius:50%;
         min-width:15px; text-align:center; padding:0 3px; font-weight:700; }
@@ -43,6 +43,8 @@ th { background:#eee; font-weight:700; text-align:center; }
   body { background:#fff; }
   .bar, .warn-bar { display:none !important; }
   .sheet { width:auto; min-height:0; margin:0; padding:0; box-shadow:none; }
+  /* ★1人1枚。次の人は必ず新しい紙から。 */
+  .sheet + .sheet { page-break-before:always; }
   table, tr, td, th { page-break-inside:avoid; }
   @page { size:A4 landscape; margin:10mm; }
 }
@@ -52,32 +54,33 @@ th { background:#eee; font-weight:700; text-align:center; }
 
 <div class="bar">
   <b>通所介護モニタリング表</b>
-  <span class="note-sm">保存された中身を出しています</span>
+  <span class="note-sm">{{ head }}／保存された中身を出しています</span>
   <button class="main" onclick="window.print()">印刷する</button>
   <a href="/tsusho_keikaku">戻る</a>
 </div>
 
 {% if warns %}
 <div class="warn-bar">
-  <b>⚠ このまま印刷すると、空欄になるところがあります</b>
+  <b>⚠ 印刷する前に</b>
   {% for w in warns %}<div>・{{ w }}</div>{% endfor %}
 </div>
 {% endif %}
 
+{% for s in sheets %}
 <div class="sheet">
   <h1>通所介護モニタリング表</h1>
-  <div class="head-right">計画書作成年月日　{{ plan_on }}</div>
+  <div class="head-right">計画書作成年月日　{{ s.plan_on }}</div>
 
   <table>
     <tr>
-      <td class="lbl">利用者名</td><td style="width:56mm;">{{ pt.user_name or '' }}　様</td>
-      <td class="lbl">要介護度</td><td style="width:34mm;">{{ pt.care_level or '' }}</td>
+      <td class="lbl">利用者名</td><td style="width:56mm;">{{ s.pt.user_name or '' }}　様</td>
+      <td class="lbl">要介護度</td><td style="width:34mm;">{{ s.pt.care_level or '' }}</td>
       <td class="lbl">事業者名</td><td>{{ facility_name }}</td>
       <td rowspan="2" class="stamp">管理者印</td>
     </tr>
     <tr>
-      <td class="lbl">居宅介護支援事業者</td><td colspan="3">{{ pt.support_office or '' }}</td>
-      <td class="lbl">担当ケアマネージャー</td><td>{{ pt.care_manager_name or '' }}</td>
+      <td class="lbl">居宅介護支援事業者</td><td colspan="3">{{ s.pt.support_office or '' }}</td>
+      <td class="lbl">担当ケアマネージャー</td><td>{{ s.pt.care_manager_name or '' }}</td>
     </tr>
   </table>
 
@@ -92,10 +95,10 @@ th { background:#eee; font-weight:700; text-align:center; }
       {% for q in qs %}<td class="note-sm">{{ q.desc }}</td>{% endfor %}
     </tr>
     <tr>
-      <td class="lbl">実施日<br><br>{{ done_on }}</td>
+      <td class="lbl">実施日<br><br>{{ s.done_on }}</td>
       {% for q in qs %}
-      {% set ch = mon['q' ~ loop.index ~ '_choice'] %}
-      {% set nt = mon['q' ~ loop.index ~ '_note'] %}
+      {% set ch = s.mon['q' ~ loop.index ~ '_choice'] %}
+      {% set nt = s.mon['q' ~ loop.index ~ '_note'] %}
       <td>
         {% for n, label in q.choices %}
         {# ★選んでいない項目には丸を付けない。埋まっているように見せない。 #}
@@ -108,10 +111,13 @@ th { background:#eee; font-weight:700; text-align:center; }
     </tr>
     <tr>
       <td class="lbl">モニタリング実施者</td>
-      <td colspan="4">{{ mon.doer or '' }}</td>
+      <td colspan="4">{{ s.mon.doer or '' }}</td>
     </tr>
   </table>
 </div>
+{% else %}
+<div class="sheet"><p class="empty">出せるモニタリング表がありません。</p></div>
+{% endfor %}
 
 </body>
 </html>

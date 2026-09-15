@@ -25757,6 +25757,27 @@ def _tk_plan_on(supabase, f_code, patient_id, on_date):  # tsusho-monitoring-v1
     return _tk_plan_full(supabase, f_code, rows[0]["id"])
 
 
+def _tk_patients(supabase, f_code, on_date):  # tsusho-monitoring-v3
+    """その日に在籍している利用者。返り値は (並び, 確かめられたか)。
+
+    ★get_patients は落ちても空リストを返す（本人のコメントにもそう書いてある）。
+      月末の一覧でそれを使うと、読めなかった日に【全員書き終わっている】
+      ように見える。書いていない人がいるまま月が締まる。
+      だからここでは自分で読んで、確かめられたかどうかを持って返す。
+    """
+    try:
+        r = (supabase.table("patient_profiles")
+             .select("id,user_name,user_name_kana,patient_number,care_level,"
+                     "support_office,care_manager_name,is_discontinued,discontinued_date")
+             .eq("facility_code", f_code).order("user_name_kana").execute())
+        rows = r.data or []
+    except Exception as e:
+        print("[tsusho-mon] 利用者を読めません(%s): %s" % (f_code, e), flush=True)
+        return [], False
+    out = [x for x in rows if patient_active_on(x, on_date)]
+    return out, True
+
+
 def _tk_user_name(supabase, f_code, patient_id):  # tsusho-monitoring-v1
     """評価は user_name で引く作りなので、名前を取る。読めなければ空。"""
     try:
@@ -25974,6 +25995,140 @@ _TK_MON_Q = [
 ]
 
 
+def _tk_mon_sheets(supabase, f_code, ym, only_patient_id=None):  # tsusho-monitoring-v3
+    """紙に出すぶんを作る。返り値は (並び, 在籍人数, 確かめられたか)。
+
+    ★保存ずみの人だけを入れる。未記入の人の空紙は刷らない。
+    """
+    last = _tk_month_last(ym)
+    if not last:
+        return [], 0, True
+    plist, ok = _tk_patients(supabase, f_code, last)
+    if not ok:
+        return [], 0, False
+    if only_patient_id:
+        plist = [p for p in plist if str(p.get("id")) == str(only_patient_id)]
+
+    try:
+        mr = (supabase.table("tsusho_monitorings").select("*")
+              .eq("facility_code", f_code).eq("year_month", ym).execute())
+        mons = {str(x.get("patient_id")): x for x in (mr.data or [])}
+    except Exception as e:
+        print("[tsusho-mon] その月のモニタリングを読めません: %s" % e, flush=True)
+        return [], 0, False
+
+    fac_total = len(plist)
+    sheets = []
+    for p in plist:
+        m = mons.get(str(p.get("id")))
+        if not m:
+            continue                      # ★未記入は刷らない
+        plan, pok = _tk_plan_on(supabase, f_code, p.get("id"), last)
+        sheets.append({
+            "mon": m,
+            "pt": {k: _tk_clean(v) for k, v in p.items()},
+            "plan_on": _tk_wareki(plan.get("created_on")) if (pok and plan) else "",
+            "done_on": _tk_wareki(m.get("done_on")),
+            "blank": [q["no"] for i, q in enumerate(_TK_MON_Q, start=1)
+                      if m.get("q%d_choice" % i) is None],
+        })
+    return sheets, fac_total, True
+
+
+@app.route("/api/tsusho/monitoring/list", methods=["GET"])  # tsusho-monitoring-v3
+@login_required
+def api_tsusho_monitoring_list():
+    """月末の一覧。その月の在籍者を全員並べ、書けたかどうかを返す。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        ym = _tk_txt(request.args.get("ym"), 7)
+        last = _tk_month_last(ym)
+        if not last:
+            return jsonify({"status": "error", "message": "対象月を選んでください。"}), 400
+
+        plist, ok = _tk_patients(supabase, f_code, last)
+        if not ok:
+            # ★「0人」と見せない。読めなかったと言う。
+            return jsonify({"status": "error",
+                            "message": "利用者を読めませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+        try:
+            mr = (supabase.table("tsusho_monitorings")
+                  .select("patient_id,q1_choice,q2_choice,q3_choice,q4_choice,done_on,doer")
+                  .eq("facility_code", f_code).eq("year_month", ym).execute())
+            mons = {str(x.get("patient_id")): x for x in (mr.data or [])}
+        except Exception as e:
+            print("[tsusho-mon] 一覧を読めません: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "いま読めませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+
+        items, done = [], 0
+        for p in plist:
+            m = mons.get(str(p.get("id")))
+            filled = 0
+            if m:
+                filled = sum(1 for i in (1, 2, 3, 4)
+                             if m.get("q%d_choice" % i) is not None)
+            if m and filled == 4:
+                done += 1
+            items.append({
+                "id": p.get("id"),
+                "name": _tk_clean(p.get("user_name")),
+                "kana": _tk_clean(p.get("user_name_kana")),
+                "chart": _tk_clean(p.get("patient_number")),
+                "has": bool(m),
+                "filled": filled,
+                "done_on": (m or {}).get("done_on") or "",
+                "doer": _tk_clean((m or {}).get("doer")),
+            })
+        return jsonify({"status": "success", "ym": ym, "items": items,
+                        "total": len(items), "done": done,
+                        "todo": len(items) - done})
+    except Exception as e:
+        print("api_tsusho_monitoring_list error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/tsusho_keikaku/monitoring/print_all")  # tsusho-monitoring-v3
+@login_required
+def tsusho_monitoring_print_all():
+    """その月の保存ずみを、全員分まとめて出す。
+
+    ★未記入の人の空紙は刷らない。何人ぶん出したかを画面の帯に書く。
+    """
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    if not is_tsusho_keikaku_enabled(supabase, f_code):
+        return redirect("/top")
+    ym = _tk_txt(request.args.get("ym"), 7)
+    sheets, total, ok = _tk_mon_sheets(supabase, f_code, ym)
+    if not ok:
+        return redirect("/tsusho_keikaku")
+
+    fac = _tk_clean(_sj_facility_name(supabase, f_code))
+    warns = []
+    if not fac:
+        warns.append("事業者名が登録されていないので、紙では空欄になります。")
+    _todo = total - len(sheets)
+    if _todo > 0:
+        warns.append("まだ書いていない方が %d 名います。"
+                     "その方の紙は出していません（空欄の紙を刷らないため）。" % _todo)
+    _b = [s for s in sheets if s["blank"]]
+    if _b:
+        warns.append("選んでいない項目が残っている方が %d 名います。"
+                     "紙ではその番号に丸が付きません。" % len(_b))
+
+    return render("tsusho_monitoring_print.html",
+                  sheets=sheets, qs=_TK_MON_Q, ym=ym, warns=warns,
+                  facility_name=fac,
+                  head="%s　%d名分" % (ym, len(sheets)))
+
+
 @app.route("/tsusho_keikaku/monitoring/print")  # tsusho-monitoring-v2
 @login_required
 def tsusho_monitoring_print():
@@ -25993,47 +26148,28 @@ def tsusho_monitoring_print():
     if not pid or not last:
         return redirect("/tsusho_keikaku")
 
-    try:
-        r = (supabase.table("tsusho_monitorings").select("*")
-             .eq("facility_code", f_code).eq("patient_id", pid)
-             .eq("year_month", ym).limit(1).execute())
-        mon = (r.data or [None])[0]
-    except Exception as e:
-        print("[tsusho-mon-print] 読めません: %s" % e, flush=True)
+    # tsusho-monitoring-v3: ★1人分と全員分で、同じ紙を使う。
+    #   別々に作ると、片方だけ直したときに必ず食い違う。
+    sheets, _total, ok = _tk_mon_sheets(supabase, f_code, ym, only_patient_id=pid)
+    if not ok or not sheets:
         return redirect("/tsusho_keikaku")
-    if not mon:
-        return redirect("/tsusho_keikaku")
-
-    pt = {}
-    try:
-        pr = (supabase.table("patient_profiles")
-              .select("user_name,care_level,support_office,care_manager_name")
-              .eq("facility_code", f_code).eq("id", pid).limit(1).execute())
-        pt = {k: _tk_clean(v) for k, v in ((pr.data or [{}])[0]).items()}
-    except Exception as e:
-        print("[tsusho-mon-print] 利用者を読めません: %s" % e, flush=True)
-
-    plan, ok = _tk_plan_on(supabase, f_code, pid, last)
-    plan_on = _tk_wareki(plan.get("created_on")) if (ok and plan) else ""
 
     fac = _tk_clean(_sj_facility_name(supabase, f_code))
     warns = []
     if not fac:
         warns.append("事業者名が登録されていないので、紙では空欄になります。"
                      "管理者MENUで施設名を登録してください。")
-    if not plan_on:
+    if not sheets[0]["plan_on"]:
         warns.append("この月に効いている計画書がないので、"
                      "「計画書作成年月日」は空欄になります。")
-    _blank = [q["no"] for i, q in enumerate(_TK_MON_Q, start=1)
-              if mon.get("q%d_choice" % i) is None]
-    if _blank:
+    if sheets[0]["blank"]:
         warns.append("まだ選んでいない項目があります（%s）。"
-                     "紙では番号に丸が付きません。" % "".join(_blank))
+                     "紙では番号に丸が付きません。" % "".join(sheets[0]["blank"]))
 
     return render("tsusho_monitoring_print.html",
-                  mon=mon, pt=pt, ym=ym, qs=_TK_MON_Q, warns=warns,
-                  plan_on=plan_on, facility_name=fac,
-                  done_on=_tk_wareki(mon.get("done_on")))
+                  sheets=sheets, qs=_TK_MON_Q, ym=ym, warns=warns,
+                  facility_name=fac,
+                  head=_tk_clean(sheets[0]["pt"].get("user_name")))
 # ----- /tsusho-monitoring-v1 -----
 
 
