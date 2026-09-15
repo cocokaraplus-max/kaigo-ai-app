@@ -276,8 +276,12 @@
 
     <div class="tk-acts" style="margin-top:16px;">
       <button type="button" class="tk-btn main" id="tk-monSaveBtn" onclick="tkMonSave()">保存する</button>
+      {# tsusho-monitoring-v2 #}
+      <button type="button" class="tk-btn" id="tk-monPrintBtn" onclick="tkMonPrint()" style="display:none;">印刷</button>
+      <button type="button" class="tk-btn del" id="tk-monDelBtn" onclick="tkMonDelete()" style="display:none;margin-left:auto;">この月を消す</button>
     </div>
-    <div class="tk-note">★印刷と、月末に全員分をまとめて出すのは次の版で入れます。</div>
+    <div class="tk-note">★［印刷］で出るのは<b>保存された中身</b>です。書きかけのものは紙に出ません。<br>
+      ★月末に全員分をまとめて出すのは次の版で入れます。</div>
   </div>
 
   <div id="tk-nopatient" class="tk-note">利用者を選んでください。</div>
@@ -353,7 +357,7 @@ function tkClearPatient(){
 }
 
 /* ===== tsusho-monitoring-v1 : モニタリング表 ===== */
-var TKM = { mode:'plan', planId:null };
+var TKM = { mode:'plan', planId:null, saved:false };   // tsusho-monitoring-v2: saved=この月が保存ずみか
 
 function tkMode(m){
   if(TK.dirty && m !== TKM.mode
@@ -421,6 +425,10 @@ async function tkMonLoad(){
     }else{ hb.style.display = 'none'; hb.innerHTML = ''; }
 
     var m = j.monitoring;
+    // tsusho-monitoring-v2: 保存ずみの月だけ、印刷と削除を出す
+    TKM.saved = !!m;
+    $('tk-monPrintBtn').style.display = m ? '' : 'none';
+    $('tk-monDelBtn').style.display   = m ? '' : 'none';
     if(m){
       ['1','2','3','4'].forEach(function(n){
         tkSetRadio('q' + n, m['q' + n + '_choice']);
@@ -442,6 +450,35 @@ async function tkMonLoad(){
   }catch(e){ $('tk-monPlan').textContent = '開けませんでした'; }
 }
 
+/* tsusho-monitoring-v2: 紙に出す。★出るのは保存された中身。 */
+function tkMonPrint(){
+  if(!TK.patient || !$('tk-monYm').value){ tkToast('利用者と対象月を選んでください', true); return; }
+  if(!TKM.saved){ tkToast('先に保存してください', true); return; }
+  if(TK.dirty && !confirm('保存していない変更があります。\n\n'
+      + '★紙に出るのは【保存された中身】です。\n'
+      + '　いまの書きかけは出ません。\n\nこのまま印刷しますか。')) return;
+  window.open('/tsusho_keikaku/monitoring/print?patient_id=' + encodeURIComponent(TK.patient.id)
+              + '&ym=' + encodeURIComponent($('tk-monYm').value), '_blank');
+}
+
+/* tsusho-monitoring-v2: その月を消す。★v1に無かった。 */
+async function tkMonDelete(){
+  if(!TK.patient || !$('tk-monYm').value) return;
+  if(!confirm($('tk-monYm').value + ' のモニタリング表を消します。\n\n'
+            + '・①〜④の選んだ内容と理由\n・実施日／実施者\n\n'
+            + 'すべて消えます。元に戻せません。\n'
+            + '★計画書は消えません。\n\n消しますか。')) return;
+  try{
+    var j = await fetch('/api/tsusho/monitoring/delete', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({patient_id: TK.patient.id, ym: $('tk-monYm').value})})
+      .then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ tkToast(j.message || '消せませんでした', true); return; }
+    tkToast('消しました');
+    await tkMonLoad();
+  }catch(e){ tkToast('消せませんでした', true); }
+}
+
 async function tkMonSave(){
   if(!TK.patient){ tkToast('利用者を選んでください', true); return; }
   var ym = $('tk-monYm').value;
@@ -460,6 +497,10 @@ async function tkMonSave(){
       .then(function(r){ return r.json(); });
     if(j.status !== 'success'){ tkToast(j.message || '保存できませんでした', true); return; }
     TK.dirty = false;
+    // tsusho-monitoring-v2: 保存できたので、印刷と削除を出す
+    TKM.saved = true;
+    $('tk-monPrintBtn').style.display = '';
+    $('tk-monDelBtn').style.display = '';
     tkToast(j.message || '保存しました');
   }catch(e){ tkToast('保存できませんでした（通信エラー）', true); }
   finally{ b.disabled = false; b.textContent = '保存する'; }

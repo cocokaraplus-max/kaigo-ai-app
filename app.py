@@ -25912,6 +25912,128 @@ def api_tsusho_monitoring_save():
     except Exception as e:
         print("api_tsusho_monitoring_save error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+@app.route("/api/tsusho/monitoring/delete", methods=["POST"])  # tsusho-monitoring-v2
+@login_required
+def api_tsusho_monitoring_delete():
+    """その月のモニタリング表を消す。
+
+    ★v1に無かった。計画書には付けたのに、こちらだけ揃っていなかった。
+      間違えた月を作ってしまったとき、消せないまま残る。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        d = request.json or {}
+        pid = _tk_txt(d.get("patient_id"), 64)
+        ym = _tk_txt(d.get("ym"), 7)
+        if not pid or not _tk_month_last(ym):
+            return jsonify({"status": "error", "message": "利用者と対象月を選んでください。"}), 400
+        # ★あるかどうかは先に読んで確かめる（delete の戻りに頼らない）
+        ex = (supabase.table("tsusho_monitorings").select("id")
+              .eq("facility_code", f_code).eq("patient_id", pid)
+              .eq("year_month", ym).limit(1).execute())
+        if not (ex.data or []):
+            return jsonify({"status": "error",
+                            "message": "この月のモニタリング表はありません。"}), 404
+        (supabase.table("tsusho_monitorings").delete()
+         .eq("facility_code", f_code).eq("id", ex.data[0]["id"]).execute())
+        return jsonify({"status": "success", "message": "消しました。"})
+    except Exception as e:
+        print("api_tsusho_monitoring_delete error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+#   ★紙の①〜④の言い回しは、実物のとおりに写す。
+#     言い換えると、他の事業所の様式と並べたときに別物に見える。
+_TK_MON_Q = [
+    {"no": "①", "title": "サービスの実施状況",
+     "desc": "利用者に係る通所介護計画の内容どおりに、"
+             "サービス提供を実施できたかどうかについて。",
+     "choices": [(1, "計画の通り実施することができた"),
+                 (2, "ほぼ計画の通り実施することができた"),
+                 (3, "計画の通り実施することができなかった")],
+     "note": "※1以外の場合はその理由等"},
+    {"no": "②", "title": "利用者及び家族の満足度",
+     "desc": "現に利用しているサービスに、利用者及び家族が"
+             "満足しているかどうかについて。",
+     "choices": [(1, "満足"), (2, "不満足")],
+     "note": "※1以外の場合はその理由等"},
+    {"no": "③", "title": "利用者の生活状況及び心身の状況の変化",
+     "desc": "利用者の生活状況や心身の状況に変化がないかどうかについて。",
+     "choices": [(1, "変化なし"), (2, "変化あり")],
+     "note": "※1、2ともその状況等"},
+    {"no": "④", "title": "サービス変更の必要性",
+     "desc": "通所介護計画の変更が必要となるような新たな課題が生じていないか、"
+             "提供したサービスの内容が③の内容に照らして適切であるかどうか等により"
+             "判断した結果について。",
+     "choices": [(1, "必要なし"), (2, "必要あり")],
+     "note": "※1以外の場合はその理由等"},
+]
+
+
+@app.route("/tsusho_keikaku/monitoring/print")  # tsusho-monitoring-v2
+@login_required
+def tsusho_monitoring_print():
+    """モニタリング表を紙の形で出す（A4横）。
+
+    ★出るのは保存された中身。画面で書きかけのものは出ない。
+    ★base.html は使わない（印刷で画面1枚分に切れるため）。
+    """
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    if not is_tsusho_keikaku_enabled(supabase, f_code):
+        return redirect("/top")
+
+    pid = _tk_txt(request.args.get("patient_id"), 64)
+    ym = _tk_txt(request.args.get("ym"), 7)
+    last = _tk_month_last(ym)
+    if not pid or not last:
+        return redirect("/tsusho_keikaku")
+
+    try:
+        r = (supabase.table("tsusho_monitorings").select("*")
+             .eq("facility_code", f_code).eq("patient_id", pid)
+             .eq("year_month", ym).limit(1).execute())
+        mon = (r.data or [None])[0]
+    except Exception as e:
+        print("[tsusho-mon-print] 読めません: %s" % e, flush=True)
+        return redirect("/tsusho_keikaku")
+    if not mon:
+        return redirect("/tsusho_keikaku")
+
+    pt = {}
+    try:
+        pr = (supabase.table("patient_profiles")
+              .select("user_name,care_level,support_office,care_manager_name")
+              .eq("facility_code", f_code).eq("id", pid).limit(1).execute())
+        pt = {k: _tk_clean(v) for k, v in ((pr.data or [{}])[0]).items()}
+    except Exception as e:
+        print("[tsusho-mon-print] 利用者を読めません: %s" % e, flush=True)
+
+    plan, ok = _tk_plan_on(supabase, f_code, pid, last)
+    plan_on = _tk_wareki(plan.get("created_on")) if (ok and plan) else ""
+
+    fac = _tk_clean(_sj_facility_name(supabase, f_code))
+    warns = []
+    if not fac:
+        warns.append("事業者名が登録されていないので、紙では空欄になります。"
+                     "管理者MENUで施設名を登録してください。")
+    if not plan_on:
+        warns.append("この月に効いている計画書がないので、"
+                     "「計画書作成年月日」は空欄になります。")
+    _blank = [q["no"] for i, q in enumerate(_TK_MON_Q, start=1)
+              if mon.get("q%d_choice" % i) is None]
+    if _blank:
+        warns.append("まだ選んでいない項目があります（%s）。"
+                     "紙では番号に丸が付きません。" % "".join(_blank))
+
+    return render("tsusho_monitoring_print.html",
+                  mon=mon, pt=pt, ym=ym, qs=_TK_MON_Q, warns=warns,
+                  plan_on=plan_on, facility_name=fac,
+                  done_on=_tk_wareki(mon.get("done_on")))
 # ----- /tsusho-monitoring-v1 -----
 
 
