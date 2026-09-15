@@ -25770,36 +25770,70 @@ def api_tsusho_plan_ocr():
             "JSON以外は一切出力しないこと。"
         )
 
-        parts = []
+        # tsusho-keikaku-ocr-v2
+        # ★写真は【1枚ずつ】読ませる。まとめて1回で渡さない。
+        #   まとめて渡すと返事も1つ。長くなって途中で切れると閉じ括弧が無く、
+        #   形が読めずに【2枚とも無駄になる】。どちらの写真が悪かったのかも言えない。
+        #   1枚ずつなら返事が短く切れにくい。2枚目が駄目でも1枚目は残る。
+        shots = []
         for im in images[:6]:          # 紙は多くて2〜3枚。6枚で足りる
             b64 = im.get("data") if isinstance(im, dict) else im
             mt = (im.get("mime_type") if isinstance(im, dict) else None) or "image/jpeg"
             if b64:
-                parts.append({"mime_type": mt, "data": b64})
-        if not parts:
+                shots.append({"mime_type": mt, "data": b64})
+        if not shots:
             return jsonify({"status": "error", "message": "写真を読めませんでした。"}), 400
-        parts.append(prompt)
 
-        try:
-            resp = model.generate_content(parts)
-            text = (resp.text or "").strip()
-        except Exception as e:
-            print("[tsusho-ocr] 読み取りに失敗: %s" % e, flush=True)
+        reads, pages = [], []
+        for _i, _shot in enumerate(shots, start=1):
+            try:
+                resp = model.generate_content([_shot, prompt])
+                text = (resp.text or "").strip()
+            except Exception as e:
+                # ★ログに何枚目かを残す。次に失敗したとき当てずっぽうをしない。
+                print("[tsusho-ocr] %d枚目 読み取りに失敗: %s" % (_i, e), flush=True)
+                pages.append({"no": _i, "ok": False, "why": "読み取れませんでした"})
+                continue
+            m = _re.search(r"\{.*\}", text, _re.DOTALL)
+            if not m:
+                print("[tsusho-ocr] %d枚目 JSONが見当たりません 先頭=%r"
+                      % (_i, text[:200]), flush=True)
+                pages.append({"no": _i, "ok": False, "why": "形が読めませんでした"})
+                continue
+            try:
+                reads.append(_json.loads(m.group()))
+                pages.append({"no": _i, "ok": True, "why": ""})
+            except Exception as e:
+                # ★途中で切れると閉じ括弧が無く、ここに来る。末尾を少しだけ残す。
+                print("[tsusho-ocr] %d枚目 形が読めません: %s 末尾=%r"
+                      % (_i, e, m.group()[-200:]), flush=True)
+                pages.append({"no": _i, "ok": False, "why": "形が読めませんでした"})
+
+        if not reads:
             return jsonify({"status": "error",
                             "message": "読み取れませんでした。"
-                                       "明るい所で、まっすぐ撮り直してみてください。"}), 500
+                                       "明るい所で、まっすぐ撮り直してみてください。",
+                            "pages": pages}), 500
 
-        m = _re.search(r"\{.*\}", text, _re.DOTALL)
-        if not m:
-            return jsonify({"status": "error",
-                            "message": "読み取れませんでした。"
-                                       "明るい所で、まっすぐ撮り直してみてください。"}), 500
-        try:
-            g = _json.loads(m.group())
-        except Exception as e:
-            print("[tsusho-ocr] 形が読めません: %s" % e, flush=True)
-            return jsonify({"status": "error",
-                            "message": "読み取れませんでした。もう一度お試しください。"}), 500
+        # ★合わせるのは【ここ1か所だけ】。画面では合わせない。
+        #   同じ決まりが2か所にあると、必ず片方だけ直して食い違う。
+        #   文字：先に読めた写真が勝つ（空のときだけ入れる）
+        #   並び：つなげる。同じ本文は1つだけにする
+        g = {}
+        for _one in reads:
+            if not isinstance(_one, dict):
+                continue
+            for _k, _v in _one.items():
+                if isinstance(_v, list):
+                    _cur = g.get(_k)
+                    if not isinstance(_cur, list):
+                        _cur = []
+                    for _x in _v:
+                        if _x not in _cur:
+                            _cur.append(_x)
+                    g[_k] = _cur
+                elif not str(g.get(_k) or "").strip():
+                    g[_k] = _v
 
         def _s(k, limit=4000):
             return _tk_clean(g.get(k))[:limit]
@@ -25855,7 +25889,9 @@ def api_tsusho_plan_ocr():
             })
 
         # ★ここで写真をどこにも書かない。Storageにも上げない。
-        return jsonify({"status": "success", "read": out})
+        # tsusho-keikaku-ocr-v2: ★どの写真が読めたかも返す。
+        #   一部だけ入って、それを黙っているのがいちばん悪い。
+        return jsonify({"status": "success", "read": out, "pages": pages})
     except Exception as e:
         print("api_tsusho_plan_ocr error: %s" % e, flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500

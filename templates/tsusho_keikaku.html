@@ -876,15 +876,21 @@ async function tkOcrRun(){
   var files = [].slice.call(inp.files || []).slice(0, 6);
   if(!files.length) return;
   var msg = $('tk-ocrMsg');
-  msg.textContent = '読み取っています…（写真の枚数によっては30秒ほどかかります）';
+  /* tsusho-keikaku-ocr-v2: ★何枚を読んでいるかを出す。
+     待っている人に「これは動いているのか」を分からせる。 */
+  msg.textContent = '写真' + files.length + '枚を読み取っています…'
+                  + '（1枚あたり20秒ほどかかります。このまま待ってください）';
   try{
     var imgs = [];
     for(var i = 0; i < files.length; i++){ imgs.push(await tkShrink(files[i])); }
     var j = await fetch('/api/tsusho/plan/ocr', {method:'POST', credentials:'same-origin',
       headers:{'Content-Type':'application/json'}, body: JSON.stringify({images: imgs})})
       .then(function(r){ return r.json(); });
-    if(j.status !== 'success'){ msg.textContent = j.message || '読み取れませんでした'; return; }
-    msg.innerHTML = tkOcrApply(j.read || {});
+    /* tsusho-keikaku-ocr-v2: ★失敗したときも、何枚目が駄目だったかを出す。 */
+    if(j.status !== 'success'){
+      msg.innerHTML = esc(j.message || '読み取れませんでした') + tkOcrPages(j.pages); return;
+    }
+    msg.innerHTML = tkOcrApply(j.read || {}) + tkOcrPages(j.pages);
   }catch(e){
     msg.textContent = '読み取れませんでした。もう一度お試しください。';
   }finally{
@@ -892,11 +898,43 @@ async function tkOcrRun(){
   }
 }
 
+/* tsusho-keikaku-ocr-v2
+   ★どの写真が読めたかを言う。一部だけ入って、それを黙っているのがいちばん悪い。 */
+function tkOcrPages(pages){
+  if(!pages || pages.length < 2) return '';
+  var ng = pages.filter(function(p){ return !p.ok; });
+  if(!ng.length){
+    return '<br><span style="color:#80868b;">写真' + pages.length + '枚とも読み取れました。</span>';
+  }
+  return '<br><b style="color:#7a5200;">読み取れなかった写真：</b>'
+       + esc(ng.map(function(p){ return p.no + '枚目（' + (p.why || '') + '）'; }).join('、'))
+       + '<br><span style="color:#80868b;">その写真だけ、明るい所でまっすぐ撮り直して、'
+       + 'もう一度取り込んでください。読めた写真のぶんは入っています。</span>';
+}
+
 /* ★空いている欄にだけ入れる。すでに書いてある欄は触らない。
      読み取りは必ず間違える。間違いで、人が書いたものを消してはいけない。
    ★入れなかった欄は【名前を挙げて】伝える。黙って飛ばさない。 */
 function tkOcrApply(r){
   var put = [], skip = [];
+
+  /* tsusho-keikaku-ocr-v2
+     ★［新しく作る］を押した時点で
+         作成年月日 ← 今日 ／ 計画作成者 ← ログインしている人
+       が先に入っている（tkNew）。「空いている欄にだけ入れる」決まりなので、
+       この2つは【いつも埋まっていて、いつも飛ばされて】いた。
+       紙に書いてある作成年月日のほうが正しい。今日ではない。
+     ★まだ自動の値のままのときだけ空にする。人が手で直した値は触らない。
+     ★読み取れたときだけ空にする。そうしないと、読めなかったときに
+       もともと入っていた値まで消えてしまう。 */
+  function undoAuto(id, auto, val){
+    if(!val || !auto) return;
+    var el = $(id);
+    if(el && (el.value || '').trim() === String(auto).trim()){ el.value = ''; }
+  }
+  undoAuto('tk-createdOn', TK_TODAY, r.created_on);
+  undoAuto('tk-planner', TK_ME || '', r.planner_name);
+
   function txt(id, val, label){
     if(!val) return;
     var el = $(id);
