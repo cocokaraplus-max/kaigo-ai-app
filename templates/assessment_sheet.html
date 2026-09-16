@@ -91,17 +91,20 @@
   </div>
 
   <div id="as-body" style="display:none;">
-    <div class="as-sec" style="border-color:#cfe0fb;background:#f7fbff;">
+    {# tsk-busy-v1: 待ち表示をかぶせる枠。id が要る #}
+    <div class="as-sec" id="as-ocr-sec" style="border-color:#cfe0fb;background:#f7fbff;">
       <h3 style="color:#1a56b3;"><span class="material-symbols-outlined" style="color:#1a73e8;">document_scanner</span>ケアマネ書類から自動入力</h3>
       <div class="as-hint">紹介票・FAX・フェイスシートなどの写真を選ぶと、AIが読み取って下の各項目に自動で入れます（内容を確認してから保存してください）。家族構成図があればジェノグラムにも反映できます。</div>
       <input type="file" id="as-ocr-file" accept="image/*" multiple style="display:none" onchange="asOcrRun(this)">
-      <button type="button" class="as-save" style="background:#1a73e8;" onclick="document.getElementById('as-ocr-file').click()"><span class="material-symbols-outlined" style="font-size:18px;">add_a_photo</span>書類の写真を選ぶ（複数可）</button>
+      {# tsk-busy-v1: 読み取り中は押せなくするので id を付ける #}
+      <button type="button" id="as-ocr-btn" class="as-save" style="background:#1a73e8;" onclick="document.getElementById('as-ocr-file').click()"><span class="material-symbols-outlined" style="font-size:18px;">add_a_photo</span>書類の写真を選ぶ（複数可）</button>
       <div id="as-ocr-msg" class="as-savemsg" style="display:block;margin-top:8px;"></div>
       <div id="as-ocr-family"></div>
       {# assess-ingest-hold-v1: 入らなかったものの置き場。写真からも録音からもここへ出る。 #}
       <div id="as-hold"></div>
     </div>
-    <div class="as-sec" style="border-color:#ffe0c2;background:#fffaf5;">
+    {# tsk-busy-v1: 待ち表示をかぶせる枠。id が要る #}
+    <div class="as-sec" id="as-voice-sec" style="border-color:#ffe0c2;background:#fffaf5;">
       <h3 style="color:#b3541a;"><span class="material-symbols-outlined" style="color:#f79009;">mic</span>面談を録音して自動入力</h3>
       <div class="as-hint">利用者やご家族と話しながら録音すると、AIが会話から各項目を聞き取って自動で入れます（内容を確認してから保存してください）。何回でも録音でき、話した項目だけが追記されます。音声は保存されません。</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -667,13 +670,16 @@
     if(!input.files||!input.files.length) return;
     if(!current.pid){ alert('先に利用者を選んでください'); input.value=''; return; }
     var msg=el('as-ocr-msg');
-    /* assess-ingest-hold-v1: ★何枚を読んでいるかを出す。待つ人に動いていることを伝える。 */
+    /* assess-ingest-hold-v1: ★何枚を読んでいるかを出す。
+       tsk-busy-v1: ★タスカルくんと経過秒数。ボタンも押せなくする。 */
     var _n=Math.min(input.files.length,6);
-    msg.textContent='写真'+_n+'枚を読み取っています…（1枚あたり20秒ほど。このままお待ちください）'; msg.style.color='#1a73e8';
+    msg.textContent='';
+    tskBusy('as-ocr-sec', '写真'+_n+'枚を読み取っています', '1枚20秒ほどかかります', 'as-ocr-btn');
     Promise.all(Array.prototype.slice.call(input.files).slice(0,6).map(readFileB64)).then(function(imgs){
       imgs=imgs.filter(Boolean);
       return fetch('/api/assessment/ocr',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:imgs})});
     }).then(function(r){return r.json();}).then(function(j){
+      tskBusyStop('as-ocr-sec');   // tsk-busy-v1
       input.value='';
       if(!j||j.status!=='success'){
         msg.textContent='読み取り失敗: '+((j&&j.message)||'')+asPagesNote(j&&j.pages); msg.style.color='#c62828'; return;
@@ -687,7 +693,12 @@
       msg.style.color = rr.hold ? '#b3541a' : '#2e7d32';
       window.__ocrFamily=ex.family||[];
       renderOcrFamily();
-    }).catch(function(){ input.value=''; msg.textContent='通信エラー'; msg.style.color='#c62828'; });
+    }).catch(function(){
+      tskBusyStop('as-ocr-sec');   // tsk-busy-v1: ★失敗したときも必ず止める
+      input.value='';
+      msg.textContent='つながりませんでした。電波の良い所で、もう一度お試しください。';
+      msg.style.color='#c62828';
+    });
   };
   function renderOcrFamily(){
     var host=el('as-ocr-family'); var fam=window.__ocrFamily||[];
@@ -732,10 +743,13 @@
     var blob=new Blob(_recChunks,{type:(_rec&&_rec.mimeType)||'audio/webm'}); _recChunks=[];
     var msg=el('as-voice-msg');
     if(!blob.size){ msg.textContent='録音データが空でした。もう一度お試しください。'; msg.style.color='#c62828'; return; }
-    msg.textContent='解析中...（数十秒かかることがあります）'; msg.style.color='#1a73e8';
+    /* tsk-busy-v1: ★タスカルくんと経過秒数。ボタンも押せなくする。 */
+    msg.textContent='';
+    tskBusy('as-voice-sec', '話した内容を聞き取っています', '数十秒かかることがあります', 'as-rec-btn');
     var fd=new FormData(); var ext=(blob.type.indexOf('mp4')>=0?'m4a':'webm'); fd.append('audio', blob, 'interview.'+ext);
     fetch('/api/assessment/voice',{method:'POST',credentials:'same-origin',body:fd})
       .then(function(r){return r.json();}).then(function(j){
+        tskBusyStop('as-voice-sec');   // tsk-busy-v1
         if(!j||j.status!=='success'){ msg.textContent='解析失敗: '+((j&&j.message)||''); msg.style.color='#c62828'; return; }
         var ex=j.extracted||{};
         /* assess-ingest-hold-v1: ★録音も同じ形にする。
@@ -749,7 +763,11 @@
         var tr=el('as-voice-tr'); var t=((j.transcript||'')+'').trim();
         tr.innerHTML = t ? ('<div style="margin-top:8px;padding:8px 10px;border:1px solid #eee;border-radius:8px;background:#fff;font-size:.8rem;color:#444;white-space:pre-wrap;"><b style="color:#666;">聞き取り内容</b><br>'+esc(t)+'</div>') : '';
         if(ex.family && ex.family.length){ window.__ocrFamily=ex.family; renderOcrFamily(); }
-      }).catch(function(){ msg.textContent='通信エラー'; msg.style.color='#c62828'; });
+      }).catch(function(){
+        tskBusyStop('as-voice-sec');   // tsk-busy-v1: ★失敗したときも必ず止める
+        msg.textContent='つながりませんでした。電波の良い所で、もう一度お試しください。';
+        msg.style.color='#c62828';
+      });
   }
 
   // ===== assess-bi-v1: 事前アセスメントから初回BI(生活機能チェック/Barthel)を同時入力 =====
