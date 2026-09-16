@@ -91,15 +91,20 @@
   </div>
 
   <div id="as-body" style="display:none;">
-    <div class="as-sec" style="border-color:#cfe0fb;background:#f7fbff;">
+    {# tsk-busy-v1: 待ち表示をかぶせる枠。id が要る #}
+    <div class="as-sec" id="as-ocr-sec" style="border-color:#cfe0fb;background:#f7fbff;">
       <h3 style="color:#1a56b3;"><span class="material-symbols-outlined" style="color:#1a73e8;">document_scanner</span>ケアマネ書類から自動入力</h3>
       <div class="as-hint">紹介票・FAX・フェイスシートなどの写真を選ぶと、AIが読み取って下の各項目に自動で入れます（内容を確認してから保存してください）。家族構成図があればジェノグラムにも反映できます。</div>
       <input type="file" id="as-ocr-file" accept="image/*" multiple style="display:none" onchange="asOcrRun(this)">
-      <button type="button" class="as-save" style="background:#1a73e8;" onclick="document.getElementById('as-ocr-file').click()"><span class="material-symbols-outlined" style="font-size:18px;">add_a_photo</span>書類の写真を選ぶ（複数可）</button>
+      {# tsk-busy-v1: 読み取り中は押せなくするので id を付ける #}
+      <button type="button" id="as-ocr-btn" class="as-save" style="background:#1a73e8;" onclick="document.getElementById('as-ocr-file').click()"><span class="material-symbols-outlined" style="font-size:18px;">add_a_photo</span>書類の写真を選ぶ（複数可）</button>
       <div id="as-ocr-msg" class="as-savemsg" style="display:block;margin-top:8px;"></div>
       <div id="as-ocr-family"></div>
+      {# assess-ingest-hold-v1: 入らなかったものの置き場。写真からも録音からもここへ出る。 #}
+      <div id="as-hold"></div>
     </div>
-    <div class="as-sec" style="border-color:#ffe0c2;background:#fffaf5;">
+    {# tsk-busy-v1: 待ち表示をかぶせる枠。id が要る #}
+    <div class="as-sec" id="as-voice-sec" style="border-color:#ffe0c2;background:#fffaf5;">
       <h3 style="color:#b3541a;"><span class="material-symbols-outlined" style="color:#f79009;">mic</span>面談を録音して自動入力</h3>
       <div class="as-hint">利用者やご家族と話しながら録音すると、AIが会話から各項目を聞き取って自動で入れます（内容を確認してから保存してください）。何回でも録音でき、話した項目だけが追記されます。音声は保存されません。</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
@@ -500,33 +505,200 @@
     });
   }
 
-  function readFileB64(file){ return new Promise(function(res){ var r=new FileReader(); r.onload=function(){ res({data:String(r.result).split(',')[1], mime_type:file.type||'image/jpeg'}); }; r.onerror=function(){res(null);}; r.readAsDataURL(file); }); }
+  /* assess-ingest-hold-v1
+     ★写真は画面側で小さくしてから送る。長辺1600px・JPEG。
+       撮ったまま送ると、現場のスマホの写真（1枚5〜6MB）で詰まる。
+       2枚で13MB、6枚で40MB近くになり、上限を超える。
+       「以前は1枚しか読めなかった」のは、これが主因とみられる。
+     ★読めない写真は null を返す。呼ぶ側で落とす（1枚のせいで全部止めない）。 */
+  function readFileB64(file){
+    return new Promise(function(res){
+      var fr=new FileReader();
+      fr.onerror=function(){ res(null); };
+      fr.onload=function(){
+        var img=new Image();
+        img.onerror=function(){ res(null); };
+        img.onload=function(){
+          try{
+            var MAX=1600, w=img.width, h=img.height;
+            if(w>MAX||h>MAX){ if(w>=h){ h=Math.round(h*MAX/w); w=MAX; } else { w=Math.round(w*MAX/h); h=MAX; } }
+            var c=document.createElement('canvas'); c.width=w; c.height=h;
+            c.getContext('2d').drawImage(img,0,0,w,h);
+            res({ mime_type:'image/jpeg', data:c.toDataURL('image/jpeg',0.8).split(',')[1] });
+          }catch(e){ res(null); }
+        };
+        img.src=fr.result;
+      };
+      fr.readAsDataURL(file);
+    });
+  }
+  /* ===== assess-ingest-hold-v1 : 入らなかったものの置き場 ===== */
+  window.__asHold = [];
+
+  /* 欄の名前は【画面から拾う】。一覧をここに書き写さない。
+     書き写すと、シートの項目を足したときに片方だけ古くなる。 */
+  function asFieldLabel(id){
+    var e=el(id); if(!e) return id;
+    var box=e.closest ? e.closest('.as-fld') : null;
+    var lb=box && box.querySelector('.as-lb');
+    return (lb && lb.textContent.trim()) || id;
+  }
+  function asTextFields(){
+    var out=[];
+    document.querySelectorAll('#as-body .as-fld .as-in').forEach(function(e){
+      if(e.id) out.push({ id:e.id, label:asFieldLabel(e.id) });
+    });
+    return out;
+  }
+  /* ★同じ欄の同じ値を二重に溜めない（2回取り込んだとき） */
+  function asHoldAdd(it){
+    it.label = it.label || asFieldLabel(it.id);
+    var dup=(window.__asHold||[]).some(function(x){
+      return x.kind===it.kind && x.id===it.id && x.value===it.value && (x.note||'')===(it.note||'');
+    });
+    if(!dup) window.__asHold.push(it);
+  }
+
+  /* ★空いている欄にだけ入れる。すでに書いてある欄は触らない。
+       読み取りは必ず間違える。間違いで、人が書いたものを消してはいけない。
+     ★入らなかったものは【捨てずに】置き場へ。人が行き先を決める。
+     ★ここは写真からも録音からも通る。録音の画面の「追記されます」も、
+       これでようやく本当になる（前は置き換えていた）。 */
   function mergeFill(ex){
     ex=ex||{};
-    var t=ex.texts||{}; Object.keys(t).forEach(function(id){ var e=el(id); if(e && t[id]){ e.value=t[id]; } });
-    var c=ex.chips||{}; Object.keys(c).forEach(function(id){ if(c[id]) chipSet(id, c[id]); });
-    var a=ex.adl||{}; ADL_ITEMS.forEach(function(name,i){ var rec=a[name]; if(rec&&rec.level){ setLevel('adl_'+i, rec.level); var nt=el('note_adl_'+i); if(nt&&rec.note) nt.value=rec.note; } });
-    var ia=ex.iadl||{}; IADL_ITEMS.forEach(function(name,i){ var rec=ia[name]; if(rec&&rec.level){ setLevel('iadl_'+i, rec.level); } });
-    growAll(); setDirty();
+    var put=0;
+    var t=ex.texts||{};
+    Object.keys(t).forEach(function(id){
+      var e=el(id); if(!e || !t[id]) return;
+      if((e.value||'').trim()){ asHoldAdd({kind:'text', id:id, value:String(t[id])}); return; }
+      e.value=t[id]; put++;
+    });
+    var c=ex.chips||{};
+    Object.keys(c).forEach(function(id){
+      if(!c[id]) return;
+      var g=el(id);
+      if(g && g.querySelector('.as-chip.on')){ asHoldAdd({kind:'chip', id:id, value:String(c[id])}); return; }
+      chipSet(id, c[id]); put++;
+    });
+    function level1(idbase, name, rec){
+      var row=el('row_'+idbase);
+      var nt=el('note_'+idbase);
+      var had=row && String(row.dataset.level||'').trim();
+      if(had){ asHoldAdd({kind:'level', id:idbase, label:name, value:rec.level, note:rec.note||''}); return; }
+      setLevel(idbase, rec.level);
+      if(nt && rec.note && !(nt.value||'').trim()) nt.value=rec.note;
+      put++;
+    }
+    var a=ex.adl||{};
+    ADL_ITEMS.forEach(function(name,i){ var rec=a[name]; if(rec&&rec.level) level1('adl_'+i, name, rec); });
+    var ia=ex.iadl||{};
+    IADL_ITEMS.forEach(function(name,i){ var rec=ia[name]; if(rec&&rec.level) level1('iadl_'+i, name, rec); });
+    growAll(); setDirty(); renderHold();
+    return { put:put, hold:(window.__asHold||[]).length };
+  }
+
+  function renderHold(){
+    var host=el('as-hold'); if(!host) return;
+    var L=window.__asHold||[];
+    if(!L.length){ host.innerHTML=''; return; }
+    var opts=asTextFields();
+    var BTN='font-size:.76rem;padding:4px 9px;border-radius:7px;border:1.5px solid #dadce0;background:#fff;cursor:pointer;font-family:inherit;font-weight:700;';
+    var h='<div style="border:1.5px solid #f79009;background:#fffaf5;border-radius:10px;padding:10px 12px;margin-top:10px;">'
+        + '<div style="font-weight:800;color:#b3541a;font-size:.86rem;">入らなかったもの（'+L.length+'）</div>'
+        + '<div style="font-size:.76rem;color:#7a5200;margin:4px 0 6px;line-height:1.6;">'
+        + 'すでに書いてある欄は、勝手に書き換えません。<b>行き先を選んで入れるか、破棄してください。</b><br>'
+        + '破棄を押すまで、ここに残ります。</div>';
+    L.forEach(function(it,i){
+      var val = (it.kind==='level') ? (it.value + (it.note ? ('／'+it.note) : '')) : it.value;
+      h += '<div style="border-top:1px solid #f0e0c8;padding:8px 0;">'
+         + '<div style="font-size:.72rem;color:#8a6d3b;">'+esc(it.label)+' として読み取り</div>'
+         + '<div style="font-size:.84rem;color:#222;white-space:pre-wrap;margin:2px 0 6px;">'+esc(val)+'</div>'
+         + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:.76rem;color:#5f6368;">';
+      if(it.kind==='text'){
+        h += '入れ先 <select data-hsel="'+i+'" style="font-size:.76rem;padding:3px 6px;max-width:55%;font-family:inherit;">'
+           + opts.map(function(o){ return '<option value="'+esc(o.id)+'"'+(o.id===it.id?' selected':'')+'>'+esc(o.label)+'</option>'; }).join('')
+           + '</select>'
+           + '<button type="button" data-hact="add" data-hi="'+i+'" style="'+BTN+'">末尾に足す</button>'
+           + '<button type="button" data-hact="rep" data-hi="'+i+'" style="'+BTN+'">置きかえる</button>';
+      }else{
+        /* ★選択肢は「足す」に意味がない。この値にするか、捨てるかの2つ。 */
+        h += '<button type="button" data-hact="rep" data-hi="'+i+'" style="'+BTN+'">この値にする</button>';
+      }
+      h += '<button type="button" data-hact="del" data-hi="'+i+'" style="'+BTN+'color:#a5261f;border-color:#f5c6c2;">破棄</button>'
+         + '</div></div>';
+    });
+    h += '</div>';
+    host.innerHTML=h;
+    host.querySelectorAll('[data-hact]').forEach(function(b){
+      b.onclick=function(){ asHoldDo(Number(b.dataset.hi), b.dataset.hact); };
+    });
+  }
+
+  function asHoldDo(i, act){
+    var L=window.__asHold||[]; var it=L[i]; if(!it) return;
+    if(act==='del'){ L.splice(i,1); renderHold(); return; }
+    var host=el('as-hold');
+    var sel=host && host.querySelector('[data-hsel="'+i+'"]');
+    if(it.kind==='text'){
+      var toId=(sel && sel.value) || it.id;
+      var e=el(toId); if(!e) return;
+      var cur=(e.value||'');
+      /* ★「末尾に足す」は消さない。「置きかえる」は人が選んだときだけ。 */
+      e.value=(act==='add' && cur.trim()) ? (cur.replace(/\s+$/,'')+'\n'+it.value) : it.value;
+      autoGrow(e);
+    }else if(it.kind==='chip'){
+      chipSet(it.id, it.value);
+    }else{
+      setLevel(it.id, it.value);
+      var nt=el('note_'+it.id);
+      if(nt && it.note){ var c2=(nt.value||''); nt.value=(c2.trim()? c2.replace(/\s+$/,'')+'\n':'')+it.note; autoGrow(nt); }
+    }
+    L.splice(i,1); setDirty(); renderHold();
+  }
+
+  /* どの写真が読めたかを言う。一部だけ入って黙っているのがいちばん悪い。 */
+  function asPagesNote(pages){
+    if(!pages || pages.length<2) return '';
+    var ng=pages.filter(function(p){ return !p.ok; });
+    if(!ng.length) return '　写真'+pages.length+'枚とも読み取れました。';
+    return '　★読み取れなかった写真：'
+      + ng.map(function(p){ return p.no+'枚目（'+(p.why||'')+'）'; }).join('、')
+      + '。その写真だけ撮り直してください。';
   }
   window.__ocrFamily=[];
   window.asOcrRun=function(input){
     if(!input.files||!input.files.length) return;
     if(!current.pid){ alert('先に利用者を選んでください'); input.value=''; return; }
-    var msg=el('as-ocr-msg'); msg.textContent='読み取り中...（数十秒かかることがあります）'; msg.style.color='#1a73e8';
+    var msg=el('as-ocr-msg');
+    /* assess-ingest-hold-v1: ★何枚を読んでいるかを出す。
+       tsk-busy-v1: ★タスカルくんと経過秒数。ボタンも押せなくする。 */
+    var _n=Math.min(input.files.length,6);
+    msg.textContent='';
+    tskBusy('as-ocr-sec', '写真'+_n+'枚を読み取っています', '1枚20秒ほどかかります', 'as-ocr-btn');
     Promise.all(Array.prototype.slice.call(input.files).slice(0,6).map(readFileB64)).then(function(imgs){
       imgs=imgs.filter(Boolean);
       return fetch('/api/assessment/ocr',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({images:imgs})});
     }).then(function(r){return r.json();}).then(function(j){
+      tskBusyStop('as-ocr-sec');   // tsk-busy-v1
       input.value='';
-      if(!j||j.status!=='success'){ msg.textContent='読み取り失敗: '+((j&&j.message)||''); msg.style.color='#c62828'; return; }
+      if(!j||j.status!=='success'){
+        msg.textContent='読み取り失敗: '+((j&&j.message)||'')+asPagesNote(j&&j.pages); msg.style.color='#c62828'; return;
+      }
       var ex=j.extracted||{};
-      mergeFill(ex);
-      var n=Object.keys(ex.texts||{}).length+Object.keys(ex.chips||{}).length+Object.keys(ex.adl||{}).length;
-      msg.textContent='読み取り完了：約'+n+'項目を反映しました。内容を確認して保存してください。'; msg.style.color='#2e7d32';
+      /* assess-ingest-hold-v1: 入った数と、入らなかった数をそのまま出す。 */
+      var rr=mergeFill(ex)||{put:0,hold:0};
+      msg.textContent='読み取り完了：'+rr.put+'項目を入れました。'
+        + (rr.hold ? '入らなかったもの'+rr.hold+'件は下に残してあります。' : '')
+        + '内容を確認して保存してください。' + asPagesNote(j.pages);
+      msg.style.color = rr.hold ? '#b3541a' : '#2e7d32';
       window.__ocrFamily=ex.family||[];
       renderOcrFamily();
-    }).catch(function(){ input.value=''; msg.textContent='通信エラー'; msg.style.color='#c62828'; });
+    }).catch(function(){
+      tskBusyStop('as-ocr-sec');   // tsk-busy-v1: ★失敗したときも必ず止める
+      input.value='';
+      msg.textContent='つながりませんでした。電波の良い所で、もう一度お試しください。';
+      msg.style.color='#c62828';
+    });
   };
   function renderOcrFamily(){
     var host=el('as-ocr-family'); var fam=window.__ocrFamily||[];
@@ -571,18 +743,31 @@
     var blob=new Blob(_recChunks,{type:(_rec&&_rec.mimeType)||'audio/webm'}); _recChunks=[];
     var msg=el('as-voice-msg');
     if(!blob.size){ msg.textContent='録音データが空でした。もう一度お試しください。'; msg.style.color='#c62828'; return; }
-    msg.textContent='解析中...（数十秒かかることがあります）'; msg.style.color='#1a73e8';
+    /* tsk-busy-v1: ★タスカルくんと経過秒数。ボタンも押せなくする。 */
+    msg.textContent='';
+    tskBusy('as-voice-sec', '話した内容を聞き取っています', '数十秒かかることがあります', 'as-rec-btn');
     var fd=new FormData(); var ext=(blob.type.indexOf('mp4')>=0?'m4a':'webm'); fd.append('audio', blob, 'interview.'+ext);
     fetch('/api/assessment/voice',{method:'POST',credentials:'same-origin',body:fd})
       .then(function(r){return r.json();}).then(function(j){
+        tskBusyStop('as-voice-sec');   // tsk-busy-v1
         if(!j||j.status!=='success'){ msg.textContent='解析失敗: '+((j&&j.message)||''); msg.style.color='#c62828'; return; }
-        var ex=j.extracted||{}; mergeFill(ex);
-        var n=Object.keys(ex.texts||{}).length+Object.keys(ex.chips||{}).length+Object.keys(ex.adl||{}).length;
-        msg.textContent='解析完了：約'+n+'項目を反映しました。内容を確認して保存してください。'; msg.style.color='#2e7d32';
+        var ex=j.extracted||{};
+        /* assess-ingest-hold-v1: ★録音も同じ形にする。
+           前は黙って上書きしていた（画面には「追記されます」と書いてあるのに）。
+           2回目の録音で同じ話題に触れると、1回目の内容が消えていた。 */
+        var rr=mergeFill(ex)||{put:0,hold:0};
+        msg.textContent='解析完了：'+rr.put+'項目を入れました。'
+          + (rr.hold ? '入らなかったもの'+rr.hold+'件は上に残してあります。' : '')
+          + '内容を確認して保存してください。';
+        msg.style.color = rr.hold ? '#b3541a' : '#2e7d32';
         var tr=el('as-voice-tr'); var t=((j.transcript||'')+'').trim();
         tr.innerHTML = t ? ('<div style="margin-top:8px;padding:8px 10px;border:1px solid #eee;border-radius:8px;background:#fff;font-size:.8rem;color:#444;white-space:pre-wrap;"><b style="color:#666;">聞き取り内容</b><br>'+esc(t)+'</div>') : '';
         if(ex.family && ex.family.length){ window.__ocrFamily=ex.family; renderOcrFamily(); }
-      }).catch(function(){ msg.textContent='通信エラー'; msg.style.color='#c62828'; });
+      }).catch(function(){
+        tskBusyStop('as-voice-sec');   // tsk-busy-v1: ★失敗したときも必ず止める
+        msg.textContent='つながりませんでした。電波の良い所で、もう一度お試しください。';
+        msg.style.color='#c62828';
+      });
   }
 
   // ===== assess-bi-v1: 事前アセスメントから初回BI(生活機能チェック/Barthel)を同時入力 =====

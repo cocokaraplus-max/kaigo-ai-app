@@ -3222,19 +3222,76 @@ def api_assessment_ocr():
             "家族構成図（ジェノグラム）があれば、□=男性・○=女性・塗りつぶし=故人・二重枠=本人・点線囲み=同居 と解釈し、読み取れる人物を\"家族\"に入れる。"
             "JSON以外は一切出力しないこと。"
         )
-        parts = []
+        # assess-ingest-hold-v1
+        # ★写真は【1枚ずつ】読ませる。まとめて1回で渡さない。
+        #   まとめて渡すと返事も1つ。長くなって途中で切れると閉じ括弧が無く、
+        #   形が読めずに【全部】無駄になる。どの写真が悪かったのかも言えない。
+        #   1枚ずつなら返事が短く切れにくい。2枚目が駄目でも1枚目は残る。
+        shots = []
         for im in images[:6]:
             b64 = im.get('data') if isinstance(im, dict) else im
             mt = (im.get('mime_type') if isinstance(im, dict) else None) or 'image/jpeg'
             if b64:
-                parts.append({"mime_type": mt, "data": b64})
-        parts.append(prompt)
-        resp = model.generate_content(parts)
-        text = (resp.text or "").strip()
-        m = _re.search(r'\{.*\}', text, _re.DOTALL)
-        if not m:
-            return jsonify({"status": "error", "message": "AIが書類を読み取れませんでした"}), 500
-        g = _json.loads(m.group())
+                shots.append({"mime_type": mt, "data": b64})
+        if not shots:
+            return jsonify({"status": "error", "message": "写真を読めませんでした。"}), 400
+
+        reads, pages = [], []
+        for _i, _shot in enumerate(shots, start=1):
+            try:
+                resp = model.generate_content([_shot, prompt])
+                text = (resp.text or "").strip()
+            except Exception as _e:
+                print("[assess-ocr] %d枚目 読み取りに失敗: %s" % (_i, _e), flush=True)
+                pages.append({"no": _i, "ok": False, "why": "読み取れませんでした"})
+                continue
+            m = _re.search(r'\{.*\}', text, _re.DOTALL)
+            if not m:
+                print("[assess-ocr] %d枚目 JSONが見当たりません 先頭=%r"
+                      % (_i, text[:200]), flush=True)
+                pages.append({"no": _i, "ok": False, "why": "形が読めませんでした"})
+                continue
+            try:
+                reads.append(_json.loads(m.group()))
+                pages.append({"no": _i, "ok": True, "why": ""})
+            except Exception as _e:
+                # ★途中で切れると閉じ括弧が無く、ここに来る。末尾を少しだけ残す。
+                print("[assess-ocr] %d枚目 形が読めません: %s 末尾=%r"
+                      % (_i, _e, m.group()[-200:]), flush=True)
+                pages.append({"no": _i, "ok": False, "why": "形が読めませんでした"})
+
+        if not reads:
+            return jsonify({"status": "error",
+                            "message": "AIが書類を読み取れませんでした。"
+                                       "明るい所で、まっすぐ撮り直してみてください。",
+                            "pages": pages}), 500
+
+        # ★合わせるのは【ここ1か所だけ】。画面では合わせない。
+        #   文字：先に読めた写真が勝つ（空のときだけ入れる）
+        #   並び：つなげる。同じ中身は1つだけにする
+        g = {}
+        for _one in reads:
+            if not isinstance(_one, dict):
+                continue
+            for _k, _v in _one.items():
+                if isinstance(_v, list):
+                    _cur = g.get(_k)
+                    if not isinstance(_cur, list):
+                        _cur = []
+                    for _x in _v:
+                        if _x not in _cur:
+                            _cur.append(_x)
+                    g[_k] = _cur
+                elif isinstance(_v, dict):
+                    _cur = g.get(_k)
+                    if not isinstance(_cur, dict):
+                        _cur = {}
+                    for _k2, _v2 in _v.items():
+                        if not str(_cur.get(_k2) or "").strip():
+                            _cur[_k2] = _v2
+                    g[_k] = _cur
+                elif not str(g.get(_k) or "").strip():
+                    g[_k] = _v
 
         def gv(k):
             v = g.get(k, "")
@@ -3322,7 +3379,9 @@ def api_assessment_ocr():
         }
         profile = {k: v for k, v in profile.items() if v}
 
-        return jsonify({"status": "success", "extracted": {
+        # assess-ingest-hold-v1: ★どの写真が読めたかも返す。
+        #   一部だけ入って、それを黙っているのがいちばん悪い。
+        return jsonify({"status": "success", "pages": pages, "extracted": {
             "texts": texts, "chips": chips, "adl": adl_out, "iadl": {},
             "family": fam_out, "profile": profile,
         }})

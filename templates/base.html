@@ -458,6 +458,26 @@ body.nav-editing {
   border-bottom:3px solid transparent; margin-bottom:-2px; white-space:nowrap; }
 .sgnav a.on { color:#1a73e8; border-bottom-color:#1a73e8; }
 .sgnav a:active { background:#f1f3f4; }
+
+/* ===== tsk-busy-v1 : 待っているあいだの見せ方（共通） =====
+   ★議事録(admin_meetings)のタスカルくんと同じ動き。
+     あちらは自前で持っているが、写すと同じものが2か所になるので、
+     ここに1組だけ置いて、どの画面からも呼べるようにする。 */
+.tsk-busy { position:absolute; inset:0; background:rgba(255,255,255,0.94); border-radius:14px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:4px; overflow:hidden; z-index:20; }
+.tsk-busy-lane { position:relative; width:100%; height:96px; }
+.tsk-busy-run { position:absolute; bottom:8px; animation:tskBusyRun 3.2s ease-in-out infinite; }
+.tsk-busy-flip { animation:tskBusyFlip 3.2s ease-in-out infinite; }
+.tsk-busy-bob { animation:tskBusyBob 0.32s ease-in-out infinite; transform-origin:bottom center; }
+.tsk-busy-run img { width:54px; height:54px; object-fit:contain;
+  filter:brightness(0) opacity(0.5); display:block; }
+.tsk-busy-label { font-size:0.98rem; font-weight:800; color:#202124; text-align:center; padding:0 12px; }
+/* ★経過秒数はここに出る。数字が増えていれば、確実に生きている。 */
+.tsk-busy-sub { font-size:0.78rem; color:#5f6368; font-variant-numeric:tabular-nums; }
+@keyframes tskBusyRun { 0%{left:8%;} 50%{left:calc(92% - 54px);} 100%{left:8%;} }
+@keyframes tskBusyFlip { 0%,49%{transform:scaleX(1);} 50%,99%{transform:scaleX(-1);} 100%{transform:scaleX(1);} }
+@keyframes tskBusyBob { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-7px);} }
 </style>
     {% block extra_style %}{% endblock %}
 </head>
@@ -4208,6 +4228,60 @@ document.addEventListener('click', function(e) {
     .then(function (r) { return r.json(); })
     .then(function (j) { if (j && j.status === 'success' && j.ask_kind) { paint(); show(); } })
     .catch(function () { /* 聞けなければ出さない */ });
+})();
+</script>
+
+<script>
+/* ===== tsk-busy-v1 : 待っているあいだの見せ方（共通） =====
+   使い方:
+     tskBusy('枠のid', '出す言葉', '添える言葉', '押せなくするボタンのid')
+     tskBusyStop('枠のid')
+   ★終わるときは【必ず】止めること。成功・失敗・通信エラーの3つとも。
+     止め忘れると、絵が出たままでボタンも押せなくなる。 */
+(function () {
+  var IMG = "{{ url_for('static', filename='tasukaruカラー.png') }}";
+  var live = {};
+
+  window.tskBusy = function (hostId, label, sub, btnId) {
+    window.tskBusyStop(hostId);            /* ★二重に出さない */
+    var host = document.getElementById(hostId);
+    if (!host) return;
+    /* かぶせる相手が static だと、位置が画面の隅へ飛ぶ */
+    if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+
+    /* ★待っているあいだは押せなくする。もう一度押されると二重に送られ、
+         AIの料金も二重にかかる。 */
+    var b = btnId ? document.getElementById(btnId) : null;
+    if (b) { b.disabled = true; b.style.opacity = '.55'; b.style.cursor = 'default'; }
+
+    var ov = document.createElement('div');
+    ov.className = 'tsk-busy';
+    ov.innerHTML =
+      '<div class="tsk-busy-lane"><div class="tsk-busy-run"><div class="tsk-busy-flip">'
+      + '<div class="tsk-busy-bob"><img alt=""></div></div></div></div>'
+      + '<div class="tsk-busy-label"></div><div class="tsk-busy-sub"></div>';
+    ov.querySelector('img').src = IMG;
+    ov.querySelector('.tsk-busy-label').textContent = label || '処理しています…';
+    host.appendChild(ov);
+
+    var subEl = ov.querySelector('.tsk-busy-sub');
+    var t0 = Date.now();
+    function tick() {
+      var s = Math.round((Date.now() - t0) / 1000);
+      subEl.textContent = (sub ? sub + '　' : '') + s + '秒';
+    }
+    tick();
+    live[hostId] = { ov: ov, timer: setInterval(tick, 1000), btn: b };
+  };
+
+  window.tskBusyStop = function (hostId) {
+    var r = live[hostId];
+    if (!r) return;
+    clearInterval(r.timer);
+    if (r.ov && r.ov.parentNode) r.ov.parentNode.removeChild(r.ov);
+    if (r.btn) { r.btn.disabled = false; r.btn.style.opacity = ''; r.btn.style.cursor = ''; }
+    delete live[hostId];
+  };
 })();
 </script>
 
