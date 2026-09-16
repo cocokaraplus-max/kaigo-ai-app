@@ -1,6 +1,23 @@
 FROM python:3.11-slim
 WORKDIR /app
 # wkhtmltopdf公式debパッケージを直接インストール
+#
+# dockerfile-curl-retry-v1 : 落とし方について（2026-09-14 にデプロイが落ちた）
+#   ログ: E: Invalid archive signature / Could not read meta data from
+#         /tmp/wkhtmltox.deb。curl の転送量が全部ゼロだった。
+#   GitHubからの取得が空振りし、中身の無いファイルが .deb として保存された。
+#
+#   ★-f を付ける
+#       -L だけだと、404やエラーページが返っても curl は成功扱いになり、
+#       それを .deb として保存してしまう。-f があれば curl 自身が失敗し、
+#       どこで何が起きたかが分かる。
+#   ★--retry を付ける
+#       ネットの一瞬の不調で、デプロイ全体を落とさない。
+#       ★本番のデプロイ中に起きると、その日は出せなくなる。
+#   ★apt に渡す前に、大きさを確かめる
+#       本物は約11MB。1MBに満たなければそこで止める。
+#       -f をすり抜ける壊れ方が残っても、ここで捕まる。
+#   ★URLと版は変えていない。直したのは【取り方】だけ。
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     fonts-noto-cjk \
@@ -30,7 +47,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libasound2 \
     libxcb1 \
     libxshmfence1 \
-    && curl -L https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb -o /tmp/wkhtmltox.deb \
+    && curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+         https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-3/wkhtmltox_0.12.6.1-3.bookworm_amd64.deb -o /tmp/wkhtmltox.deb \
+    && [ "$(stat -c%s /tmp/wkhtmltox.deb)" -gt 1000000 ] \
     && apt-get install -y /tmp/wkhtmltox.deb \
     && rm /tmp/wkhtmltox.deb \
     && rm -rf /var/lib/apt/lists/*
