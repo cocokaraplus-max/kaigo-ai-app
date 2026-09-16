@@ -95,6 +95,10 @@
    列の数を決めて置けば、いつも同じ形になる。列の数は JS 側で入れる
    （便が2つの日に3列だと、右が1つぶん空いて欠けて見える）。 */
 .sr-ltrips { display:grid; gap:6px; margin-bottom:8px; }
+/* soge-run-nowtrip-v1: 何で絞っているかの案内。★札の上に置く。
+   下に置くと、札を押したあと目に入らない。 */
+.sr-nowtrip { font-size:0.76rem; color:#5f6368; background:#f1f3f4;
+  border-radius:8px; padding:6px 10px; margin-bottom:6px; line-height:1.5; }
 /* 「すべて」は横いっぱい。★便と同じ大きさで並べると、
    「すべて」も便の一種に見える。別のものなので、幅で分ける。 */
 .sr-ltrips .sr-ltrip.all { grid-column:1 / -1; }
@@ -686,6 +690,13 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
                    ★便まで選ばせると、一覧を開いてから中身が出るまでが遠くなる。
                      便は常に見えているので、必要なときに押せばよい。 */
                 accOpen: false, lsCar: '', lsTrip: 'all',
+                /* soge-run-nowtrip-v1: 開いたときに「いまの時間帯の便」を選ぶ。
+                   nowTrip     … その便の鍵（選べなかったときは空）
+                   nowTripUsed … もう選んだか。★load() は打刻や確定からも
+                                 呼ばれるので、1回だけにする。毎回やると
+                                 走っている最中に見ている便を動かしてしまう。
+                   autoTrip    … 自分で便を押したら false。以後は動かさない。 */
+                nowTrip: '', nowTripUsed: false, autoTrip: true,
                 /* soge-run-only-v1: 運転中に「この車だけ」を出しているときの車の鍵。
                    ★空なら全部の車を出す。端末ごとに覚える。 */
                 onlyCar: '' };
@@ -730,6 +741,9 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
     var j = await r.json();
     if (j.status !== 'success') { $('srBody').innerHTML = '<div class="sr-empty">' + esc(j.message) + '</div>'; return; }
     state.data = j;
+    /* soge-run-nowtrip-v1: いまの時間帯の便を選ぶ。★中で1回だけに絞っている。
+       ここは render() より前。あとに置くと、1回目だけ古い便で描いてしまう。 */
+    srPickNowTrip();
     /* ★ここで state.tab / autoTab を初期化しないこと。
        「予定時刻を計算し直す」「確定する」からも load() は呼ばれる。
        走っている最中に、運転手が開いているタブを動かしてはいけない。
@@ -1894,13 +1908,25 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
       selVehicle = vs[state.tab];
       var trips = (selVehicle && selVehicle.trips) || [];
       if (trips.length > 0) {
+        /* soge-run-nowtrip-v1: まだ自分で便を選んでいないなら、
+           いまの時間帯の便を開く。
+           ★車ごとに引き直す。便の並びは車によって違うので、
+             番号を覚えて回すと別の便が開く。鍵で探すこと。 */
+        if (state.autoTrip && state.nowTrip) {
+          for (var _nti = 0; _nti < trips.length; _nti++) {
+            if (tripPickKey(trips[_nti]) === state.nowTrip) { state.tripTab = _nti; break; }
+          }
+        }
         // 範囲外なら最後のタブへ（臨時便追加後に自動で最後の便へ飛ぶために 9999 をセットすることがある）
         if (state.tripTab >= trips.length) state.tripTab = trips.length - 1;
         if (state.tripTab < 0) state.tripTab = 0;
         row2.innerHTML = tabsHtml(trips.map(tripTabLabel), state.tripTab, 'sr-ttab', 'data-ttab');
         row2.style.display = 'flex';
         row2.querySelectorAll('[data-ttab]').forEach(function (el) {
-          el.onclick = function () { state.tripTab = Number(el.dataset.ttab); keepScroll(render); };
+          // soge-run-nowtrip-v1: ★自分で選んだ便は動かさない
+          el.onclick = function () {
+            state.tripTab = Number(el.dataset.ttab); state.autoTrip = false; keepScroll(render);
+          };
         });
         selTrip = trips[state.tripTab];
       } else {
@@ -2172,6 +2198,47 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
 
   /* 便をひとまとめにする鍵。★臨時便は日ごとに別物なので、まとめて「臨時便」。
      1本ずつ札を出すと、臨時便を作るたびに札が増えて並びが崩れる。 */
+  /* ===== soge-run-nowtrip-v1: いまの時間帯の便 ===== */
+
+  /* ★出発時刻が【いまにいちばん近い】便を返す。前でも後ろでもよい。
+       「次に出る便」だと、迎えを走っている最中に送り便へ飛ぶ。
+       「もう出た便のうち最後」だと、昼を過ぎても朝の迎えのままになる。
+     ★出発時刻を持たない便は選べない（近さが測れない）。 */
+  function srNowTripKey() {
+    var ts = tripPickList();
+    var d = new Date();
+    var now = d.getHours() * 60 + d.getMinutes();
+    var best = '', diff = -1;
+    ts.forEach(function (t) {
+      var m = /^(\d{1,2}):(\d{2})$/.exec(String(t.depart || '').trim());
+      if (!m) return;
+      var gap = Math.abs((Number(m[1]) * 60 + Number(m[2])) - now);
+      if (diff < 0 || gap < diff) { diff = gap; best = t.key; }
+    });
+    return best;
+  }
+
+  /* 開いたときに1回だけ、いまの便を選ぶ。
+     ★今日のときだけ。ほかの日に「いまの時刻」は意味がない。
+     ★nowTripUsed を先に立てる。途中で return しても、2回目は走らない。 */
+  function srPickNowTrip() {
+    if (state.nowTripUsed) return;
+    state.nowTripUsed = true;
+    if (state.date !== todayStr()) return;
+    var k = srNowTripKey();
+    if (!k) return;
+    state.nowTrip = k;
+    state.lsTrip = k;          // 一覧をその便で開く
+  }
+
+  /* その便の名前。一覧の案内文に出す。 */
+  function srNowTripName() {
+    var k = state.nowTrip;
+    if (!k) return '';
+    var hit = tripPickList().filter(function (t) { return t.key === k; })[0];
+    return hit ? hit.label : '';
+  }
+
   function tripPickKey(t) {   // soge-trip-pick-v1
     return t.is_extra ? 'extra' : String(t.trip_key || tripLabel(t));
   }
@@ -2224,7 +2291,18 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
     /* ★列の数は便の数に合わせる（最大3列）。
        3列に決め打ちすると、便が2つの日に右が1つぶん空いて欠けて見える。 */
     var cols = Math.min(3, ts.length) || 1;
-    return '<div class="sr-ltrips" style="grid-template-columns:repeat('
+    /* soge-run-nowtrip-v1: ★黙って絞らない。
+       いま何で絞られているかが分からないと、「人が減った」と読まれる。
+       自分で別の便を押したら、この案内は消える（もう自分で選んでいるので）。 */
+    var note = '';
+    if (state.nowTrip && state.lsTrip === state.nowTrip) {
+      var nm = srNowTripName();
+      if (nm) {
+        note = '<div class="sr-nowtrip">いまの時間に合わせて〈' + esc(nm) + '〉を出しています。'
+             + 'ほかの便や［すべて］は下から選べます。</div>';
+      }
+    }
+    return note + '<div class="sr-ltrips" style="grid-template-columns:repeat('
       + cols + ',1fr)">' + h + '</div>';
   }
 
