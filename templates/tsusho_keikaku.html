@@ -1,0 +1,1074 @@
+{% extends "base.html" %}
+{% block title %}通所介護計画書 - TASUKARU{% endblock %}{# tsusho-keikaku-v1 #}
+
+{% block extra_style %}
+<style>
+.tk-wrap{max-width:980px;margin:0 auto;padding:12px 14px 80px;}
+.tk-sec{background:#fff;border:1px solid #e8eaed;border-radius:12px;margin-bottom:14px;overflow:hidden;}
+.tk-sec>h3{margin:0;padding:11px 14px;background:#f8f9fa;border-bottom:1px solid #e8eaed;
+           font-size:.92rem;font-weight:800;color:#202124;}
+.tk-sec>.bd{padding:13px 14px;}
+.tk-lab{display:block;font-size:.78rem;font-weight:700;color:#5f6368;margin:0 0 5px;}
+.tk-note{font-size:.76rem;color:#80868b;line-height:1.7;margin-top:6px;}
+.tk-wrap input[type=text],.tk-wrap input[type=date],.tk-wrap textarea,.tk-wrap select{
+  width:100%;box-sizing:border-box;border:1px solid #dadce0;border-radius:8px;
+  padding:8px 10px;font-size:.88rem;font-family:inherit;background:#fff;}
+.tk-wrap textarea{line-height:1.7;resize:vertical;}
+.tk-row{margin-bottom:12px;}
+.tk-2{display:flex;gap:10px;flex-wrap:wrap;}
+.tk-2>div{flex:1 1 200px;min-width:0;}
+.tk-btn{background:#fff;border:1px solid #dadce0;border-radius:8px;padding:8px 14px;
+        font-size:.83rem;font-weight:700;color:#202124;cursor:pointer;}
+.tk-btn.main{background:#0F6E56;border-color:#0F6E56;color:#fff;}
+.tk-btn.del{color:#c5221f;border-color:#f3c0bf;}
+.tk-btn.sm{padding:5px 10px;font-size:.78rem;}
+.tk-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+/* 番号付きの並び */
+.tk-g{display:flex;gap:8px;align-items:flex-start;margin-bottom:7px;}
+.tk-g .no{flex:0 0 30px;text-align:center;font-weight:800;color:#5f6368;padding-top:9px;font-size:.85rem;}
+.tk-g textarea{flex:1 1 auto;}
+.tk-g .x{flex:0 0 auto;background:none;border:none;color:#c5221f;font-size:1.05rem;
+         cursor:pointer;padding:6px 8px;line-height:1;}
+/* 表 */
+.tk-tbl-wrap{overflow-x:auto;}
+.tk-tbl{width:100%;border-collapse:collapse;min-width:680px;}
+.tk-tbl th,.tk-tbl td{border:1px solid #e8eaed;padding:5px 6px;font-size:.8rem;vertical-align:top;}
+.tk-tbl th{background:#f8f9fa;font-weight:800;color:#5f6368;white-space:nowrap;}
+.tk-tbl td input,.tk-tbl td textarea{border:none;padding:4px;border-radius:0;}
+.tk-tbl td.nar{width:74px;}
+.tk-tbl td.x{width:34px;text-align:center;}
+/* 一覧 */
+.tk-list div.it{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid #e8eaed;
+                border-radius:9px;margin-bottom:7px;cursor:pointer;background:#fff;}
+.tk-list div.it:hover{background:#f8f9fa;}
+.tk-list .d{font-weight:800;font-size:.9rem;}
+.tk-list .s{font-size:.76rem;color:#80868b;}
+.tk-who{background:#f8f9fa;border:1px solid #e8eaed;border-radius:12px;padding:12px 14px;margin-bottom:14px;}
+.tk-who .nm{font-size:1.05rem;font-weight:800;}
+.tk-who .sub{font-size:.79rem;color:#5f6368;margin-top:5px;line-height:1.7;}
+.tk-cands div{padding:9px 11px;border:1px solid #e8eaed;border-radius:8px;margin-bottom:5px;cursor:pointer;font-size:.86rem;}
+.tk-cands div:hover{background:#f1f3f4;}
+/* tsusho-monitoring-v1 */
+.tk-modes{display:flex;gap:8px;margin-bottom:12px;}
+.tk-modes button{flex:1 1 0;background:#fff;border:1px solid #dadce0;border-radius:9px;padding:9px 10px;
+                 font-size:.85rem;font-weight:800;color:#5f6368;cursor:pointer;font-family:inherit;}
+.tk-modes button.on{background:#e8f0fe;border-color:#1a73e8;color:#1558d6;}
+.tk-q{display:flex;flex-direction:column;gap:7px;margin-top:8px;}
+.tk-q label{display:flex;align-items:flex-start;gap:8px;font-size:.86rem;line-height:1.6;cursor:pointer;}
+.tk-q input{width:auto;margin-top:3px;}
+/* tsusho-monitoring-v3 */
+.tk-mlist{margin-top:8px;}
+.tk-mlist .it{display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid #e8eaed;
+              border-radius:8px;margin-bottom:5px;cursor:pointer;background:#fff;font-size:.85rem;}
+.tk-mlist .it:hover{background:#f8f9fa;}
+.tk-mlist .it.on{border-color:#1a73e8;background:#e8f0fe;}
+.tk-mlist .nm{font-weight:700;flex:1 1 auto;min-width:0;}
+.tk-mlist .st{flex:0 0 auto;font-size:.76rem;font-weight:800;border-radius:6px;padding:2px 8px;}
+.tk-mlist .st.done{background:#e6f4ea;color:#1e6b36;}
+.tk-mlist .st.part{background:#fef7e0;color:#7a5200;}
+.tk-mlist .st.none{background:#f1f3f4;color:#80868b;}
+.tk-hint{background:#e8f0fe;border:1px solid #aecbfa;color:#1558d6;border-radius:8px;
+         padding:9px 11px;font-size:.8rem;line-height:1.7;margin-top:8px;}
+.tk-hint b{font-weight:800;}
+.tk-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:84px;background:#202124;color:#fff;
+          padding:11px 18px;border-radius:10px;font-size:.85rem;opacity:0;pointer-events:none;
+          transition:opacity .2s;z-index:60;max-width:90vw;text-align:center;}
+.tk-toast.show{opacity:1;}
+.tk-toast.err{background:#c5221f;}
+@media(max-width:520px){ .tk-wrap{padding:10px 12px 80px;} }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="tk-wrap">
+
+  {# ── 利用者を選ぶ ── #}
+  <div class="tk-sec"><h3>利用者</h3><div class="bd">
+    <input type="text" id="tk-search" placeholder="名前・ふりがな・カルテNo で探す" oninput="tkFilter()">
+    <div class="tk-cands" id="tk-cands" style="display:none;margin-top:7px;"></div>
+    <div id="tk-chosen" style="display:none;margin-top:8px;">
+      <b id="tk-chosen-name"></b>
+      <button type="button" class="tk-btn sm" style="margin-left:8px;" onclick="tkClearPatient()">選び直す</button>
+    </div>
+  </div></div>
+
+  {# tsusho-monitoring-v1: 計画書とモニタリング表を【同じページ】に置く。
+     ★利用者を選ぶ所を2つ作らない。作ると、片方だけ直したときに食い違う。
+       今週その手の食い違いを6件直したばかりなので、はじめから1つにする。 #}
+  <div class="tk-modes">
+    <button type="button" class="on" id="tk-mPlan" onclick="tkMode('plan')">計画書</button>
+    <button type="button" id="tk-mMon" onclick="tkMode('mon')">モニタリング表</button>
+  </div>
+
+  <div id="tk-modePlan">
+
+  {# ── 計画書の一覧 ── #}
+  <div class="tk-sec" id="tk-listSec" style="display:none;"><h3>この方の計画書</h3><div class="bd">
+    <div class="tk-list" id="tk-list"></div>
+    <div class="tk-acts">
+      <button type="button" class="tk-btn main" onclick="tkNew()">＋ 新しく作る</button>
+    </div>
+    <div class="tk-note">★新しく作ると、作成年月日の新しいほうが「いまの計画書」になります。
+      古いものは残ります（いつの計画で動いていたかが分からなくなるため、消しません）。</div>
+  </div></div>
+
+  {# ── 編集 ── #}
+  <div id="tk-edit" style="display:none;">
+
+    <div class="tk-who">
+      <div class="nm" id="tk-eName"></div>
+      <div class="sub" id="tk-eSub"></div>
+    </div>
+
+    {# tsusho-keikaku-ocr-v1: 紙からの取り込み。★編集のいちばん上に置く。
+       あとから押すと「入らなかった」ばかりになる（空いている欄にしか入れないので）。 #}
+    <div class="tk-sec"><h3>紙の計画書から取り込む</h3><div class="bd">
+      <input type="file" id="tk-ocrFile" accept="image/*" multiple
+             style="font-size:.82rem;" onchange="tkOcrRun()">
+      <div class="tk-note">★<b>空いている欄にだけ入れます。</b>すでに書いてある欄は触りません。<br>
+        ★入れるだけで、保存はしません。目で見て直してから［保存する］を押してください。<br>
+        ★<b>写真は保存されません。</b>読み取りに使うだけです。<br>
+        ★読み取りは間違えます。特に日付と数字は必ず見てください。</div>
+      <div id="tk-ocrMsg" class="tk-note"></div>
+    </div></div>
+
+    <div class="tk-sec"><h3>1. 計画書の基本</h3><div class="bd">
+      <div class="tk-2">
+        <div class="tk-row"><span class="tk-lab">作成年月日</span>
+          <input type="date" id="tk-createdOn"></div>
+        <div class="tk-row"><span class="tk-lab">計画作成者氏名</span>
+          <input type="text" id="tk-planner" placeholder="作成した人の名前"></div>
+      </div>
+    </div></div>
+
+    <div class="tk-sec"><h3>2. 解決すべき課題</h3><div class="bd">
+      <div id="tk-issue"></div>
+      <div class="tk-acts"><button type="button" class="tk-btn sm" onclick="tkAddGoal('issue')">＋ 課題を足す</button></div>
+      <div class="tk-note">★番号は、下の長期目標・短期目標と対応します。
+        課題①に対して長期①と短期①、という読み方をされます。</div>
+    </div></div>
+
+    <div class="tk-sec"><h3>3. 長期目標</h3><div class="bd">
+      <div class="tk-2">
+        <div class="tk-row"><span class="tk-lab">期間（開始）</span><input type="date" id="tk-longFrom"></div>
+        <div class="tk-row"><span class="tk-lab">期間（終了）</span><input type="date" id="tk-longTo"></div>
+      </div>
+      <div id="tk-long"></div>
+      <div class="tk-acts"><button type="button" class="tk-btn sm" onclick="tkAddGoal('long')">＋ 長期目標を足す</button></div>
+    </div></div>
+
+    <div class="tk-sec"><h3>4. 短期目標</h3><div class="bd">
+      <div class="tk-2">
+        <div class="tk-row"><span class="tk-lab">期間（開始）</span><input type="date" id="tk-shortFrom"></div>
+        <div class="tk-row"><span class="tk-lab">期間（終了）</span><input type="date" id="tk-shortTo"></div>
+      </div>
+      <div id="tk-short"></div>
+      <div class="tk-acts"><button type="button" class="tk-btn sm" onclick="tkAddGoal('short')">＋ 短期目標を足す</button></div>
+    </div></div>
+
+    <div class="tk-sec"><h3>5. 本人・家族の希望</h3><div class="bd">
+      <div class="tk-row"><span class="tk-lab">ご本人</span>
+        <textarea id="tk-wishSelf" rows="2" placeholder="ご本人が言ったことを、そのまま書いてください"></textarea></div>
+      <div class="tk-row"><span class="tk-lab">ご家族の続柄</span>
+        <input type="text" id="tk-wishRel" placeholder="妻・長女 など" style="max-width:200px;"></div>
+      <div class="tk-row"><span class="tk-lab">ご家族</span>
+        <textarea id="tk-wishFamily" rows="2"></textarea></div>
+    </div></div>
+
+    <div class="tk-sec"><h3>6. 留意点</h3><div class="bd">
+      <textarea id="tk-notes" rows="6"
+        placeholder="病歴・医療的なこと・転倒のリスク・加算のプランなど"></textarea>
+    </div></div>
+
+    <div class="tk-sec"><h3>7. 週間計画表</h3><div class="bd">
+      <div class="tk-tbl-wrap"><table class="tk-tbl"><thead><tr>
+        <th>サービス</th><th>提供時間</th><th>報酬区分</th><th>利用予定</th><th>迎え</th><th>送り</th><th></th>
+      </tr></thead><tbody id="tk-svc"></tbody></table></div>
+      <div class="tk-acts"><button type="button" class="tk-btn sm" onclick="tkAddSvc()">＋ 行を足す</button></div>
+      <div class="tk-note">★利用曜日やサービス提供時間からの自動の下敷きは、次の版で入れます。
+        いまは手で入れてください。</div>
+    </div></div>
+
+    <div class="tk-sec"><h3>8. プログラム</h3><div class="bd">
+      <div class="tk-tbl-wrap"><table class="tk-tbl"><thead><tr>
+        <th style="width:34px;">No</th><th style="width:74px;">時間</th><th>プログラム名</th>
+        <th>内容</th><th>留意事項</th><th></th>
+      </tr></thead><tbody id="tk-prg"></tbody></table></div>
+      <div class="tk-acts">
+        <button type="button" class="tk-btn sm" onclick="tkAddPrg()">＋ 行を足す</button>
+        <button type="button" class="tk-btn sm" onclick="tkTplLoad()">施設の型から入れる</button>
+        <button type="button" class="tk-btn sm" onclick="tkTplSave()">いまの内容を施設の型にする</button>
+      </div>
+      <div class="tk-note">★骨格は全員ほぼ同じです。施設で1枚（型）を作っておいて、
+        利用者ごとに留意事項だけ直す使い方を想定しています。</div>
+    </div></div>
+
+    <div class="tk-sec"><h3>9. 説明と同意</h3><div class="bd">
+      <div class="tk-2">
+        <div class="tk-row"><span class="tk-lab">説明日</span><input type="date" id="tk-explainedOn"></div>
+        <div class="tk-row"><span class="tk-lab">説明者</span><input type="text" id="tk-explainer"></div>
+      </div>
+      <div class="tk-row">
+        <label style="font-size:.86rem;display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="tk-consent" style="width:auto;">
+          説明を受け、内容に同意し交付を受けました
+        </label>
+      </div>
+      <div class="tk-row"><span class="tk-lab">代筆（本人との関係）</span>
+        <input type="text" id="tk-proxyRel" placeholder="代筆のときだけ" style="max-width:240px;"></div>
+      <div class="tk-row"><span class="tk-lab">備考</span>
+        <textarea id="tk-remarks" rows="2"></textarea></div>
+      <div class="tk-note">★署名・捺印は紙の上でもらうものなので、ここでは持ちません。</div>
+    </div></div>
+
+    <div class="tk-acts" style="margin-top:16px;">
+      <button type="button" class="tk-btn main" id="tk-saveBtn" onclick="tkSave()">保存する</button>
+      {# tsusho-keikaku-print-v1 #}
+      <button type="button" class="tk-btn" id="tk-printBtn" onclick="tkPrint()" style="display:none;">印刷</button>
+      <button type="button" class="tk-btn" onclick="tkBack()">一覧へ戻る</button>
+      <button type="button" class="tk-btn del" id="tk-delBtn" onclick="tkDelete()" style="margin-left:auto;">この計画書を消す</button>
+    </div>
+    <div class="tk-note">★［印刷］で出るのは<b>保存された中身</b>です。
+      書きかけのものは紙に出ません。</div>
+  </div>
+
+  </div>{# /tk-modePlan #}
+
+  {# ── モニタリング表（tsusho-monitoring-v1） ── #}
+  <div id="tk-modeMon" style="display:none;">
+    <div class="tk-sec"><h3>対象月</h3><div class="bd">
+      <input type="month" id="tk-monYm" onchange="tkMonLoad()" style="max-width:220px;">
+      <div class="tk-note">★月末に、その月をふり返って書くものです。</div>
+    </div></div>
+
+    {# tsusho-monitoring-v3: 月末の一覧。★利用者を選んでいなくても見られる。 #}
+    <div class="tk-sec"><h3>月末の一覧</h3><div class="bd">
+      <div class="tk-acts" style="margin-top:0;">
+        <button type="button" class="tk-btn sm" onclick="tkMonListLoad()">この月の一覧を出す</button>
+        <button type="button" class="tk-btn sm" id="tk-monAllBtn" onclick="tkMonPrintAll()" style="display:none;">保存ずみを全員分まとめて印刷</button>
+      </div>
+      <div id="tk-monCount" class="tk-note"></div>
+      <div id="tk-monList" class="tk-mlist"></div>
+      <div class="tk-note">★押すと、その方の①〜④へ入ります。<br>
+        ★まとめて印刷では<b>まだ書いていない方の紙は出しません</b>（空欄の紙を刷らないため）。</div>
+    </div></div>
+
+    <div class="tk-sec"><h3>この月の計画書（読むだけ）</h3><div class="bd">
+      <div id="tk-monPlan" class="tk-note">利用者と対象月を選んでください。</div>
+      <div class="tk-note">★①は<b>この短期目標に対して</b>答えるものです。
+        個別機能訓練の評価（機能・活動・参加）とは別です。</div>
+    </div></div>
+
+    <div class="tk-sec"><h3>① サービスの実施状況</h3><div class="bd">
+      <div class="tk-note">計画の内容どおりに、サービス提供を実施できたかについて。</div>
+      <div class="tk-q" id="tk-q1">
+        <label><input type="radio" name="q1" value="1"> 1　計画の通り実施することができた</label>
+        <label><input type="radio" name="q1" value="2"> 2　ほぼ計画の通り実施することができた</label>
+        <label><input type="radio" name="q1" value="3"> 3　計画の通り実施することができなかった</label>
+      </div>
+      <span class="tk-lab" style="margin-top:8px;">※1以外の場合はその理由等</span>
+      <textarea id="tk-q1note" rows="3"></textarea>
+    </div></div>
+
+    <div class="tk-sec"><h3>② 利用者及び家族の満足度</h3><div class="bd">
+      <div class="tk-note">現に利用しているサービスに、利用者及び家族が満足しているかどうかについて。</div>
+      <div id="tk-q2hint" class="tk-hint" style="display:none;"></div>
+      <div class="tk-q" id="tk-q2">
+        <label><input type="radio" name="q2" value="1"> 1　満足</label>
+        <label><input type="radio" name="q2" value="2"> 2　不満足</label>
+      </div>
+      <span class="tk-lab" style="margin-top:8px;">※1以外の場合はその理由等</span>
+      <textarea id="tk-q2note" rows="3"></textarea>
+    </div></div>
+
+    <div class="tk-sec"><h3>③ 利用者の生活状況及び心身の状況の変化</h3><div class="bd">
+      <div class="tk-note">利用者の生活状況や心身の状況に変化がないかどうかについて。</div>
+      <div class="tk-q" id="tk-q3">
+        <label><input type="radio" name="q3" value="1"> 1　変化なし</label>
+        <label><input type="radio" name="q3" value="2"> 2　変化あり</label>
+      </div>
+      <span class="tk-lab" style="margin-top:8px;">※1、2ともその状況等</span>
+      <textarea id="tk-q3note" rows="3"></textarea>
+    </div></div>
+
+    <div class="tk-sec"><h3>④ サービス変更の必要性</h3><div class="bd">
+      <div class="tk-note">計画の変更が必要となるような新たな課題が生じていないか、
+        提供したサービスの内容が③の内容に照らして適切であるかどうか等により判断した結果について。</div>
+      <div class="tk-q" id="tk-q4">
+        <label><input type="radio" name="q4" value="1"> 1　必要なし</label>
+        <label><input type="radio" name="q4" value="2"> 2　必要あり</label>
+      </div>
+      <span class="tk-lab" style="margin-top:8px;">※1以外の場合はその理由等</span>
+      <textarea id="tk-q4note" rows="3"></textarea>
+    </div></div>
+
+    <div class="tk-sec"><h3>実施日・実施者</h3><div class="bd">
+      <div class="tk-2">
+        <div class="tk-row"><span class="tk-lab">実施日</span><input type="date" id="tk-monDone"></div>
+        <div class="tk-row"><span class="tk-lab">モニタリング実施者</span><input type="text" id="tk-monDoer"></div>
+      </div>
+    </div></div>
+
+    <div class="tk-acts" style="margin-top:16px;">
+      <button type="button" class="tk-btn main" id="tk-monSaveBtn" onclick="tkMonSave()">保存する</button>
+      {# tsusho-monitoring-v2 #}
+      <button type="button" class="tk-btn" id="tk-monPrintBtn" onclick="tkMonPrint()" style="display:none;">印刷</button>
+      <button type="button" class="tk-btn del" id="tk-monDelBtn" onclick="tkMonDelete()" style="display:none;margin-left:auto;">この月を消す</button>
+    </div>
+    <div class="tk-note">★［印刷］で出るのは<b>保存された中身</b>です。書きかけのものは紙に出ません。<br>
+      ★月末に全員分をまとめて出すのは次の版で入れます。</div>
+  </div>
+
+  <div id="tk-nopatient" class="tk-note">利用者を選んでください。</div>
+</div>
+<div class="tk-toast" id="tk-toast"></div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// ===== tsusho-keikaku-v1 =====
+const TK_PATIENTS = [
+  {% for p in patients %}
+  {"id": {{ p.id|tojson }}, "name": {{ p.user_name|tojson }},
+   "kana": {{ (p.user_kana or '')|tojson }}, "chart": {{ (p.chart_number or '')|tojson }}}{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
+const TK_TODAY = {{ today|tojson }};
+const TK_ME = {{ current_user|tojson }};
+
+var TK = { patient: null, planId: null, dirty: false };
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':s); return d.innerHTML; }
+
+var tkToastT = null;
+function tkToast(msg, err){
+  var t = $('tk-toast');
+  t.textContent = msg;
+  t.className = 'tk-toast show' + (err ? ' err' : '');
+  clearTimeout(tkToastT);
+  tkToastT = setTimeout(function(){ t.className = 'tk-toast' + (err ? ' err' : ''); }, 2800);
+}
+
+/* ── 利用者を選ぶ ── */
+function tkFilter(){
+  var q = ($('tk-search').value || '').trim().toLowerCase();
+  var box = $('tk-cands');
+  if(!q){ box.innerHTML=''; box.style.display='none'; return; }
+  var hits = TK_PATIENTS.filter(function(p){
+    return (p.name + p.kana + p.chart).toLowerCase().indexOf(q) >= 0; }).slice(0, 8);
+  /* ★idはUUIDの文字列。onclick に直に埋めると壊れる（評価画面で踏んだ）。
+       属性に持たせて、押したときに読み出す。 */
+  box.innerHTML = hits.map(function(p){
+    return '<div data-pid="' + esc(p.id) + '">(No.' + esc(p.chart) + ') '
+         + esc(p.name) + '（' + esc(p.kana) + '）</div>'; }).join('');
+  box.querySelectorAll('div').forEach(function(d){
+    d.onclick = function(){ tkPick(d.dataset.pid); }; });
+  box.style.display = hits.length ? 'block' : 'none';
+}
+
+async function tkPick(id){
+  TK.patient = TK_PATIENTS.filter(function(p){ return String(p.id) === String(id); })[0] || null;
+  if(!TK.patient) return;
+  $('tk-cands').style.display='none';
+  $('tk-search').value=''; $('tk-search').style.display='none';
+  $('tk-chosen').style.display='';
+  $('tk-chosen-name').textContent = '(No.' + (TK.patient.chart||'-') + ') ' + TK.patient.name;
+  $('tk-nopatient').style.display='none';
+  // tsusho-monitoring-v1: いま見ているタブのほうを読む
+  if(TKM.mode === 'mon'){ await tkMonLoad(); return; }
+  await tkLoadList();
+}
+
+function tkClearPatient(){
+  if(TK.dirty && !confirm('保存していない変更があります。破棄して選び直しますか？')) return;
+  TK.patient = null; TK.planId = null; TK.dirty = false;
+  $('tk-chosen').style.display='none';
+  $('tk-search').style.display=''; $('tk-search').value='';
+  $('tk-listSec').style.display='none';
+  $('tk-edit').style.display='none';
+  $('tk-monPlan').textContent = '利用者と対象月を選んでください。';   // tsusho-monitoring-v1
+  $('tk-nopatient').style.display='';
+}
+
+/* ===== tsusho-monitoring-v1 : モニタリング表 ===== */
+var TKM = { mode:'plan', planId:null, saved:false };   // tsusho-monitoring-v2: saved=この月が保存ずみか
+
+function tkMode(m){
+  if(TK.dirty && m !== TKM.mode
+     && !confirm('保存していない変更があります。破棄して切り替えますか？')) return;
+  TK.dirty = false;
+  TKM.mode = m;
+  $('tk-mPlan').classList.toggle('on', m === 'plan');
+  $('tk-mMon').classList.toggle('on', m === 'mon');
+  $('tk-modePlan').style.display = (m === 'plan') ? '' : 'none';
+  $('tk-modeMon').style.display  = (m === 'mon')  ? '' : 'none';
+  if(m === 'mon'){
+    if(!$('tk-monYm').value) $('tk-monYm').value = TK_TODAY.slice(0,7);
+    if(TK.patient) tkMonLoad();
+  }
+}
+
+function tkRadio(name){
+  var el = document.querySelector('input[name=' + name + ']:checked');
+  return el ? el.value : '';
+}
+function tkSetRadio(name, v){
+  document.querySelectorAll('input[name=' + name + ']').forEach(function(el){
+    el.checked = (String(el.value) === String(v)); });
+}
+
+async function tkMonLoad(){
+  if(!TK.patient){ return; }
+  var ym = $('tk-monYm').value;
+  if(!ym) return;
+  $('tk-monPlan').textContent = '読み込み中…';
+  try{
+    var j = await fetch('/api/tsusho/monitoring?patient_id=' + encodeURIComponent(TK.patient.id)
+                        + '&ym=' + encodeURIComponent(ym), {credentials:'same-origin'})
+            .then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ $('tk-monPlan').textContent = j.message || '開けませんでした'; return; }
+
+    /* その月の計画書（①はこの目標に対して答える） */
+    TKM.planId = (j.plan && j.plan.id) || null;
+    if(!j.plan_read_ok){
+      $('tk-monPlan').innerHTML = '<b>計画書を確かめられませんでした。</b>'
+        + '少し時間をおいて、もう一度開いてください。';
+    }else if(!j.plan){
+      /* ★無いことを黙らない。①が何に対しての答えか分からなくなる。 */
+      $('tk-monPlan').innerHTML = '<b>この月に効いている計画書がありません。</b><br>'
+        + '「計画書」のタブで作ってから、モニタリングを書いてください。';
+    }else{
+      var gs = (j.plan.goals || []);
+      $('tk-monPlan').innerHTML =
+        '<div style="color:#202124;"><b>' + esc(j.plan.created_on) + ' 作成の計画書</b>'
+        + (j.plan.short_from ? '　短期目標期間 ' + esc(j.plan.short_from) + '〜' + esc(j.plan.short_to || '') : '')
+        + '</div>'
+        + (gs.length
+            ? gs.map(function(g,i){ return '<div>' + (i+1) + '　' + esc(g.body) + '</div>'; }).join('')
+            : '<div>（短期目標が入っていません）</div>');
+    }
+
+    /* ②の下敷き。★入れない。出すだけ。押すのは人。 */
+    var h = j.hint || {};
+    var hb = $('tk-q2hint');
+    if(h.note){
+      hb.style.display = '';
+      hb.innerHTML = esc(h.note)
+        + (h.q2 ? ' <b>下敷きとして「' + (h.q2 === 1 ? '1 満足' : '2 不満足')
+                  + '」を選んでおきます。違っていれば変えてください。</b>' : '');
+    }else{ hb.style.display = 'none'; hb.innerHTML = ''; }
+
+    var m = j.monitoring;
+    // tsusho-monitoring-v2: 保存ずみの月だけ、印刷と削除を出す
+    TKM.saved = !!m;
+    $('tk-monPrintBtn').style.display = m ? '' : 'none';
+    $('tk-monDelBtn').style.display   = m ? '' : 'none';
+    if(m){
+      ['1','2','3','4'].forEach(function(n){
+        tkSetRadio('q' + n, m['q' + n + '_choice']);
+        $('tk-q' + n + 'note').value = m['q' + n + '_note'] || '';
+      });
+      $('tk-monDone').value = m.done_on || '';
+      $('tk-monDoer').value = m.doer || '';
+    }else{
+      ['1','2','3','4'].forEach(function(n){
+        tkSetRadio('q' + n, ''); $('tk-q' + n + 'note').value = '';
+      });
+      $('tk-monDone').value = TK_TODAY;
+      $('tk-monDoer').value = TK_ME || '';
+      /* ★まだ作られていない月だけ、下敷きを押しておく。
+         すでに人が書いた月を、あとから上書きしない。 */
+      if(h.q2) tkSetRadio('q2', h.q2);
+    }
+    TK.dirty = false;
+  }catch(e){ $('tk-monPlan').textContent = '開けませんでした'; }
+}
+
+/* ===== tsusho-monitoring-v3: 月末の一覧 ===== */
+async function tkMonListLoad(){
+  var ym = $('tk-monYm').value;
+  if(!ym){ tkToast('対象月を選んでください', true); return; }
+  $('tk-monCount').textContent = '読み込み中…';
+  $('tk-monList').innerHTML = '';
+  try{
+    var j = await fetch('/api/tsusho/monitoring/list?ym=' + encodeURIComponent(ym),
+                        {credentials:'same-origin'}).then(function(r){ return r.json(); });
+    if(j.status !== 'success'){
+      /* ★「0人」と見せない。読めなかったと言う。 */
+      $('tk-monCount').textContent = j.message || '読めませんでした';
+      $('tk-monAllBtn').style.display = 'none';
+      return;
+    }
+    var saved = (j.items || []).filter(function(x){ return x.has; }).length;
+    $('tk-monCount').innerHTML = '在籍 <b>' + j.total + '</b> 名　'
+      + '書き終わり <b>' + j.done + '</b> 名　'
+      + 'あと <b>' + j.todo + '</b> 名';
+    $('tk-monAllBtn').style.display = saved ? '' : 'none';
+    $('tk-monList').innerHTML = (j.items || []).map(function(x){
+      var cls = !x.has ? 'none' : (x.filled === 4 ? 'done' : 'part');
+      var lab = !x.has ? '未記入' : (x.filled === 4 ? '記入ずみ' : 'あと' + (4 - x.filled) + 'つ');
+      return '<div class="it" data-pid="' + esc(x.id) + '">'
+           + '<span class="nm">' + (x.chart ? '(No.' + esc(x.chart) + ') ' : '') + esc(x.name) + '</span>'
+           + '<span class="st ' + cls + '">' + lab + '</span></div>';
+    }).join('');
+    $('tk-monList').querySelectorAll('[data-pid]').forEach(function(el){
+      el.onclick = async function(){
+        await tkPick(el.dataset.pid);
+        var p = $('tk-monPlan'); if(p) p.scrollIntoView({behavior:'smooth', block:'start'});
+      };
+    });
+  }catch(e){
+    $('tk-monCount').textContent = '読めませんでした';
+    $('tk-monAllBtn').style.display = 'none';
+  }
+}
+
+function tkMonPrintAll(){
+  var ym = $('tk-monYm').value;
+  if(!ym){ tkToast('対象月を選んでください', true); return; }
+  window.open('/tsusho_keikaku/monitoring/print_all?ym=' + encodeURIComponent(ym), '_blank');
+}
+
+/* tsusho-monitoring-v2: 紙に出す。★出るのは保存された中身。 */
+function tkMonPrint(){
+  if(!TK.patient || !$('tk-monYm').value){ tkToast('利用者と対象月を選んでください', true); return; }
+  if(!TKM.saved){ tkToast('先に保存してください', true); return; }
+  if(TK.dirty && !confirm('保存していない変更があります。\n\n'
+      + '★紙に出るのは【保存された中身】です。\n'
+      + '　いまの書きかけは出ません。\n\nこのまま印刷しますか。')) return;
+  window.open('/tsusho_keikaku/monitoring/print?patient_id=' + encodeURIComponent(TK.patient.id)
+              + '&ym=' + encodeURIComponent($('tk-monYm').value), '_blank');
+}
+
+/* tsusho-monitoring-v2: その月を消す。★v1に無かった。 */
+async function tkMonDelete(){
+  if(!TK.patient || !$('tk-monYm').value) return;
+  if(!confirm($('tk-monYm').value + ' のモニタリング表を消します。\n\n'
+            + '・①〜④の選んだ内容と理由\n・実施日／実施者\n\n'
+            + 'すべて消えます。元に戻せません。\n'
+            + '★計画書は消えません。\n\n消しますか。')) return;
+  try{
+    var j = await fetch('/api/tsusho/monitoring/delete', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({patient_id: TK.patient.id, ym: $('tk-monYm').value})})
+      .then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ tkToast(j.message || '消せませんでした', true); return; }
+    tkToast('消しました');
+    await tkMonLoad();
+    if($('tk-monList').innerHTML) tkMonListLoad();   // tsusho-monitoring-v3
+  }catch(e){ tkToast('消せませんでした', true); }
+}
+
+async function tkMonSave(){
+  if(!TK.patient){ tkToast('利用者を選んでください', true); return; }
+  var ym = $('tk-monYm').value;
+  if(!ym){ tkToast('対象月を選んでください', true); return; }
+  var b = $('tk-monSaveBtn');
+  b.disabled = true; b.textContent = '保存しています…';
+  try{
+    var body = { patient_id: TK.patient.id, ym: ym, plan_id: TKM.planId || '',
+                 done_on: $('tk-monDone').value, doer: $('tk-monDoer').value };
+    ['1','2','3','4'].forEach(function(n){
+      body['q' + n + '_choice'] = tkRadio('q' + n);
+      body['q' + n + '_note'] = $('tk-q' + n + 'note').value;
+    });
+    var j = await fetch('/api/tsusho/monitoring', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+      .then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ tkToast(j.message || '保存できませんでした', true); return; }
+    TK.dirty = false;
+    // tsusho-monitoring-v2: 保存できたので、印刷と削除を出す
+    TKM.saved = true;
+    $('tk-monPrintBtn').style.display = '';
+    $('tk-monDelBtn').style.display = '';
+    tkToast(j.message || '保存しました');
+    // tsusho-monitoring-v3: 一覧を出しているなら、数え直す
+    if($('tk-monList').innerHTML) tkMonListLoad();
+  }catch(e){ tkToast('保存できませんでした（通信エラー）', true); }
+  finally{ b.disabled = false; b.textContent = '保存する'; }
+}
+
+/* ── 一覧 ── */
+async function tkLoadList(){
+  $('tk-edit').style.display='none';
+  $('tk-listSec').style.display='';
+  $('tk-list').innerHTML = '<div class="s">読み込み中…</div>';
+  try{
+    var j = await fetch('/api/tsusho/plans?patient_id=' + encodeURIComponent(TK.patient.id),
+                        {credentials:'same-origin'}).then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ $('tk-list').innerHTML = '<div class="s">' + esc(j.message) + '</div>'; return; }
+    var ps = j.plans || [];
+    if(!ps.length){ $('tk-list').innerHTML = '<div class="s">まだ計画書がありません。</div>'; return; }
+    $('tk-list').innerHTML = ps.map(function(p, i){
+      var sub = [];
+      if(p.planner_name) sub.push('作成: ' + p.planner_name);
+      if(p.short_from || p.short_to) sub.push('短期 ' + (p.short_from||'') + '〜' + (p.short_to||''));
+      return '<div class="it" data-id="' + esc(p.id) + '">'
+           + '<div><div class="d">' + esc(p.created_on) + (i === 0 ? '　<span class="s">いまの計画書</span>' : '')
+           + '</div><div class="s">' + esc(sub.join('　')) + '</div></div></div>';
+    }).join('');
+    $('tk-list').querySelectorAll('[data-id]').forEach(function(el){
+      el.onclick = function(){ tkOpen(el.dataset.id); }; });
+  }catch(e){ $('tk-list').innerHTML = '<div class="s">読み込めませんでした。</div>'; }
+}
+
+/* ── 番号付きの並び ── */
+function tkGoalRow(kind, body){
+  var d = document.createElement('div');
+  d.className = 'tk-g';
+  d.innerHTML = '<span class="no"></span>'
+    + '<textarea rows="2"></textarea>'
+    + '<button type="button" class="x" title="この行を消す">✕</button>';
+  d.querySelector('textarea').value = body || '';
+  d.querySelector('textarea').oninput = function(){ TK.dirty = true; };
+  d.querySelector('.x').onclick = function(){ d.remove(); tkRenum(kind); TK.dirty = true; };
+  return d;
+}
+function tkRenum(kind){
+  var box = $('tk-' + kind);
+  var n = 0;
+  box.querySelectorAll('.tk-g').forEach(function(g){
+    n++; g.querySelector('.no').textContent = '①②③④⑤⑥⑦⑧⑨⑩'.charAt(n-1) || ('(' + n + ')');
+  });
+}
+function tkAddGoal(kind, body){
+  $('tk-' + kind).appendChild(tkGoalRow(kind, body));
+  tkRenum(kind);
+  TK.dirty = true;
+}
+function tkGoals(kind){
+  return [].slice.call($('tk-' + kind).querySelectorAll('.tk-g textarea'))
+           .map(function(t){ return t.value; });
+}
+
+/* ── 週間計画表 ── */
+function tkAddSvc(v){
+  v = v || {};
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+      '<td class="nar"><input type="text" data-k="label" readonly></td>'
+    + '<td class="nar"><input type="text" data-k="time_from" placeholder="09:30"></td>'
+    + '<td><input type="text" data-k="reward_class" placeholder="7時間以上～8時間未満"></td>'
+    + '<td><input type="text" data-k="weekdays" placeholder="毎週 木 曜日"></td>'
+    + '<td class="x"><input type="checkbox" data-k="pickup"></td>'
+    + '<td class="x"><input type="checkbox" data-k="dropoff"></td>'
+    + '<td class="x"><button type="button" class="x" style="background:none;border:none;color:#c5221f;cursor:pointer;">✕</button></td>';
+  /* 提供時間は2つ要るので、1つ目のセルに2つ入れる */
+  var tf = tr.querySelector('[data-k=time_from]');
+  var wrap = tf.parentNode;
+  var tt = document.createElement('input');
+  tt.type='text'; tt.setAttribute('data-k','time_to'); tt.placeholder='16:30';
+  wrap.appendChild(tt);
+  tr.querySelector('[data-k=label]').value = '';
+  if(v.time_from) tf.value = v.time_from;
+  if(v.time_to) tt.value = v.time_to;
+  ['reward_class','weekdays'].forEach(function(k){
+    if(v[k]) tr.querySelector('[data-k=' + k + ']').value = v[k]; });
+  ['pickup','dropoff'].forEach(function(k){
+    tr.querySelector('[data-k=' + k + ']').checked = !!v[k]; });
+  tr.querySelectorAll('input').forEach(function(i){ i.oninput = function(){ TK.dirty = true; };
+                                                    i.onchange = function(){ TK.dirty = true; }; });
+  tr.querySelector('button').onclick = function(){ tr.remove(); tkRenumSvc(); TK.dirty = true; };
+  $('tk-svc').appendChild(tr);
+  tkRenumSvc();
+  TK.dirty = true;
+}
+function tkRenumSvc(){
+  var n = 0;
+  $('tk-svc').querySelectorAll('tr').forEach(function(tr){
+    n++; tr.querySelector('[data-k=label]').value = String(n); });
+}
+function tkSvcs(){
+  return [].slice.call($('tk-svc').querySelectorAll('tr')).map(function(tr){
+    function g(k){ var e = tr.querySelector('[data-k=' + k + ']'); return e ? e.value : ''; }
+    function c(k){ var e = tr.querySelector('[data-k=' + k + ']'); return !!(e && e.checked); }
+    return {time_from:g('time_from'), time_to:g('time_to'),
+            reward_class:g('reward_class'), weekdays:g('weekdays'),
+            pickup:c('pickup'), dropoff:c('dropoff')};
+  });
+}
+
+/* ── プログラム ── */
+function tkAddPrg(v){
+  v = v || {};
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+      '<td class="x"><span class="no"></span></td>'
+    + '<td class="nar"><input type="text" data-k="time_hm" placeholder="08:45"></td>'
+    + '<td><textarea rows="2" data-k="name"></textarea></td>'
+    + '<td><textarea rows="2" data-k="body"></textarea></td>'
+    + '<td><textarea rows="2" data-k="note"></textarea></td>'
+    + '<td class="x"><button type="button" style="background:none;border:none;color:#c5221f;cursor:pointer;">✕</button></td>';
+  ['time_hm','name','body','note'].forEach(function(k){
+    if(v[k]) tr.querySelector('[data-k=' + k + ']').value = v[k]; });
+  tr.querySelectorAll('input,textarea').forEach(function(i){ i.oninput = function(){ TK.dirty = true; }; });
+  tr.querySelector('button').onclick = function(){ tr.remove(); tkRenumPrg(); TK.dirty = true; };
+  $('tk-prg').appendChild(tr);
+  tkRenumPrg();
+  TK.dirty = true;
+}
+function tkRenumPrg(){
+  var n = 0;
+  $('tk-prg').querySelectorAll('tr').forEach(function(tr){
+    n++; tr.querySelector('.no').textContent = String(n); });
+}
+function tkPrgs(){
+  return [].slice.call($('tk-prg').querySelectorAll('tr')).map(function(tr){
+    function g(k){ var e = tr.querySelector('[data-k=' + k + ']'); return e ? e.value : ''; }
+    return {time_hm:g('time_hm'), name:g('name'), body:g('body'), note:g('note')};
+  });
+}
+
+/* ── 施設の型 ── */
+async function tkTplLoad(){
+  try{
+    var j = await fetch('/api/tsusho/program_template', {credentials:'same-origin'})
+            .then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ tkToast(j.message || '読めませんでした', true); return; }
+    var items = j.items || [];
+    if(!items.length){ tkToast('施設の型はまだありません。1枚作って［施設の型にする］を押してください', true); return; }
+    /* ★いま書いてあるものがあれば、黙って消さない */
+    if($('tk-prg').querySelectorAll('tr').length
+       && !confirm('いまのプログラムを、施設の型で置き換えますか？')) return;
+    $('tk-prg').innerHTML = '';
+    items.forEach(function(it){ tkAddPrg(it); });
+    tkToast('施設の型から入れました');
+  }catch(e){ tkToast('読めませんでした', true); }
+}
+async function tkTplSave(){
+  var items = tkPrgs();
+  if(!items.length){ tkToast('プログラムが空です', true); return; }
+  if(!confirm('いまのプログラムを【施設の型】として保存します。\n\n'
+            + '次に新しい計画書を作る人が、これを下敷きに使えます。\n'
+            + '★すでにある型は置き換わります。\n\nよろしいですか。')) return;
+  try{
+    var j = await fetch('/api/tsusho/program_template', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({items: items})})
+      .then(function(r){ return r.json(); });
+    tkToast(j.message || (j.status === 'success' ? '保存しました' : '保存できませんでした'),
+            j.status !== 'success');
+  }catch(e){ tkToast('保存できませんでした', true); }
+}
+
+/* ── 開く・新しく作る ── */
+function tkShowEdit(){
+  $('tk-listSec').style.display='none';
+  $('tk-edit').style.display='';
+  window.scrollTo(0,0);
+}
+async function tkHeader(){
+  $('tk-eName').textContent = TK.patient.name + ' さん';
+  $('tk-eSub').textContent = '読み込み中…';
+  try{
+    var j = await fetch('/api/tsusho/patient?patient_id=' + encodeURIComponent(TK.patient.id),
+                        {credentials:'same-origin'}).then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ $('tk-eSub').textContent = ''; return; }
+    var p = j.patient || {};
+    var s = [];
+    if(p.gender) s.push(p.gender);
+    if(p.birth_date) s.push('生年月日 ' + p.birth_date);
+    if(p.care_level) s.push(p.care_level);
+    if(p.certification_start_date || p.certification_end_date)
+      s.push('認定有効期間 ' + (p.certification_start_date||'') + '〜' + (p.certification_end_date||''));
+    if(p.address) s.push(p.address);
+    if(p.support_office) s.push('居宅 ' + p.support_office);
+    if(p.care_manager_name) s.push('担当 ' + p.care_manager_name);
+    $('tk-eSub').textContent = s.join('　');
+  }catch(e){ $('tk-eSub').textContent = ''; }
+}
+function tkClearForm(){
+  ['tk-planner','tk-wishSelf','tk-wishFamily','tk-wishRel','tk-notes',
+   'tk-explainer','tk-proxyRel','tk-remarks'].forEach(function(id){ $(id).value = ''; });
+  ['tk-createdOn','tk-longFrom','tk-longTo','tk-shortFrom','tk-shortTo',
+   'tk-explainedOn'].forEach(function(id){ $(id).value = ''; });
+  $('tk-consent').checked = false;
+  ['issue','long','short'].forEach(function(k){ $('tk-' + k).innerHTML = ''; });
+  $('tk-svc').innerHTML = '';
+  $('tk-prg').innerHTML = '';
+}
+async function tkNew(){
+  TK.planId = null;
+  tkClearForm();
+  $('tk-createdOn').value = TK_TODAY;
+  $('tk-planner').value = TK_ME || '';
+  ['issue','long','short'].forEach(function(k){ tkAddGoal(k, ''); });
+  tkAddSvc();
+  $('tk-delBtn').style.display = 'none';
+  $('tk-printBtn').style.display = 'none';   // tsusho-keikaku-print-v1: まだ保存前
+  TK.dirty = false;
+  await tkHeader();
+  tkShowEdit();
+}
+async function tkOpen(id){
+  try{
+    var j = await fetch('/api/tsusho/plan?id=' + encodeURIComponent(id), {credentials:'same-origin'})
+            .then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ tkToast(j.message || '開けませんでした', true); return; }
+    var p = j.plan || {};
+    TK.planId = p.id;
+    tkClearForm();
+    $('tk-createdOn').value = p.created_on || '';
+    $('tk-planner').value = p.planner_name || '';
+    $('tk-longFrom').value = p.long_from || '';   $('tk-longTo').value = p.long_to || '';
+    $('tk-shortFrom').value = p.short_from || ''; $('tk-shortTo').value = p.short_to || '';
+    $('tk-wishSelf').value = p.wish_self || '';
+    $('tk-wishFamily').value = p.wish_family || '';
+    $('tk-wishRel').value = p.wish_family_rel || '';
+    $('tk-notes').value = p.notes || '';
+    $('tk-explainedOn').value = p.explained_on || '';
+    $('tk-explainer').value = p.explainer || '';
+    $('tk-consent').checked = !!p.consent_signed;
+    $('tk-proxyRel').value = p.consent_proxy_rel || '';
+    $('tk-remarks').value = p.remarks || '';
+    (p.goals || []).forEach(function(g){
+      if(['issue','long','short'].indexOf(g.kind) >= 0) tkAddGoal(g.kind, g.body); });
+    ['issue','long','short'].forEach(function(k){
+      if(!$('tk-' + k).querySelectorAll('.tk-g').length) tkAddGoal(k, ''); });
+    (p.services || []).forEach(function(s){ tkAddSvc(s); });
+    if(!(p.services || []).length) tkAddSvc();
+    (p.programs || []).forEach(function(x){ tkAddPrg(x); });
+    $('tk-delBtn').style.display = '';
+    $('tk-printBtn').style.display = '';     // tsusho-keikaku-print-v1
+    TK.dirty = false;
+    await tkHeader();
+    tkShowEdit();
+  }catch(e){ tkToast('開けませんでした', true); }
+}
+async function tkBack(){
+  if(TK.dirty && !confirm('保存していない変更があります。破棄して一覧へ戻りますか？')) return;
+  TK.dirty = false;
+  await tkLoadList();
+}
+
+/* ── 保存・削除 ── */
+/* ===== tsusho-keikaku-ocr-v1: 紙の計画書から取り込む ===== */
+/* ★写真は画面側で小さくしてから送る。そのまま送ると、
+     現場のスマホの写真（1枚5MB超）で毎回詰まる。 */
+function tkShrink(file){
+  return new Promise(function(resolve, reject){
+    var fr = new FileReader();
+    fr.onerror = function(){ reject(new Error('read')); };
+    fr.onload = function(){
+      var img = new Image();
+      img.onerror = function(){ reject(new Error('img')); };
+      img.onload = function(){
+        var MAX = 1600;
+        var w = img.width, h = img.height;
+        if(w > MAX || h > MAX){
+          if(w >= h){ h = Math.round(h * MAX / w); w = MAX; }
+          else      { w = Math.round(w * MAX / h); h = MAX; }
+        }
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        var d = c.toDataURL('image/jpeg', 0.8);
+        resolve({mime_type:'image/jpeg', data: d.split(',')[1]});
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  });
+}
+
+async function tkOcrRun(){
+  var inp = $('tk-ocrFile');
+  var files = [].slice.call(inp.files || []).slice(0, 6);
+  if(!files.length) return;
+  var msg = $('tk-ocrMsg');
+  /* tsusho-keikaku-ocr-v2: ★何枚を読んでいるかを出す。
+     待っている人に「これは動いているのか」を分からせる。 */
+  msg.textContent = '写真' + files.length + '枚を読み取っています…'
+                  + '（1枚あたり20秒ほどかかります。このまま待ってください）';
+  try{
+    var imgs = [];
+    for(var i = 0; i < files.length; i++){ imgs.push(await tkShrink(files[i])); }
+    var j = await fetch('/api/tsusho/plan/ocr', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({images: imgs})})
+      .then(function(r){ return r.json(); });
+    /* tsusho-keikaku-ocr-v2: ★失敗したときも、何枚目が駄目だったかを出す。 */
+    if(j.status !== 'success'){
+      msg.innerHTML = esc(j.message || '読み取れませんでした') + tkOcrPages(j.pages); return;
+    }
+    msg.innerHTML = tkOcrApply(j.read || {}) + tkOcrPages(j.pages);
+  }catch(e){
+    msg.textContent = '読み取れませんでした。もう一度お試しください。';
+  }finally{
+    inp.value = '';   // 同じ写真をもう一度選べるように
+  }
+}
+
+/* tsusho-keikaku-ocr-v2
+   ★どの写真が読めたかを言う。一部だけ入って、それを黙っているのがいちばん悪い。 */
+function tkOcrPages(pages){
+  if(!pages || pages.length < 2) return '';
+  var ng = pages.filter(function(p){ return !p.ok; });
+  if(!ng.length){
+    return '<br><span style="color:#80868b;">写真' + pages.length + '枚とも読み取れました。</span>';
+  }
+  return '<br><b style="color:#7a5200;">読み取れなかった写真：</b>'
+       + esc(ng.map(function(p){ return p.no + '枚目（' + (p.why || '') + '）'; }).join('、'))
+       + '<br><span style="color:#80868b;">その写真だけ、明るい所でまっすぐ撮り直して、'
+       + 'もう一度取り込んでください。読めた写真のぶんは入っています。</span>';
+}
+
+/* ★空いている欄にだけ入れる。すでに書いてある欄は触らない。
+     読み取りは必ず間違える。間違いで、人が書いたものを消してはいけない。
+   ★入れなかった欄は【名前を挙げて】伝える。黙って飛ばさない。 */
+function tkOcrApply(r){
+  var put = [], skip = [];
+
+  /* tsusho-keikaku-ocr-v2
+     ★［新しく作る］を押した時点で
+         作成年月日 ← 今日 ／ 計画作成者 ← ログインしている人
+       が先に入っている（tkNew）。「空いている欄にだけ入れる」決まりなので、
+       この2つは【いつも埋まっていて、いつも飛ばされて】いた。
+       紙に書いてある作成年月日のほうが正しい。今日ではない。
+     ★まだ自動の値のままのときだけ空にする。人が手で直した値は触らない。
+     ★読み取れたときだけ空にする。そうしないと、読めなかったときに
+       もともと入っていた値まで消えてしまう。 */
+  function undoAuto(id, auto, val){
+    if(!val || !auto) return;
+    var el = $(id);
+    if(el && (el.value || '').trim() === String(auto).trim()){ el.value = ''; }
+  }
+  undoAuto('tk-createdOn', TK_TODAY, r.created_on);
+  undoAuto('tk-planner', TK_ME || '', r.planner_name);
+
+  function txt(id, val, label){
+    if(!val) return;
+    var el = $(id);
+    if(!el) return;
+    if((el.value || '').trim()){ skip.push(label); return; }
+    el.value = val; put.push(label);
+  }
+  txt('tk-createdOn', r.created_on, '作成年月日');
+  txt('tk-planner',   r.planner_name, '計画作成者');
+  txt('tk-longFrom',  r.long_from, '長期目標期間（開始）');
+  txt('tk-longTo',    r.long_to,   '長期目標期間（終了）');
+  txt('tk-shortFrom', r.short_from, '短期目標期間（開始）');
+  txt('tk-shortTo',   r.short_to,   '短期目標期間（終了）');
+  txt('tk-wishSelf',  r.wish_self, '本人の希望');
+  txt('tk-wishRel',   r.wish_family_rel, 'ご家族の続柄');
+  txt('tk-wishFamily', r.wish_family, 'ご家族の希望');
+  txt('tk-notes',     r.notes, '留意点');
+
+  /* 番号付きの並び。★1つでも書いてあれば触らない。 */
+  [['issue','課題'], ['long','長期目標'], ['short','短期目標']].forEach(function(p){
+    var kind = p[0], label = p[1];
+    var arr = r[kind] || [];
+    if(!arr.length) return;
+    var has = tkGoals(kind).filter(function(t){ return (t || '').trim(); }).length;
+    if(has){ skip.push(label); return; }
+    $('tk-' + kind).innerHTML = '';
+    arr.forEach(function(b){ tkAddGoal(kind, b); });
+    put.push(label + '（' + arr.length + '件）');
+  });
+
+  /* 週間計画表・プログラム。★1行でも書いてあれば触らない。 */
+  function rows(id, arr, label, add){
+    if(!arr || !arr.length) return;
+    var cur = $(id).querySelectorAll('tr').length;
+    var filled = [].slice.call($(id).querySelectorAll('input,textarea'))
+                   .some(function(e){ return (e.value || '').trim() && e.getAttribute('data-k') !== 'label'; });
+    if(cur && filled){ skip.push(label); return; }
+    $(id).innerHTML = '';
+    arr.forEach(function(x){ add(x); });
+    put.push(label + '（' + arr.length + '行）');
+  }
+  rows('tk-svc', r.services, '週間計画表', tkAddSvc);
+  rows('tk-prg', r.programs, 'プログラム', tkAddPrg);
+
+  TK.dirty = true;
+  var h = '';
+  if(put.length){
+    h += '<b style="color:#1e6b36;">入れたもの：</b>' + esc(put.join('、'));
+  }else{
+    h += '<b style="color:#7a5200;">入れられる欄がありませんでした。</b>';
+  }
+  if(skip.length){
+    h += '<br><b style="color:#7a5200;">すでに書いてあるので入れなかったもの：</b>'
+       + esc(skip.join('、'))
+       + '<br><span style="color:#80868b;">入れ直したいときは、その欄を空にしてからもう一度取り込んでください。</span>';
+  }
+  h += '<br><b>★日付と数字は必ず目で確かめてください。</b>読み取りは間違えます。'
+     + 'このままでは保存されていません。［保存する］を押すまで残りません。';
+  return h;
+}
+
+/* tsusho-keikaku-print-v1: 紙に出す。
+   ★出るのは保存された中身。書きかけは出ない。押す前に伝える。
+     出してから気づくのでは遅い。 */
+function tkPrint(){
+  if(!TK.planId){ tkToast('先に保存してください', true); return; }
+  if(TK.dirty && !confirm('保存していない変更があります。\n\n'
+      + '★紙に出るのは【保存された中身】です。\n'
+      + '　いまの書きかけは出ません。\n\nこのまま印刷しますか。')) return;
+  window.open('/tsusho_keikaku/print?id=' + encodeURIComponent(TK.planId), '_blank');
+}
+
+async function tkSave(){
+  if(!TK.patient){ tkToast('利用者を選んでください', true); return; }
+  if(!$('tk-createdOn').value){ tkToast('作成年月日を入れてください', true); return; }
+  var b = $('tk-saveBtn');
+  b.disabled = true; b.textContent = '保存しています…';
+  try{
+    var body = {
+      id: TK.planId || '',
+      patient_id: TK.patient.id,
+      created_on: $('tk-createdOn').value,
+      planner_name: $('tk-planner').value,
+      wish_self: $('tk-wishSelf').value,
+      wish_family: $('tk-wishFamily').value,
+      wish_family_rel: $('tk-wishRel').value,
+      notes: $('tk-notes').value,
+      long_from: $('tk-longFrom').value, long_to: $('tk-longTo').value,
+      short_from: $('tk-shortFrom').value, short_to: $('tk-shortTo').value,
+      explained_on: $('tk-explainedOn').value,
+      explainer: $('tk-explainer').value,
+      consent_signed: $('tk-consent').checked,
+      consent_proxy_rel: $('tk-proxyRel').value,
+      remarks: $('tk-remarks').value,
+      goals: {issue: tkGoals('issue'), long: tkGoals('long'), short: tkGoals('short')},
+      services: tkSvcs(),
+      programs: tkPrgs()
+    };
+    var j = await fetch('/api/tsusho/plan', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)})
+      .then(function(r){ return r.json(); });
+    if(j.status !== 'success'){
+      /* ★中身の保存だけ失敗したときは、画面をそのままにして押し直してもらう */
+      if(j.id) TK.planId = j.id;
+      tkToast(j.message || '保存できませんでした', true);
+      return;
+    }
+    TK.planId = j.id;
+    TK.dirty = false;
+    $('tk-delBtn').style.display = '';
+    $('tk-printBtn').style.display = '';     // tsusho-keikaku-print-v1
+    tkToast(j.message || '保存しました');
+  }catch(e){ tkToast('保存できませんでした（通信エラー）', true); }
+  finally{ b.disabled = false; b.textContent = '保存する'; }
+}
+
+async function tkDelete(){
+  if(!TK.planId) return;
+  if(!confirm('この計画書を消します。\n\n'
+            + '・課題／長期目標／短期目標\n・週間計画表\n・プログラム\n\n'
+            + 'すべて消えます。元に戻せません。\n\n消しますか。')) return;
+  try{
+    var j = await fetch('/api/tsusho/plan/delete', {method:'POST', credentials:'same-origin',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify({id: TK.planId})})
+      .then(function(r){ return r.json(); });
+    if(j.status !== 'success'){ tkToast(j.message || '消せませんでした', true); return; }
+    TK.planId = null; TK.dirty = false;
+    tkToast('消しました');
+    await tkLoadList();
+  }catch(e){ tkToast('消せませんでした', true); }
+}
+
+window.addEventListener('beforeunload', function(e){
+  if(TK.dirty){ e.preventDefault(); e.returnValue = ''; }
+});
+</script>
+{% endblock %}

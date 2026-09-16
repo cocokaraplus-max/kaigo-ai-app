@@ -3607,6 +3607,8 @@ MENU_ITEMS = [   # top-grid-v1
     #   ★「評価」「評価（新）」と2つ並べない。職員がどちらを使うか迷い、
     #     迷いはそのまま「使われない機能」になる。
     {"href": "/assessment-select", "icon": "assignment",          "label": "評価",           "need": None},
+    # tsusho-keikaku-v1: トグルでオンにした事業所だけに出る
+    {"href": "/tsusho_keikaku", "icon": "description",            "label": "通所介護計画書", "need": "tsusho"},
     {"href": "/print_output",   "icon": "print",                  "label": "書類出力",       "need": None},
     {"href": "/admin/meetings", "icon": "groups",                 "label": "会議記録",       "need": None, "tier": "pro"},
     {"href": "/tasks",          "icon": "task_alt",               "label": "タスク",         "need": None},
@@ -3843,6 +3845,10 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         can_photo = bool(is_photo_sales_enabled(supabase, f_code))  # photo-sales-v1
     except Exception:
         can_photo = False
+    try:
+        can_tsusho = bool(is_tsusho_keikaku_enabled(supabase, f_code))  # tsusho-keikaku-v1
+    except Exception:
+        can_tsusho = False
 
     # plan-gating-v1: 施設プランと体験期間を判定（共有ヘルパー）。
     #   体験中(in_trial)は上位機能も表示（開放）し、プランを上回る項目に badge を付ける。
@@ -3862,6 +3868,8 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         if need == "rec_expense" and not can_rec:
             continue
         if need == "photo" and not can_photo:  # photo-sales-v1: 既定OFF。開発者MENUで許可した施設のみ
+            continue
+        if need == "tsusho" and not can_tsusho:  # tsusho-keikaku-v1: 既定OFF
             continue
         if need == "dev" and not is_dev:
             continue
@@ -14198,6 +14206,18 @@ def api_admin_patient_bulk_import():
             if not isinstance(r, dict):
                 continue
             row = dict(r)
+            # none-string-guard-v1: ★「文字としての None」をここで落とす。
+            #   本番で 郵便番号14件・担当ケアマネ7件 が "None" になっていた。
+            #   入口はここ。他のソフトから出したCSVにそのまま入っている。
+            #   ★落とすのは【空にする】だけ。値は作らない。
+            #   ★facility_code と updated_at は下で入れ直すので触らない。
+            for _k in list(row.keys()):
+                if isinstance(row.get(_k), str):
+                    _c = _junk_to_blank(row[_k])
+                    if _c != row[_k]:
+                        print("[import] 意味のない文字を空にしました: %s=%r"
+                              % (_k, row[_k]), flush=True)
+                    row[_k] = _c
             # facility_code はフロント由来を捨ててsession値で強制
             row["facility_code"] = f_code
             row["updated_at"] = now_iso
@@ -25206,6 +25226,1132 @@ def pay_export_payroll_pdf():
 # ----- /pay-export-v1 -----
 
 
+
+
+# ===== tsusho-keikaku-v1 : 通所介護計画書 =====
+#
+#   ★トグルでオンにした事業所だけに出す。表は増やさない
+#     （admin_settings の key/value。請求額計算モジュールと同じやり方）。
+#
+#   ★援助目標は【番号付きの並び】。課題①に長期①と短期①が対応する。
+#     ICFの3軸（機能・活動・参加）は個別機能訓練計画書のもので、別物。
+#     評価ページの3軸には一切さわらない。
+#
+#   ★「その日の計画書」は、その日以前でいちばん新しいもの。
+#     終わりの日は持たない（勤怠設定の履歴と同じ考え方）。
+
+TK_ENABLED_KEY = "tsusho_keikaku_enabled"          # tsusho-keikaku-v1
+TK_GOAL_KINDS = ("issue", "long", "short")         # 課題 / 長期 / 短期
+#   ★1枚に入れられる行数の上限。青天井にすると、
+#     壊れた画面や連打で何千行も入り、印刷が開かなくなる。
+TK_MAX_ROWS = 60
+
+
+def is_tsusho_keikaku_enabled(supabase, f_code):  # tsusho-keikaku-v1
+    """通所介護計画書モジュールが有効か。admin_settings の key/value フラグ方式。"""
+    try:
+        r = (supabase.table("admin_settings").select("value")
+             .eq("facility_code", f_code).eq("key", TK_ENABLED_KEY).execute())
+        return bool(r.data and r.data[0].get("value") == "true")
+    except Exception:
+        return False
+
+
+@app.context_processor
+def inject_can_tsusho():  # tsusho-keikaku-v1
+    """ナビ表示用。1リクエスト内では g に覚えて Supabase 往復を1回にする。"""
+    from flask import g as _g
+    try:
+        f_code = session.get("f_code")
+        if not f_code:
+            return {"can_tsusho": False}
+        if not hasattr(_g, "_can_tsusho"):
+            _g._can_tsusho = is_tsusho_keikaku_enabled(get_supabase(), f_code)
+        return {"can_tsusho": bool(_g._can_tsusho)}
+    except Exception:
+        return {"can_tsusho": False}
+
+
+def _tk_day(v):  # tsusho-keikaku-v1
+    """YYYY-MM-DD だけ受ける。それ以外は空。"""
+    s = str(v or "")[:10]
+    return s if len(s) == 10 and s[4] == "-" and s[7] == "-" else ""
+
+
+def _tk_txt(v, limit=4000):  # tsusho-keikaku-v1
+    """画面から来た文字。長すぎるものは切る。★None は空文字にする。"""
+    return str(v or "").strip()[:limit]
+
+
+def _tk_rows(v):  # tsusho-keikaku-v1
+    """画面から来た行の並び。配列でなければ空。上限で切る。"""
+    return v[:TK_MAX_ROWS] if isinstance(v, list) else []
+
+
+def _tk_plan_full(supabase, f_code, plan_id):  # tsusho-keikaku-v1 / v2
+    """計画書1枚を、目標・週間計画・プログラムごと返す。
+
+    返り値は (計画書 または None, 確かめられたか)。
+
+    ★tsusho-keikaku-v2: 「無かった」と「読めなかった」を分ける。
+      同じ None にしていたので、消した計画書を開いたときに
+      「いま開けませんでした。少し時間をおいて」と出ていた。
+      消えているのだから、待っても開かない。画面が嘘をついていた。
+    ★送迎の _soge_date_plan_row と同じ形にそろえる。
+      同じ考えを2通りに書くと、片方だけ直したときに必ず食い違う。
+    """
+    try:
+        r = (supabase.table("tsusho_plans").select("*")
+             .eq("facility_code", f_code).eq("id", plan_id).limit(1).execute())
+        rows = r.data or []
+        if not rows:
+            return None, True          # 確かめたうえで「無い」
+        plan = rows[0]
+        g = (supabase.table("tsusho_plan_goals").select("*")
+             .eq("plan_id", plan_id).order("kind").order("seq").execute())
+        s = (supabase.table("tsusho_plan_services").select("*")
+             .eq("plan_id", plan_id).order("seq").execute())
+        p = (supabase.table("tsusho_plan_programs").select("*")
+             .eq("plan_id", plan_id).order("service_seq").order("seq").execute())
+    except Exception as e:
+        print("[tsusho] 計画書を読めません(%s): %s" % (f_code, e), flush=True)
+        return None, False             # 確かめられなかった
+    plan["goals"] = g.data or []
+    plan["services"] = s.data or []
+    plan["programs"] = p.data or []
+    return plan, True
+
+
+@app.route("/tsusho_keikaku")  # tsusho-keikaku-v1
+@login_required
+def tsusho_keikaku_page():
+    """通所介護計画書。オフの施設は /top へ戻す。"""
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    if not is_tsusho_keikaku_enabled(supabase, f_code):
+        return redirect("/top")
+    patients = get_patients(supabase, f_code)
+    today = datetime.now(tokyo_tz).strftime("%Y-%m-%d")
+    return render("tsusho_keikaku.html", patients=patients, today=today,
+                  current_user=session.get("my_name", ""))
+
+
+def _tk_guard(supabase, f_code):  # tsusho-keikaku-v1
+    """オフの施設のAPIを止める。★画面を隠すだけでは止まらない。"""
+    if not is_tsusho_keikaku_enabled(supabase, f_code):
+        return jsonify({"status": "error", "message": "この機能は使えません。"}), 403
+    return None
+
+
+@app.route("/api/tsusho/patient", methods=["GET"])  # tsusho-keikaku-v1
+@login_required
+def api_tsusho_patient():
+    """計画書の見出しに出す利用者情報。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        pid = _tk_txt(request.args.get("patient_id"), 64)
+        r = (supabase.table("patient_profiles")
+             .select("id,user_name,user_name_kana,gender,birth_date,care_level,"
+                     "address,postal_code,certification_start_date,"
+                     "certification_end_date,support_office,care_manager_name")
+             .eq("facility_code", f_code).eq("id", pid).limit(1).execute())
+        rows = r.data or []
+        if not rows:
+            return jsonify({"status": "error", "message": "利用者が見つかりません。"}), 404
+        return jsonify({"status": "success", "patient": rows[0]})
+    except Exception as e:
+        print("api_tsusho_patient error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/tsusho/plans", methods=["GET"])  # tsusho-keikaku-v1
+@login_required
+def api_tsusho_plans():
+    """その利用者の計画書の一覧（新しい順）。中身は返さない。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        pid = _tk_txt(request.args.get("patient_id"), 64)
+        r = (supabase.table("tsusho_plans")
+             .select("id,created_on,planner_name,short_from,short_to,long_from,long_to,updated_at")
+             .eq("facility_code", f_code).eq("patient_id", pid)
+             .order("created_on", desc=True).execute())
+        return jsonify({"status": "success", "plans": r.data or []})
+    except Exception as e:
+        print("api_tsusho_plans error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/tsusho/plan", methods=["GET"])  # tsusho-keikaku-v1
+@login_required
+def api_tsusho_plan_get():
+    """計画書1枚。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        plan, ok = _tk_plan_full(supabase, f_code, _tk_txt(request.args.get("id"), 64))
+        # tsusho-keikaku-v2: ★起きたことに合わせて書き分ける。
+        #   読めなかった → 待てば開くかもしれない
+        #   無い         → 待っても開かない。消された可能性を言う
+        if not ok:
+            return jsonify({"status": "error",
+                            "message": "いま開けませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+        if plan is None:
+            return jsonify({"status": "error",
+                            "message": "この計画書はありません。"
+                                       "消された可能性があります。一覧に戻って確かめてください。"}), 404
+        return jsonify({"status": "success", "plan": plan})
+    except Exception as e:
+        print("api_tsusho_plan_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/tsusho/plan", methods=["POST"])  # tsusho-keikaku-v1
+@login_required
+def api_tsusho_plan_save():
+    """計画書を保存する（新規 or 更新）。
+
+    ★子の行（目標・週間計画・プログラム）は【入れ替える】。差分は取らない。
+      行を足したり消したりすると番号が振り直されるので、
+      差分を取ろうとすると「どの行が同じ行か」を決められない。
+    """
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        d = request.json or {}
+
+        pid = _tk_txt(d.get("patient_id"), 64)
+        created_on = _tk_day(d.get("created_on"))
+        if not pid:
+            return jsonify({"status": "error", "message": "利用者を選んでください。"}), 400
+        if not created_on:
+            return jsonify({"status": "error", "message": "作成年月日を入れてください。"}), 400
+
+        row = {
+            "facility_code": f_code,
+            "patient_id": pid,
+            "created_on": created_on,
+            "planner_name": _tk_txt(d.get("planner_name"), 100),
+            "wish_self": _tk_txt(d.get("wish_self")),
+            "wish_family": _tk_txt(d.get("wish_family")),
+            "wish_family_rel": _tk_txt(d.get("wish_family_rel"), 40),
+            "notes": _tk_txt(d.get("notes")),
+            "long_from": _tk_day(d.get("long_from")) or None,
+            "long_to": _tk_day(d.get("long_to")) or None,
+            "short_from": _tk_day(d.get("short_from")) or None,
+            "short_to": _tk_day(d.get("short_to")) or None,
+            "explained_on": _tk_day(d.get("explained_on")) or None,
+            "explainer": _tk_txt(d.get("explainer"), 100),
+            "consent_signed": bool(d.get("consent_signed")),
+            "consent_proxy_rel": _tk_txt(d.get("consent_proxy_rel"), 40),
+            "remarks": _tk_txt(d.get("remarks")),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        plan_id = _tk_txt(d.get("id"), 64)
+        try:
+            if plan_id:
+                # ★あるかどうかは【先に読んで】確かめる。
+                #   update の戻りに行が入るかどうかは、ライブラリの都合で変わる。
+                #   そこに賭けると「保存できたのに見つかりませんと出る」が起きる。
+                # ★施設で絞る。他の施設の計画書を書き換えられないようにする。
+                _ex = (supabase.table("tsusho_plans").select("id")
+                       .eq("facility_code", f_code).eq("id", plan_id).limit(1).execute())
+                if not (_ex.data or []):
+                    return jsonify({"status": "error",
+                                    "message": "この計画書が見つかりません。"}), 404
+                (supabase.table("tsusho_plans").update(row)
+                 .eq("facility_code", f_code).eq("id", plan_id).execute())
+            else:
+                row["created_by"] = my_name
+                ins = supabase.table("tsusho_plans").insert(row).execute()
+                plan_id = (ins.data or [{}])[0].get("id")
+                if not plan_id:
+                    return jsonify({"status": "error", "message": "保存できませんでした。"}), 500
+        except Exception as e:
+            _msg = str(e)
+            # 同じ人・同じ作成日は1枚だけ（DBの一意索引）。
+            if "uq_tsusho_plans_fac_pt_on" in _msg:
+                return jsonify({"status": "error",
+                                "message": "その作成年月日の計画書は、すでにあります。"
+                                           "一覧から開いて直してください。"}), 409
+            print("[tsusho] 計画書の保存に失敗: %s" % e, flush=True)
+            return jsonify({"status": "error", "message": "保存できませんでした。"}), 500
+
+        # ── 子の行を入れ替える ──
+        goals, services, programs = [], [], []
+        for k in TK_GOAL_KINDS:
+            n = 0
+            for it in _tk_rows((d.get("goals") or {}).get(k) if isinstance(d.get("goals"), dict) else None):
+                body = _tk_txt(it if isinstance(it, str) else (it or {}).get("body"))
+                if not body:
+                    continue          # ★空の行は保存しない。番号が飛ぶより詰める
+                n += 1
+                goals.append({"plan_id": plan_id, "kind": k, "seq": n, "body": body})
+        for i, it in enumerate(_tk_rows(d.get("services")), start=1):
+            it = it or {}
+            services.append({
+                "plan_id": plan_id, "seq": i,
+                "time_from": _tk_txt(it.get("time_from"), 10),
+                "time_to": _tk_txt(it.get("time_to"), 10),
+                "reward_class": _tk_txt(it.get("reward_class"), 60),
+                "weekdays": _tk_txt(it.get("weekdays"), 40),
+                "pickup": bool(it.get("pickup")),
+                "dropoff": bool(it.get("dropoff")),
+            })
+        for i, it in enumerate(_tk_rows(d.get("programs")), start=1):
+            it = it or {}
+            programs.append({
+                "plan_id": plan_id, "service_seq": 1, "seq": i,
+                "time_hm": _tk_txt(it.get("time_hm"), 10),
+                "name": _tk_txt(it.get("name"), 200),
+                "body": _tk_txt(it.get("body")),
+                "note": _tk_txt(it.get("note")),
+            })
+
+        try:
+            for _t in ("tsusho_plan_goals", "tsusho_plan_services", "tsusho_plan_programs"):
+                supabase.table(_t).delete().eq("plan_id", plan_id).execute()
+            if goals:
+                supabase.table("tsusho_plan_goals").insert(goals).execute()
+            if services:
+                supabase.table("tsusho_plan_services").insert(services).execute()
+            if programs:
+                supabase.table("tsusho_plan_programs").insert(programs).execute()
+        except Exception as e:
+            print("[tsusho] 中身の保存に失敗: %s" % e, flush=True)
+            # ★何が起きたかを正直に返す。「保存しました」と言わない。
+            return jsonify({"status": "error", "id": plan_id,
+                            "message": "見出しは保存できましたが、中身の保存に失敗しました。"
+                                       "画面はそのままです。もう一度［保存］を押してください。"}), 500
+
+        return jsonify({"status": "success", "id": plan_id, "message": "保存しました。"})
+    except Exception as e:
+        print("api_tsusho_plan_save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/tsusho/plan/delete", methods=["POST"])  # tsusho-keikaku-v1
+@login_required
+def api_tsusho_plan_delete():
+    """計画書を消す。★子の行はDBの外部キーで一緒に消える。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        plan_id = _tk_txt((request.json or {}).get("id"), 64)
+        if not plan_id:
+            return jsonify({"status": "error", "message": "どれを消すのか分かりません。"}), 400
+        # ★あるかどうかは先に読んで確かめる（delete の戻りに頼らない）。
+        _ex = (supabase.table("tsusho_plans").select("id")
+               .eq("facility_code", f_code).eq("id", plan_id).limit(1).execute())
+        if not (_ex.data or []):
+            return jsonify({"status": "error", "message": "この計画書が見つかりません。"}), 404
+        (supabase.table("tsusho_plans").delete()
+         .eq("facility_code", f_code).eq("id", plan_id).execute())
+        return jsonify({"status": "success", "message": "消しました。"})
+    except Exception as e:
+        print("api_tsusho_plan_delete error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/tsusho/program_template", methods=["GET", "POST"])  # tsusho-keikaku-v1
+@login_required
+def api_tsusho_program_template():
+    """プログラムの型（施設ごと）。
+
+    ★プログラムの骨格は全員ほぼ同じ（お迎え→健康チェック→…→終了）。
+      人によって変わるのは留意事項と内容の一部だけ。
+      毎回ゼロから書かせたら誰も使わない。
+    """
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        if request.method == "GET":
+            r = (supabase.table("tsusho_program_templates").select("items")
+                 .eq("facility_code", f_code).eq("name", "既定").limit(1).execute())
+            rows = r.data or []
+            return jsonify({"status": "success",
+                            "items": (rows[0].get("items") if rows else []) or []})
+        items = []
+        for it in _tk_rows((request.json or {}).get("items")):
+            it = it or {}
+            items.append({"time_hm": _tk_txt(it.get("time_hm"), 10),
+                          "name": _tk_txt(it.get("name"), 200),
+                          "body": _tk_txt(it.get("body")),
+                          "note": _tk_txt(it.get("note"))})
+        (supabase.table("tsusho_program_templates")
+         .upsert({"facility_code": f_code, "name": "既定", "items": items,
+                  "updated_by": my_name,
+                  "updated_at": datetime.now(timezone.utc).isoformat()},
+                 on_conflict="facility_code,name").execute())
+        return jsonify({"status": "success", "message": "施設の型として保存しました。"})
+    except Exception as e:
+        print("api_tsusho_program_template error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+#   none-string-guard-v1: 取り込みの失敗で入る「文字としての None」。
+#     ★一覧はここ【1か所だけ】。取り込みで塞ぐのも、紙に出すときに落とすのも、
+#       同じ一覧を見る。別々に持つと、片方だけ直したときに必ず食い違う。
+#     ★「-」は入れない。人が「なし」のつもりで書く字なので、
+#       消すと書いた人の意図まで消える（print-v2 で入れたが引っ込めた）。
+#     ★「0」も入れない。数量や番号として正しい値なので。
+_JUNK_TEXT = {"none", "null", "nan", "undefined", "nil"}
+
+
+def _junk_to_blank(v):  # none-string-guard-v1
+    """意味のない文字を空にする。それ以外はそのまま返す。
+
+    ★判断は「その文字がそれだけで入っているか」。中に含まれるかでは見ない。
+      「None」を含む住所（例: Noneville）を壊さないため。
+    """
+    s = str(v if v is not None else "").strip()
+    return "" if s.lower() in _JUNK_TEXT else s
+
+
+def _tk_clean(v):  # tsusho-keikaku-print-v2 / none-string-guard-v1
+    """画面や紙に出す前に、意味のない文字を空にする。"""
+    return _junk_to_blank(v)
+
+
+def _tk_wareki(v):  # tsusho-keikaku-print-v1
+    """YYYY-MM-DD を和暦にする。空なら空。
+
+    ★実物の紙が和暦。ケアマネや家族が、他の書類と並べて見る。
+      西暦で出すと、そこだけ読み替えることになる。
+    """
+    s = _tk_day(v)
+    return birth_to_wareki_text(s) if s else ""
+
+
+@app.route("/tsusho_keikaku/print")  # tsusho-keikaku-print-v1
+@login_required
+def tsusho_keikaku_print():
+    """計画書を紙の形で出す。
+
+    ★出るのは【保存された中身】。画面で書きかけのものは出ない。
+    ★base.html は使わない（印刷で画面1枚分に切れるため）。
+    """
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    if not is_tsusho_keikaku_enabled(supabase, f_code):
+        return redirect("/top")
+
+    plan, ok = _tk_plan_full(supabase, f_code, _tk_txt(request.args.get("id"), 64))
+    if not ok or plan is None:
+        # ★紙の画面でエラーを出しても仕方がない。一覧へ戻す。
+        return redirect("/tsusho_keikaku")
+
+    pt = {}
+    try:
+        r = (supabase.table("patient_profiles")
+             .select("user_name,gender,birth_date,care_level,address,postal_code,"
+                     "certification_start_date,certification_end_date,"
+                     "support_office,care_manager_name")
+             .eq("facility_code", f_code).eq("id", plan.get("patient_id"))
+             .limit(1).execute())
+        pt = (r.data or [{}])[0]
+        # tsusho-keikaku-print-v2: 「None」という文字が紙に出ないようにする
+        pt = {k: _tk_clean(v) for k, v in pt.items()}
+    except Exception as e:
+        print("[tsusho-print] 利用者を読めません: %s" % e, flush=True)
+
+    # 目標を 課題／長期／短期 に分ける（並びは seq のまま）
+    goals = {"issue": [], "long": [], "short": []}
+    for g in (plan.get("goals") or []):
+        if g.get("kind") in goals:
+            goals[g["kind"]].append(g)
+    for k in goals:
+        goals[k].sort(key=lambda x: x.get("seq") or 0)
+
+    # プログラムは、どのサービスのものかで分ける
+    progs = {}
+    for x in (plan.get("programs") or []):
+        progs.setdefault(x.get("service_seq") or 1, []).append(x)
+    for k in progs:
+        progs[k].sort(key=lambda x: x.get("seq") or 0)
+
+    wa = {
+        "created_on": _tk_wareki(plan.get("created_on")),
+        "explained_on": _tk_wareki(plan.get("explained_on")),
+        "birth": _tk_wareki(pt.get("birth_date")),
+        "cert_from": _tk_wareki(pt.get("certification_start_date")),
+        "cert_to": _tk_wareki(pt.get("certification_end_date")),
+        "long_from": _tk_wareki(plan.get("long_from")),
+        "long_to": _tk_wareki(plan.get("long_to")),
+        "short_from": _tk_wareki(plan.get("short_from")),
+        "short_to": _tk_wareki(plan.get("short_to")),
+    }
+
+    # tsusho-keikaku-print-v2: 事業者名は紙に2か所出る。
+    #   ★無いときに施設コードなどで埋めない。正式な名前でなければ意味がない。
+    #   ★代わりに、押す前に画面で伝える。渡してから気づくのでは遅い。
+    fac = _tk_clean(_sj_facility_name(supabase, f_code))
+    warns = []
+    if not fac:
+        warns.append("事業者名が登録されていないので、紙では空欄になります。"
+                     "管理者MENUで施設名を登録してください。")
+    if not _tk_clean(pt.get("address")):
+        warns.append("住所が登録されていないので、紙では空欄になります。")
+
+    return render("tsusho_keikaku_print.html",
+                  plan=plan, pt=pt, goals=goals, progs=progs, wa=wa,
+                  services=(plan.get("services") or []),
+                  warns=warns,
+                  facility_name=fac)
+@app.route("/api/tsusho/plan/ocr", methods=["POST"])  # tsusho-keikaku-ocr-v1
+@login_required
+def api_tsusho_plan_ocr():
+    """紙の通所介護計画書の写真を読み取って、項目に分けて返す。
+
+    ★写真は保存しない。読み取りに使うだけ（評価の音声と同じ）。
+      利用者の氏名・住所・病歴が写った紙なので、置き場所を増やさない。
+    ★返すだけ。保存はしない。人が画面で見て直してから［保存する］を押す。
+    ★読めない欄は空で返させる。もっともらしい嘘が入ると、
+      人はそれを直さずに確定してしまう。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        data = request.get_json(silent=True) or {}
+        images = data.get("images") or []
+        if not images:
+            return jsonify({"status": "error", "message": "写真がありません。"}), 400
+
+        import json as _json
+        import re as _re
+        from utils import get_generative_model
+        model = get_generative_model()
+
+        prompt = (
+            "あなたは介護事業所の【通所介護計画書】の紙を読み取るアシスタントです。"
+            "画像から実際に読み取れる内容だけを、次のJSONで返してください。\n"
+            "★読み取れない項目は空文字\"\"、配列は[]。推測や補完は【禁止】。\n"
+            "★日付は西暦 YYYY-MM-DD（令和・平成などの和暦は西暦へ直す）。\n"
+            "★目標や課題が①②③…と番号で並んでいるときは、番号を外して"
+            "本文だけを、並び順のまま配列に入れる。\n\n"
+            "{\n"
+            "  \"作成年月日\":\"\", \"計画作成者\":\"\",\n"
+            "  \"解決すべき課題\":[], \"長期目標\":[], \"短期目標\":[],\n"
+            "  \"長期目標期間開始\":\"\", \"長期目標期間終了\":\"\",\n"
+            "  \"短期目標期間開始\":\"\", \"短期目標期間終了\":\"\",\n"
+            "  \"本人の希望\":\"\", \"家族の希望\":\"\", \"家族の続柄\":\"\",\n"
+            "  \"留意点\":\"\",\n"
+            "  \"週間計画\":[ {\"提供時間開始\":\"\",\"提供時間終了\":\"\","
+            "\"報酬区分\":\"\",\"利用予定\":\"\",\"迎え\":true,\"送り\":true} ],\n"
+            "  \"プログラム\":[ {\"時間\":\"\",\"プログラム名\":\"\","
+            "\"内容\":\"\",\"留意事項\":\"\"} ]\n"
+            "}\n\n"
+            "「迎え」「送り」は（有）に丸が付いていれば true、（無）なら false、"
+            "どちらとも読めなければ省く。\n"
+            "JSON以外は一切出力しないこと。"
+        )
+
+        # tsusho-keikaku-ocr-v2
+        # ★写真は【1枚ずつ】読ませる。まとめて1回で渡さない。
+        #   まとめて渡すと返事も1つ。長くなって途中で切れると閉じ括弧が無く、
+        #   形が読めずに【2枚とも無駄になる】。どちらの写真が悪かったのかも言えない。
+        #   1枚ずつなら返事が短く切れにくい。2枚目が駄目でも1枚目は残る。
+        shots = []
+        for im in images[:6]:          # 紙は多くて2〜3枚。6枚で足りる
+            b64 = im.get("data") if isinstance(im, dict) else im
+            mt = (im.get("mime_type") if isinstance(im, dict) else None) or "image/jpeg"
+            if b64:
+                shots.append({"mime_type": mt, "data": b64})
+        if not shots:
+            return jsonify({"status": "error", "message": "写真を読めませんでした。"}), 400
+
+        reads, pages = [], []
+        for _i, _shot in enumerate(shots, start=1):
+            try:
+                resp = model.generate_content([_shot, prompt])
+                text = (resp.text or "").strip()
+            except Exception as e:
+                # ★ログに何枚目かを残す。次に失敗したとき当てずっぽうをしない。
+                print("[tsusho-ocr] %d枚目 読み取りに失敗: %s" % (_i, e), flush=True)
+                pages.append({"no": _i, "ok": False, "why": "読み取れませんでした"})
+                continue
+            m = _re.search(r"\{.*\}", text, _re.DOTALL)
+            if not m:
+                print("[tsusho-ocr] %d枚目 JSONが見当たりません 先頭=%r"
+                      % (_i, text[:200]), flush=True)
+                pages.append({"no": _i, "ok": False, "why": "形が読めませんでした"})
+                continue
+            try:
+                reads.append(_json.loads(m.group()))
+                pages.append({"no": _i, "ok": True, "why": ""})
+            except Exception as e:
+                # ★途中で切れると閉じ括弧が無く、ここに来る。末尾を少しだけ残す。
+                print("[tsusho-ocr] %d枚目 形が読めません: %s 末尾=%r"
+                      % (_i, e, m.group()[-200:]), flush=True)
+                pages.append({"no": _i, "ok": False, "why": "形が読めませんでした"})
+
+        if not reads:
+            return jsonify({"status": "error",
+                            "message": "読み取れませんでした。"
+                                       "明るい所で、まっすぐ撮り直してみてください。",
+                            "pages": pages}), 500
+
+        # ★合わせるのは【ここ1か所だけ】。画面では合わせない。
+        #   同じ決まりが2か所にあると、必ず片方だけ直して食い違う。
+        #   文字：先に読めた写真が勝つ（空のときだけ入れる）
+        #   並び：つなげる。同じ本文は1つだけにする
+        g = {}
+        for _one in reads:
+            if not isinstance(_one, dict):
+                continue
+            for _k, _v in _one.items():
+                if isinstance(_v, list):
+                    _cur = g.get(_k)
+                    if not isinstance(_cur, list):
+                        _cur = []
+                    for _x in _v:
+                        if _x not in _cur:
+                            _cur.append(_x)
+                    g[_k] = _cur
+                elif not str(g.get(_k) or "").strip():
+                    g[_k] = _v
+
+        def _s(k, limit=4000):
+            return _tk_clean(g.get(k))[:limit]
+
+        def _list(k):
+            v = g.get(k)
+            if not isinstance(v, list):
+                return []
+            out = []
+            for x in v[:TK_MAX_ROWS]:
+                t = _tk_clean(x if isinstance(x, str) else "")
+                if t:
+                    out.append(t)
+            return out
+
+        # ★日付は形を確かめる。読めない形は空にする（そのまま入れない）。
+        out = {
+            "created_on": _tk_day(_s("作成年月日")),
+            "planner_name": _s("計画作成者", 100),
+            "issue": _list("解決すべき課題"),
+            "long": _list("長期目標"),
+            "short": _list("短期目標"),
+            "long_from": _tk_day(_s("長期目標期間開始")),
+            "long_to": _tk_day(_s("長期目標期間終了")),
+            "short_from": _tk_day(_s("短期目標期間開始")),
+            "short_to": _tk_day(_s("短期目標期間終了")),
+            "wish_self": _s("本人の希望"),
+            "wish_family": _s("家族の希望"),
+            "wish_family_rel": _s("家族の続柄", 40),
+            "notes": _s("留意点"),
+            "services": [],
+            "programs": [],
+        }
+        for x in (g.get("週間計画") or [])[:TK_MAX_ROWS]:
+            if not isinstance(x, dict):
+                continue
+            out["services"].append({
+                "time_from": _tk_clean(x.get("提供時間開始"))[:10],
+                "time_to": _tk_clean(x.get("提供時間終了"))[:10],
+                "reward_class": _tk_clean(x.get("報酬区分"))[:60],
+                "weekdays": _tk_clean(x.get("利用予定"))[:40],
+                "pickup": bool(x.get("迎え")),
+                "dropoff": bool(x.get("送り")),
+            })
+        for x in (g.get("プログラム") or [])[:TK_MAX_ROWS]:
+            if not isinstance(x, dict):
+                continue
+            out["programs"].append({
+                "time_hm": _tk_clean(x.get("時間"))[:10],
+                "name": _tk_clean(x.get("プログラム名"))[:200],
+                "body": _tk_clean(x.get("内容")),
+                "note": _tk_clean(x.get("留意事項")),
+            })
+
+        # ★ここで写真をどこにも書かない。Storageにも上げない。
+        # tsusho-keikaku-ocr-v2: ★どの写真が読めたかも返す。
+        #   一部だけ入って、それを黙っているのがいちばん悪い。
+        return jsonify({"status": "success", "read": out, "pages": pages})
+    except Exception as e:
+        print("api_tsusho_plan_ocr error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ----- tsusho-monitoring-v1 : 通所介護モニタリング表 -----
+
+def _tk_month_last(ym):  # tsusho-monitoring-v1
+    """'YYYY-MM' の月末日を 'YYYY-MM-DD' で返す。おかしければ空。"""
+    s = str(ym or "").strip()
+    if len(s) != 7 or s[4] != "-":
+        return ""
+    try:
+        y, m = int(s[:4]), int(s[5:])
+        nxt = datetime(y + 1, 1, 1) if m == 12 else datetime(y, m + 1, 1)
+        return (nxt - timedelta(days=1)).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
+
+
+def _tk_plan_on(supabase, f_code, patient_id, on_date):  # tsusho-monitoring-v1
+    """その日に効いている計画書を返す。返り値は (計画書 または None, 確かめられたか)。
+
+    ★その日以前でいちばん新しいもの。終わりの日は持たない
+      （勤怠設定の履歴と同じ考え方）。
+    ★ここでも「無かった」と「読めなかった」を分ける。
+    """
+    if not on_date:
+        return None, True
+    try:
+        r = (supabase.table("tsusho_plans").select("id")
+             .eq("facility_code", f_code).eq("patient_id", patient_id)
+             .lte("created_on", on_date)
+             .order("created_on", desc=True).limit(1).execute())
+        rows = r.data or []
+    except Exception as e:
+        print("[tsusho-mon] 計画書を探せません: %s" % e, flush=True)
+        return None, False
+    if not rows:
+        return None, True
+    return _tk_plan_full(supabase, f_code, rows[0]["id"])
+
+
+def _tk_patients(supabase, f_code, on_date):  # tsusho-monitoring-v3
+    """その日に在籍している利用者。返り値は (並び, 確かめられたか)。
+
+    ★get_patients は落ちても空リストを返す（本人のコメントにもそう書いてある）。
+      月末の一覧でそれを使うと、読めなかった日に【全員書き終わっている】
+      ように見える。書いていない人がいるまま月が締まる。
+      だからここでは自分で読んで、確かめられたかどうかを持って返す。
+    """
+    try:
+        r = (supabase.table("patient_profiles")
+             .select("id,user_name,user_name_kana,patient_number,care_level,"
+                     "support_office,care_manager_name,is_discontinued,discontinued_date")
+             .eq("facility_code", f_code).order("user_name_kana").execute())
+        rows = r.data or []
+    except Exception as e:
+        print("[tsusho-mon] 利用者を読めません(%s): %s" % (f_code, e), flush=True)
+        return [], False
+    out = [x for x in rows if patient_active_on(x, on_date)]
+    return out, True
+
+
+def _tk_user_name(supabase, f_code, patient_id):  # tsusho-monitoring-v1
+    """評価は user_name で引く作りなので、名前を取る。読めなければ空。"""
+    try:
+        r = (supabase.table("patient_profiles").select("user_name")
+             .eq("facility_code", f_code).eq("id", patient_id).limit(1).execute())
+        return _tk_clean((r.data or [{}])[0].get("user_name"))
+    except Exception as e:
+        print("[tsusho-mon] 利用者名を読めません: %s" % e, flush=True)
+        return ""
+
+
+#   ★評価の満足度から、②の下敷きを作る。
+#     「やや不満(△)」は下敷きにしない。紙の②は 満足／不満足 の2つしかなく、
+#     △をどちらかに寄せると書類が事実と違うものになる。
+_TK_SATIS_TO_Q2 = {"○": 1, "×": 2}
+
+
+@app.route("/api/tsusho/monitoring", methods=["GET"])  # tsusho-monitoring-v1
+@login_required
+def api_tsusho_monitoring_get():
+    """その月のモニタリング表。無ければ空＋下敷きを返す。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        pid = _tk_txt(request.args.get("patient_id"), 64)
+        ym = _tk_txt(request.args.get("ym"), 7)
+        last = _tk_month_last(ym)
+        if not pid or not last:
+            return jsonify({"status": "error", "message": "利用者と対象月を選んでください。"}), 400
+
+        mon = None
+        try:
+            r = (supabase.table("tsusho_monitorings").select("*")
+                 .eq("facility_code", f_code).eq("patient_id", pid)
+                 .eq("year_month", ym).limit(1).execute())
+            mon = (r.data or [None])[0]
+        except Exception as e:
+            print("[tsusho-mon] 読めません: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "いま開けませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+
+        # その月に効いている計画書（①の判断はこの目標に対して答える）
+        plan, ok = _tk_plan_on(supabase, f_code, pid, last)
+        plan_out = None
+        if ok and plan:
+            plan_out = {
+                "id": plan.get("id"),
+                "created_on": plan.get("created_on"),
+                "short_from": plan.get("short_from"), "short_to": plan.get("short_to"),
+                "goals": [g for g in (plan.get("goals") or []) if g.get("kind") == "short"],
+            }
+
+        # ②の下敷き（評価ページの満足度）
+        hint = {"satisfaction": "", "q2": None, "note": ""}
+        u_name = _tk_user_name(supabase, f_code, pid)
+        if u_name:
+            try:
+                er = (supabase.table("patient_evaluations")
+                      .select("satisfaction,service_appropriateness")
+                      .eq("facility_code", f_code).eq("user_name", u_name)
+                      .eq("year_month", ym).limit(1).execute())
+                ev = (er.data or [{}])[0]
+                s = _tk_clean(ev.get("satisfaction"))
+                hint["satisfaction"] = s
+                if s in _TK_SATIS_TO_Q2:
+                    hint["q2"] = _TK_SATIS_TO_Q2[s]
+                    hint["note"] = "評価ページの満足度は「%s」でした。" % (
+                        "満足" if s == "○" else "不満")
+                elif s:
+                    # ★△は寄せない。人に決めてもらう。
+                    hint["note"] = ("評価ページの満足度は「やや不満」でした。"
+                                    "この表は 満足／不満足 の2つしかないので、"
+                                    "どちらにするかは選んでください。")
+                else:
+                    hint["note"] = "この月の評価に、満足度がまだ入っていません。"
+            except Exception as e:
+                print("[tsusho-mon] 評価を読めません: %s" % e, flush=True)
+                hint["note"] = "評価を読めませんでした。手で選んでください。"
+
+        return jsonify({"status": "success", "monitoring": mon,
+                        "plan": plan_out, "plan_read_ok": bool(ok), "hint": hint})
+    except Exception as e:
+        print("api_tsusho_monitoring_get error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/tsusho/monitoring", methods=["POST"])  # tsusho-monitoring-v1
+@login_required
+def api_tsusho_monitoring_save():
+    """モニタリング表を保存する（無ければ作る）。"""
+    try:
+        f_code = session["f_code"]
+        my_name = session.get("my_name", "")
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        d = request.json or {}
+        pid = _tk_txt(d.get("patient_id"), 64)
+        ym = _tk_txt(d.get("ym"), 7)
+        if not pid or not _tk_month_last(ym):
+            return jsonify({"status": "error", "message": "利用者と対象月を選んでください。"}), 400
+
+        def _pick(key, allowed):
+            """選択肢。★空文字は None（0にしない・当てずっぽうで埋めない）。"""
+            v = d.get(key)
+            try:
+                if v is None or str(v).strip() == "":
+                    return None
+                n = int(v)
+            except Exception:
+                return None
+            return n if n in allowed else None
+
+        row = {
+            "facility_code": f_code,
+            "patient_id": pid,
+            "year_month": ym,
+            "plan_id": _tk_txt(d.get("plan_id"), 64) or None,
+            "done_on": _tk_day(d.get("done_on")) or None,
+            "doer": _tk_txt(d.get("doer"), 100),
+            "q1_choice": _pick("q1_choice", (1, 2, 3)), "q1_note": _tk_txt(d.get("q1_note")),
+            "q2_choice": _pick("q2_choice", (1, 2)),    "q2_note": _tk_txt(d.get("q2_note")),
+            "q3_choice": _pick("q3_choice", (1, 2)),    "q3_note": _tk_txt(d.get("q3_note")),
+            "q4_choice": _pick("q4_choice", (1, 2)),    "q4_note": _tk_txt(d.get("q4_note")),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        try:
+            # ★あるかどうかは先に読んで確かめる（update の戻りに頼らない）
+            ex = (supabase.table("tsusho_monitorings").select("id")
+                  .eq("facility_code", f_code).eq("patient_id", pid)
+                  .eq("year_month", ym).limit(1).execute())
+            rows = ex.data or []
+            if rows:
+                (supabase.table("tsusho_monitorings").update(row)
+                 .eq("facility_code", f_code).eq("id", rows[0]["id"]).execute())
+                mon_id = rows[0]["id"]
+            else:
+                row["confirmed_by"] = my_name
+                row["confirmed_at"] = datetime.now(timezone.utc).isoformat()
+                ins = supabase.table("tsusho_monitorings").insert(row).execute()
+                mon_id = (ins.data or [{}])[0].get("id")
+        except Exception as e:
+            print("[tsusho-mon] 保存に失敗: %s" % e, flush=True)
+            return jsonify({"status": "error", "message": "保存できませんでした。"}), 500
+
+        return jsonify({"status": "success", "id": mon_id, "message": "保存しました。"})
+    except Exception as e:
+        print("api_tsusho_monitoring_save error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+@app.route("/api/tsusho/monitoring/delete", methods=["POST"])  # tsusho-monitoring-v2
+@login_required
+def api_tsusho_monitoring_delete():
+    """その月のモニタリング表を消す。
+
+    ★v1に無かった。計画書には付けたのに、こちらだけ揃っていなかった。
+      間違えた月を作ってしまったとき、消せないまま残る。
+    """
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        d = request.json or {}
+        pid = _tk_txt(d.get("patient_id"), 64)
+        ym = _tk_txt(d.get("ym"), 7)
+        if not pid or not _tk_month_last(ym):
+            return jsonify({"status": "error", "message": "利用者と対象月を選んでください。"}), 400
+        # ★あるかどうかは先に読んで確かめる（delete の戻りに頼らない）
+        ex = (supabase.table("tsusho_monitorings").select("id")
+              .eq("facility_code", f_code).eq("patient_id", pid)
+              .eq("year_month", ym).limit(1).execute())
+        if not (ex.data or []):
+            return jsonify({"status": "error",
+                            "message": "この月のモニタリング表はありません。"}), 404
+        (supabase.table("tsusho_monitorings").delete()
+         .eq("facility_code", f_code).eq("id", ex.data[0]["id"]).execute())
+        return jsonify({"status": "success", "message": "消しました。"})
+    except Exception as e:
+        print("api_tsusho_monitoring_delete error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+#   ★紙の①〜④の言い回しは、実物のとおりに写す。
+#     言い換えると、他の事業所の様式と並べたときに別物に見える。
+_TK_MON_Q = [
+    {"no": "①", "title": "サービスの実施状況",
+     "desc": "利用者に係る通所介護計画の内容どおりに、"
+             "サービス提供を実施できたかどうかについて。",
+     "choices": [(1, "計画の通り実施することができた"),
+                 (2, "ほぼ計画の通り実施することができた"),
+                 (3, "計画の通り実施することができなかった")],
+     "note": "※1以外の場合はその理由等"},
+    {"no": "②", "title": "利用者及び家族の満足度",
+     "desc": "現に利用しているサービスに、利用者及び家族が"
+             "満足しているかどうかについて。",
+     "choices": [(1, "満足"), (2, "不満足")],
+     "note": "※1以外の場合はその理由等"},
+    {"no": "③", "title": "利用者の生活状況及び心身の状況の変化",
+     "desc": "利用者の生活状況や心身の状況に変化がないかどうかについて。",
+     "choices": [(1, "変化なし"), (2, "変化あり")],
+     "note": "※1、2ともその状況等"},
+    {"no": "④", "title": "サービス変更の必要性",
+     "desc": "通所介護計画の変更が必要となるような新たな課題が生じていないか、"
+             "提供したサービスの内容が③の内容に照らして適切であるかどうか等により"
+             "判断した結果について。",
+     "choices": [(1, "必要なし"), (2, "必要あり")],
+     "note": "※1以外の場合はその理由等"},
+]
+
+
+def _tk_mon_sheets(supabase, f_code, ym, only_patient_id=None):  # tsusho-monitoring-v3
+    """紙に出すぶんを作る。返り値は (並び, 在籍人数, 確かめられたか)。
+
+    ★保存ずみの人だけを入れる。未記入の人の空紙は刷らない。
+    """
+    last = _tk_month_last(ym)
+    if not last:
+        return [], 0, True
+    plist, ok = _tk_patients(supabase, f_code, last)
+    if not ok:
+        return [], 0, False
+    if only_patient_id:
+        plist = [p for p in plist if str(p.get("id")) == str(only_patient_id)]
+
+    try:
+        mr = (supabase.table("tsusho_monitorings").select("*")
+              .eq("facility_code", f_code).eq("year_month", ym).execute())
+        mons = {str(x.get("patient_id")): x for x in (mr.data or [])}
+    except Exception as e:
+        print("[tsusho-mon] その月のモニタリングを読めません: %s" % e, flush=True)
+        return [], 0, False
+
+    fac_total = len(plist)
+    sheets = []
+    for p in plist:
+        m = mons.get(str(p.get("id")))
+        if not m:
+            continue                      # ★未記入は刷らない
+        plan, pok = _tk_plan_on(supabase, f_code, p.get("id"), last)
+        sheets.append({
+            "mon": m,
+            "pt": {k: _tk_clean(v) for k, v in p.items()},
+            "plan_on": _tk_wareki(plan.get("created_on")) if (pok and plan) else "",
+            "done_on": _tk_wareki(m.get("done_on")),
+            "blank": [q["no"] for i, q in enumerate(_TK_MON_Q, start=1)
+                      if m.get("q%d_choice" % i) is None],
+        })
+    return sheets, fac_total, True
+
+
+@app.route("/api/tsusho/monitoring/list", methods=["GET"])  # tsusho-monitoring-v3
+@login_required
+def api_tsusho_monitoring_list():
+    """月末の一覧。その月の在籍者を全員並べ、書けたかどうかを返す。"""
+    try:
+        f_code = session["f_code"]
+        supabase = get_supabase()
+        _b = _tk_guard(supabase, f_code)
+        if _b:
+            return _b
+        ym = _tk_txt(request.args.get("ym"), 7)
+        last = _tk_month_last(ym)
+        if not last:
+            return jsonify({"status": "error", "message": "対象月を選んでください。"}), 400
+
+        plist, ok = _tk_patients(supabase, f_code, last)
+        if not ok:
+            # ★「0人」と見せない。読めなかったと言う。
+            return jsonify({"status": "error",
+                            "message": "利用者を読めませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+        try:
+            mr = (supabase.table("tsusho_monitorings")
+                  .select("patient_id,q1_choice,q2_choice,q3_choice,q4_choice,done_on,doer")
+                  .eq("facility_code", f_code).eq("year_month", ym).execute())
+            mons = {str(x.get("patient_id")): x for x in (mr.data or [])}
+        except Exception as e:
+            print("[tsusho-mon] 一覧を読めません: %s" % e, flush=True)
+            return jsonify({"status": "error",
+                            "message": "いま読めませんでした。"
+                                       "少し時間をおいて、もう一度お試しください。"}), 503
+
+        items, done = [], 0
+        for p in plist:
+            m = mons.get(str(p.get("id")))
+            filled = 0
+            if m:
+                filled = sum(1 for i in (1, 2, 3, 4)
+                             if m.get("q%d_choice" % i) is not None)
+            if m and filled == 4:
+                done += 1
+            items.append({
+                "id": p.get("id"),
+                "name": _tk_clean(p.get("user_name")),
+                "kana": _tk_clean(p.get("user_name_kana")),
+                "chart": _tk_clean(p.get("patient_number")),
+                "has": bool(m),
+                "filled": filled,
+                "done_on": (m or {}).get("done_on") or "",
+                "doer": _tk_clean((m or {}).get("doer")),
+            })
+        return jsonify({"status": "success", "ym": ym, "items": items,
+                        "total": len(items), "done": done,
+                        "todo": len(items) - done})
+    except Exception as e:
+        print("api_tsusho_monitoring_list error: %s" % e, flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/tsusho_keikaku/monitoring/print_all")  # tsusho-monitoring-v3
+@login_required
+def tsusho_monitoring_print_all():
+    """その月の保存ずみを、全員分まとめて出す。
+
+    ★未記入の人の空紙は刷らない。何人ぶん出したかを画面の帯に書く。
+    """
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    if not is_tsusho_keikaku_enabled(supabase, f_code):
+        return redirect("/top")
+    ym = _tk_txt(request.args.get("ym"), 7)
+    sheets, total, ok = _tk_mon_sheets(supabase, f_code, ym)
+    if not ok:
+        return redirect("/tsusho_keikaku")
+
+    fac = _tk_clean(_sj_facility_name(supabase, f_code))
+    warns = []
+    if not fac:
+        warns.append("事業者名が登録されていないので、紙では空欄になります。")
+    _todo = total - len(sheets)
+    if _todo > 0:
+        warns.append("まだ書いていない方が %d 名います。"
+                     "その方の紙は出していません（空欄の紙を刷らないため）。" % _todo)
+    _b = [s for s in sheets if s["blank"]]
+    if _b:
+        warns.append("選んでいない項目が残っている方が %d 名います。"
+                     "紙ではその番号に丸が付きません。" % len(_b))
+
+    return render("tsusho_monitoring_print.html",
+                  sheets=sheets, qs=_TK_MON_Q, ym=ym, warns=warns,
+                  facility_name=fac,
+                  head="%s　%d名分" % (ym, len(sheets)))
+
+
+@app.route("/tsusho_keikaku/monitoring/print")  # tsusho-monitoring-v2
+@login_required
+def tsusho_monitoring_print():
+    """モニタリング表を紙の形で出す（A4横）。
+
+    ★出るのは保存された中身。画面で書きかけのものは出ない。
+    ★base.html は使わない（印刷で画面1枚分に切れるため）。
+    """
+    f_code = session["f_code"]
+    supabase = get_supabase()
+    if not is_tsusho_keikaku_enabled(supabase, f_code):
+        return redirect("/top")
+
+    pid = _tk_txt(request.args.get("patient_id"), 64)
+    ym = _tk_txt(request.args.get("ym"), 7)
+    last = _tk_month_last(ym)
+    if not pid or not last:
+        return redirect("/tsusho_keikaku")
+
+    # tsusho-monitoring-v3: ★1人分と全員分で、同じ紙を使う。
+    #   別々に作ると、片方だけ直したときに必ず食い違う。
+    sheets, _total, ok = _tk_mon_sheets(supabase, f_code, ym, only_patient_id=pid)
+    if not ok or not sheets:
+        return redirect("/tsusho_keikaku")
+
+    fac = _tk_clean(_sj_facility_name(supabase, f_code))
+    warns = []
+    if not fac:
+        warns.append("事業者名が登録されていないので、紙では空欄になります。"
+                     "管理者MENUで施設名を登録してください。")
+    if not sheets[0]["plan_on"]:
+        warns.append("この月に効いている計画書がないので、"
+                     "「計画書作成年月日」は空欄になります。")
+    if sheets[0]["blank"]:
+        warns.append("まだ選んでいない項目があります（%s）。"
+                     "紙では番号に丸が付きません。" % "".join(sheets[0]["blank"]))
+
+    return render("tsusho_monitoring_print.html",
+                  sheets=sheets, qs=_TK_MON_Q, ym=ym, warns=warns,
+                  facility_name=fac,
+                  head=_tk_clean(sheets[0]["pt"].get("user_name")))
+# ----- /tsusho-monitoring-v1 -----
+
+
+# ===== /tsusho-keikaku-v1 =====
 
 
 # ===== rec-expense-api-v2 : 請求額計算モジュール (コア + 車) =====
