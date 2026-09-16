@@ -2200,22 +2200,76 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
      1本ずつ札を出すと、臨時便を作るたびに札が増えて並びが崩れる。 */
   /* ===== soge-run-nowtrip-v1: いまの時間帯の便 ===== */
 
-  /* ★出発時刻が【いまにいちばん近い】便を返す。前でも後ろでもよい。
-       「次に出る便」だと、迎えを走っている最中に送り便へ飛ぶ。
-       「もう出た便のうち最後」だと、昼を過ぎても朝の迎えのままになる。
-     ★出発時刻を持たない便は選べない（近さが測れない）。 */
+  /* ===== soge-run-nowtrip-v2: 終わってから30分で、次の便へ =====
+     ★v1は「出発時刻がいちばん近い便」だった。それだと、迎えが9:20に
+       終わったあとも、11時ごろまで迎え便が出たままになる。
+       終わった便を見せても、そこには誰も残っていない。
+     ★v2は【その便が終わってから30分】までを、その便の時間とする。 */
+
+  /* 30分。着いたあとの後片づけ・打刻の直しのための猶予。 */
+  var SR_NOWTRIP_GRACE = 30;
+
+  /* 'HH:MM' を分に。読めなければ -1。 */
+  function srHm2Min(s) {
+    var m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim());
+    return m ? (Number(m[1]) * 60 + Number(m[2])) : -1;
+  }
+
+  /* 便ごとの「終わり時刻（分）」。鍵 → { end, guess }。
+     ★起点は【実際に着いた時刻(arrived_at)】。まだ打刻が無い人だけ、
+       予定(planned_at)で代える。遅れて走った日は、その便の時間が
+       自然に後ろへ伸びる（予定だけで切ると、走っている最中に次へ飛ぶ）。
+     ★終わり＝その便の立ち寄りの【いちばん遅いもの】。出発ではない。
+     ★車が複数あるときは【最後に終わる車】に合わせる。いちばん早い車に
+       合わせると、まだ走っている車があるのに次の便へ飛ぶ。
+     ★時刻がひとつも無い便は、出発時刻を終わりとみなす（guess）。 */
+  function srTripEndMap() {
+    var out = {};
+    ((state.data && state.data.vehicles) || []).forEach(function (v) {
+      (v.trips || []).forEach(function (t) {
+        var end = -1;
+        (t.stops || []).forEach(function (s) {
+          /* ★実際に着いた時刻があればそれ。無ければ予定。 */
+          var m = srHm2Min(s.arrived_at || s.planned_at);
+          if (m > end) end = m;
+        });
+        var guess = (end < 0);                     // 到着予定が1つも無かった
+        if (guess) end = srHm2Min(t.depart);
+        if (end < 0) return;                       // 時刻が何も無い便は数えない
+        var k = tripPickKey(t);
+        var cur = out[k];
+        if (!cur || end > cur.end) out[k] = { end: end, guess: guess };
+      });
+    });
+    return out;
+  }
+
+  /* いまの時間帯の便。★tripPickList() は「種類→出発時刻」で並んでいるので、
+     前から見て、まだ終わっていない最初の便が答えになる。 */
   function srNowTripKey() {
     var ts = tripPickList();
+    if (!ts.length) return '';
+    var ends = srTripEndMap();
     var d = new Date();
     var now = d.getHours() * 60 + d.getMinutes();
-    var best = '', diff = -1;
-    ts.forEach(function (t) {
-      var m = /^(\d{1,2}):(\d{2})$/.exec(String(t.depart || '').trim());
-      if (!m) return;
-      var gap = Math.abs((Number(m[1]) * 60 + Number(m[2])) - now);
-      if (diff < 0 || gap < diff) { diff = gap; best = t.key; }
-    });
-    return best;
+    var last = '';
+    for (var i = 0; i < ts.length; i++) {
+      var e = ends[ts[i].key];
+      if (!e) continue;                            // 時刻が分からない便は飛ばす
+      last = ts[i].key;
+      var limit = e.end + SR_NOWTRIP_GRACE;
+      /* ★到着予定が1つも無い便（臨時便など）は、出発時刻しか分からない。
+         出発＋30分で切ると、まだ走っている最中に次へ飛ぶ。
+         この場合だけは【次の便が出るまで】を、その便の時間とする。 */
+      if (e.guess) {
+        var nx = (i + 1 < ts.length) ? srHm2Min(ts[i + 1].depart) : -1;
+        if (nx >= 0 && nx > limit) limit = nx;
+      }
+      if (now <= limit) return ts[i].key;
+    }
+    /* ★全部終わっていたら、最後の便を出す。
+       ここで空を返すと、夕方以降に開いた人の一覧が「すべて」に戻る。 */
+    return last;
   }
 
   /* 開いたときに1回だけ、いまの便を選ぶ。
