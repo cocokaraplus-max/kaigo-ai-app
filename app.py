@@ -3710,6 +3710,35 @@ def _ai_usage_record(u):  # ai-usage-meter-v1
         print("[ai-usage] 記録できませんでした: %s" % e, flush=True)
 
 
+def _ai_record_claude(message):  # ai-usage-claude-v1
+    """Anthropic(Claude)の返事から、使ったトークン数を ai_usage に残す。
+
+    ★Gemini と同じ入れ物に入れる。測る仕組みを2つ作らない。
+      （Gemini は utils.AI_USAGE_HOOK 経由。Claude は直接呼びなので、
+        FastGeminiModel を通らず、これまで1行も残っていなかった）
+    ★モデル名は【返事から取る】。呼び出し側に書き写すと、モデルを
+      変えたときに記録だけ古いままになる。
+    ★ここで例外を出さないこと。測れないことより、AIが止まるほうが困る。
+    """
+    try:
+        u = getattr(message, "usage", None)
+        _in = int(getattr(u, "input_tokens", 0) or 0)
+        # ★まだ prompt caching は使っていないので、いまは 0。
+        #   使い始めたときに数え落とさないよう、先に足しておく。
+        #   （キャッシュ読みは単価が安い。円に直すときは同じ重さで数えないこと）
+        _in += int(getattr(u, "cache_creation_input_tokens", 0) or 0)
+        _in += int(getattr(u, "cache_read_input_tokens", 0) or 0)
+        _ai_usage_record({
+            "model": str(getattr(message, "model", "") or "claude")[:60],
+            "audio": 0,
+            "image": 0,
+            "input": _in,
+            "output": int(getattr(u, "output_tokens", 0) or 0),
+        })
+    except Exception as e:
+        print("[ai-usage] Claudeの使用量を残せませんでした: %s" % e, flush=True)
+
+
 def ai_audio_minutes_this_month(supabase, f_code):  # ai-usage-meter-v1
     """その施設の今月の録音（分）。★まだ止めるのには使わない。画面に出す用。
     ★読めなかったら 0 を返す。判定に使うときは「読めなかった＝0」で
@@ -11480,6 +11509,7 @@ JSON配列のみ。マークダウン不要。
             max_tokens=2000,
             messages=[{'role': 'user', 'content': prompt}]
         )
+        _ai_record_claude(message)   # ai-usage-claude-v1
         raw = message.content[0].text.strip()
         raw = _re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
         raw = _re.sub(r'```$', '', raw).strip()
@@ -35188,6 +35218,7 @@ candidate_levels は複数可。可能性の高い順に並べ、それぞれ re
             max_tokens=1500,
             messages=[{'role': 'user', 'content': prompt}]
         )
+        _ai_record_claude(message)   # ai-usage-claude-v1
         raw = message.content[0].text.strip()
         raw = _re.sub(r'^```[a-zA-Z]*\n?', '', raw).strip()
         raw = _re.sub(r'```$', '', raw).strip()
@@ -41135,6 +41166,7 @@ def api_meeting_classify_icf():
             max_tokens=8000,
             messages=[{"role": "user", "content": prompt}]
         )
+        _ai_record_claude(message)   # ai-usage-claude-v1
         raw = message.content[0].text.strip()
         raw = _re.sub(r"^```[a-zA-Z]*\n?", "", raw).strip()
         raw = _re.sub(r"```$", "", raw).strip()
