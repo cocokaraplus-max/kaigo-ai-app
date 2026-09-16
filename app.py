@@ -41118,14 +41118,23 @@ def api_meeting_classify_icf():
             return jsonify({"status": "error", "message": "分類する会議情報がありません"}), 400
 
         # ICFマスタ(第2レベル)を動的取得。マスタ更新に自動追従。
-        _m = supabase.table("icf_codes").select("code,title_ja,component,chapter")\
+        # icf-prompt-slim-v1: chapter はどこにも使っていないので取らない。
+        #   ★component は【外さないこと】。下の code_to_comp で使っていて、
+        #     分類の結果に付けて返している。外すと component が空になる。
+        _m = supabase.table("icf_codes").select("code,title_ja,component")\
             .eq("level", 2).order("sort_order").execute()
         master = _m.data or []
         if not master:
             return jsonify({"status": "error", "message": "ICFマスタが未投入です"}), 500
+        # icf-prompt-slim-v1
+        # ★以前は "(component=d, chapter=4)" を付けていたが、これは d450 を
+        #   見れば分かる（頭の文字=component、次の数字=chapter）。
+        #   同じことを2回書いていた。しかもその文字は362行すべて同じで、
+        #   合わせて約9,000字。議事録(6,000字)より長かった。
+        # ★DEVで362件すべてコードから読み取れることを確かめてから外した。
+        #   AIに伝わる情報は1つも減らないので、分類の結果は変わらない。
         master_list = "\n".join(
-            [f"{r['code']} {r['title_ja']} (component={r['component']}, chapter={r['chapter']})"
-             for r in master]
+            [f"{r['code']} {r['title_ja']}" for r in master]
         )
         valid_codes = {r["code"] for r in master}
 
