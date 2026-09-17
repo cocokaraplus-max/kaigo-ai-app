@@ -14619,34 +14619,73 @@ def api_get_patient_profile_by_number():
         return jsonify({'data': res.data})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+# ===== mapping-server-save-v1 : 書式マッピングの控え先 =====
+#   ★admin_settings の列は key / value。setting_key / setting_value という列は【無い】。
+#     前はその名前で読み書きしていたので、保存は一度も成功していなかった。
+MAPPING_SETTING_KEY = 'field_mapping'  # mapping-server-save-v1
+
+
 @app.route('/api/mapping/save', methods=['POST'])
 @login_required
 def api_mapping_save():
-    import os, json
+    import json
     from flask import request, jsonify
     data = request.get_json(silent=True) or {}
     payload = data.get('mapping', data)
-    fcode = os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
+    # ★ログイン中の施設に保存する。mapping-server-save-v1
+    #   前は os.environ['FACILITY_CODE'] を見ていたので、どの事業所が使っても
+    #   既定値（ココカラプラス）の行に書き込むところだった。
+    fcode = session.get('f_code')
+    if not fcode:
+        return jsonify({'ok': False, 'error': '施設が分かりません。ログインし直してください'}), 400
     try:
         sb = get_supabase()
-        ex = sb.table('admin_settings').select('id').eq('facility_code', fcode).eq('setting_key', 'field_mapping').execute()
         val = json.dumps(payload, ensure_ascii=False)
+        ex = (sb.table('admin_settings').select('id')
+              .eq('facility_code', fcode).eq('key', MAPPING_SETTING_KEY).execute())
         if ex.data:
-            sb.table('admin_settings').update({'setting_value': val}).eq('facility_code', fcode).eq('setting_key', 'field_mapping').execute()
+            (sb.table('admin_settings').update({'value': val})
+             .eq('facility_code', fcode).eq('key', MAPPING_SETTING_KEY).execute())
         else:
-            sb.table('admin_settings').insert({'facility_code': fcode, 'setting_key': 'field_mapping', 'setting_value': val}).execute()
+            sb.table('admin_settings').insert(
+                {'facility_code': fcode, 'key': MAPPING_SETTING_KEY, 'value': val}).execute()
         return jsonify({'ok': True})
+    except Exception as e:
+        return jsonify({'ok': False, 'error': str(e)}), 500
+
+
+@app.route('/api/mapping/load', methods=['GET'])  # mapping-server-save-v1
+@login_required
+def api_mapping_load():
+    """控えてある書式マッピングを返す。
+
+    ★これが無かったので、保存しても【誰も読み戻さなかった】。
+      画面は localStorage しか見ていないので、PCを変えると設定が消えていた。
+    """
+    import json
+    from flask import jsonify
+    fcode = session.get('f_code')
+    if not fcode:
+        return jsonify({'ok': False, 'error': '施設が分かりません。ログインし直してください'}), 400
+    try:
+        sb = get_supabase()
+        r = (sb.table('admin_settings').select('value')
+             .eq('facility_code', fcode).eq('key', MAPPING_SETTING_KEY).execute())
+        if not r.data:
+            return jsonify({'ok': True, 'mapping': None})
+        return jsonify({'ok': True, 'mapping': json.loads(r.data[0].get('value') or '{}')})
     except Exception as e:
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 @app.route('/mapping')
 @login_required
 def mapping():
-    import os, json
+    import json
     from flask import Response
     html = open('static/mapping.html', encoding='utf-8').read()
     config = json.dumps({
-        'facilityCode': os.environ.get('FACILITY_CODE', 'cocokaraplus-5526')
+        # ★ここも環境変数ではなくログイン中の施設。mapping-server-save-v1
+        'facilityCode': session.get('f_code') or ''
     })
     cfg = '<script>window.TASUKARU_CONFIG=' + config + ';</script>'
     html = html.replace('</head>', cfg + '</head>', 1)
