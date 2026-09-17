@@ -16821,6 +16821,10 @@ def dev_menu():
             return bool(r.data and r.data[0].get('value') == 'true')
         except:
             return False
+    # dev-setting-toggle-v1: key/value のトグルを、施設コード→真偽 の地図にする。
+    #   ★1回のSELECTで全施設ぶん取る。施設ごとに聞くと、施設が増えるほど遅くなる
+    #     （上の _check_ledger_enabled は施設ごとに聞いている。直す候補）。
+    _dev_tg = {k: _dev_setting_map(supabase, k) for k in DEV_SETTING_TOGGLES}
     stats = []
     for fac in facilities:
         fc = fac["facility_code"]
@@ -16847,9 +16851,14 @@ def dev_menu():
                 "timecard_enabled": fac.get("timecard_enabled", False),  # timecard-devtoggle-v1
                 "photo_sales_enabled": fac.get("photo_sales_enabled", False),  # photo-sales-devtoggle-v1
                 "youshiki_exclude_enabled": fac.get("youshiki_exclude_enabled", False),  # youshiki-exclude-v1
+                # dev-setting-toggle-v1: key/value のトグル。機能を足してもここは書き足さない
+                "settings": {k: bool(_dev_tg[k].get(fc)) for k in DEV_SETTING_TOGGLES},
             })
         except:
-            stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0})
+            # ★数えられなかった施設でも settings は付ける。付け忘れると、
+            #   その行だけスイッチが消えて「無い機能」に見える。
+            stats.append({"facility_code": fc, "facility_name": fc, "is_active": True, "created_at": "", "records": 0, "staffs": 0, "patients": 0,
+                          "settings": {k: bool(_dev_tg[k].get(fc)) for k in DEV_SETTING_TOGGLES}})
 
     # 環境変数チェック（値は隠す）
     env_keys = ["SUPABASE_URL","SUPABASE_KEY","GEMINI_API_KEY","SECRET_KEY","SENDGRID_API_KEY","SENDGRID_FROM_EMAIL","DEV_PASSWORD"]
@@ -17044,6 +17053,67 @@ def api_dev_toggle_photo_sales():
         supabase = get_supabase()
         supabase.table('facilities').update({'photo_sales_enabled': enabled}).eq('facility_code', fc).execute()
         return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+
+# ===== dev-setting-toggle-v1 : key/value でON/OFFする機能の一覧 =====
+#   ★次に機能のトグルを足すときは、ここに1行足すだけ。
+#     facilities に列を増やさないこと。列を増やすとDEVと本番の両方にDDLが要り、
+#     片方を忘れると施設一覧が丸ごと落ちる（2026-09-10 youshiki_exclude_enabled）。
+DEV_SETTING_TOGGLES = {
+    "tsusho_keikaku_enabled": "通所介護計画書",
+}
+
+
+def _dev_setting_map(supabase, key):  # dev-setting-toggle-v1
+    """admin_settings の key/value を、施設コード→真偽 の地図にして返す。
+
+    ★1回のSELECTで全施設ぶん取る。施設ごとに聞くと、施設が増えるほど遅くなる。
+    ★読めなければ空の地図を返す。全部OFFに見えるだけで、画面は壊れない。
+    """
+    try:
+        r = (supabase.table("admin_settings").select("facility_code,value")
+             .eq("key", key).execute())
+        return {x.get("facility_code"): (x.get("value") == "true") for x in (r.data or [])}
+    except Exception as e:
+        print("[dev-setting] %s を読めませんでした: %s" % (key, e), flush=True)
+        return {}
+
+
+@app.route('/api/dev/toggle_setting', methods=['POST'])  # dev-setting-toggle-v1
+def api_dev_toggle_setting():
+    """admin_settings の key/value で機能をON/OFFする（開発者MENU用）。
+
+    ★口はこの1つだけ。次に機能を足すときもサーバは書き足さない。
+    ★触ってよい key は DEV_SETTING_TOGGLES に書いたものだけ。
+      何でも書ける口にすると、画面から admin_settings のどの設定でも壊せる。
+    """
+    if not session.get('dev_authenticated'):
+        return jsonify({'success': False, 'message': 'unauthorized'}), 403
+    data = request.json or {}
+    fc = (data.get('facility_code') or '').strip()
+    key = (data.get('key') or '').strip()
+    enabled = bool(data.get('enabled', False))
+    if not fc:
+        return jsonify({'success': False, 'message': 'facility_code required'}), 400
+    if key not in DEV_SETTING_TOGGLES:
+        return jsonify({'success': False, 'message': 'その設定は変えられません'}), 400
+    try:
+        supabase = get_supabase()
+        val = 'true' if enabled else 'false'
+        # ★admin_settings に (facility_code,key) の一意索引は【無い】ので
+        #   on_conflict は使えない。先に見て、あれば更新・無ければ追加する
+        #   （アプリの他の場所と同じやり方）。
+        ex = (supabase.table('admin_settings').select('id')
+              .eq('facility_code', fc).eq('key', key).execute())
+        if ex.data:
+            (supabase.table('admin_settings').update({'value': val})
+             .eq('facility_code', fc).eq('key', key).execute())
+        else:
+            supabase.table('admin_settings').insert(
+                {'facility_code': fc, 'key': key, 'value': val}).execute()
+        return jsonify({'success': True, 'label': DEV_SETTING_TOGGLES[key]})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 

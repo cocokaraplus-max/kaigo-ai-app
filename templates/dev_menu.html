@@ -214,6 +214,7 @@
                     <th>タイムカード</th>  <!-- timecard-devtoggle-html-v1 -->
                     <th>写真販売</th>  <!-- photo-sales-devtoggle-v1 -->
                     <th>様式除外</th>  <!-- youshiki-exclude-v1: 様式(実績)に出さないトグルの表示可否 -->
+                    <th>通所介護計画書</th>  <!-- dev-setting-toggle-v1: key/value。列は増やさない -->
                 </tr>
             </thead>
             <tbody>
@@ -303,6 +304,14 @@
                         <label style="cursor:pointer;">
                             <input type="checkbox" onchange="toggleYoushikiExclude('{{ s.facility_code }}', this.checked)"
                                 {% if s.youshiki_exclude_enabled %}checked{% endif %}>
+                        </label>
+                    </td>
+                    {# dev-setting-toggle-v1: key/value のトグル。機能を足すときは
+                       サーバの DEV_SETTING_TOGGLES に1行、ここに升を1つ足すだけ。 #}
+                    <td style="text-align:center;">
+                        <label style="cursor:pointer;">
+                            <input type="checkbox" onchange="toggleSetting('{{ s.facility_code }}', 'tsusho_keikaku_enabled', this.checked)"
+                                {% if s.settings and s.settings.tsusho_keikaku_enabled %}checked{% endif %}>
                         </label>
                     </td>
                 </tr>
@@ -585,6 +594,21 @@ async function togglePhotoSales(facilityCode, enabled) {  // photo-sales-devtogg
         });
         const j = await res.json();
         devToast(j.success ? ('写真販売: ' + facilityCode + ' を ' + (enabled ? 'ON' : 'OFF') + ' にしました')
+                           : ('更新に失敗しました: ' + (j.message || '')));
+    } catch (e) { devToast('通信エラー: ' + e); }
+}
+
+async function toggleSetting(facilityCode, key, enabled) {  // dev-setting-toggle-v1
+    // ★key/value のトグルは、どの機能もこの1つを使い回す。
+    //   機能を足すときにJSを書き足さないこと（増やすと必ず片方だけ古くなる）。
+    try {
+        const res = await fetch('/api/dev/toggle_setting', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ facility_code: facilityCode, key: key, enabled: enabled })
+        });
+        const j = await res.json();
+        devToast(j.success ? ((j.label || key) + ': ' + facilityCode + ' を ' + (enabled ? 'ON' : 'OFF') + ' にしました')
                            : ('更新に失敗しました: ' + (j.message || '')));
     } catch (e) { devToast('通信エラー: ' + e); }
 }
