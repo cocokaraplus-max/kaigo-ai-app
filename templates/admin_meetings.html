@@ -1931,6 +1931,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   document.addEventListener('DOMContentLoaded', function(){
     setTimeout(function(){
+      // rec-overlay-guard-v1: 録音中に重ねて開いた画面では出さない。
+      //   ★ここに出る「下書き」は、土台がいま3秒ごとに書いている
+      //     【作業中の会議そのもの】。［破棄］を押すと、それを消してしまう。
+      if (window.recOverlay && recOverlay.isInsideOverlay()) return;
       var d=load();
       if(d && nonEmpty(d)) showBanner(d);
     }, 900);
@@ -2013,6 +2017,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!window.recHold) return;
       // 録音中は出さない（いま書き溜めている途中のものを「残り」と誤って見せないため）
       if (window.mtgState && mtgState.recording) return;
+      // rec-overlay-guard-v1: 録音中に重ねて開いた画面でも出さない。
+      //   ★重ねた先は【別のページ】なので、上の mtgState.recording が false になる。
+      //     そのせいで、いま録音中の音声が「前回の残り」として出ていた。
+      //     ［文字起こしする］は入力中の会議を消して保険を食い、
+      //     ［破棄］は録音中の保険をDBごと消す。どちらも戻せない。
+      if (window.recOverlay && recOverlay.isInsideOverlay()) return;
       recHold.pending().then(function(list){
         if (list && list.length) show(list);
       }).catch(function(){});

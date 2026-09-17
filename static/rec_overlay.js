@@ -41,6 +41,22 @@
   var _fab = null, _wrap = null, _frame = null, _clock = null, _fabTime = null;
   var _pushed = false;            // 戻る操作を受け止めるために履歴を1つ積んだか
 
+  /* rec-overlay-guard-v1
+     「いま自分は、録音中のオーバーレイに重ねられた側か」を答える。
+
+     ★重ねた先は【別のページ】なので、そのページの中の
+       mtgState.recording などは当てにならない。土台に聞くしかない。
+     ★同じ元(same-origin)なので parent は普通に読める。
+       それでも try で囲むのは、将来別の場所に埋め込まれたときに
+       黙って false を返して安全側に倒すため。 */
+  function _insideOverlay() {
+    try {
+      if (window.parent === window) return false;
+      var p = window.parent.recOverlay;
+      return !!(p && typeof p.isActive === 'function' && p.isActive() === true);
+    } catch (e) { return false; }
+  }
+
   function _hhmmss(ms) {
     var s = Math.max(0, Math.floor(ms / 1000));
     var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
@@ -102,6 +118,18 @@
       'font-size:0.82rem;font-family:inherit;cursor:pointer;';
     back.textContent = '← 戻る';
     back.addEventListener('click', function () {
+      /* rec-overlay-guard-v1: 未保存のまま戻って消えるのを止める。
+
+         ★中のページが window.tskUnsaved() を持っていて true を返すときだけ聞く。
+           持っていない画面は今までどおり素通り（勝手に邪魔しない）。
+         ★iframe の中の beforeunload は、端末によっては出ないことがある。
+           だから土台の側で聞く。 */
+      try {
+        var w = _frame.contentWindow;
+        if (w && typeof w.tskUnsaved === 'function' && w.tskUnsaved() === true) {
+          if (!confirm('入力したものが、まだ保存されていません。\n戻ると消えます。よろしいですか？')) return;
+        }
+      } catch (e) {}
       // iframeの中だけを1つ戻す（土台の履歴は動かさない）
       try { _frame.contentWindow.history.back(); } catch (e) {}
     });
@@ -213,5 +241,6 @@
   }
 
   global.recOverlay = { start: start, stop: stop, open: open, close: function () { close_(true); },
-                        isActive: function () { return _active; }, isOpen: function () { return _open; } };
+                        isActive: function () { return _active; }, isOpen: function () { return _open; },
+                        isInsideOverlay: _insideOverlay };   // rec-overlay-guard-v1
 })(window);

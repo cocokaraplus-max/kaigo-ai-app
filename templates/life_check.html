@@ -363,6 +363,7 @@ async function lcMaybeStartEditFromUrl() {  // lc-edit-via-session-v1: sessionSt
   })();
 }
 function lcResetForm() {  // lc-reset-on-switch-v1: 利用者切替時に画面を初期化
+  lcMarkClean();   // rec-overlay-guard-v1: 画面を空に戻したので、もう聞かない
   // 基本情報 (テキスト/セレクト/日付/hidden)
   var ids = ['visit_type','birth_date','gender','care_level',
              'adl_independence','dementia_independence','note',
@@ -558,8 +559,38 @@ function lcRecalcTotal() {
   document.getElementById('lc-total-score').textContent = total;
 }
 
+// ===== rec-overlay-guard-v1: 入力したものが黙って消えないようにする =====
+//   ★この画面には未保存の見張りが【1つも無かった】。だから「戻る」で消えた。
+//     押した人は悪くない。聞く仕組みが無かっただけ。
+var lcDirty = false;
+function lcMarkDirty() { lcDirty = true; }
+function lcMarkClean() { lcDirty = false; }
+
+//   ★録音中に重ねて開かれているときは、土台の「← 戻る」がこの名前を見て聞いてくる
+//     （static/rec_overlay.js）。他の画面も同じ名前を置けば、そのまま効く。
+window.tskUnsaved = function () { return lcDirty === true; };
+
+//   ★普通に画面を離れるときはブラウザに聞かせる。
+window.addEventListener('beforeunload', function (e) {
+  if (!lcDirty) return;
+  e.preventDefault();
+  e.returnValue = '入力したものが、まだ保存されていません。';
+  return e.returnValue;
+});
+
+//   ★点数ボタンや自立度の選択は <input> ではないので、input/change では拾えない。
+//     押したことが分かるものだけを見る（何でも dirty にすると、
+//     見ただけで聞かれるようになって、かえって無視されるようになる）。
+document.addEventListener('click', function (e) {
+  var t = e.target;
+  if (t && t.closest && t.closest('.lc-opt, .lc-indep-opt, .lc-indep-btn')) lcMarkDirty();
+}, true);
+
 function lcBindEvents() {
   var root = document.querySelector('.lc-wrap');
+  // rec-overlay-guard-v1: 文字や選択を触ったら「未保存あり」にする
+  root.addEventListener('input', lcMarkDirty, true);
+  root.addEventListener('change', lcMarkDirty, true);
   root.addEventListener('click', function(e){
     var opt = e.target.closest('.lc-opt');
     if (opt) {
@@ -812,6 +843,7 @@ async function lcSave() {
     var j = await r.json();
     if (j.status === 'success') {
       setLcMsg('保存しました', true);
+      lcMarkClean();   // rec-overlay-guard-v1: 保存できたので、もう聞かない
       lcLoadHistory();
     } else {
       setLcMsg('保存に失敗: ' + (j.message || ''), false);
