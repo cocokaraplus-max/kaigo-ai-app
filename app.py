@@ -3921,23 +3921,26 @@ STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden",
 #   ★ここに無いものは出ない。増やしたいときはこの並びに1行足すだけ。
 #     ただし、出るかどうかの最終判定は MENU_ITEMS 側（プラン・トグル・権限）が持つ。
 #     ここに書いても、その人に見せてよくないものは出ない。
-EASY_MENU_HREFS = [
+EASY_MENU_HREFS = [   # easy-mode-v2: 16 → 8 に絞った
     "/input",             # 記録入力
     "/daily_view",        # ケース記録
     "/vitals",            # バイタル
     "/renraku",           # 連絡帳
     "/soge/run",          # 送迎表
     "/calendar",          # カレンダー
-    "/tasks",             # タスク
     "/board",             # 掲示板
-    "/life_check",        # 生活機能CHECK
-    "/fitness",           # 体力・体重
     "/assessment-select",  # 評価
-    "/birthday",          # 誕生日
-    "/numerology",        # 数秘
-    "/kyukyu",            # 救急
-    "/fmb",               # 防災
-    "/manual",            # ガイド
+    # ★easy-mode-v2 で外したもの（消さずに残す。戻したくなったら行を復活させるだけ）:
+    #     /tasks      タスク
+    #     /life_check 生活機能CHECK
+    #     /fitness    体力・体重
+    #     /birthday   誕生日
+    #     /numerology 数秘
+    #     /kyukyu     救急
+    #     /fmb        防災
+    #     /manual     ガイド
+    #   ★8個だと2列×4段。スマホでスクロールせずに全部見える。
+    #     「下にもあるかも」と思わせないのが、数を減らすいちばんの効果。
 ]
 
 
