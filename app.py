@@ -14676,6 +14676,325 @@ def api_get_patient_profile_by_number():
         return jsonify({'data': res.data})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+# ===== todokede-v1 : 介護保険課への届出の台帳と保管庫 =====
+#   ★ファイルは【既存のバケット】に todokede/ で置く。新しいバケットを作らない。
+#     BCPが同じ理由で case-photos を使い回している。増やすとRLSの設定も増える。
+TODOKEDE_BUCKET = BCP_BUCKET
+TODOKEDE_MAX_BYTES = 30 * 1024 * 1024
+
+#   ★種類と状態は、ここ1か所で決める。画面は必ずここを使う。
+TODOKEDE_DOC_TYPES = ["変更届", "加算届", "体制届", "指定更新", "廃止・休止届", "その他"]
+TODOKEDE_STATUS = ["下書き", "提出済", "差戻し", "訂正済"]
+TODOKEDE_FILE_KINDS = ["提出したもの", "控え", "受理", "様式", "参考"]
+
+#   ★受け取る拡張子はここに書いたものだけ。増やしすぎない。
+TODOKEDE_EXTS = {
+    "pdf": "application/pdf",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "doc": "application/msword",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "xls": "application/vnd.ms-excel",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+}
+
+
+def _todokede_guard():  # todokede-v1
+    """管理者だけが触れる。届出は管理者の仕事で、職員が触るものではない。
+
+    ★BCPの見張りをそのまま使う。同じことを2か所に書かない。
+    """
+    return _bcp_admin_guard()
+
+
+def _todokede_ym_ok(ym):  # todokede-v1
+    """'YYYY-MM' の形かどうか。★ここが崩れると一覧の並びが壊れる。"""
+    return bool(re.match(r"^[0-9]{4}-(0[1-9]|1[0-2])$", str(ym or "")))
+
+
+@app.route("/todokede")  # todokede-v1
+@login_required
+def todokede_page():
+    """届出の台帳。"""
+    return render("todokede.html",
+                  td_doc_types=TODOKEDE_DOC_TYPES,
+                  td_status=TODOKEDE_STATUS,
+                  td_file_kinds=TODOKEDE_FILE_KINDS)
+
+
+@app.route("/api/todokede/list", methods=["GET"])  # todokede-v1
+@login_required
+def api_todokede_list():
+    """自事業所の届出と、そこに付いている書類をまとめて返す。
+
+    ★2回に分けて取り、Python側で束ねる。届出の件数だけSELECTを撃つと
+      件数が増えるほど遅くなる（開発者MENUで踏んだのと同じ形）。
+    """
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"status": "error", "message": "未ログイン"}), 401
+    try:
+        r = (supabase.table("todokede_records").select("*")
+             .eq("facility_code", f_code)
+             .order("filed_ym", desc=True).order("filed_date", desc=True).execute())
+        recs = r.data or []
+        fr = (supabase.table("todokede_files")
+              .select("id,record_id,kind,title,file_name,file_size,created_at")
+              .eq("facility_code", f_code).order("created_at").execute())
+        files = fr.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    by_rec = {}
+    for f in files:
+        by_rec.setdefault(f.get("record_id"), []).append(f)
+    for rec in recs:
+        rec["files"] = by_rec.get(rec.get("id"), [])
+    return jsonify({"status": "success", "records": recs,
+                    "is_admin": session.get("admin_authenticated", False)})
+
+
+@app.route("/api/todokede/record", methods=["POST"])  # todokede-v1
+@login_required
+def api_todokede_record_save():
+    """届出を1件、足す／直す。"""
+    supabase, f_code, my_name, err = _todokede_guard()
+    if err:
+        return err
+    d = request.json or {}
+    ym = (d.get("filed_ym") or "").strip()
+    if not _todokede_ym_ok(ym):
+        return jsonify({"status": "error", "message": "届出の年月を YYYY-MM で入れてください"}), 400
+    doc_type = (d.get("doc_type") or "変更届").strip()
+    if doc_type not in TODOKEDE_DOC_TYPES:
+        doc_type = "その他"
+    status = (d.get("status") or "提出済").strip()
+    if status not in TODOKEDE_STATUS:
+        status = "提出済"
+    row = {
+        "facility_code": f_code,
+        "filed_ym": ym,
+        "filed_date": (d.get("filed_date") or None) or None,
+        "change_date": (d.get("change_date") or None) or None,
+        "effective_date": (d.get("effective_date") or None) or None,
+        "doc_type": doc_type,
+        "service_type": (d.get("service_type") or "")[:100] or None,
+        "summary": (d.get("summary") or "")[:500] or None,
+        "status": status,
+        "note": (d.get("note") or "")[:2000] or None,
+    }
+    rid = (d.get("id") or "").strip()
+    try:
+        if rid:
+            # ★自分の事業所のものだけ。facility_code を必ず添える。
+            (supabase.table("todokede_records").update(row)
+             .eq("id", rid).eq("facility_code", f_code).execute())
+        else:
+            rid = str(uuid.uuid4())
+            row["id"] = rid
+            row["created_by"] = my_name
+            supabase.table("todokede_records").insert(row).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": rid})
+
+
+@app.route("/api/todokede/record/<rid>", methods=["DELETE"])  # todokede-v1
+@login_required
+def api_todokede_record_delete(rid):
+    """届出を1件消す。★付いている書類も一緒に消す。
+
+    片方だけ消すと、どこにも出てこないファイルが保管庫に残り続ける。
+    """
+    supabase, f_code, my_name, err = _todokede_guard()
+    if err:
+        return err
+    rid = (rid or "").strip()
+    try:
+        fr = (supabase.table("todokede_files").select("id,storage_path")
+              .eq("record_id", rid).eq("facility_code", f_code).execute())
+        paths = [x["storage_path"] for x in (fr.data or []) if x.get("storage_path")]
+        if paths:
+            try:
+                supabase.storage.from_(TODOKEDE_BUCKET).remove(paths)
+            except Exception as e:
+                print("[todokede] ファイルを消せませんでした: %s" % e, flush=True)
+        (supabase.table("todokede_files").delete()
+         .eq("record_id", rid).eq("facility_code", f_code).execute())
+        (supabase.table("todokede_records").delete()
+         .eq("id", rid).eq("facility_code", f_code).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/todokede/file", methods=["POST"])  # todokede-v1
+@login_required
+def api_todokede_file_upload():
+    """届出に書類を1枚付ける。multipart/form-data: file, record_id, kind, title"""
+    supabase, f_code, my_name, err = _todokede_guard()
+    if err:
+        return err
+    rid = (request.form.get("record_id") or "").strip()
+    if not rid:
+        return jsonify({"status": "error", "message": "届出が選ばれていません"}), 400
+    # ★他の事業所の届出に付けられないこと
+    try:
+        chk = (supabase.table("todokede_records").select("id")
+               .eq("id", rid).eq("facility_code", f_code).limit(1).execute())
+        if not chk.data:
+            return jsonify({"status": "error", "message": "その届出は見つかりません"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"status": "error", "message": "ファイルが選ばれていません"}), 400
+    raw = f.read()
+    if not raw:
+        return jsonify({"status": "error", "message": "空のファイルです"}), 400
+    if len(raw) > TODOKEDE_MAX_BYTES:
+        return jsonify({"status": "error", "message": "ファイルが大きすぎます（30MBまで）"}), 400
+    ext = (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "")
+    if ext not in TODOKEDE_EXTS:
+        return jsonify({"status": "error",
+                        "message": "この種類のファイルは保存できません（PDF・Word・Excel・画像）"}), 400
+    kind = (request.form.get("kind") or "提出したもの").strip()
+    if kind not in TODOKEDE_FILE_KINDS:
+        kind = "提出したもの"
+    fid = str(uuid.uuid4())
+    path = "todokede/%s/%s/%s.%s" % (f_code, rid, fid, ext)
+    try:
+        supabase.storage.from_(TODOKEDE_BUCKET).upload(
+            path=path, file=raw, file_options={"content-type": TODOKEDE_EXTS[ext]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    try:
+        supabase.table("todokede_files").insert({
+            "id": fid, "facility_code": f_code, "record_id": rid,
+            "kind": kind, "title": (request.form.get("title") or "")[:200] or None,
+            "file_name": f.filename[:200], "storage_path": path,
+            "file_size": len(raw), "mime": TODOKEDE_EXTS[ext],
+            "uploaded_by": my_name,
+        }).execute()
+    except Exception as e:
+        # ★行を作れなかったらファイルも消す。残すと、どこにも出てこないゴミになる。
+        try:
+            supabase.storage.from_(TODOKEDE_BUCKET).remove([path])
+        except Exception:
+            pass
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": fid})
+
+
+@app.route("/api/todokede/file/<fid>", methods=["GET"])  # todokede-v1
+@login_required
+def api_todokede_file_get(fid):
+    """書類を1枚取り出す。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return ("unauthorized", 401)
+    try:
+        r = (supabase.table("todokede_files").select("storage_path,file_name,mime")
+             .eq("id", (fid or "").strip()).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row:
+        return ("not found", 404)
+    try:
+        blob = supabase.storage.from_(TODOKEDE_BUCKET).download(row["storage_path"])
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    import io as _td_io
+    from flask import send_file as _td_send
+    return _td_send(_td_io.BytesIO(blob),
+                    mimetype=row.get("mime") or "application/octet-stream",
+                    as_attachment=True,
+                    download_name=row.get("file_name") or "todokede")
+
+
+@app.route("/api/todokede/zip/<rid>", methods=["GET"])  # todokede-v1
+@login_required
+def api_todokede_zip(rid):
+    """その届出の書類を【一式まとめて】取り出す。
+
+    ★出すときは一式で要る。1枚ずつ落とさせない。
+    ★1枚読めなくても止めない。読めたものだけ入れて、足りないぶんは
+      _読めなかったもの.txt に名前を書いて入れる（黙って欠けるのを防ぐ）。
+    """
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return ("unauthorized", 401)
+    rid = (rid or "").strip()
+    try:
+        rr = (supabase.table("todokede_records").select("filed_ym,doc_type,summary")
+              .eq("id", rid).eq("facility_code", f_code).limit(1).execute())
+        rec = (rr.data or [None])[0]
+        if not rec:
+            return ("not found", 404)
+        fr = (supabase.table("todokede_files").select("storage_path,file_name")
+              .eq("record_id", rid).eq("facility_code", f_code).order("created_at").execute())
+        files = fr.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not files:
+        return jsonify({"status": "error", "message": "書類が付いていません"}), 404
+    import io as _td_io
+    import zipfile as _td_zip
+    from flask import send_file as _td_send
+    buf = _td_io.BytesIO()
+    ng = []
+    used = {}
+    with _td_zip.ZipFile(buf, "w", _td_zip.ZIP_DEFLATED) as z:
+        for x in files:
+            name = x.get("file_name") or "file"
+            # ★同じ名前が2つあると、あとのほうが前のを消してしまう。番号を付ける。
+            if name in used:
+                used[name] += 1
+                stem, dot, e = name.rpartition(".")
+                name = ("%s(%d)%s%s" % (stem, used[name], dot, e)) if dot else ("%s(%d)" % (name, used[name]))
+            else:
+                used[name] = 1
+            try:
+                z.writestr(name, supabase.storage.from_(TODOKEDE_BUCKET).download(x["storage_path"]))
+            except Exception as e:
+                ng.append("%s（%s）" % (x.get("file_name") or "?", e))
+        if ng:
+            z.writestr("_読めなかったもの.txt", "\n".join(ng))
+    buf.seek(0)
+    label = "%s_%s" % (rec.get("filed_ym") or "", rec.get("doc_type") or "届出")
+    return _td_send(buf, mimetype="application/zip", as_attachment=True,
+                    download_name=("%s.zip" % label))
+
+
+@app.route("/api/todokede/file/<fid>", methods=["DELETE"])  # todokede-v1
+@login_required
+def api_todokede_file_delete(fid):
+    """書類を1枚消す。★保管庫のファイルも一緒に消す。"""
+    supabase, f_code, my_name, err = _todokede_guard()
+    if err:
+        return err
+    fid = (fid or "").strip()
+    try:
+        r = (supabase.table("todokede_files").select("storage_path")
+             .eq("id", fid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+        if not row:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        try:
+            supabase.storage.from_(TODOKEDE_BUCKET).remove([row["storage_path"]])
+        except Exception as e:
+            print("[todokede] ファイルを消せませんでした: %s" % e, flush=True)
+        (supabase.table("todokede_files").delete()
+         .eq("id", fid).eq("facility_code", f_code).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
 # ===== mapping-server-save-v1 : 書式マッピングの控え先 =====
 #   ★admin_settings の列は key / value。setting_key / setting_value という列は【無い】。
 #     前はその名前で読み書きしていたので、保存は一度も成功していなかった。

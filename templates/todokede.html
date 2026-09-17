@@ -1,0 +1,304 @@
+{% extends "base.html" %}
+{% block title %}届出の記録・保管 - TASUKARU{% endblock %}
+
+{# todokede-v1: 介護保険課への届出の台帳。
+   ★一覧は【年ごと】にまとめる。「何年の何月に出したか」が一目で分かることが、
+     この画面のいちばんの用。並べ替えや絞り込みより先に、これを守る。 #}
+{% block extra_style %}
+<style>
+  .td-year { font-size:1.05rem; font-weight:800; color:#1b5e20; margin:22px 0 8px;
+             border-bottom:2px solid #c8e6c9; padding-bottom:6px; }
+  .td-card { border:1.5px solid #e0e0e0; border-radius:12px; padding:12px 14px; margin-bottom:10px; background:#fff; }
+  .td-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .td-ym { font-weight:800; font-size:1rem; color:#202124; min-width:3.5em; }
+  .td-type { background:#e8f0fe; color:#1a73e8; border-radius:999px; padding:2px 10px; font-size:0.76rem; font-weight:700; }
+  .td-status { border-radius:999px; padding:2px 10px; font-size:0.76rem; font-weight:700; }
+  .td-s-提出済 { background:#e6f4ea; color:#137333; }
+  .td-s-下書き { background:#f1f3f4; color:#5f6368; }
+  .td-s-差戻し { background:#fce8e6; color:#c5221f; }
+  .td-s-訂正済 { background:#fef7e0; color:#a56300; }
+  .td-sum { font-size:0.88rem; color:#3c4043; margin-top:6px; line-height:1.6; }
+  .td-meta { font-size:0.74rem; color:#5f6368; margin-top:4px; }
+  .td-files { margin-top:10px; border-top:1px dashed #e0e0e0; padding-top:8px; }
+  .td-file { display:flex; align-items:center; gap:8px; font-size:0.82rem; padding:4px 0; }
+  .td-file a { color:#1a73e8; text-decoration:none; word-break:break-all; }
+  .td-kind { background:#f1f3f4; color:#5f6368; border-radius:6px; padding:1px 7px; font-size:0.7rem; }
+  .td-acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .td-btn { border:1.5px solid #e0e0e0; background:#fff; border-radius:9px; padding:7px 12px;
+            font-size:0.8rem; font-weight:700; cursor:pointer; font-family:inherit; color:#3c4043; }
+  .td-btn-main { border-color:#2e7d32; background:#e8f5e9; color:#1b5e20; }
+  .td-btn-del { border-color:#f2b8b5; background:#fce8e6; color:#c5221f; }
+  .td-form { border:1.5px solid #2e7d32; border-radius:12px; padding:14px; background:#f6fbf6; margin-bottom:18px; }
+  .td-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  .td-lb { font-size:0.76rem; font-weight:700; color:#3c4043; display:block; margin-bottom:4px; }
+  .td-empty { color:#5f6368; font-size:0.88rem; padding:24px 0; text-align:center; line-height:1.8; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="font-size:1.1rem;font-weight:800;color:#202124;margin:0 0 4px;">介護保険課への届出</h2>
+<p style="font-size:0.8rem;color:#5f6368;line-height:1.7;margin:0 0 14px;">
+  いつ・何を出したかを残し、提出した書類をそのまま保管します。
+  必要なときに<b>一式まとめて</b>取り出せます。
+</p>
+
+<div id="tdAdminOnly" style="display:none;">
+  <button type="button" class="td-btn td-btn-main" onclick="tdOpenForm()" style="margin-bottom:12px;">
+    ＋ 届出を記録する
+  </button>
+
+  <div class="td-form" id="tdForm" style="display:none;">
+    <input type="hidden" id="tdId">
+    <div class="td-row">
+      <div>
+        <label class="td-lb">届出の年月 <span style="color:#c5221f;">必須</span></label>
+        <input type="month" id="tdYm" class="form-control">
+      </div>
+      <div>
+        <label class="td-lb">提出した日</label>
+        <input type="date" id="tdFiled" class="form-control">
+      </div>
+    </div>
+    <div class="td-row">
+      <div>
+        <label class="td-lb">変更した日</label>
+        <input type="date" id="tdChange" class="form-control">
+      </div>
+      <div>
+        <label class="td-lb">施行日</label>
+        <input type="date" id="tdEffective" class="form-control">
+      </div>
+    </div>
+    <div class="td-row">
+      <div>
+        <label class="td-lb">種類</label>
+        <select id="tdType" class="form-control">
+          {% for t in td_doc_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="td-lb">状態</label>
+        <select id="tdStatus" class="form-control">
+          {% for s in td_status %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="td-lb">サービス</label>
+      <input type="text" id="tdService" class="form-control" placeholder="例：地域密着型通所介護 / 介護予防通所サービス">
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="td-lb">何を変えたか（1行）</label>
+      <input type="text" id="tdSummary" class="form-control" placeholder="例：人員・サービス提供時間の変更">
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="td-lb">メモ</label>
+      <textarea id="tdNote" class="form-control" rows="3" placeholder="市とのやりとり、指摘された内容など"></textarea>
+    </div>
+    <div class="td-acts">
+      <button type="button" class="td-btn td-btn-main" onclick="tdSave()">保存する</button>
+      <button type="button" class="td-btn" onclick="tdCloseForm()">やめる</button>
+    </div>
+  </div>
+</div>
+
+<div id="tdList"><div class="td-empty">読み込み中…</div></div>
+
+<input type="file" id="tdFileInput" style="display:none"
+       accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png">
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// todokede-v1
+var TD_KINDS = {{ td_file_kinds | tojson }};
+var TD_STATE = { records: [], isAdmin: false, uploadTo: null };
+
+function tdEsc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':s); return d.innerHTML; }
+function tdSize(n){ n=n||0; return n>=1048576 ? (n/1048576).toFixed(1)+'MB' : Math.max(1,Math.round(n/1024))+'KB'; }
+
+/* ★年月は「2026-09」で持ち、見せるときだけ「2026年 9月」にする。
+   持ち方と見せ方を混ぜると、並べ替えが狂う。 */
+function tdYear(ym){ return String(ym||'').slice(0,4); }
+function tdMonth(ym){ var m=String(ym||'').slice(5,7); return m ? (parseInt(m,10)+'月') : ''; }
+
+async function tdLoad(){
+  var box = document.getElementById('tdList');
+  try {
+    var r = await fetch('/api/todokede/list', { credentials:'include' });
+    var j = await r.json();
+    if (j.status !== 'success') throw new Error(j.message || '読み込めませんでした');
+    TD_STATE.records = j.records || [];
+    TD_STATE.isAdmin = !!j.is_admin;
+    document.getElementById('tdAdminOnly').style.display = TD_STATE.isAdmin ? 'block' : 'none';
+    tdRender();
+  } catch (e) {
+    box.innerHTML = '<div class="td-empty">読み込めませんでした：' + tdEsc(e.message || e) + '</div>';
+  }
+}
+
+function tdRender(){
+  var box = document.getElementById('tdList');
+  if (!TD_STATE.records.length) {
+    box.innerHTML = '<div class="td-empty">まだ記録がありません。<br>'
+      + (TD_STATE.isAdmin ? '「＋ 届出を記録する」から、過去の分も入れておけます。'
+                          : '管理者メニューから記録できます。') + '</div>';
+    return;
+  }
+  var html = '', lastYear = null;
+  TD_STATE.records.forEach(function(rec){
+    var y = tdYear(rec.filed_ym);
+    if (y !== lastYear) { html += '<div class="td-year">' + tdEsc(y) + '年</div>'; lastYear = y; }
+    html += tdCard(rec);
+  });
+  box.innerHTML = html;
+}
+
+function tdCard(rec){
+  var st = rec.status || '提出済';
+  var h = '<div class="td-card">'
+    + '<div class="td-head">'
+    + '<span class="td-ym">' + tdEsc(tdMonth(rec.filed_ym)) + '</span>'
+    + '<span class="td-type">' + tdEsc(rec.doc_type || '届出') + '</span>'
+    + '<span class="td-status td-s-' + tdEsc(st) + '">' + tdEsc(st) + '</span>'
+    + (rec.service_type ? '<span style="font-size:0.76rem;color:#5f6368;">' + tdEsc(rec.service_type) + '</span>' : '')
+    + '</div>';
+  if (rec.summary) h += '<div class="td-sum">' + tdEsc(rec.summary) + '</div>';
+  var meta = [];
+  if (rec.filed_date) meta.push('提出 ' + tdEsc(rec.filed_date));
+  if (rec.effective_date) meta.push('施行 ' + tdEsc(rec.effective_date));
+  if (rec.change_date) meta.push('変更 ' + tdEsc(rec.change_date));
+  if (meta.length) h += '<div class="td-meta">' + meta.join('　/　') + '</div>';
+  if (rec.note) h += '<div class="td-meta" style="white-space:pre-wrap;">' + tdEsc(rec.note) + '</div>';
+
+  var files = rec.files || [];
+  h += '<div class="td-files">';
+  if (!files.length) {
+    h += '<div class="td-meta">書類はまだ付いていません</div>';
+  } else {
+    files.forEach(function(f){
+      h += '<div class="td-file">'
+        + '<span class="td-kind">' + tdEsc(f.kind || '') + '</span>'
+        + '<a href="/api/todokede/file/' + tdEsc(f.id) + '">' + tdEsc(f.file_name || '書類') + '</a>'
+        + '<span style="color:#9aa0a6;font-size:0.72rem;">' + tdSize(f.file_size) + '</span>'
+        + (TD_STATE.isAdmin ? '<button type="button" class="td-btn td-btn-del" style="margin-left:auto;padding:3px 8px;font-size:0.72rem;" onclick="tdFileDel(\'' + tdEsc(f.id) + '\')">消す</button>' : '')
+        + '</div>';
+    });
+  }
+  h += '</div>';
+
+  h += '<div class="td-acts">';
+  if (files.length) {
+    h += '<a class="td-btn td-btn-main" style="text-decoration:none;display:inline-block;" href="/api/todokede/zip/' + tdEsc(rec.id) + '">一式をまとめて取り出す</a>';
+  }
+  if (TD_STATE.isAdmin) {
+    h += '<button type="button" class="td-btn" onclick="tdAddFile(\'' + tdEsc(rec.id) + '\')">書類を付ける</button>';
+    h += '<button type="button" class="td-btn" onclick="tdEdit(\'' + tdEsc(rec.id) + '\')">直す</button>';
+    h += '<button type="button" class="td-btn td-btn-del" onclick="tdDel(\'' + tdEsc(rec.id) + '\')">この届出を消す</button>';
+  }
+  h += '</div></div>';
+  return h;
+}
+
+function tdOpenForm(){
+  document.getElementById('tdId').value = '';
+  ['tdYm','tdFiled','tdChange','tdEffective','tdService','tdSummary','tdNote'].forEach(function(id){
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('tdForm').style.display = 'block';
+  document.getElementById('tdYm').focus();
+}
+function tdCloseForm(){ document.getElementById('tdForm').style.display = 'none'; }
+
+function tdEdit(id){
+  var rec = TD_STATE.records.find(function(x){ return x.id === id; });
+  if (!rec) return;
+  document.getElementById('tdId').value = rec.id;
+  document.getElementById('tdYm').value = rec.filed_ym || '';
+  document.getElementById('tdFiled').value = rec.filed_date || '';
+  document.getElementById('tdChange').value = rec.change_date || '';
+  document.getElementById('tdEffective').value = rec.effective_date || '';
+  document.getElementById('tdType').value = rec.doc_type || '変更届';
+  document.getElementById('tdStatus').value = rec.status || '提出済';
+  document.getElementById('tdService').value = rec.service_type || '';
+  document.getElementById('tdSummary').value = rec.summary || '';
+  document.getElementById('tdNote').value = rec.note || '';
+  document.getElementById('tdForm').style.display = 'block';
+  document.getElementById('tdForm').scrollIntoView({ behavior:'smooth', block:'center' });
+}
+
+async function tdSave(){
+  var ym = document.getElementById('tdYm').value;
+  if (!ym) { alert('届出の年月を入れてください'); return; }
+  var body = {
+    id: document.getElementById('tdId').value || '',
+    filed_ym: ym,
+    filed_date: document.getElementById('tdFiled').value || '',
+    change_date: document.getElementById('tdChange').value || '',
+    effective_date: document.getElementById('tdEffective').value || '',
+    doc_type: document.getElementById('tdType').value,
+    status: document.getElementById('tdStatus').value,
+    service_type: document.getElementById('tdService').value,
+    summary: document.getElementById('tdSummary').value,
+    note: document.getElementById('tdNote').value
+  };
+  try {
+    var r = await fetch('/api/todokede/record', {
+      method:'POST', credentials:'include',
+      headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)
+    });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('保存できませんでした：' + (j.message || '')); return; }
+    tdCloseForm();
+    await tdLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+async function tdDel(id){
+  if (!confirm('この届出と、付いている書類をすべて消します。\n元に戻せません。よろしいですか？')) return;
+  try {
+    var r = await fetch('/api/todokede/record/' + encodeURIComponent(id), { method:'DELETE', credentials:'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('消せませんでした：' + (j.message || '')); return; }
+    await tdLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+function tdAddFile(id){
+  TD_STATE.uploadTo = id;
+  var inp = document.getElementById('tdFileInput');
+  inp.value = '';
+  inp.click();
+}
+
+document.getElementById('tdFileInput').addEventListener('change', async function(){
+  var f = this.files && this.files[0];
+  if (!f || !TD_STATE.uploadTo) return;
+  var kind = prompt('どの書類ですか？\n' + TD_KINDS.join(' / '), TD_KINDS[0]);
+  if (kind === null) return;
+  if (TD_KINDS.indexOf(kind) < 0) kind = TD_KINDS[0];
+  var fd = new FormData();
+  fd.append('file', f);
+  fd.append('record_id', TD_STATE.uploadTo);
+  fd.append('kind', kind);
+  try {
+    var r = await fetch('/api/todokede/file', { method:'POST', credentials:'include', body: fd });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('付けられませんでした：' + (j.message || '')); return; }
+    await tdLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+});
+
+async function tdFileDel(fid){
+  if (!confirm('この書類を消します。元に戻せません。よろしいですか？')) return;
+  try {
+    var r = await fetch('/api/todokede/file/' + encodeURIComponent(fid), { method:'DELETE', credentials:'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('消せませんでした：' + (j.message || '')); return; }
+    await tdLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+tdLoad();
+</script>
+{% endblock %}
