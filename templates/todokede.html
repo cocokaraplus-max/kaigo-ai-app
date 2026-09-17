@@ -20,9 +20,19 @@
   .td-sum { font-size:0.88rem; color:#3c4043; margin-top:6px; line-height:1.6; }
   .td-meta { font-size:0.74rem; color:#5f6368; margin-top:4px; }
   .td-files { margin-top:10px; border-top:1px dashed #e0e0e0; padding-top:8px; }
+  /* todokede-btn-v3: 横並びの中で【縮んでよいのはファイル名だけ】。
+     flex は何も言わないと「縮んでよい」扱いになる。そのせいで、名前が長い行だけ
+     札とボタンが押しつぶされ、「消」「す」と2行に割れて形が変わっていた。 */
   .td-file { display:flex; align-items:center; gap:8px; font-size:0.82rem; padding:4px 0; }
-  .td-file a { color:#1a73e8; text-decoration:none; word-break:break-all; }
-  .td-kind { background:#f1f3f4; color:#5f6368; border-radius:6px; padding:1px 7px; font-size:0.7rem; }
+  .td-file a { color:#1a73e8; text-decoration:none; word-break:break-all;
+               flex:1 1 auto; min-width:0; }            /* ← ここだけ折り返す */
+  .td-kind { background:#f1f3f4; color:#5f6368; border-radius:6px; padding:2px 8px; font-size:0.7rem;
+             flex:0 0 auto; white-space:nowrap; }
+  .td-size { color:#9aa0a6; font-size:0.72rem; flex:0 0 auto; white-space:nowrap; }
+  /* ★ボタンの見た目はCSSに置く。JSの style= に書くと、次に直す人が2か所を探すことになる。
+     min-width で、どの行でも同じ幅になるようにそろえる。 */
+  .td-file-del { flex:0 0 auto; white-space:nowrap; padding:4px 12px; font-size:0.72rem;
+                 min-width:4.2em; text-align:center; }
   .td-acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
   .td-btn { border:1.5px solid #e0e0e0; background:#fff; border-radius:9px; padding:7px 12px;
             font-size:0.8rem; font-weight:700; cursor:pointer; font-family:inherit; color:#3c4043; }
@@ -180,8 +190,8 @@ function tdCard(rec){
       h += '<div class="td-file">'
         + '<span class="td-kind">' + tdEsc(f.kind || '') + '</span>'
         + '<a href="/api/todokede/file/' + tdEsc(f.id) + '">' + tdEsc(f.file_name || '書類') + '</a>'
-        + '<span style="color:#9aa0a6;font-size:0.72rem;">' + tdSize(f.file_size) + '</span>'
-        + (TD_STATE.isAdmin ? '<button type="button" class="td-btn td-btn-del" style="margin-left:auto;padding:3px 8px;font-size:0.72rem;" onclick="tdFileDel(\'' + tdEsc(f.id) + '\')">消す</button>' : '')
+        + '<span class="td-size">' + tdSize(f.file_size) + '</span>'
+        + (TD_STATE.isAdmin ? '<button type="button" class="td-btn td-btn-del td-file-del" onclick="tdFileDel(\'' + tdEsc(f.id) + '\')">消す</button>' : '')
         + '</div>';
     });
   }
