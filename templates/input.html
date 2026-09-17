@@ -858,6 +858,32 @@ window.saveRecord = async function() {
         }
     }
 
+    // ===== easy-input-cat-v1: かんたん表示のときだけ、保存の直前に見張りを置く =====
+    //   ★ここに来た時点で、AIに聞く道は通り終わっている。
+    //     それでもまだ「その他」なら、AIが外したか、人が［その他のまま］を押したか、
+    //     AIが確信を持てず聞いてこなかったかのどれか。
+    //     かんたん表示の人には選び口が無いので、ここで出して選んでもらう。
+    //   ★「その他」が正しいこともある。一覧からその他を選べば、次は素通りする。
+    if (document.body.classList.contains('tsk-easy') && !window._easyCatPicked) {
+        const _cat = document.getElementById('selected-category');
+        if (_cat && (_cat.value || 'その他') === 'その他') {
+            const _grp = document.getElementById('category-group');
+            if (_grp) {
+                _grp.classList.add('tsk-easy-show');
+                try { if (typeof renderCategoryPicker === 'function') renderCategoryPicker(); } catch (e) {}
+                try { if (typeof openCategoryPicker === 'function') openCategoryPicker(); } catch (e) {}
+                try { _grp.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+            }
+            // ★止めるときは必ず理由を出す。黙って止まると「保存できない」と思われる。
+            if (_saveBtn) {
+                _saveBtn.disabled = false;
+                _saveBtn.innerHTML = '<span class="material-symbols-outlined">save</span> 保存';
+            }
+            alert('どの種類の記録か、えらんでください。\n\nえらんだあと、もう一度「保存」をおしてください。');
+            return;
+        }
+    }
+
     // ===== inp-save-spinner-v1 (C): POST中は回転syncで「保存中...」 =====
     const btn = _saveBtn || document.querySelector('.btn-primary[onclick="saveRecord()"]');
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="material-symbols-outlined" style="animation: inpSpin 1s linear infinite; vertical-align:middle;">sync</span> 保存中...'; }
@@ -1423,6 +1449,9 @@ window.selectCategoryOption = function(optEl) {
     var name = optEl.getAttribute('data-cat-name');
     var sel = document.getElementById('selected-category');
     if (sel) sel.value = name;
+    // easy-input-cat-v1: 人が自分で選んだ。もう聞かない。
+    //   ★これが無いと、その他を選んだときに同じところを回り続ける。
+    window._easyCatPicked = true;
     renderCategoryPicker();
     closeCategoryPicker();
     // Session 33: 休み連絡フォームの表示切替
