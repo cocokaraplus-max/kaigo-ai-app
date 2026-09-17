@@ -777,51 +777,53 @@ function showToast(icon, msg) {
   setTimeout(() => toast.classList.remove('show'), 2800);
 }
 
-function saveMapping() {
+async function saveMapping() {   // mapping-server-save-v1
   const out = {};
   Object.entries(mapping).forEach(([k, v]) => { out[v.field] = v.cell; });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
 
-  // Supabaseにも保存
-  saveToSupabase(out);
-  showToast('save', '設定を保存しました');
+  // ★サーバの返事を【見る】。見ないと、失敗しても「保存しました」と出てしまう。
+  const ok = await saveToServer(out);
+  if (ok) showToast('save', '設定を保存しました');
+  else showToast('error', 'このPCには残しましたが、サーバに保存できませんでした');
 }
 
-async function saveToSupabase(data) {
+async function saveToServer(data) {   // mapping-server-save-v1
   try {
-    const cfg = window.TASUKARU_CONFIG || {};
-    await fetch('/api/mapping/save', {
+    const res = await fetch('/api/mapping/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ mapping: data })
     });
-  } catch(e) { console.warn('Supabase保存エラー:', e); }
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || !j.ok) {
+      console.warn('サーバ保存エラー:', j.error || res.status);
+      return false;
+    }
+    return true;
+  } catch(e) { console.warn('サーバ保存エラー:', e); return false; }
+}
+
+function applyMappingData(data) {   // mapping-server-save-v1
+  // ★復元のやり方はここ1か所だけ。localStorage からもサーバからも、これを通す。
+  //   （2通りに書くと、必ず片方だけが古くなる）
+  const layout = LAYOUTS[document.getElementById('sheet-selector').value] || LAYOUTS.monitoring;
+  // 保存データは field -> cell のマップなので、画面の key に直しながら入れる
+  Object.entries(data || {}).forEach(([field, cell]) => {
+    const chip = document.querySelector(`.field-chip[data-field="${field}"]`);
+    const label = chip ? chip.textContent.trim() : field;
+    let key = null;
+    layout.forEach(row => { row.cells.forEach(c => { if (c.key && (c.key === field || c.key.includes(field))) key = c.key; }); });
+    if (key) mapping[key] = { field, label, cell };
+  });
 }
 
 function loadSavedMapping() {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return;
-    const data = JSON.parse(saved);
-    // fieldからkeyへの逆引きマップを作成
-    const fieldToKey = {};
-    const layout = LAYOUTS[document.getElementById('sheet-selector').value] || LAYOUTS.monitoring;
-    layout.forEach(row => {
-      row.cells.forEach(cell => {
-        if (cell.key) fieldToKey[cell.key] = cell.key;
-      });
-    });
-    // 保存データを復元（field->cell のマップなので変換）
-    Object.entries(data).forEach(([field, cell]) => {
-      // labelを探す
-      const chip = document.querySelector(`.field-chip[data-field="${field}"]`);
-      const label = chip ? chip.textContent.trim() : field;
-      // keyを探す
-      let key = null;
-      layout.forEach(row => { row.cells.forEach(c => { if (c.key && (c.key === field || c.key.includes(field))) key = c.key; }); });
-      if (key) mapping[key] = { field, label, cell };
-    });
+    applyMappingData(JSON.parse(saved));
   } catch(e) { console.warn('読み込みエラー:', e); }
 }
 
@@ -872,30 +874,33 @@ document.getElementById('clear-btn').addEventListener('click', () => {
 });
 
 // 初期化
+// ★まず localStorage で描く（すぐ出る）。そのあとサーバの控えで上書きする。
 loadSavedMapping();
 buildGrid();
 updateUI();
 // 保存済みのフィールドをassignedに
 Object.values(mapping).forEach(v => markFieldAssigned(v.field, true));
 
-;
+// mapping-server-save-v1: サーバに控えた設定を取りにいく。
+//   これが無かったので、PCを変えると設定が消えていた。
+(async function () {
+  try {
+    const res = await fetch('/api/mapping/load', { credentials: 'include' });
+    const j = await res.json().catch(() => ({}));
+    if (!j.ok || !j.mapping) return;
+    Object.keys(mapping).forEach(k => delete mapping[k]);
+    document.querySelectorAll('.field-chip').forEach(c => c.classList.remove('assigned', 'selected'));
+    applyMappingData(j.mapping);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(j.mapping));
+    buildGrid();
+    updateUI();
+    Object.values(mapping).forEach(v => markFieldAssigned(v.field, true));
+  } catch (e) { console.warn('サーバから設定を読めませんでした:', e); }
+})();
 
-// xlsx シート -> LAYOUTS形式に変換
-
-// CSV -> LAYOUTS形式に変換
-function csvToLayout(text) {
-  const rows = text.split(chr(10)).filter(r => r.trim()).slice(0, 40);
-  return rows.map((row, ri) => {
-    const vals = row.split(',');
-    const cells = vals.slice(0, 15).map((v, ci) => ({
-      c: ci + 1,
-      cs: 1,
-      text: v.trim().replace(/^"|"$/g, ''),
-      drop: false
-    }));
-    return { r: ri + 1, label: String(ri + 1), cells };
-  });
-}
+// mapping-server-save-v1: ここに csvToLayout がもう1つあったが消した。
+//   text.split(chr(10)) と書いてあり、chr は JavaScript に無い関数。
+//   下のほうの同名の関数が上書きするので動いてはいたが、順番が変わった日に壊れる。
 
 
 // ============================================================
