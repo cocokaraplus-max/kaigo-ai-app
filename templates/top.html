@@ -133,6 +133,32 @@
 {% endblock %}
 
 {% block content %}
+{# easy-mode-v1: かんたん表示のTOP。
+   ★ここが【いちばん上】に来ることが大事。下のCSSで、これより後ろの兄弟を
+     まとめて隠している（かんたん表示のときだけ）。順番を変えないこと。
+   ★「ふつうの表示に戻す」は必ず出す。16個に管理者MENUが無いので、
+     これが無いと、かんたん表示にした人は自分で戻せなくなる。 #}
+{% if easy_mode %}
+<style>
+  /* ★このタイルより後ろにあるものは、かんたん表示では出さない。
+     いままでのTOPの中身（お知らせ・件数・案内など）が下に続いているため。 */
+  body.tsk-easy #tskEasyTop ~ * { display: none !important; }
+</style>
+<div id="tskEasyTop">
+  <p class="tsk-easy-note">押すと、その画面がひらきます。</p>
+  <div class="tsk-easy-grid">
+    {% for it in easy_items %}
+    <a class="tsk-easy-tile" href="{{ it.href }}">
+      <span class="material-symbols-outlined">{{ it.icon }}</span>
+      <span>{{ it.label }}</span>
+    </a>
+    {% endfor %}
+  </div>
+  <button type="button" class="tsk-easy-back" onclick="tskSetEasyMode(false)">
+    ふつうの表示に戻す
+  </button>
+</div>
+{% endif %}
 
 
 <!-- ★ 更新ログモーダル -->

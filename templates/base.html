@@ -480,8 +480,52 @@ body.nav-editing {
 @keyframes tskBusyBob { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-7px);} }
 </style>
     {% block extra_style %}{% endblock %}
+{# easy-mode-v1: かんたん表示の「見た目の層」。
+   ★画面はもう1組つくらない。body に印を付けて、その印のときだけ上書きする。
+     画面を2通りにすると、直しが毎回2回になり、片方が必ず古くなる。 #}
+<style>
+  body.tsk-easy #appDrawerHandle { display: none !important; }   /* 引き出しは出さない */
+  body.tsk-easy .tsk-adv { display: none !important; }           /* ふだん使わない操作を隠す印 */
+  body.tsk-easy { font-size: 1.06rem; }
+
+  .tsk-easy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 4px 0 20px; }
+  .tsk-easy-tile {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; min-height: 132px; padding: 18px 8px; text-decoration: none;
+    background: #fff; border: 2.5px solid #1a73e8; border-radius: 18px;
+    color: #10315c; font-weight: 800; font-size: 1.12rem; line-height: 1.3; text-align: center;
+    box-shadow: 0 2px 8px rgba(16,24,40,.10);
+  }
+  .tsk-easy-tile .material-symbols-outlined { font-size: 46px; color: #1a73e8; }
+  .tsk-easy-tile:active { background: #e8f0fe; }
+  .tsk-easy-back {
+    display: block; width: 100%; margin: 6px 0 28px; padding: 16px;
+    border: 2px solid #9aa0a6; border-radius: 14px; background: #fff;
+    color: #3c4043; font-weight: 800; font-size: 1rem; font-family: inherit; cursor: pointer;
+  }
+  .tsk-easy-note { font-size: 0.86rem; color: #5f6368; line-height: 1.7; margin: 0 0 10px; }
+
+  /* easy-input-v1: 入力まわりを、指で押せて読める大きさにする。
+     ★.form-label / .form-control / .btn はどの画面でも使う共通の部品。
+       ここに1回書けば全部に効く。画面ごとに書き写さないこと。
+     ★効くのは body.tsk-easy のときだけ。ふつうの表示は1ミリも変わらない。 */
+  body.tsk-easy .form-label { font-size: 1.05rem; font-weight: 800; margin-bottom: 8px; }
+  body.tsk-easy .form-label .material-symbols-outlined { font-size: 24px; }
+  body.tsk-easy .form-control {
+    font-size: 1.12rem; padding: 14px; min-height: 54px; border-width: 2px; border-radius: 12px;
+  }
+  body.tsk-easy textarea.form-control { min-height: 170px; line-height: 1.85; }
+  body.tsk-easy .form-group { margin-bottom: 22px; }
+  body.tsk-easy .btn { font-size: 1.14rem; padding: 18px 20px; border-radius: 14px; }
+  body.tsk-easy .btn .material-symbols-outlined { font-size: 26px; }
+  body.tsk-easy .back-btn { font-size: 1.05rem; padding: 16px; }
+
+  {# easy-input-cat-v2: .tsk-easy-show はここにあったが、使う場所が無くなったので消した。
+     「いつか使うかも」で残すと、それが次の『同じものが2か所』になる。 #}
+</style>
 </head>
-<body>
+{# easy-mode-v1: 印は body に1つだけ。ここを見て上のCSSが効く。 #}
+<body class="{% if easy_mode %}tsk-easy{% endif %}">
 
 <!-- オフラインバナー -->
 <div id="offline-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:#ff6f00;color:#fff;text-align:center;padding:calc(8px + env(safe-area-inset-top)) 12px 8px;font-size:0.82rem;font-weight:700;">
@@ -754,6 +798,29 @@ body.nav-editing {
                 </div>
             </div>
 
+            <!-- easy-mode-v1: かんたん表示のトグル。個人ごとにDBへ保存する。 -->
+            <div class="setting-section">
+                <div class="setting-section-label">
+                    <span class="material-symbols-outlined">accessibility_new</span>かんたん表示
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">
+                    <div>
+                        <div style="font-size:0.85rem;font-weight:700;color:#202124;">よく使う16個だけを大きく出す</div>
+                        <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">
+                            記録入力・ケース記録・バイタル・連絡帳・送迎表など、ふだん使うものだけになります。
+                            戻すときはTOPの下の「ふつうの表示に戻す」を押してください。
+                        </div>
+                    </div>
+                    <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:12px;">
+                        <input type="checkbox" id="easy-mode-toggle" onchange="tskSetEasyMode(this.checked)"
+                               {% if easy_mode %}checked{% endif %}
+                               style="opacity:0;width:0;height:0;">
+                        <span id="easy-mode-slider" style="position:absolute;inset:0;border-radius:24px;background:{% if easy_mode %}#1a73e8{% else %}#ccc{% endif %};cursor:pointer;transition:.2s;"></span>
+                        <span id="easy-mode-knob" style="position:absolute;left:{% if easy_mode %}22px{% else %}2px{% endif %};top:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
+                    </label>
+                </div>
+            </div>
+
             <!-- nav-remove-v1: 「ナビカラー」は下のメニューバーの配色設定だったので廃止。
                  代わりに、バーにしか無かった **ログアウト** をここへ移す。
                  引き出しは MENU_ITEMS から作るが、そこにログアウトは入っていない。 -->
@@ -771,6 +838,33 @@ body.nav-editing {
     </div>
     <!-- nav-remove-v1: 「メニューバーを隠す」トグルの JS は、バーごと廃止したので削除。
          個人設定 nav_hidden は読まなくなった（DB に残っていても無害）。 -->
+
+    <script>
+    // easy-mode-v1: かんたん表示の切り替え。
+    //   ★口はこの1つだけ。設定画面のトグルからも、TOPの「ふつうの表示に戻す」からも
+    //     これを呼ぶ。2通り書くと、片方だけ直したときに必ずずれる。
+    //   ★保存できたことを確かめてから読み込み直す。保存できていないのに
+    //     読み直すと、元のまま戻ってきて「押しても変わらない」ように見える。
+    window.tskSetEasyMode = async function (on) {
+      try {
+        const res = await fetch('/api/me/setting', {
+          method: 'PUT', credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: 'easy_mode', value: on ? 'true' : 'false' })
+        });
+        const j = await res.json().catch(function () { return {}; });
+        if (!res.ok || j.status !== 'success') {
+          alert('設定を保存できませんでした。もう一度お試しください。');
+          return false;
+        }
+        location.href = '/top';
+        return true;
+      } catch (e) {
+        alert('通信できませんでした。電波の届くところでもう一度お試しください。');
+        return false;
+      }
+    };
+    </script>
 
     <script>
     // app-drawer-v1: 引き出しの向き（利き手）。保存は個人設定（DB）。その場で反映する。

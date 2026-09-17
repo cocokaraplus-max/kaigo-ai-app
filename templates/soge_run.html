@@ -641,7 +641,9 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
          開いてログインが切れる（soge-print-v3 で踏んだ）。 -->
   <div class="sgnav">
     <a class="on" href="/soge/run">運行画面</a>
-    <a href="/soge" onclick="spaNav(event,'/soge')">配車編集</a>
+    {# soge-edit-date-first-v1: まず【今日だけの配車】を開く。
+       ふだん直したいのは当日ぶん。曜日の型は「いつもの配車」へ切り替えて直す。 #}
+    <a href="/soge/date" onclick="spaNav(event,'/soge/date')">配車編集</a>
     <a id="srPrint" href="/soge/print">記録表</a>
   </div>
 
