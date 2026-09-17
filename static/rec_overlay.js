@@ -142,7 +142,7 @@
       'background:#ff5252;margin-right:6px;vertical-align:middle;"></span>' +
       '録音中 <span id="recOvClock">00:00</span>' +
       '<span id="recOvLabel" style="font-weight:600;opacity:.85;"></span></div>' +
-      '<div style="font-size:0.68rem;opacity:.85;">録音は止まっていません。終わったら「閉じる」で録音画面へ戻ってください。</div>';
+      '<div style="font-size:0.68rem;opacity:.85;">録音は止まっていません。終わったら「録音に戻る」を押してください。</div>';   // rec-ui-polish-v1: ボタンと同じ言葉にそろえる
 
     var close = document.createElement('button');
     close.type = 'button';
@@ -150,7 +150,9 @@
       'flex:0 0 auto;padding:9px 13px;border:none;border-radius:9px;' +
       'background:#fff;color:#1b5e20;font-weight:800;font-size:0.82rem;' +
       'font-family:inherit;cursor:pointer;';
-    close.textContent = '閉じる';
+    // rec-ui-polish-v1: 行き先を書く。
+    //   「閉じる」だと、重ねた画面が閉じるのか録音が止まるのかが読み取れない。
+    close.textContent = '録音に戻る';
     close.addEventListener('click', function () { close_(true); });
 
     bar.appendChild(back); bar.appendChild(mid); bar.appendChild(close);

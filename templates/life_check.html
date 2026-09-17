@@ -1070,5 +1070,58 @@ function lcRenderAssist(key, result) {  // lc-assist-ui-v1
   var box = document.getElementById('assist-' + key);  // lc-assist-accordion-v1
   if (box) { box.dataset.hasResult = '1'; lcToggleAssist(key, false); }
 }
+
+// ===== rec-ui-polish-v1: 下まで行ったときに、上へ戻れるようにする =====
+//   ★この画面は項目が多い。下まで行くと利用者名も合計点も見えなくなり、
+//     指で延々とこすり上げることになっていた。
+//   ★スクロールする入れ物は2通りある（.page-wrapper と window）。
+//     どちらになるかは画面の高さと中身の量で決まるので、決め打ちしない。
+//     すでにある lcScrollTop() が両方を見分けているので、それを使う。
+(function () {
+  'use strict';
+  var btn = null;
+
+  function scroller() {
+    var pw = document.querySelector('.page-wrapper');
+    return (pw && pw.scrollHeight > pw.clientHeight + 5) ? pw : null;
+  }
+  function nowY() {
+    var s = scroller();
+    if (s) return s.scrollTop;
+    return window.pageYOffset || document.documentElement.scrollTop || 0;
+  }
+  function ensure() {
+    if (btn) return btn;
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.id = 'lc-to-top';
+    b.setAttribute('aria-label', '上に戻る');
+    // ★合計バー(.lc-total, z-index:900)より上に、かつ重ならない高さに置く。
+    //   --lc-nav-h はボトムナビの高さ。lcAdjustTotalBar が入れている。
+    b.style.cssText = 'display:none;position:fixed;right:12px;'
+      + 'bottom:calc(var(--lc-nav-h, 90px) + 74px);z-index:901;'
+      + 'width:46px;height:46px;border-radius:50%;border:1.5px solid #0C447C;'
+      + 'background:#fff;color:#0C447C;font-size:20px;font-weight:700;line-height:1;'
+      + 'cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.2);font-family:inherit;';
+    b.textContent = '↑';
+    b.addEventListener('click', function () { lcScrollTop(); });
+    document.body.appendChild(b);
+    btn = b;
+    return b;
+  }
+  function refresh() {
+    ensure().style.display = (nowY() > 300) ? 'block' : 'none';
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    ensure();
+    refresh();
+    // ★scroll は上に伝わらないので、捕まえる側(capture)で拾う。
+    //   入れ物が途中で切り替わっても、これなら取りこぼさない。
+    document.addEventListener('scroll', refresh, true);
+    window.addEventListener('scroll', refresh, { passive: true });
+    window.addEventListener('resize', refresh);
+  });
+})();
 </script>
 {% endblock %}
