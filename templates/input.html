@@ -568,12 +568,13 @@
         <input type="hidden" name="audio_mime" id="audio-mime">
 
     <!-- Session 21: カテゴリ選択(iOS Picker風カスタムドロップダウン) -->
-    {# easy-input-v1: かんたん表示では出さない。
-       保存のとき、中身を読んだAIが「このカテゴリでよいですか」と聞いてくる
-       （saveRecord の /api/records/suggest_category）ので、選ばなくても決まる。
-       ★AIが確信を持てなかったときは「その他」のまま残る。それが困るなら
-         下の class から tsk-adv を外せば、元どおり選べるようになる。 #}
-    <div class="form-group tsk-adv" id="category-group">
+    {# easy-input-cat-v2: かんたん表示でも【出す】。
+       いちど隠してみたが、AIの提案がちがったときに選び直す道が無くなった。
+       選ぶのは1回だけの手間で、あとから直すほうがずっと手間がかかる。
+       ★選ばずに保存したら「その他」で保存される。止めない。
+       ★ふつうの表示とまったく同じ決まりにしてある。画面ごとに別の決まりを
+         持たせると、あとで「どっちの画面だっけ」と迷うことになる。 #}
+    <div class="form-group" id="category-group">
         <label class="form-label">
             <span class="material-symbols-outlined">label</span>
             カテゴリ
@@ -858,31 +859,9 @@ window.saveRecord = async function() {
         }
     }
 
-    // ===== easy-input-cat-v1: かんたん表示のときだけ、保存の直前に見張りを置く =====
-    //   ★ここに来た時点で、AIに聞く道は通り終わっている。
-    //     それでもまだ「その他」なら、AIが外したか、人が［その他のまま］を押したか、
-    //     AIが確信を持てず聞いてこなかったかのどれか。
-    //     かんたん表示の人には選び口が無いので、ここで出して選んでもらう。
-    //   ★「その他」が正しいこともある。一覧からその他を選べば、次は素通りする。
-    if (document.body.classList.contains('tsk-easy') && !window._easyCatPicked) {
-        const _cat = document.getElementById('selected-category');
-        if (_cat && (_cat.value || 'その他') === 'その他') {
-            const _grp = document.getElementById('category-group');
-            if (_grp) {
-                _grp.classList.add('tsk-easy-show');
-                try { if (typeof renderCategoryPicker === 'function') renderCategoryPicker(); } catch (e) {}
-                try { if (typeof openCategoryPicker === 'function') openCategoryPicker(); } catch (e) {}
-                try { _grp.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
-            }
-            // ★止めるときは必ず理由を出す。黙って止まると「保存できない」と思われる。
-            if (_saveBtn) {
-                _saveBtn.disabled = false;
-                _saveBtn.innerHTML = '<span class="material-symbols-outlined">save</span> 保存';
-            }
-            alert('どの種類の記録か、えらんでください。\n\nえらんだあと、もう一度「保存」をおしてください。');
-            return;
-        }
-    }
+    // easy-input-cat-v2: ここに「その他のままなら止める」見張りを置いていたが、
+    //   やめた。カテゴリは自分で選ぶ形にしたので、選ばなかった＝その他でよい、
+    //   という意思表示として素通りさせる。止める道は残さない。
 
     // ===== inp-save-spinner-v1 (C): POST中は回転syncで「保存中...」 =====
     const btn = _saveBtn || document.querySelector('.btn-primary[onclick="saveRecord()"]');
@@ -1449,9 +1428,6 @@ window.selectCategoryOption = function(optEl) {
     var name = optEl.getAttribute('data-cat-name');
     var sel = document.getElementById('selected-category');
     if (sel) sel.value = name;
-    // easy-input-cat-v1: 人が自分で選んだ。もう聞かない。
-    //   ★これが無いと、その他を選んだときに同じところを回り続ける。
-    window._easyCatPicked = true;
     renderCategoryPicker();
     closeCategoryPicker();
     // Session 33: 休み連絡フォームの表示切替
