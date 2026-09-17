@@ -504,6 +504,21 @@ body.nav-editing {
     color: #3c4043; font-weight: 800; font-size: 1rem; font-family: inherit; cursor: pointer;
   }
   .tsk-easy-note { font-size: 0.86rem; color: #5f6368; line-height: 1.7; margin: 0 0 10px; }
+
+  /* easy-input-v1: 入力まわりを、指で押せて読める大きさにする。
+     ★.form-label / .form-control / .btn はどの画面でも使う共通の部品。
+       ここに1回書けば全部に効く。画面ごとに書き写さないこと。
+     ★効くのは body.tsk-easy のときだけ。ふつうの表示は1ミリも変わらない。 */
+  body.tsk-easy .form-label { font-size: 1.05rem; font-weight: 800; margin-bottom: 8px; }
+  body.tsk-easy .form-label .material-symbols-outlined { font-size: 24px; }
+  body.tsk-easy .form-control {
+    font-size: 1.12rem; padding: 14px; min-height: 54px; border-width: 2px; border-radius: 12px;
+  }
+  body.tsk-easy textarea.form-control { min-height: 170px; line-height: 1.85; }
+  body.tsk-easy .form-group { margin-bottom: 22px; }
+  body.tsk-easy .btn { font-size: 1.14rem; padding: 18px 20px; border-radius: 14px; }
+  body.tsk-easy .btn .material-symbols-outlined { font-size: 26px; }
+  body.tsk-easy .back-btn { font-size: 1.05rem; padding: 16px; }
 </style>
 </head>
 {# easy-mode-v1: 印は body に1つだけ。ここを見て上のCSSが効く。 #}

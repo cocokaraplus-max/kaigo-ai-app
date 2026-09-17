@@ -445,7 +445,8 @@
         <input type="date" name="record_date" id="record-date" class="form-control" value="{{ today }}">
     </div>
 
-    <div class="form-group">
+    {# easy-input-v1: かんたん表示では出さない。写真は後から足せる。 #}
+    <div class="form-group tsk-adv">
         <label class="form-label">
             <span class="material-symbols-outlined">photo_camera</span>
             写真・動画（最大5件）
@@ -567,7 +568,12 @@
         <input type="hidden" name="audio_mime" id="audio-mime">
 
     <!-- Session 21: カテゴリ選択(iOS Picker風カスタムドロップダウン) -->
-    <div class="form-group" id="category-group">
+    {# easy-input-v1: かんたん表示では出さない。
+       保存のとき、中身を読んだAIが「このカテゴリでよいですか」と聞いてくる
+       （saveRecord の /api/records/suggest_category）ので、選ばなくても決まる。
+       ★AIが確信を持てなかったときは「その他」のまま残る。それが困るなら
+         下の class から tsk-adv を外せば、元どおり選べるようになる。 #}
+    <div class="form-group tsk-adv" id="category-group">
         <label class="form-label">
             <span class="material-symbols-outlined">label</span>
             カテゴリ
@@ -743,7 +749,8 @@
     </div>
 
     <!-- Session 20: 閲覧必須トグル -->
-    <div class="form-group" style="margin-bottom:14px;">
+    {# easy-input-v1: かんたん表示では出さない。主任・管理者が使うもの。 #}
+    <div class="form-group tsk-adv" style="margin-bottom:14px;">
         <button type="button" id="must-read-btn" onclick="toggleMustReadInput()"
             style="background:none;border:1.5px solid #e0e0e0;border-radius:10px;padding:10px 14px;display:inline-flex;align-items:center;gap:8px;cursor:pointer;color:#5f6368;font-size:0.9rem;transition:all 0.15s ease;">
             <span class="material-symbols-outlined" id="must-read-icon" style="font-size:22px;">star_outline</span>
