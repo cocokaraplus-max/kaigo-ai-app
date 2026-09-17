@@ -3910,7 +3910,52 @@ def _patient_hub_pro_gate():   # patinfo-tier-cards-v1
 
 STAFF_SETTING_KEYS = ("top_style", "top_layout", "drawer_side", "nav_hidden",
                       "drawer_pos", "rc_cat_order", "rc_gap_cats",
-                      "assessment_pref")   # 受け付けるキーはこれだけ  assessment-select-v1
+                      "assessment_pref",
+                      "easy_mode")   # 受け付けるキーはこれだけ  assessment-select-v1 / easy-mode-v1
+
+
+# ===== easy-mode-v1 : かんたん表示に出すもの =====
+#   ★ふだん使うものだけ。順番は【使う回数が多い順】。上から埋まっていく。
+#   ★救急と防災は最後だが、必ず入れる。いるときに探す余裕が無い画面なので、
+#     「少ないほうがいい」より「あること」を取った。
+#   ★ここに無いものは出ない。増やしたいときはこの並びに1行足すだけ。
+#     ただし、出るかどうかの最終判定は MENU_ITEMS 側（プラン・トグル・権限）が持つ。
+#     ここに書いても、その人に見せてよくないものは出ない。
+EASY_MENU_HREFS = [
+    "/input",             # 記録入力
+    "/daily_view",        # ケース記録
+    "/vitals",            # バイタル
+    "/renraku",           # 連絡帳
+    "/soge/run",          # 送迎表
+    "/calendar",          # カレンダー
+    "/tasks",             # タスク
+    "/board",             # 掲示板
+    "/life_check",        # 生活機能CHECK
+    "/fitness",           # 体力・体重
+    "/assessment-select",  # 評価
+    "/birthday",          # 誕生日
+    "/numerology",        # 数秘
+    "/kyukyu",            # 救急
+    "/fmb",               # 防災
+    "/manual",            # ガイド
+]
+
+
+def _menu_items_easy(items):  # easy-mode-v1
+    """見せてよいメニューの中から、かんたん表示に出すものだけを並び順どおりに返す。
+
+    ★引数は _menu_items_visible の結果。判定をやり直さない。
+      やり直すと、片方だけ直したときに「プランに無いものが出る」ことになる。
+    """
+    by_href = {}
+    for it in (items or []):
+        by_href[it.get("href")] = it
+    out = []
+    for href in EASY_MENU_HREFS:
+        it = by_href.get(href)
+        if it and not it.get("locked"):   # プラン外のものは出さない
+            out.append(it)
+    return out
 
 
 def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
@@ -4019,7 +4064,8 @@ def inject_app_drawer():  # app-drawer-v1
         my_name = session.get("my_name")
         if not f_code or not my_name:
             return {"drawer_items": [], "drawer_side": "right", "drawer_layout": "",
-                    "nav_hidden": False, "drawer_pos": 46}
+                    "nav_hidden": False, "drawer_pos": 46,
+                    "easy_mode": False, "easy_items": []}   # easy-mode-v1
         if not hasattr(_g, "_drawer_cache"):
             supabase = get_supabase()
             # app-drawer-4way-v1: 左右に加えて上下も
@@ -4033,18 +4079,26 @@ def inject_app_drawer():  # app-drawer-v1
             # nav-hide-v3 / app-drawer-perside-v1:
             # 取っ手の位置。向きごとに持つ（JSON文字列）。旧形式（数値）もそのまま渡し、画面側で読み替える。
             pos = get_staff_setting(supabase, f_code, my_name, "drawer_pos", "") or ""
+            # easy-mode-v1: かんたん表示。既定はOFF（いままでどおりの画面）。
+            easy = (get_staff_setting(supabase, f_code, my_name, "easy_mode", "false") == "true")
+            visible = _menu_items_visible(supabase, f_code, my_name)
             _g._drawer_cache = {
-                "drawer_items": _menu_items_visible(supabase, f_code, my_name),
+                "drawer_items": visible,
                 "drawer_side": side,
                 "drawer_layout": layout,
                 "nav_hidden": nav_hidden,
                 "drawer_pos": pos,
+                "easy_mode": easy,                          # easy-mode-v1
+                "easy_items": _menu_items_easy(visible),    # easy-mode-v1
             }
         return _g._drawer_cache
     except Exception as e:
         print("inject_app_drawer error: %s" % e, flush=True)
+        # ★読めなかったときは【いままでどおりの画面】に落とす。
+        #   かんたん表示に落とすと、16個しか出ないのに理由が分からない状態になる。
         return {"drawer_items": [], "drawer_side": "right", "drawer_layout": "",
-                "nav_hidden": False, "drawer_pos": 46}
+                "nav_hidden": False, "drawer_pos": 46,
+                "easy_mode": False, "easy_items": []}   # easy-mode-v1
 
 
 @app.route("/api/me/setting", methods=["GET"])  # staff-settings-v1
