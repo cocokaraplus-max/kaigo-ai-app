@@ -1,0 +1,772 @@
+{% extends "base.html" %}
+{% block title %}処遇改善加算の書類 - TASUKARU{% endblock %}
+
+{# shogu-v1: 処遇改善加算の計画書・実績報告書を保管し、職員に周知して署名をもらう。
+   ★この画面のいちばんの用は「誰がまだ確認していないか」。
+     それが一目で分かるように、署名の進み具合を先に出す。 #}
+{% block extra_style %}
+<style>
+  .sg-year { font-size:1.05rem; font-weight:800; color:#1b5e20; margin:22px 0 8px;
+             border-bottom:2px solid #c8e6c9; padding-bottom:6px; }
+  .sg-card { border:1.5px solid #e0e0e0; border-radius:12px; padding:13px 14px;
+             margin-bottom:10px; background:#fff; }
+  .sg-head { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .sg-type { background:#e8f0fe; color:#1a73e8; border-radius:999px; padding:2px 10px;
+             font-size:0.76rem; font-weight:700; flex:0 0 auto; white-space:nowrap; }
+  .sg-st { border-radius:999px; padding:2px 10px; font-size:0.76rem; font-weight:700;
+           flex:0 0 auto; white-space:nowrap; }
+  .sg-st-公開 { background:#e6f4ea; color:#137333; }
+  .sg-st-下書き { background:#f1f3f4; color:#5f6368; }
+  .sg-ttl { font-weight:800; font-size:0.96rem; color:#202124; }
+  .sg-note { font-size:0.8rem; color:#5f6368; margin-top:5px; line-height:1.6; }
+
+  /* 署名の進み具合。★まず目に入るところに置く。 */
+  .sg-prog { margin-top:10px; }
+  .sg-prog-t { font-size:0.82rem; font-weight:700; color:#3c4043; margin-bottom:5px; }
+  .sg-bar { height:9px; border-radius:999px; background:#e8eaed; overflow:hidden; }
+  .sg-bar-i { height:100%; background:#2e7d32; border-radius:999px; }
+  .sg-bar-full { background:#1b5e20; }
+  .sg-who { font-size:0.76rem; color:#5f6368; margin-top:6px; line-height:1.8; }
+  .sg-yet { color:#c5221f; font-weight:700; }
+  .sg-done-n { color:#137333; font-weight:700; }
+  .sg-round { font-size:0.72rem; color:#a56300; background:#fef7e0;
+              border-radius:6px; padding:2px 8px; flex:0 0 auto; white-space:nowrap; }
+
+  .sg-files { margin-top:10px; border-top:1px dashed #e0e0e0; padding-top:8px; }
+  .sg-file { display:flex; align-items:center; gap:8px; font-size:0.82rem; padding:4px 0; }
+  .sg-file a { color:#1a73e8; text-decoration:none; word-break:break-all;
+               flex:1 1 auto; min-width:0; }
+  .sg-size { color:#9aa0a6; font-size:0.72rem; flex:0 0 auto; white-space:nowrap; }
+  /* ★ボタンの形は、どの行でも同じにする（届出で直したのと同じ考え方）。 */
+  .sg-file-del { flex:0 0 auto; white-space:nowrap; padding:4px 12px; font-size:0.72rem;
+                 min-width:4.2em; text-align:center; }
+
+  .sg-acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .sg-btn { border:1.5px solid #e0e0e0; background:#fff; border-radius:9px; padding:7px 12px;
+            font-size:0.8rem; font-weight:700; cursor:pointer; font-family:inherit; color:#3c4043; }
+  .sg-btn-main { border-color:#2e7d32; background:#e8f5e9; color:#1b5e20; }
+  .sg-btn-del { border-color:#f2b8b5; background:#fce8e6; color:#c5221f; }
+  .sg-form { border:1.5px solid #2e7d32; border-radius:12px; padding:14px;
+             background:#f6fbf6; margin-bottom:18px; }
+  .sg-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  .sg-lb { font-size:0.76rem; font-weight:700; color:#3c4043; display:block; margin-bottom:4px; }
+  .sg-empty { color:#5f6368; font-size:0.88rem; padding:24px 0; text-align:center; line-height:1.8; }
+  .sg-sign-img { max-width:200px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; }
+  /* shogu-signdate-v1: 署名した人の一覧。日付をその場で直せる。 */
+  .sg-sign-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+                 padding:6px 0; border-bottom:1px dashed #e8eaed; }
+  .sg-sign-n { font-size:0.82rem; font-weight:700; color:#202124;
+               flex:0 0 auto; min-width:5.5em; }
+  .sg-sign-d { flex:0 0 auto; width:9.6em; padding:5px 7px; font-size:0.78rem;
+               border:1.5px solid #e0e0e0; border-radius:8px; font-family:inherit; }
+  .sg-sign-x { flex:0 0 auto; white-space:nowrap; padding:4px 11px; font-size:0.72rem; }
+  .sg-sign-a { font-size:0.74rem; color:#1a73e8; text-decoration:none;
+               flex:0 0 auto; white-space:nowrap; }
+  .sg-sign-e { font-size:0.7rem; color:#a56300; background:#fef7e0;
+               border-radius:6px; padding:2px 7px; flex:0 0 auto; white-space:nowrap; }
+  .sg-sign-h { font-size:0.74rem; color:#5f6368; line-height:1.7; margin:8px 0 2px; }
+  /* shogu-paper-v4: まだの人は押せる。押すと、その人の記録を入れる窓が開く。 */
+  .sg-yet-b { border:1.5px solid #f2b8b5; background:#fce8e6; color:#c5221f; border-radius:8px;
+              padding:4px 11px; font-size:0.78rem; font-weight:700; cursor:pointer;
+              font-family:inherit; margin:0 5px 5px 0; }
+  .sg-yet-b:active { background:#f9d8d5; }
+  /* 署名の画像が無い記録。★出さないと、後で「なぜこの人だけ署名が無いのか」が分からない。 */
+  .sg-paper { font-size:0.7rem; color:#5f6368; background:#f1f3f4; border-radius:6px;
+              padding:2px 8px; flex:0 0 auto; white-space:nowrap; }
+  .sg-mask { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+             z-index:3000; align-items:center; justify-content:center; padding:14px; }
+  .sg-box { background:#fff; border-radius:16px; width:100%; max-width:460px;
+            padding:18px; max-height:92vh; overflow-y:auto; }
+  .sg-box-t { font-size:1rem; font-weight:800; color:#202124; margin:0 0 4px; }
+  .sg-box-s { font-size:0.78rem; color:#5f6368; line-height:1.7; margin:0 0 12px; }
+  /* drop-files-v1: ファイルを落とせる枠。フォームのいちばん上に置いて、
+     「ここが入口です」と一目で分かるようにする。 */
+  .sg-drop { border:2px dashed #9aa0a6; border-radius:12px; padding:20px 14px; text-align:center;
+             color:#5f6368; font-size:0.84rem; line-height:1.7; cursor:pointer; background:#fff; }
+  .sg-drop:hover { border-color:#2e7d32; color:#1b5e20; }
+  .sg-drop-on { border-color:#2e7d32; background:#e8f5e9; color:#1b5e20; }
+  .sg-pick { display:flex; align-items:center; gap:8px; font-size:0.82rem; padding:6px 0;
+             border-bottom:1px dashed #e0e0e0; }
+  .sg-pick-n { flex:1 1 auto; min-width:0; word-break:break-all; }
+  .sg-pick-s { flex:0 0 auto; color:#9aa0a6; font-size:0.72rem; white-space:nowrap; }
+  .sg-pick-x { flex:0 0 auto; white-space:nowrap; padding:3px 10px; font-size:0.72rem; min-width:4.2em; }
+  /* 書類カードの上に落とせる。落とす先が光る。 */
+  .sg-card-on { outline:3px solid #2e7d32; outline-offset:2px; background:#f6fbf6; }
+  @media (max-width: 560px) { .sg-row { grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="font-size:1.1rem;font-weight:800;color:#202124;margin:0 0 4px;">処遇改善加算の書類</h2>
+<p style="font-size:0.8rem;color:#5f6368;line-height:1.7;margin:0 0 14px;">
+  計画書と実績報告書を保管し、職員に周知します。<b>公開</b>にすると、職員のTOPページに出て、
+  その場で手書きの署名をもらえます。誰がまだ確認していないかが、ここで分かります。
+</p>
+
+<div id="sgAdminOnly" style="display:none;">
+  <button type="button" class="sg-btn sg-btn-main" onclick="sgOpenForm()" style="margin-bottom:12px;">
+    ＋ 書類を取り込む
+  </button>
+
+  <div class="sg-form" id="sgForm" style="display:none;">
+    <input type="hidden" id="sgId">
+    {# drop-files-v1: ★ファイルが先。使う人は「書類を取り込む＝ファイルを選ぶ」と読む。 #}
+    <div style="margin-bottom:12px;">
+      <label class="sg-lb">書類（PDF・Word・Excel・画像）</label>
+      <div class="sg-drop" id="sgDrop" onclick="sgPickNew()">
+        <span class="material-symbols-outlined" style="font-size:30px;">upload_file</span>
+        <div>ここにファイルをドロップ<br>または押して選ぶ（<b>まとめて選べます</b>）</div>
+      </div>
+      <div id="sgPicked"></div>
+    </div>
+    <div class="sg-row">
+      <div>
+        <label class="sg-lb">年度 <span style="color:#c5221f;">必須</span></label>
+        <select id="sgYear" class="form-control"></select>
+      </div>
+      <div>
+        <label class="sg-lb">種類</label>
+        <select id="sgType" class="form-control">
+          {% for t in sg_doc_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">題（空なら「年度＋種類」になります）</label>
+      <input type="text" id="sgTitle" class="form-control" placeholder="例：令和8年度 介護職員等処遇改善計画書">
+    </div>
+    <div class="sg-row">
+      <div>
+        <label class="sg-lb">状態</label>
+        <select id="sgStatus" class="form-control">
+          {% for s in sg_status %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="sg-lb">署名</label>
+        <select id="sgNeed" class="form-control">
+          <option value="1">職員の署名をもらう</option>
+          <option value="0">見せるだけ（署名は不要）</option>
+        </select>
+      </div>
+    </div>
+    {# shogu-notified-v3: 過去のぶんを遡って記録するための欄。
+       ★空にしておけば、署名したその日が入る（いままでどおり）。 #}
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">周知した日（過去のぶんを遡って記録するとき）</label>
+      <input type="date" id="sgNotified" class="form-control">
+      <p style="font-size:0.72rem;color:#5f6368;line-height:1.7;margin:5px 0 0;">
+        ここに日を入れると、この書類への署名は<b>すべてその日</b>として記録されます。<br>
+        <b>空のままなら、職員が署名したその日</b>が入ります。ふだんは空のままで。
+      </p>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">おぼえ書き</label>
+      <textarea id="sgNote" class="form-control" rows="2"
+                placeholder="例：賃金規程の改定もあわせて周知"></textarea>
+    </div>
+    <div class="sg-acts">
+      <button type="button" class="sg-btn sg-btn-main" id="sgSaveBtn" onclick="sgSave()">保存する</button>
+      <button type="button" class="sg-btn" onclick="sgCloseForm()">やめる</button>
+    </div>
+    <p style="font-size:0.74rem;color:#5f6368;margin:10px 0 0;line-height:1.7;">
+      ★<b>下書き</b>のあいだは職員に見えません。書類を付けてから<b>公開</b>にしてください。
+    </p>
+  </div>
+</div>
+
+<input type="file" id="sgFile" multiple style="display:none;"
+       accept=".pdf,.docx,.doc,.xlsx,.xls,.jpg,.jpeg,.png">
+
+<div id="sgBody"><div class="sg-empty">読み込み中…</div></div>
+
+{# shogu-paper-v4: 紙でもらった確認を記録する窓 #}
+<div class="sg-mask" id="sgPaperMask">
+  <div class="sg-box">
+    <p class="sg-box-t">確認したことを記録する</p>
+    <p class="sg-box-s" id="sgPaperS">
+      紙でもらった署名があれば、その写真や画像も一緒に入れられます。
+    </p>
+    <input type="hidden" id="sgPaperDoc">
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">お名前 <span style="color:#c5221f;">必須</span></label>
+      <input type="text" id="sgPaperName" class="form-control" list="sgStaffList"
+             placeholder="退職した方も入れられます">
+      <datalist id="sgStaffList"></datalist>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">確認した日</label>
+      <input type="date" id="sgPaperDate" class="form-control">
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">署名の画像（任意・写真でも可）</label>
+      <input type="file" id="sgPaperFile" class="form-control"
+             accept=".png,.jpg,.jpeg,.pdf">
+      <p style="font-size:0.72rem;color:#5f6368;line-height:1.7;margin:5px 0 0;">
+        紙の署名を撮った写真やスキャンを入れておくと、<b>本人の手書きがそのまま残ります</b>。<br>
+        無くても記録はできます（そのときは「紙で確認（画像なし）」と出ます）。
+      </p>
+    </div>
+    <div class="sg-acts">
+      <button type="button" class="sg-btn sg-btn-main" id="sgPaperOk" onclick="sgPaperSave()">記録する</button>
+      <button type="button" class="sg-btn" onclick="sgPaperClose()">やめる</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+{# shogu-view-v1: 要点の見せかたは1か所（static/shogu_view.js）にまとめてある。
+   職員の画面（shogu_my.html）も同じものを読む。 #}
+<script src="/static/shogu_view.js?v=2"></script>
+<script>
+var SG = { docs: [], staff: [], staffLeft: [], isAdmin: false, yearNow: {{ sg_year_now }},
+           upDoc: null,
+           picked: [] };   /* drop-files-v1: 取り込む前に選んだファイル */
+
+function sgEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+/* 年度の見出し。令和元年度だけ「1年度」にならないようにする。 */
+function sgWareki(y){
+  var r = y - 2018;
+  if (r < 1) return y + '年度';
+  return y + '年度（令和' + (r === 1 ? '元' : r) + '年度）';
+}
+
+function sgSize(n){
+  n = Number(n || 0);
+  if (n < 1024) return n + 'B';
+  if (n < 1024 * 1024) return Math.round(n / 1024) + 'KB';
+  return (n / 1024 / 1024).toFixed(1) + 'MB';
+}
+
+/* shogu-signdate-v1: 入力欄に入れる YYYY-MM-DD。
+   ★sgDate は見せる用（2026/9/18）。入力欄はこの形でないと受け取らない。 */
+function sgDay(s){
+  if (!s) return '';
+  var d = (s instanceof Date) ? s : new Date(s);
+  if (isNaN(d.getTime())) return String(s).slice(0, 10);
+  var z = function(n){ return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+}
+
+/* 署名の日付を、実際に確認した日に直す。 */
+async function sgSignDate(sid){
+  var el = document.getElementById('sgd-' + sid);
+  if (!el || !el.value) { alert('日付を入れてください。'); return; }
+  try {
+    var r = await fetch('/api/shogu/sign/' + encodeURIComponent(sid) + '/date', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: el.value }) });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('直せませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+function sgDate(s){
+  if (!s) return '';
+  var d = new Date(s);
+  if (isNaN(d.getTime())) return String(s).slice(0, 10);
+  return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+async function sgLoad(){
+  try {
+    var r = await fetch('/api/shogu/list', { credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') throw new Error(j.message || '読めませんでした');
+    SG.docs = j.docs || [];
+    SG.staff = j.staff || [];
+    SG.staffLeft = j.staff_left || [];   /* shogu-paper-v4: 退職した人 */
+    SG.isAdmin = !!j.is_admin;
+    document.getElementById('sgAdminOnly').style.display = SG.isAdmin ? 'block' : 'none';
+    sgFillYears();
+    sgRender();
+  } catch (e) {
+    document.getElementById('sgBody').innerHTML =
+      '<div class="sg-empty">読み込めませんでした：' + sgEsc(e.message || e) + '</div>';
+  }
+}
+
+/* 年度の選べる幅。いまの年度を軸に、前後を出す。
+   ★すでにある書類の年度も混ぜる（古いものを直せなくならないように）。 */
+function sgFillYears(){
+  var sel = document.getElementById('sgYear');
+  if (!sel) return;
+  var ys = {};
+  for (var i = -3; i <= 1; i++) ys[SG.yearNow + i] = true;
+  SG.docs.forEach(function(d){ if (d.fiscal_year) ys[d.fiscal_year] = true; });
+  var list = Object.keys(ys).map(Number).sort(function(a, b){ return b - a; });
+  sel.innerHTML = list.map(function(y){
+    return '<option value="' + y + '"' + (y === SG.yearNow ? ' selected' : '') + '>'
+      + sgEsc(sgWareki(y)) + '</option>';
+  }).join('');
+}
+
+function sgRender(){
+  var box = document.getElementById('sgBody');
+  if (!SG.docs.length) {
+    box.innerHTML = '<div class="sg-empty">まだ書類がありません。<br>'
+      + (SG.isAdmin ? '上の「＋ 書類を取り込む」から、計画書や実績報告書を入れてください。<br>'
+                    + 'ファイルは<b>まとめて</b>選べます。'
+                  : '管理者が用意すると、ここに出ます。') + '</div>';
+    return;
+  }
+  /* 年度ごとにまとめる。並べ替えはサーバ側で済んでいるので、ここでは順に見るだけ。 */
+  var h = '';
+  var cur = null;
+  SG.docs.forEach(function(d){
+    if (d.fiscal_year !== cur) {
+      cur = d.fiscal_year;
+      h += '<div class="sg-year">' + sgEsc(sgWareki(cur)) + '</div>';
+    }
+    h += sgCard(d);
+  });
+  box.innerHTML = h;
+}
+
+function sgCard(d){
+  var done = (d.signed || []).length;
+  var yet = (d.pending || []).length;
+  var all = done + yet;
+  var pct = all ? Math.round(done * 100 / all) : 0;
+  /* drop-files-v1: カードの上に直接落とせる。「この書類に付ける」がいちばん短い動きになる。 */
+  var h = '<div class="sg-card" data-doc="' + sgEsc(d.id) + '"'
+    + ' ondragover="sgCardOver(event,this)" ondragleave="sgCardOut(this)"'
+    + ' ondrop="sgCardDrop(event,this)">'
+    + '<div class="sg-head">'
+    + '<span class="sg-type">' + sgEsc(d.doc_type) + '</span>'
+    + '<span class="sg-st sg-st-' + sgEsc(d.status) + '">' + sgEsc(d.status) + '</span>'
+    + (d.sign_round > 1 ? '<span class="sg-round">' + d.sign_round + '回目の周知</span>' : '')
+    /* shogu-notified-v3: 遡って記録している書類は、それが分かるようにしておく。 */
+    + (d.notified_on
+        ? '<span class="sg-round">' + sgEsc(sgDate(d.notified_on)) + ' の周知として記録</span>' : '')
+    + '</div>'
+    + '<div class="sg-ttl" style="margin-top:6px;">' + sgEsc(d.title || '') + '</div>';
+  if (d.note) h += '<div class="sg-note">' + sgEsc(d.note) + '</div>';
+
+  /* 署名の進み具合。★署名が要らない書類には出さない（意味のない0/12を見せない）。 */
+  if (d.need_sign) {
+    h += '<div class="sg-prog">'
+      + '<div class="sg-prog-t">確認した人 <span class="sg-done-n">' + done + '</span> / ' + all + '人</div>'
+      + '<div class="sg-bar"><div class="sg-bar-i' + (all && done >= all ? ' sg-bar-full' : '')
+      + '" style="width:' + pct + '%;"></div></div>';
+    if (d.status !== '公開') {
+      h += '<div class="sg-who">下書きのあいだは、職員に見えません。</div>';
+    } else if (yet) {
+      /* shepherd: shogu-paper-v4
+         名前を押すと、その人の「紙で確認した」記録を入れられる。
+         ★名前は文字で渡さない。「'」を含む名前でJSが壊れる。順番の数で渡す。 */
+      h += '<div class="sg-who"><span class="sg-yet">まだの人</span>：'
+        + (d.pending || []).map(function(n, i){
+            return '<button type="button" class="sg-yet-b" onclick="sgPaperOpen(\''
+              + sgEsc(d.id) + '\',' + i + ')">' + sgEsc(n) + '</button>';
+          }).join('')
+        + '</div>';
+    } else if (all) {
+      h += '<div class="sg-who">全員が確認しました。</div>';
+    } else {
+      h += '<div class="sg-who">在籍している職員がいません。</div>';
+    }
+    /* shogu-paper-v4: 退職した人は「まだの人」に出ない（在籍者だけ数えるため）。
+       その人のぶんを足す入口を、いつでも押せるところに置く。 */
+    if (SG.isAdmin && d.status === '公開') {
+      h += '<div class="sg-who"><button type="button" class="sg-btn sg-sign-x"'
+        + ' onclick="sgPaperOpen(\'' + sgEsc(d.id) + '\',-1)">'
+        + '＋ 紙で確認したぶんを記録する（退職した人も）</button></div>';
+    }
+    if (done && SG.isAdmin) {
+      /* shogu-signdate-v1: 過去のぶんを今まとめて署名してもらうことがある。
+         そのとき日付は今日になるので、実際に確認した日に直せるようにする。
+         ★直すと、元の日時と直した人が記録に残る。 */
+      h += '<div class="sg-sign-h">'
+        + (d.notified_on
+            ? 'この書類は <b>' + sgEsc(sgDate(d.notified_on)) + '</b> の周知として記録しています。'
+            : '確認した日は、必要なら直せます。')
+        + '</div>';
+      (d.signed || []).forEach(function(s){
+        h += '<div class="sg-sign-row">'
+          + '<span class="sg-sign-n">' + sgEsc(s.staff_name) + '</span>'
+          + '<input type="date" class="sg-sign-d" id="sgd-' + sgEsc(s.id) + '"'
+          + ' value="' + sgEsc(sgDay(s.signed_at)) + '" max="' + sgEsc(sgDay(new Date())) + '">'
+          + '<button type="button" class="sg-btn sg-sign-x" onclick="sgSignDate(\'' + sgEsc(s.id) + '\')">直す</button>'
+          + (s.has_image === false
+              ? '<span class="sg-paper">紙で確認（画像なし）</span>'
+              : (s.id ? '<a class="sg-sign-a" href="/api/shogu/sign/' + sgEsc(s.id)
+                        + '" target="_blank">署名を見る</a>' : ''))
+          + '</div>';
+      });
+    }
+    h += '</div>';
+  }
+
+  /* shogu-view-v1: Excelから読み取った要点。読めていなければ何も出ない。 */
+  if (window.shoguViewHtml) h += shoguViewHtml(d.summary);
+
+  /* 付いている書類 */
+  h += '<div class="sg-files">';
+  if (!(d.files || []).length) {
+    h += '<div style="font-size:0.78rem;color:#a56300;">まだ書類が付いていません。</div>';
+  } else {
+    (d.files || []).forEach(function(f){
+      h += '<div class="sg-file">'
+        + '<a href="/api/shogu/file/' + sgEsc(f.id) + '" target="_blank">' + sgEsc(f.file_name) + '</a>'
+        + '<span class="sg-size">' + sgSize(f.file_size) + '</span>'
+        + (SG.isAdmin ? '<button type="button" class="sg-btn sg-btn-del sg-file-del" onclick="sgFileDel(\'' + sgEsc(f.id) + '\')">消す</button>' : '')
+        + '</div>';
+    });
+  }
+  h += '</div>';
+
+  if (SG.isAdmin) {
+    h += '<div class="sg-acts">'
+      + '<button type="button" class="sg-btn sg-btn-main" onclick="sgPick(\'' + sgEsc(d.id) + '\')">書類を付ける</button>'
+      + '<button type="button" class="sg-btn" onclick="sgReparse(\'' + sgEsc(d.id) + '\')">Excelを読み直す</button>'
+      + '<button type="button" class="sg-btn" onclick="sgEdit(\'' + sgEsc(d.id) + '\')">直す</button>'
+      + (d.status === '公開'
+          ? '<button type="button" class="sg-btn" onclick="sgStatus(\'' + sgEsc(d.id) + '\',\'下書き\')">下書きに戻す</button>'
+          : '<button type="button" class="sg-btn sg-btn-main" onclick="sgStatus(\'' + sgEsc(d.id) + '\',\'公開\')">公開する</button>')
+      + (d.need_sign && d.status === '公開'
+          ? '<button type="button" class="sg-btn" onclick="sgRound(\'' + sgEsc(d.id) + '\')">もう一度署名をもらう</button>' : '')
+      + '<button type="button" class="sg-btn sg-btn-del" onclick="sgDel(\'' + sgEsc(d.id) + '\')">消す</button>'
+      + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+/* ───────── 紙でもらった確認を記録する（shogu-paper-v4） ───────── */
+
+/* idx は「まだの人」の順番。-1 なら空で開く（退職した人などを入れるとき）。
+   ★名前を文字で渡さない。「'」を含む名前でJSが壊れる。 */
+function sgPaperOpen(docId, idx){
+  var d = SG.docs.filter(function(x){ return x.id === docId; })[0];
+  if (!d) return;
+  document.getElementById('sgPaperDoc').value = docId;
+  document.getElementById('sgPaperName').value =
+    (idx >= 0 && (d.pending || [])[idx]) ? d.pending[idx] : '';
+  /* 日は、その書類の周知日。無ければ今日。 */
+  document.getElementById('sgPaperDate').value =
+    (d.notified_on || '').slice(0, 10) || sgDay(new Date());
+  document.getElementById('sgPaperDate').max = sgDay(new Date());
+  document.getElementById('sgPaperFile').value = '';
+  document.getElementById('sgPaperS').textContent =
+    d.title ? (d.title + ' について、確認したことを記録します。') : '確認したことを記録します。';
+  /* 名前の候補。★在籍している人と、名簿に残っている退職者の両方。 */
+  var list = document.getElementById('sgStaffList');
+  list.innerHTML = (SG.staff || []).concat(SG.staffLeft || [])
+    .map(function(n){ return '<option value="' + sgEsc(n) + '">'; }).join('');
+  document.getElementById('sgPaperMask').style.display = 'flex';
+}
+
+function sgPaperClose(){
+  document.getElementById('sgPaperMask').style.display = 'none';
+}
+
+async function sgPaperSave(){
+  var name = (document.getElementById('sgPaperName').value || '').trim();
+  var did = document.getElementById('sgPaperDoc').value;
+  if (!name) { alert('お名前を入れてください。'); return; }
+  var btn = document.getElementById('sgPaperOk');
+  var back = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '記録しています…';
+  try {
+    var fd = new FormData();
+    fd.append('doc_id', did);
+    fd.append('staff_name', name);
+    fd.append('date', document.getElementById('sgPaperDate').value || '');
+    var f = document.getElementById('sgPaperFile').files[0];
+    if (f) fd.append('file', f);
+    var r = await fetch('/api/shogu/sign/manual',
+                        { method: 'POST', credentials: 'include', body: fd });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('記録できませんでした：' + (j.message || '')); return; }
+    sgPaperClose();
+    await sgLoad();
+  } catch (e) {
+    alert('通信できませんでした：' + e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = back;
+  }
+}
+
+/* 窓の外を押したら閉じる（中は拾わない） */
+document.getElementById('sgPaperMask').addEventListener('click', function(e){
+  if (e.target === this) sgPaperClose();
+});
+
+function sgOpenForm(){
+  document.getElementById('sgId').value = '';
+  document.getElementById('sgTitle').value = '';
+  document.getElementById('sgNote').value = '';
+  document.getElementById('sgNotified').value = '';   /* shogu-notified-v3 */
+  document.getElementById('sgStatus').value = '下書き';
+  document.getElementById('sgNeed').value = '1';
+  SG.picked = [];                      /* drop-files-v1: 前に選んだものを持ち越さない */
+  sgRenderPicked();
+  var f = document.getElementById('sgForm');
+  f.style.display = 'block';
+  sgScrollTo(f);
+}
+
+/* ★scrollIntoView は古い端末に無いことがある。
+   そこで止まると、以降の処理がまるごと動かなくなる。 */
+function sgScrollTo(el){
+  try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+}
+function sgCloseForm(){
+  document.getElementById('sgForm').style.display = 'none';
+  SG.picked = [];
+  sgRenderPicked();
+}
+
+/* ───────── ファイルを選ぶ・落とす（drop-files-v1） ───────── */
+
+function sgPickNew(){
+  SG.upDoc = null;                     /* 新しく取り込むぶん */
+  var i = document.getElementById('sgFile');
+  i.value = '';
+  i.click();
+}
+
+function sgAddPicked(files){
+  if (!files || !files.length) return;
+  for (var i = 0; i < files.length; i++) SG.picked.push(files[i]);
+  sgRenderPicked();
+}
+
+function sgDropPicked(i){
+  SG.picked.splice(i, 1);
+  sgRenderPicked();
+}
+
+function sgRenderPicked(){
+  var box = document.getElementById('sgPicked');
+  if (!box) return;
+  if (!SG.picked.length) { box.innerHTML = ''; return; }
+  var h = '<div style="font-size:0.76rem;font-weight:700;color:#1b5e20;margin:10px 0 2px;">'
+        + '選んだ書類 ' + SG.picked.length + '枚</div>';
+  SG.picked.forEach(function(f, i){
+    h += '<div class="sg-pick"><span class="sg-pick-n">' + sgEsc(f.name) + '</span>'
+      + '<span class="sg-pick-s">' + sgSize(f.size) + '</span>'
+      + '<button type="button" class="sg-btn sg-pick-x" onclick="sgDropPicked(' + i + ')">外す</button>'
+      + '</div>';
+  });
+  box.innerHTML = h;
+}
+
+/* 1枚ずつ順に送る。★まとめて投げない。どれが入らなかったかを言えなくなる。 */
+async function sgSendFiles(docId, files, say){
+  var ok = 0, ng = [];
+  for (var i = 0; i < files.length; i++) {
+    if (say) say(i + 1, files.length);
+    var fd = new FormData();
+    fd.append('file', files[i]);
+    fd.append('doc_id', docId);
+    try {
+      var r = await fetch('/api/shogu/file', { method: 'POST', credentials: 'include', body: fd });
+      var j = await r.json();
+      if (j.status === 'success') ok++;
+      else ng.push(files[i].name + '（' + (j.message || '') + '）');
+    } catch (e) {
+      ng.push(files[i].name + '（通信できませんでした）');
+    }
+  }
+  return { ok: ok, ng: ng };
+}
+
+/* できている書類へ、そのまま付ける */
+async function sgSendTo(docId, files){
+  if (!docId || !files.length) return;
+  var res = await sgSendFiles(docId, files);
+  if (res.ng.length) alert('入らなかった書類があります：\n' + res.ng.join('\n'));
+  await sgLoad();
+}
+
+function sgCardOver(e, el){
+  if (!SG.isAdmin) return;
+  e.preventDefault();
+  el.classList.add('sg-card-on');
+}
+function sgCardOut(el){ el.classList.remove('sg-card-on'); }
+async function sgCardDrop(e, el){
+  if (!SG.isAdmin) return;
+  e.preventDefault();
+  el.classList.remove('sg-card-on');
+  var fs = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
+  if (!fs.length) return;
+  await sgSendTo(el.getAttribute('data-doc'), fs);
+}
+
+(function sgBindDrop(){
+  var z = document.getElementById('sgDrop');
+  if (!z) return;
+  ['dragenter', 'dragover'].forEach(function(ev){
+    z.addEventListener(ev, function(e){ e.preventDefault(); z.classList.add('sg-drop-on'); });
+  });
+  ['dragleave', 'dragend'].forEach(function(ev){
+    z.addEventListener(ev, function(){ z.classList.remove('sg-drop-on'); });
+  });
+  z.addEventListener('drop', function(e){
+    e.preventDefault();
+    z.classList.remove('sg-drop-on');
+    sgAddPicked(Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []));
+  });
+  /* ★枠の外に落とすと、ブラウザがそのファイルを開いて画面ごと飛ぶ。書きかけが消える。 */
+  ['dragover', 'drop'].forEach(function(ev){
+    window.addEventListener(ev, function(e){
+      var t = e.target;
+      if (!(t && t.closest && t.closest('.sg-drop, .sg-card'))) e.preventDefault();
+    });
+  });
+})();
+
+function sgEdit(id){
+  var d = SG.docs.filter(function(x){ return x.id === id; })[0];
+  if (!d) return;
+  document.getElementById('sgId').value = d.id;
+  document.getElementById('sgYear').value = String(d.fiscal_year);
+  document.getElementById('sgType').value = d.doc_type;
+  document.getElementById('sgTitle').value = d.title || '';
+  document.getElementById('sgStatus').value = d.status;
+  document.getElementById('sgNeed').value = d.need_sign ? '1' : '0';
+  document.getElementById('sgNote').value = d.note || '';
+  document.getElementById('sgNotified').value = (d.notified_on || '').slice(0, 10);  /* shogu-notified-v3 */
+  SG.picked = [];                      /* drop-files-v1 */
+  sgRenderPicked();
+  document.getElementById('sgForm').style.display = 'block';
+  sgScrollTo(document.getElementById('sgForm'));
+}
+
+async function sgSave(){
+  var body = {
+    id: document.getElementById('sgId').value || null,
+    fiscal_year: Number(document.getElementById('sgYear').value),
+    doc_type: document.getElementById('sgType').value,
+    title: document.getElementById('sgTitle').value,
+    status: document.getElementById('sgStatus').value,
+    need_sign: document.getElementById('sgNeed').value === '1',
+    notified_on: document.getElementById('sgNotified').value || '',   /* shogu-notified-v3 */
+    note: document.getElementById('sgNote').value
+  };
+  var btn = document.getElementById('sgSaveBtn');
+  var back = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '保存しています…'; }
+  try {
+    var r = await fetch('/api/shogu/doc', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('保存できませんでした：' + (j.message || '')); return; }
+    /* drop-files-v1: 選んだ書類を、そのまま続けて入れる。
+       ★ここで止めると「カードはできたのに書類が無い」状態が残る。 */
+    if (SG.picked.length) {
+      var res = await sgSendFiles(j.id, SG.picked, function(i, n){
+        if (btn) btn.textContent = '書類を入れています… ' + i + '/' + n;
+      });
+      if (res.ng.length) alert('入らなかった書類があります：\n' + res.ng.join('\n'));
+    }
+    sgCloseForm();
+    await sgLoad();
+  } catch (e) {
+    alert('通信できませんでした：' + e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = back || '保存する'; }
+  }
+}
+
+async function sgStatus(id, st){
+  var d = SG.docs.filter(function(x){ return x.id === id; })[0];
+  if (!d) return;
+  if (st === '公開' && !(d.files || []).length
+      && !confirm('書類がまだ付いていません。このまま公開しますか？')) return;
+  try {
+    var r = await fetch('/api/shogu/doc', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, status: st }) });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('変えられませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+async function sgRound(id){
+  if (!confirm('書類を差し替えたときに使います。\n\nいまの署名はそのまま残り、'
+             + '職員にもう一度「確認してください」と出ます。\n\nよろしいですか？')) return;
+  try {
+    var r = await fetch('/api/shogu/doc/' + encodeURIComponent(id) + '/round',
+                        { method: 'POST', credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('できませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+async function sgDel(id){
+  var d = SG.docs.filter(function(x){ return x.id === id; })[0];
+  var n = d ? (d.signed || []).length : 0;
+  if (!confirm('この書類と、付いている書類・署名をすべて消します。'
+             + (n ? '\n\n★' + n + '人ぶんの署名も消えます。' : '') + '\n\n戻せません。よろしいですか？')) return;
+  try {
+    var r = await fetch('/api/shogu/doc/' + encodeURIComponent(id),
+                        { method: 'DELETE', credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('消せませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+/* shogu-view-v1: 付いているExcelを読み直して、要点を作り直す。
+   ★この仕組みを入れる前に取り込んだ書類のために要る。 */
+async function sgReparse(id){
+  try {
+    var r = await fetch('/api/shogu/doc/' + encodeURIComponent(id) + '/reparse',
+                        { method: 'POST', credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message || '読み直せませんでした'); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+function sgPick(id){
+  SG.upDoc = id;
+  var i = document.getElementById('sgFile');
+  i.value = '';
+  i.click();
+}
+
+/* drop-files-v1: 選び口は1つ。SG.upDoc があれば【その書類に付ける】、
+   無ければ【これから作る書類のぶん】。2つの入力欄を持つと、必ず片方が古くなる。 */
+document.getElementById('sgFile').addEventListener('change', async function(){
+  var fs = Array.prototype.slice.call(this.files || []);
+  var to = SG.upDoc;
+  SG.upDoc = null;
+  this.value = '';
+  if (!fs.length) return;
+  if (to) await sgSendTo(to, fs);
+  else sgAddPicked(fs);
+});
+
+async function sgFileDel(fid){
+  if (!confirm('この書類を消します。戻せません。よろしいですか？')) return;
+  try {
+    var r = await fetch('/api/shogu/file/' + encodeURIComponent(fid),
+                        { method: 'DELETE', credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('消せませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+sgLoad();
+</script>
+{% endblock %}

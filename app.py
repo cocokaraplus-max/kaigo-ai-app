@@ -3668,6 +3668,8 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/assessment-select", "icon": "assignment",          "label": "評価",           "need": None},
     # tsusho-keikaku-v1: トグルでオンにした事業所だけに出る
     {"href": "/tsusho_keikaku", "icon": "description",            "label": "通所介護計画書", "need": "tsusho"},
+    # shogu-v1: トグルでオンにした事業所だけに出る。職員が書類を見て署名する画面。
+    {"href": "/shogu/my",       "icon": "draw",                   "label": "処遇改善の書類", "need": "shogu"},
     {"href": "/print_output",   "icon": "print",                  "label": "書類出力",       "need": None},
     {"href": "/admin/meetings", "icon": "groups",                 "label": "会議記録",       "need": None, "tier": "pro"},
     {"href": "/tasks",          "icon": "task_alt",               "label": "タスク",         "need": None},
@@ -3985,6 +3987,10 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         can_tsusho = bool(is_tsusho_keikaku_enabled(supabase, f_code))  # tsusho-keikaku-v1
     except Exception:
         can_tsusho = False
+    try:
+        can_shogu = bool(is_shogu_enabled(supabase, f_code))  # shogu-v1
+    except Exception:
+        can_shogu = False
 
     # plan-gating-v1: 施設プランと体験期間を判定（共有ヘルパー）。
     #   体験中(in_trial)は上位機能も表示（開放）し、プランを上回る項目に badge を付ける。
@@ -4006,6 +4012,8 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         if need == "photo" and not can_photo:  # photo-sales-v1: 既定OFF。開発者MENUで許可した施設のみ
             continue
         if need == "tsusho" and not can_tsusho:  # tsusho-keikaku-v1: 既定OFF
+            continue
+        if need == "shogu" and not can_shogu:  # shogu-v1: 既定OFF
             continue
         if need == "dev" and not is_dev:
             continue
@@ -14676,6 +14684,551 @@ def api_get_patient_profile_by_number():
         return jsonify({'data': res.data})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+# ===== unei-v1 : 運営規程を【版】で持つ =====
+#   ★なぜ版で持つのか（次に触る人へ）
+#     令和6年4月の運営規程から日曜営業の記載（第5条・第6条）が抜け、
+#     新旧対照表にも載らず、誰も気づかないまま1年以上たった。
+#     前の版が残っていれば、その場で「第5条も変わっています」と出せた。
+#     だからこの機能の芯は【前の版を消さないこと】と【比べられること】。
+#
+#   ★取り込みに python-docx は使わない。
+#     .docx は中身がzipなので、標準ライブラリだけで段落を取り出せる。
+#     requirements.txt は固定してあり、増やすと入れ替えの手間と危険が増える。
+#     実物2本（令和5年9月版・令和6年4月版）で python-docx と1行も違わないことを
+#     確かめてから、この形にした。
+UNEI_SERVICES = ["地域密着型通所介護", "介護予防通所サービス", "生活支援通所サービス", "その他"]
+UNEI_MAX_BYTES = 10 * 1024 * 1024
+
+_UNEI_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_UNEI_Z2H = str.maketrans("０１２３４５６７８９", "0123456789")
+_UNEI_KAN = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+             "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+#   ★「第N条」のあとに【空白か行末】が来るものだけを見出しとみなす。
+#     これを入れないと、第7条の本文にある「第９条の通常の事業の実施地域を…」という
+#     【引用】を新しい条として拾ってしまう（実物で踏んだ）。
+_UNEI_ART = re.compile(r"^\s*第\s*([0-9０-９一二三四五六七八九十]+)\s*条(?=[\s　]|$)")
+_UNEI_TTL = re.compile(r"^\s*[（(](.+?)[)）]\s*$")
+
+
+def _unei_num(s):  # unei-v1
+    """「１０」「十」「10」などを数にする。"""
+    s = str(s).translate(_UNEI_Z2H)
+    if s.isdigit():
+        return int(s)
+    if s == "十":
+        return 10
+    if len(s) == 2 and s[0] == "十":
+        return 10 + _UNEI_KAN.get(s[1], 0)
+    if len(s) == 2 and s[1] == "十":
+        return _UNEI_KAN.get(s[0], 0) * 10
+    if len(s) == 3 and s[1] == "十":
+        return _UNEI_KAN.get(s[0], 0) * 10 + _UNEI_KAN.get(s[2], 0)
+    return _UNEI_KAN.get(s, 0)
+
+
+def _unei_docx_lines(raw):  # unei-v1
+    """.docx から段落の文字だけを取り出す（標準ライブラリだけ）。"""
+    import io
+    import zipfile
+    from xml.etree import ElementTree as ET
+    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+        root = ET.fromstring(z.read("word/document.xml"))
+    out = []
+    for p in root.iter(_UNEI_W + "p"):
+        buf = []
+        for n in p.iter():
+            if n.tag == _UNEI_W + "t" and n.text:
+                buf.append(n.text)
+            elif n.tag == _UNEI_W + "tab":
+                buf.append("\t")
+            elif n.tag == _UNEI_W + "br":
+                buf.append("\n")
+        t = "".join(buf).rstrip()
+        if t.strip():
+            out.extend([x for x in t.split("\n") if x.strip()])
+    return out
+
+
+def _unei_parse(lines):  # unei-v1
+    """段落の並びを、表題と条文に切り分ける。
+
+    戻り: (head, articles)
+      head     … 表題（「地域密着型通所介護」「… 運営規程」など）
+      articles … [{"no": "第5条", "n": 5, "title": "営業日及び営業時間", "body": [...]}]
+    ★条の番号が【増えるときだけ】新しい条とみなす。戻る番号は本文中の引用。
+    """
+    arts, cur, pending, head, last = [], None, None, [], 0
+    for p in lines:
+        if p.strip().startswith("附則"):
+            if cur:
+                arts.append(cur)
+            cur = {"no": "附則", "n": 999, "title": "附則", "body": []}
+            continue
+        m = _UNEI_ART.match(p)
+        n = _unei_num(m.group(1)) if m else 0
+        if m and n > last:
+            if cur:
+                arts.append(cur)
+            cur = {"no": "第%d条" % n, "n": n, "title": pending or "", "body": []}
+            rest = p[m.end():].strip()
+            if rest:
+                cur["body"].append(rest)
+            pending = None
+            last = n
+            continue
+        t = _UNEI_TTL.match(p)
+        if t and len(p) < 40:
+            pending = t.group(1).strip()
+            continue
+        (cur["body"] if cur else head).append(p)
+    if cur:
+        arts.append(cur)
+    return head, arts
+
+
+def _unei_norm(body):  # unei-v1
+    """比べるための形にそろえる。空白のちがいは差とみなさない。"""
+    return re.sub(r"[\s　]+", "", "\n".join(body or []))
+
+
+_UNEI_NUMCH = "0123456789\uff10\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19"  # unei-diff-red-v1
+
+
+def _unei_compact(s):  # unei-diff-red-v1
+    """空白を抜いた文字列と、その1文字ずつが元の何文字目だったかを返す。
+
+    ★Wordの空白は版によってゆれる。そのまま比べると、
+      中身が同じところまで赤くなってしまう。
+    """
+    idx = []
+    buf = []
+    for i, ch in enumerate(s):
+        if ch.isspace():          # 全角の空白も isspace() で True
+            continue
+        idx.append(i)
+        buf.append(ch)
+    return "".join(buf), idx
+
+
+def _unei_grow_num(mark, s):  # unei-diff-red-v1
+    """数字は塊で赤くする。
+
+    １５０ → ２００ は、文字で比べると「１５」と「２０」しか違わない。
+    でも人が見たいのは「１５０が２００になった」。
+    """
+    n = len(s)
+    for i in range(n):
+        if not mark[i] or s[i] not in _UNEI_NUMCH:
+            continue
+        j = i - 1
+        while j >= 0 and s[j] in _UNEI_NUMCH:
+            mark[j] = True
+            j -= 1
+        j = i + 1
+        while j < n and s[j] in _UNEI_NUMCH:
+            mark[j] = True
+            j += 1
+    return mark
+
+
+def _unei_smooth(mark, gap=4):  # unei-diff-red-v1
+    """近すぎる印はつなぐ。赤が細切れだと、かえって読みにくい。"""
+    n = len(mark)
+    i = 0
+    while i < n:
+        if not mark[i]:
+            i += 1
+            continue
+        j = i
+        while j < n:
+            while j < n and mark[j]:
+                j += 1
+            k = j
+            while k < n and not mark[k]:
+                k += 1
+            if k < n and (k - j) <= gap:
+                for x in range(j, k):
+                    mark[x] = True
+                j = k
+            else:
+                break
+        i = j
+    return mark
+
+
+def _unei_join_space(mark, s):  # unei-diff-red-v1
+    """印と印のあいだの空白も印にする（赤の帯が切れて見えないように）。
+
+    ★改行はまたがない。行をこえて赤帯が伸びると、かえって分かりにくい。
+    """
+    n = len(s)
+    for i in range(1, n - 1):
+        if mark[i] or not s[i].isspace() or s[i] == "\n":
+            continue
+        if not mark[i - 1]:
+            continue
+        j = i
+        while j < n and s[j].isspace() and s[j] != "\n":
+            j += 1
+        if j < n and mark[j]:
+            for x in range(i, j):
+                mark[x] = True
+    return mark
+
+
+def _unei_wrap(s, mark, cls):  # unei-diff-red-v1
+    """印の付いたところを span で囲んだHTMLにする。
+
+    ★必ずここで escape する。画面は innerHTML で出すので、
+      escape を外に出すと、いつか誰かが忘れる。
+    """
+    from html import escape as _esc
+    out = []
+    i = 0
+    n = len(s)
+    while i < n:
+        j = i
+        while j < n and mark[j] == mark[i]:
+            j += 1
+        piece = _esc(s[i:j])
+        out.append('<span class="%s">%s</span>' % (cls, piece) if mark[i] else piece)
+        i = j
+    return "".join(out)
+
+
+def _unei_marks(old_s, new_s):  # unei-diff-red-v1
+    """2つの文を比べて、変わったところに印を付けたHTMLを返す。→ (旧, 新)"""
+    import difflib
+    oc, oi = _unei_compact(old_s)
+    nc, ni = _unei_compact(new_s)
+    ocm = [False] * len(oc)
+    ncm = [False] * len(nc)
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
+            None, oc, nc, autojunk=False).get_opcodes():
+        if tag == "equal":
+            continue
+        for i in range(i1, i2):
+            ocm[i] = True
+        for j in range(j1, j2):
+            ncm[j] = True
+    _unei_grow_num(ocm, oc)
+    _unei_grow_num(ncm, nc)
+    _unei_smooth(ocm)
+    _unei_smooth(ncm)
+    om = [False] * len(old_s)
+    nm = [False] * len(new_s)
+    for k, v in enumerate(ocm):
+        if v:
+            om[oi[k]] = True
+    for k, v in enumerate(ncm):
+        if v:
+            nm[ni[k]] = True
+    _unei_join_space(om, old_s)
+    _unei_join_space(nm, new_s)
+    return _unei_wrap(old_s, om, "un-del"), _unei_wrap(new_s, nm, "un-ins")
+
+
+_UNEI_SIM_MIN = 0.4   # unei-diff-line-v2 : これ未満しか似ていない行どうしは組まない
+
+
+def _unei_line_key(s):  # unei-diff-line-v2
+    """行を見くらべるための形。空白のちがいは差とみなさない。"""
+    return re.sub(r"[\s\u3000]+", "", s or "")
+
+
+def _unei_sim(a, b):  # unei-diff-line-v2
+    """2つの行がどれくらい似ているか（0〜1）。"""
+    import difflib
+    return difflib.SequenceMatcher(None, _unei_line_key(a), _unei_line_key(b)).ratio()
+
+
+def _unei_pair_block(olds, news):  # unei-diff-line-v2
+    """入れ替わった固まりの中で、行どうしを組む。
+
+    ★迷ったら先を見る。旧のこの行に似た行が新の先にいるなら、
+      あいだの新しい行は【増えた行】。無理に組むと、まるごと違う文を
+      文字で比べることになり、赤が細切れになる。
+    """
+    out = []
+    i = j = 0
+    while i < len(olds) and j < len(news):
+        if _unei_sim(olds[i], news[j]) >= _UNEI_SIM_MIN:
+            out.append((olds[i], news[j], False))
+            i += 1
+            j += 1
+            continue
+        fo = next((b for b in range(j + 1, len(news))
+                   if _unei_sim(olds[i], news[b]) >= _UNEI_SIM_MIN), None)
+        fn = next((a for a in range(i + 1, len(olds))
+                   if _unei_sim(olds[a], news[j]) >= _UNEI_SIM_MIN), None)
+        if fo is not None and (fn is None or (fo - j) <= (fn - i)):
+            out.append((None, news[j], False))      # 新のこの行は増えた行
+            j += 1
+        elif fn is not None:
+            out.append((olds[i], None, False))      # 旧のこの行は消えた行
+            i += 1
+        else:
+            out.append((olds[i], None, False))      # どちらにも相手がいない
+            out.append((None, news[j], False))
+            i += 1
+            j += 1
+    while i < len(olds):
+        out.append((olds[i], None, False))
+        i += 1
+    while j < len(news):
+        out.append((None, news[j], False))
+        j += 1
+    return out
+
+
+def _unei_pair(olds, news):  # unei-diff-line-v2
+    """行どうしを対応づける。→ [(旧の行, 新の行, 同じか)] を元の並びで返す。"""
+    import difflib
+    ok = [_unei_line_key(x) for x in olds]
+    nk = [_unei_line_key(x) for x in news]
+    out = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
+            None, ok, nk, autojunk=False).get_opcodes():
+        if tag == "equal":
+            for a, b in zip(range(i1, i2), range(j1, j2)):
+                out.append((olds[a], news[b], True))
+        elif tag == "delete":
+            for a in range(i1, i2):
+                out.append((olds[a], None, False))
+        elif tag == "insert":
+            for b in range(j1, j2):
+                out.append((None, news[b], False))
+        else:
+            out.extend(_unei_pair_block(olds[i1:i2], news[j1:j2]))
+    return out
+
+
+def _unei_body_marks(old_lines, new_lines):  # unei-diff-line-v2
+    """条の本文を比べて、変わったところに印を付けたHTMLを返す。→ (旧, 新)
+
+    ★増えた条・消えた条もここを通る。片方が空のリストなら、
+      もう片方が丸ごと印になる。道を1本にしておくと、直すところも1つで済む。
+    """
+    oh = []
+    nh = []
+    from html import escape as _esc
+    for o, n, same in _unei_pair(list(old_lines or []), list(new_lines or [])):
+        if same:
+            oh.append(_esc(o))
+            nh.append(_esc(n))
+        elif o is not None and n is not None:
+            a, b = _unei_marks(o, n)      # 対になった行の【中】を文字で比べる
+            oh.append(a)
+            nh.append(b)
+        elif o is not None:
+            oh.append(_unei_wrap(o, [True] * len(o), "un-del"))
+        else:
+            nh.append(_unei_wrap(n, [True] * len(n), "un-ins"))
+    return "\n".join(oh), "\n".join(nh)
+
+
+def _unei_diff(old_arts, new_arts):  # unei-v1
+    """2つの版を比べて、変わった条だけ返す。
+
+    ★これがこの機能の芯。令和6年4月のとき、第5条（営業日）と第6条（定員）が
+      変わっているのに新旧対照表へ載らなかった。これがあれば出せた。
+
+    ★old_html / new_html は、変わったところを赤で囲んだもの。
+      行で対応づけてから中を比べる（unei-diff-line-v2）。
+      old / new はそのまま残してある。あとで別の見せ方をするときのため。
+    """
+    o = {a.get("no"): a for a in (old_arts or [])}
+    n = {a.get("no"): a for a in (new_arts or [])}
+    out = []
+    for k, a in n.items():
+        if k not in o:
+            oh, nh = _unei_body_marks([], a.get("body") or [])
+            out.append({"no": k, "title": a.get("title", ""), "kind": "追加",
+                        "old": [], "new": a.get("body", []),
+                        "old_html": oh, "new_html": nh})
+        elif _unei_norm(o[k].get("body")) != _unei_norm(a.get("body")):
+            oh, nh = _unei_body_marks(o[k].get("body") or [], a.get("body") or [])
+            out.append({"no": k, "title": a.get("title", ""), "kind": "変更",
+                        "old": o[k].get("body", []), "new": a.get("body", []),
+                        "old_html": oh, "new_html": nh})
+    for k, a in o.items():
+        if k not in n:
+            oh, nh = _unei_body_marks(a.get("body") or [], [])
+            out.append({"no": k, "title": a.get("title", ""), "kind": "削除",
+                        "old": a.get("body", []), "new": [],
+                        "old_html": oh, "new_html": nh})
+    out.sort(key=lambda x: (999 if x["no"] == "附則" else _unei_num(
+        (x["no"] or "").replace("第", "").replace("条", "") or 0)))
+    return out
+
+
+def _unei_guard():  # unei-v1
+    """管理者だけ。届出と同じ見張りを使う（同じことを2か所に書かない）。"""
+    return _bcp_admin_guard()
+
+
+@app.route("/unei")  # unei-v1
+@login_required
+def unei_page():
+    """運営規程（版で持つ）。"""
+    return render("unei.html", unei_services=UNEI_SERVICES)
+
+
+@app.route("/api/unei/list", methods=["GET"])  # unei-v1
+@login_required
+def api_unei_list():
+    """自事業所の版を、サービスごとに新しい順で返す。
+
+    ★条文そのものは重いので一覧では返さない。開いたときに取りにいく。
+    """
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"status": "error", "message": "未ログイン"}), 401
+    try:
+        r = (supabase.table("unei_versions")
+             .select("id,service_type,label,effective_date,source_name,note,created_at,created_by")
+             .eq("facility_code", f_code)
+             .order("service_type").order("effective_date", desc=True)
+             .order("created_at", desc=True).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "versions": r.data or [],
+                    "is_admin": session.get("admin_authenticated", False)})
+
+
+@app.route("/api/unei/version/<vid>", methods=["GET"])  # unei-v1
+@login_required
+def api_unei_version(vid):
+    """版を1つ、条文ごと返す。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"status": "error", "message": "未ログイン"}), 401
+    try:
+        r = (supabase.table("unei_versions").select("*")
+             .eq("id", (vid or "").strip()).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row:
+        return jsonify({"status": "error", "message": "見つかりません"}), 404
+    return jsonify({"status": "success", "version": row})
+
+
+@app.route("/api/unei/import", methods=["POST"])  # unei-v1
+@login_required
+def api_unei_import():
+    """Wordの運営規程を読み取って、1つの版として入れる。
+
+    multipart/form-data: file(.docx), service_type, effective_date, label, note
+    ★読み取った結果はそのまま保存する。人が見て直すのは次の段。
+      いま大事なのは【前の版を残すこと】。
+    """
+    supabase, f_code, my_name, err = _unei_guard()
+    if err:
+        return err
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"status": "error", "message": "ファイルが選ばれていません"}), 400
+    raw = f.read()
+    if not raw:
+        return jsonify({"status": "error", "message": "空のファイルです"}), 400
+    if len(raw) > UNEI_MAX_BYTES:
+        return jsonify({"status": "error", "message": "ファイルが大きすぎます（10MBまで）"}), 400
+    if not f.filename.lower().endswith(".docx") or raw[:2] != b"PK":
+        return jsonify({"status": "error",
+                        "message": "Word（.docx）を選んでください。古い .doc は Word で保存し直すと読めます"}), 400
+    try:
+        head, arts = _unei_parse(_unei_docx_lines(raw))
+    except Exception as e:
+        return jsonify({"status": "error", "message": "読み取れませんでした: %s" % e}), 400
+    if not arts:
+        return jsonify({"status": "error",
+                        "message": "条文が見つかりませんでした。「第1条」で始まる形になっているか確かめてください"}), 400
+    svc = (request.form.get("service_type") or "").strip()
+    if svc not in UNEI_SERVICES:
+        svc = UNEI_SERVICES[0]
+    eff = (request.form.get("effective_date") or "").strip() or None
+    vid = str(uuid.uuid4())
+    try:
+        supabase.table("unei_versions").insert({
+            "id": vid, "facility_code": f_code, "service_type": svc,
+            "label": (request.form.get("label") or "")[:100] or None,
+            "effective_date": eff, "head": head, "articles": arts,
+            "source_name": f.filename[:200],
+            "note": (request.form.get("note") or "")[:2000] or None,
+            "created_by": my_name,
+        }).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": vid,
+                    "articles": len(arts),
+                    "titles": [a.get("no") + " " + (a.get("title") or "") for a in arts]})
+
+
+@app.route("/api/unei/version/<vid>", methods=["DELETE"])  # unei-v1
+@login_required
+def api_unei_delete(vid):
+    """版を1つ消す。★前の版は消さないのが芯なので、確認は画面側で強めにする。"""
+    supabase, f_code, my_name, err = _unei_guard()
+    if err:
+        return err
+    try:
+        (supabase.table("unei_versions").delete()
+         .eq("id", (vid or "").strip()).eq("facility_code", f_code).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/unei/diff", methods=["GET"])  # unei-v1
+@login_required
+def api_unei_diff():
+    """2つの版を比べて、変わった条だけ返す。?old=<id>&new=<id>"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"status": "error", "message": "未ログイン"}), 401
+    a = (request.args.get("old") or "").strip()
+    b = (request.args.get("new") or "").strip()
+    if not a or not b or a == b:
+        return jsonify({"status": "error", "message": "比べる版を2つ選んでください"}), 400
+    try:
+        r = (supabase.table("unei_versions").select("id,label,effective_date,articles")
+             .in_("id", [a, b]).eq("facility_code", f_code).execute())
+        rows = {x["id"]: x for x in (r.data or [])}
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if a not in rows or b not in rows:
+        return jsonify({"status": "error", "message": "版が見つかりません"}), 404
+    return jsonify({"status": "success",
+                    "old": {"id": a, "label": rows[a].get("label"),
+                            "effective_date": rows[a].get("effective_date")},
+                    "new": {"id": b, "label": rows[b].get("label"),
+                            "effective_date": rows[b].get("effective_date")},
+                    "changes": _unei_diff(rows[a].get("articles"), rows[b].get("articles"))})
+
+
+@app.route("/unei/print/<vid>")  # unei-v1
+@login_required
+def unei_print(vid):
+    """印刷用。ブラウザの印刷からPDFにできる。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return ("unauthorized", 401)
+    try:
+        r = (supabase.table("unei_versions").select("*")
+             .eq("id", (vid or "").strip()).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return ("読み込めませんでした: %s" % e, 500)
+    if not row:
+        return ("not found", 404)
+    return render_template("unei_print.html", v=row)
+
+
 # ===== todokede-v1 : 介護保険課への届出の台帳と保管庫 =====
 #   ★ファイルは【既存のバケット】に todokede/ で置く。新しいバケットを作らない。
 #     BCPが同じ理由で case-photos を使い回している。増やすとRLSの設定も増える。
@@ -17472,12 +18025,1240 @@ def api_dev_toggle_photo_sales():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+# ═══════════════════════════════════════════════════════════════
+# shogu-v1 : 処遇改善加算の書類（保管・周知・署名）
+#
+#   処遇改善加算は、計画書を【全職員に周知する】ことが要件。
+#   令和6年度からは、賃金改善の【実績】の周知も求められる。
+#   紙で回すと「誰が見たか」が残らず、監査で説明できない。
+#   書類と、見た記録と、手書きの署名を、同じ場所に置いておく。
+#
+#   ★署名は sign_round（何回目の周知か）で数える。
+#     書類を差し替えたら round を1つ増やす。前の署名は消さない。
+#     消すと「去年は誰が見たか」が分からなくなる。
+#
+#   ★保管庫は BCP・届出と同じ case-photos を使う。処遇改善は shogu/ の下。
+#     新しいバケットを作るとDEVと本番の両方にRLSの設定が要り、片方を忘れる。
+#
+#   ★事業所ごとのトグル（DEV_SETTING_TOGGLES の shogu_kaizen_enabled）。
+#     既定はOFF。OFFの事業所では、画面も口も開かない。
+# ═══════════════════════════════════════════════════════════════
+
+SHOGU_BUCKET = BCP_BUCKET
+SHOGU_MAX_BYTES = 30 * 1024 * 1024
+#   ★手書きの署名。ふつうは数十KB。大きすぎるものは受け取らない。
+SHOGU_SIGN_MAX_BYTES = 1024 * 1024
+#   shogu-paper-v4: 紙でもらった署名を取り込むぶん。
+#   ★画面で書いたものより大きくてよい。スマホで撮った写真が来るため。
+SHOGU_SIGN_UP_MAX = 8 * 1024 * 1024
+SHOGU_SIGN_UP_EXTS = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "pdf": "application/pdf",
+}
+SHOGU_ENABLED_KEY = "shogu_kaizen_enabled"
+SHOGU_DOC_TYPES = ["計画書", "実績報告書", "その他"]
+SHOGU_STATUS = ["下書き", "公開"]
+#   受け取る種類は届出と同じ。ここで別の一覧を作らない。
+SHOGU_EXTS = TODOKEDE_EXTS
+
+
+def is_shogu_enabled(supabase, f_code):  # shogu-v1
+    """処遇改善加算のモジュールが使えるか。admin_settings の key/value。"""
+    try:
+        r = (supabase.table("admin_settings").select("value")
+             .eq("facility_code", f_code).eq("key", SHOGU_ENABLED_KEY).execute())
+        return bool(r.data and r.data[0].get("value") == "true")
+    except Exception:
+        return False
+
+
+@app.context_processor
+def inject_can_shogu():  # shogu-v1
+    """画面の出し分け用。1リクエスト内では g に覚えて往復を1回にする。"""
+    from flask import g as _g
+    try:
+        f_code = session.get("f_code")
+        if not f_code:
+            return {"can_shogu": False}
+        if not hasattr(_g, "_can_shogu"):
+            _g._can_shogu = is_shogu_enabled(get_supabase(), f_code)
+        return {"can_shogu": bool(_g._can_shogu)}
+    except Exception:
+        return {"can_shogu": False}
+
+
+def _shogu_guard():  # shogu-v1
+    """管理者だけ。書類を置く・公開するのは管理者の仕事。"""
+    supabase, f_code, my_name, err = _bcp_admin_guard()
+    if err:
+        return None, None, None, err
+    if not is_shogu_enabled(supabase, f_code):
+        return None, None, None, (jsonify(
+            {"status": "error", "message": "この事業所では使えません"}), 403)
+    return supabase, f_code, my_name, None
+
+
+def _shogu_me():  # shogu-v1
+    """職員として使う。見るのと署名するのは、職員の仕事。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    my_name = (session.get("my_name") or "").strip()
+    if not f_code or not my_name:
+        return None, None, None, (jsonify(
+            {"status": "error", "message": "未ログイン"}), 401)
+    if not is_shogu_enabled(supabase, f_code):
+        return None, None, None, (jsonify(
+            {"status": "error", "message": "この事業所では使えません"}), 403)
+    return supabase, f_code, my_name, None
+
+
+def _shogu_year_of(t):  # shogu-v1
+    """その時刻が属する年度。★4月はじまり。
+
+    3月に「来年度の計画書」を出すので、ここを1つ間違えると
+    出したばかりの計画書が前の年度に並ぶ。
+    """
+    return t.year - (1 if t.month < 4 else 0)
+
+
+def _shogu_year_now():  # shogu-v1
+    """いまの年度（日本時間で見る）。"""
+    return _shogu_year_of(datetime.now(timezone.utc) + timedelta(hours=9))
+
+
+def _shogu_sign_bytes(s):  # shogu-v1
+    """手書き署名のデータURLを、PNGの中身にする。おかしければ None。
+
+    ★頭の合図だけでなく、中身がPNGかどうかも見る。
+      拡張子や名乗りは、いくらでも詐称できる。
+    """
+    pre = "data:image/png;base64,"
+    if not isinstance(s, str) or not s.startswith(pre):
+        return None
+    try:
+        raw = base64.b64decode(s[len(pre):], validate=True)
+    except Exception:
+        return None
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return None
+    if len(raw) > SHOGU_SIGN_MAX_BYTES:
+        return None
+    return raw
+
+
+def _shogu_year_ok(y):  # shogu-v1
+    """年度として通せる数字か。通せなければ None。"""
+    try:
+        y = int(y)
+    except Exception:
+        return None
+    return y if 2000 <= y <= 2100 else None
+
+
+def _shogu_staff_names(supabase, f_code):  # shogu-v1
+    """署名をもらう相手。★在籍している職員ぜんぶ。
+
+    周知の義務は全職員にかかるので、名簿を別に持たない。
+    職員が増えたら、その人も自動で「まだの人」に並ぶ。
+    """
+    try:
+        r = (supabase.table("staffs").select("staff_name")
+             .eq("facility_code", f_code).eq("is_active", True).execute())
+        names = [(x.get("staff_name") or "").strip() for x in (r.data or [])]
+        return sorted(set(n for n in names if n))
+    except Exception as e:
+        print("[shogu] 職員を読めませんでした: %s" % e, flush=True)
+        return []
+
+
+def _shogu_staff_left(supabase, f_code):  # shogu-paper-v4
+    """名簿に残っている、いま在籍していない人。
+
+    ★退職した人でも、在職中に周知していれば記録が要る。
+      名簿から消えている人は、画面で名前を直接入力してもらう。
+    """
+    try:
+        r = (supabase.table("staffs").select("staff_name,is_active")
+             .eq("facility_code", f_code).execute())
+        names = [(x.get("staff_name") or "").strip() for x in (r.data or [])
+                 if not x.get("is_active")]
+        return sorted(set(n for n in names if n))
+    except Exception as e:
+        print("[shogu] 退職した人を読めませんでした: %s" % e, flush=True)
+        return []
+
+
+def _shogu_title(year, doc_type, title):  # shogu-v1
+    """題が空なら、年度と種類から作る。空のまま並ぶと見分けがつかない。"""
+    t = (title or "").strip()
+    if t:
+        return t[:200]
+    r = int(year) - 2018
+    w = ("令和元" if r == 1 else ("令和%d" % r)) if r >= 1 else str(year)
+    return "%s年度 %s" % (w, doc_type)
+
+
+def _shogu_pack(supabase, f_code, docs, want_signs=True):  # shogu-v1
+    """書類に、添付と署名をくっつける。
+
+    ★SELECTは多くても3回。書類の数だけ撃つと、年を重ねるほど遅くなる。
+    """
+    ids = [d["id"] for d in docs if d.get("id")]
+    files = {}
+    signs = {}
+    if ids:
+        try:
+            fr = (supabase.table("shogu_files")
+                  .select("id,doc_id,file_name,file_size,created_at")
+                  .in_("doc_id", ids).order("created_at").execute())
+            for x in (fr.data or []):
+                files.setdefault(x["doc_id"], []).append(x)
+        except Exception as e:
+            print("[shogu] 添付を読めませんでした: %s" % e, flush=True)
+        if want_signs:
+            try:
+                sr = (supabase.table("shogu_signs")
+                      .select("id,doc_id,sign_round,staff_name,signed_at,"
+                              "date_edited_by,signed_at_original,"
+                              "image_path,recorded_by")   # shogu-signdate-v1 / shogu-paper-v4
+                      .in_("doc_id", ids).order("signed_at").execute())
+                for x in (sr.data or []):
+                    signs.setdefault(x["doc_id"], []).append(x)
+            except Exception as e:
+                print("[shogu] 署名を読めませんでした: %s" % e, flush=True)
+    return files, signs
+
+
+@app.route("/shogu")  # shogu-v1
+@login_required
+def shogu_page():
+    """処遇改善加算の書類（管理者）。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code or not is_shogu_enabled(supabase, f_code):
+        return redirect("/admin")
+    return render("shogu.html",
+                  sg_doc_types=SHOGU_DOC_TYPES,
+                  sg_status=SHOGU_STATUS,
+                  sg_year_now=_shogu_year_now())
+
+
+@app.route("/shogu/my")  # shogu-v1
+@login_required
+def shogu_my_page():
+    """処遇改善の書類を見て署名する（職員）。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code or not is_shogu_enabled(supabase, f_code):
+        return redirect("/top")
+    return render("shogu_my.html")
+
+
+@app.route("/api/shogu/list", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_list():
+    """書類と、添付と、署名の進み具合をまとめて返す（管理者の画面用）。"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    try:
+        r = (supabase.table("shogu_docs").select("*")
+             .eq("facility_code", f_code)
+             .order("fiscal_year", desc=True).order("doc_type")
+             .order("created_at").execute())
+        docs = r.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    files, signs = _shogu_pack(supabase, f_code, docs)
+    staff = _shogu_staff_names(supabase, f_code)
+    out = []
+    for d in docs:
+        rnd = int(d.get("sign_round") or 1)
+        mine = [s for s in signs.get(d["id"], []) if int(s.get("sign_round") or 1) == rnd]
+        done = set((s.get("staff_name") or "").strip() for s in mine)
+        d["files"] = files.get(d["id"], [])
+        #   shogu-paper-v4: 画像が「あるかどうか」だけを渡す。
+        #   ★置き場所（storage_path）は画面に出さない。出す必要が無く、出せば漏れる。
+        for s in mine:
+            s["has_image"] = bool(s.pop("image_path", None))
+        d["signed"] = mine
+        #   ★「まだの人」は、在籍している人のうち署名していない人。
+        #     辞めた人の署名は残すが、まだの人には数えない。
+        d["pending"] = [n for n in staff if n not in done]
+        out.append(d)
+    return jsonify({"status": "success", "docs": out, "staff": staff,
+                    "staff_left": _shogu_staff_left(supabase, f_code),   # shogu-paper-v4
+                    "is_admin": True})
+
+
+def _shogu_day_ok(day):  # shogu-notified-v3
+    """'YYYY-MM-DD' として通せる日かどうか。通せなければ None。
+
+    ★先の日付は通さない。まだ周知していない日を記録できてしまう。
+    ★書類の周知日でも、署名の日の直しでも、同じ決めごとを使う。
+      2か所に書くと、片方だけゆるくなる。
+    """
+    day = str(day or "").strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
+        return None
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d")
+    except Exception:
+        return None
+    if d.date() > (datetime.now(timezone.utc) + timedelta(hours=9)).date():
+        return None
+    return day
+
+
+def _shogu_signed_at(doc):  # shogu-notified-v3
+    """その書類の署名を、いつとして残すか。
+
+    ★周知した日が入っていれば、その日の昼12時（日本時間）。
+      日付だけが意味を持つので、時刻のずれで日付が動かないところに置く。
+    ★入っていなければ、いま。これまでどおり。
+    """
+    day = (doc or {}).get("notified_on")
+    if day:
+        return str(day)[:10] + "T03:00:00+00:00"
+    return datetime.now(timezone.utc).isoformat()
+
+
+@app.route("/api/shogu/doc", methods=["POST"])  # shogu-v1
+def api_shogu_doc_save():
+    """書類を足す・直す。id があれば直す。"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    data = request.json or {}
+    did = (data.get("id") or "").strip()
+    row = {}
+    if "fiscal_year" in data:
+        y = _shogu_year_ok(data.get("fiscal_year"))
+        if y is None:
+            return jsonify({"status": "error", "message": "年度がおかしいです"}), 400
+        row["fiscal_year"] = y
+    if "doc_type" in data:
+        t = (data.get("doc_type") or "").strip()
+        if t not in SHOGU_DOC_TYPES:
+            return jsonify({"status": "error", "message": "種類がおかしいです"}), 400
+        row["doc_type"] = t
+    if "status" in data:
+        st = (data.get("status") or "").strip()
+        if st not in SHOGU_STATUS:
+            return jsonify({"status": "error", "message": "状態がおかしいです"}), 400
+        row["status"] = st
+        #   ★公開にした日を残す。周知した日を後から聞かれる。
+        if st == "公開":
+            row["published_at"] = datetime.now(timezone.utc).isoformat()
+    if "notified_on" in data:
+        #   shogu-notified-v3: 空にすると「署名したその日」に戻る。
+        raw_day = str(data.get("notified_on") or "").strip()
+        if not raw_day:
+            row["notified_on"] = None
+        else:
+            ok = _shogu_day_ok(raw_day)
+            if not ok:
+                return jsonify({"status": "error",
+                                "message": "周知した日がおかしいです（先の日付にはできません）"}), 400
+            row["notified_on"] = ok
+    if "need_sign" in data:
+        row["need_sign"] = bool(data.get("need_sign"))
+    if "note" in data:
+        row["note"] = (data.get("note") or "").strip()[:2000] or None
+    row["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        if did:
+            cur = (supabase.table("shogu_docs").select("fiscal_year,doc_type,title")
+                   .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+            if not cur.data:
+                return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+            if "title" in data:
+                row["title"] = _shogu_title(
+                    row.get("fiscal_year", cur.data[0].get("fiscal_year")),
+                    row.get("doc_type", cur.data[0].get("doc_type")),
+                    data.get("title"))
+            (supabase.table("shogu_docs").update(row)
+             .eq("id", did).eq("facility_code", f_code).execute())
+            return jsonify({"status": "success", "id": did})
+        if "fiscal_year" not in row or "doc_type" not in row:
+            return jsonify({"status": "error", "message": "年度と種類が要ります"}), 400
+        nid = str(uuid.uuid4())
+        row.update({
+            "id": nid, "facility_code": f_code,
+            "title": _shogu_title(row["fiscal_year"], row["doc_type"], data.get("title")),
+            "status": row.get("status", "下書き"),
+            "sign_round": 1,
+            "created_by": my_name,
+        })
+        supabase.table("shogu_docs").insert(row).execute()
+        return jsonify({"status": "success", "id": nid})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/shogu/doc/<did>/round", methods=["POST"])  # shogu-v1
+def api_shogu_round(did):
+    """もう一度署名をもらう。★前の署名は消さず、数える回だけを次へ進める。"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (did or "").strip()
+    try:
+        r = (supabase.table("shogu_docs").select("sign_round")
+             .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+        nxt = int(r.data[0].get("sign_round") or 1) + 1
+        (supabase.table("shogu_docs")
+         .update({"sign_round": nxt,
+                  "updated_at": datetime.now(timezone.utc).isoformat()})
+         .eq("id", did).eq("facility_code", f_code).execute())
+        return jsonify({"status": "success", "sign_round": nxt})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/shogu/doc/<did>", methods=["DELETE"])  # shogu-v1
+def api_shogu_doc_del(did):
+    """書類を消す。添付と署名の画像も、保管庫から消す。
+
+    ★行は FK の cascade で消えるが、保管庫のファイルは残る。
+      残すと、どこにも出てこないのに容量だけ食う。先に消す。
+    """
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (did or "").strip()
+    try:
+        chk = (supabase.table("shogu_docs").select("id")
+               .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        if not chk.data:
+            return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    paths = []
+    try:
+        fr = supabase.table("shogu_files").select("storage_path").eq("doc_id", did).execute()
+        paths += [x["storage_path"] for x in (fr.data or []) if x.get("storage_path")]
+    except Exception:
+        pass
+    try:
+        sr = supabase.table("shogu_signs").select("image_path").eq("doc_id", did).execute()
+        paths += [x["image_path"] for x in (sr.data or []) if x.get("image_path")]
+    except Exception:
+        pass
+    if paths:
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).remove(paths)
+        except Exception as e:
+            print("[shogu] 保管庫から消せませんでした: %s" % e, flush=True)
+    try:
+        supabase.table("shogu_docs").delete().eq("id", did).eq("facility_code", f_code).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/shogu/file", methods=["POST"])  # shogu-v1
+def api_shogu_file_add():
+    """書類を1枚付ける。multipart/form-data: file, doc_id"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (request.form.get("doc_id") or "").strip()
+    if not did:
+        return jsonify({"status": "error", "message": "書類が選ばれていません"}), 400
+    try:
+        chk = (supabase.table("shogu_docs").select("id")
+               .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        if not chk.data:
+            return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"status": "error", "message": "ファイルが選ばれていません"}), 400
+    raw = f.read()
+    if not raw:
+        return jsonify({"status": "error", "message": "空のファイルです"}), 400
+    if len(raw) > SHOGU_MAX_BYTES:
+        return jsonify({"status": "error", "message": "ファイルが大きすぎます（30MBまで）"}), 400
+    ext = (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "")
+    if ext not in SHOGU_EXTS:
+        return jsonify({"status": "error",
+                        "message": "この種類のファイルは保存できません（PDF・Word・Excel・画像）"}), 400
+    fid = str(uuid.uuid4())
+    path = "shogu/%s/%s/%s.%s" % (f_code, did, fid, ext)
+    try:
+        supabase.storage.from_(SHOGU_BUCKET).upload(
+            path=path, file=raw, file_options={"content-type": SHOGU_EXTS[ext]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    try:
+        supabase.table("shogu_files").insert({
+            "id": fid, "facility_code": f_code, "doc_id": did,
+            "file_name": f.filename[:200], "storage_path": path,
+            "file_size": len(raw), "mime": SHOGU_EXTS[ext],
+            "uploaded_by": my_name,
+        }).execute()
+    except Exception as e:
+        #   ★行を作れなかったらファイルも消す。残すとゴミになる。
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).remove([path])
+        except Exception:
+            pass
+        return jsonify({"status": "error", "message": str(e)}), 500
+    #   shogu-view-v1: Excelの計画書なら、その場で要点を読み取って書類に付ける。
+    #   ★読めなくても、ここでは何も言わない。原本は入っていて、そのまま開ける。
+    _sv = _shogu_summary_from(raw, f.filename or "")
+    if _sv:
+        _shogu_save_summary(supabase, f_code, did, _sv)
+    return jsonify({"status": "success", "id": fid, "summary": bool(_sv)})
+
+
+@app.route("/api/shogu/file/<fid>", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_file_get(fid):
+    """書類を開く。★職員も開ける。開けないと確認のしようがない。
+
+    ただし【公開】のものだけ。下書きは管理者しか開けない。
+    """
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code or not is_shogu_enabled(supabase, f_code):
+        return ("unauthorized", 403)
+    fid = (fid or "").strip()
+    try:
+        r = (supabase.table("shogu_files").select("storage_path,file_name,mime,doc_id")
+             .eq("id", fid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row:
+        return ("not found", 404)
+    if not session.get("admin_authenticated", False):
+        try:
+            d = (supabase.table("shogu_docs").select("status")
+                 .eq("id", row["doc_id"]).eq("facility_code", f_code).limit(1).execute())
+            if not d.data or d.data[0].get("status") != "公開":
+                return ("not found", 404)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+    try:
+        blob = supabase.storage.from_(SHOGU_BUCKET).download(row["storage_path"])
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    import io as _sg_io
+    from flask import send_file as _sg_send
+    #   ★画面で開かせる（as_attachment=False）。PDFはそのまま読める。
+    #     落とさせると、開くまでに手間が増えて読まれなくなる。
+    return _sg_send(_sg_io.BytesIO(blob),
+                    mimetype=row.get("mime") or "application/octet-stream",
+                    as_attachment=False,
+                    download_name=row.get("file_name") or "shogu")
+
+
+@app.route("/api/shogu/file/<fid>", methods=["DELETE"])  # shogu-v1
+def api_shogu_file_del(fid):
+    """付けた書類を1枚消す。"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    fid = (fid or "").strip()
+    try:
+        r = (supabase.table("shogu_files").select("storage_path")
+             .eq("id", fid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+        if not row:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).remove([row["storage_path"]])
+        except Exception as e:
+            print("[shogu] 保管庫から消せませんでした: %s" % e, flush=True)
+        supabase.table("shogu_files").delete().eq("id", fid).eq("facility_code", f_code).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+#   丸数字（①〜⑳ / ㉑〜㉘）。職場環境等要件の項目は、これで始まる。
+_SHOGU_MARU = "".join([chr(c) for c in range(0x2460, 0x2474)] +
+                   [chr(c) for c in range(0x3251, 0x325A)])
+_SHOGU_CHECK = ("✓", "✔", "☑", "レ")
+
+
+def _shogu_x_s(v):  # shogu-view-v1
+    """セルの値を、比べやすい文字にする。
+
+    ★見えない文字（ゼロ幅空白など）を落とす。様式のセルに紛れていて、
+      そのまま画面へ出すと、検索にも掛からない字が混ざる。
+    """
+    if v is None:
+        return ""
+    s = str(v).replace("\u3000", " ")
+    s = re.sub("[\\u200b-\\u200f\\ufeff\\u00a0]", "", s)
+    return s.strip()
+
+
+def _shogu_x_flat(s):
+    """空白と改行を落とす。様式の中の言葉は、版によって折り返しが変わる。"""
+    return re.sub(r"\s+", "", s or "")
+
+
+def _shogu_x_num(v):
+    """数っぽいものだけ数にする。「3,002,290」「3002290.0」どちらも。"""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return int(round(v))
+    s = _shogu_x_s(v).replace(",", "")
+    if re.fullmatch(r"-?\d+(\.\d+)?", s):
+        return int(round(float(s)))
+    return None
+
+
+def _shogu_x_rows(ws, limit=200):
+    """行ごとに [(列番号, 値)] を返す。空の行は飛ばす。"""
+    out = []
+    for i, row in enumerate(ws.iter_rows(min_row=1, max_row=limit), start=1):
+        cells = [(c.column, c.value) for c in row if c.value is not None and _shogu_x_s(c.value)]
+        if cells:
+            out.append((i, cells))
+    return out
+
+
+def _shogu_x_rowtext(cells):
+    return _shogu_x_flat(" ".join(_shogu_x_s(v) for _, v in cells))
+
+
+def _shogu_x_findnum(rows, want, deny=(), after=0):
+    """その言葉がある行から、いちばん右の数を拾う。
+
+    ★言葉は「つながった形」で比べる。様式の折り返しが変わっても当たるように。
+    """
+    for rno, cells in rows:
+        if rno <= after:
+            continue
+        t = _shogu_x_rowtext(cells)
+        if _shogu_x_flat(want) not in t:
+            continue
+        if any(_shogu_x_flat(d) in t for d in deny):
+            continue
+        nums = [(_shogu_x_num(v), col) for col, v in cells]
+        nums = [(n, c) for n, c in nums if n is not None and n > 0]
+        if nums:
+            nums.sort(key=lambda x: x[1])
+            return nums[-1][0], rno
+    return None, None
+
+
+def _shogu_x_findrow(rows, want, after=0):
+    for rno, cells in rows:
+        if rno > after and _shogu_x_flat(want) in _shogu_x_rowtext(cells):
+            return rno, cells
+    return None, None
+
+
+def _shogu_x_rightof(cells, label):
+    """その言葉のセルの、右どなりから最初の中身を返す。"""
+    hit = None
+    for col, v in cells:
+        s = _shogu_x_flat(_shogu_x_s(v))
+        if hit is None and _shogu_x_flat(label) in s and len(s) <= len(_shogu_x_flat(label)) + 6:
+            hit = col
+            continue
+        if hit is not None and col > hit:
+            t = _shogu_x_s(v)
+            if t:
+                return t
+    return ""
+
+
+def _shogu_x_env(rows, start, end):
+    """職場環境等要件のうち、チェックが付いた項目を拾う。
+
+    ★区分（「入職促進に向けた取組」など）は、その行か、それより上の
+      いちばん近い左端の言葉。丸数字で始まらない短い言葉を区分とみなす。
+    """
+    out = []
+    group = ""
+    for rno, cells in rows:
+        if rno < start or (end and rno > end):
+            continue
+        texts = [(col, _shogu_x_s(v)) for col, v in cells]
+        #   いちばん左の、丸数字で始まらない言葉を区分とみなす
+        left = [t for col, t in texts if col <= 3 and t and t[0] not in _SHOGU_MARU]
+        if left and len(left[0]) <= 30:
+            group = re.sub(r"\s+", "", left[0])
+        item = ""
+        for _col, t in texts:
+            if t and t[0] in _SHOGU_MARU:
+                item = t
+                break
+        if not item:
+            continue
+        checked = any(t in _SHOGU_CHECK for _col, t in texts)
+        if checked:
+            out.append({"group": group, "text": re.sub(r"\s+", " ", item)})
+    return out
+
+
+def _shogu_x_offices(wb):
+    """事業所ごとの「算定する加算の区分」を拾う。
+
+    ★個票は【6月以降】と【4、5月】の2枚ある。いま効いているのは6月以降。
+      無ければ4、5月のほうを見る。
+    """
+    names = [n for n in wb.sheetnames if "個票" in n]
+    #   「6月以降」を先に見る
+    names.sort(key=lambda n: (0 if "６月以降" in n or "6月以降" in n else 1))
+    for nm in names:
+        ws = wb[nm]
+        rows = _shogu_x_rows(ws, limit=160)
+        head = None
+        for rno, cells in rows:
+            t = _shogu_x_rowtext(cells)
+            if "事業所名" in t and "サービス名" in t and "処遇改善加算の区分" in t:
+                head = (rno, cells)
+                break
+        if not head:
+            continue
+        #   ラベルから列を決める（列の位置は様式で動く）
+        col = {}
+        for c, v in head[1]:
+            s = _shogu_x_flat(_shogu_x_s(v))
+            if "事業所名" in s:
+                col.setdefault("name", c)
+            elif "サービス名" in s:
+                col.setdefault("svc", c)
+            elif "処遇改善加算の区分" in s:
+                col.setdefault("kubun", c)
+            elif "見込額" in s:
+                col.setdefault("yen", c)
+            elif "算定対象月" in s:
+                col.setdefault("term", c)
+        if "name" not in col or "kubun" not in col:
+            continue
+        out = []
+        for rno, cells in rows:
+            if rno <= head[0]:
+                continue
+            d = dict((c, v) for c, v in cells)
+            nm2 = _shogu_x_s(d.get(col["name"]))
+            ku = _shogu_x_s(d.get(col.get("kubun")))
+            if not nm2 or not ku:
+                continue
+            #   算定対象月は「令和/8/年/6/月～令和/9/年/3/月」と細かく割れている。
+            #   その行の、期間の列から右をつないで1つの言葉にする。
+            term = ""
+            if "term" in col:
+                parts = [_shogu_x_s(v) for c, v in cells
+                         if col["term"] <= c < col.get("yen", col["term"] + 30)]
+                term = re.sub(r"\s+", "", "".join(parts))
+            out.append({
+                "name": nm2,
+                "service": _shogu_x_s(d.get(col.get("svc"))),
+                "kubun": ku,
+                "term": term,
+                "yen": _shogu_x_num(d.get(col.get("yen"))),
+            })
+        if out:
+            return out, nm
+    return [], ""
+
+
+def _shogu_xlsx_summary(raw):
+    """計画書のExcelから要点を抜き出す。読めなければ None。"""
+    try:
+        import openpyxl
+    except ImportError:
+        return None
+    import io as _sx_io
+    try:
+        wb = openpyxl.load_workbook(_sx_io.BytesIO(raw), data_only=True, read_only=True)
+    except Exception:
+        return None
+
+    #   総括表を探す。無ければ最初のシート。
+    ws = None
+    for nm in wb.sheetnames:
+        if "総括" in nm:
+            ws = wb[nm]
+            break
+    if ws is None:
+        ws = wb[wb.sheetnames[0]]
+    rows = _shogu_x_rows(ws, limit=200)
+
+    out = {"kind": "", "year": "", "corp": "", "to": "",
+           "kasan_yen": None, "kaizen_yen": None,
+           "getsugaku_need": None, "getsugaku_plan": None,
+           "offices": [], "env": [], "mieruka": [], "pledge": "", "sheet": ws.title}
+
+    #   何の書類か・何年度か
+    for rno, cells in rows[:30]:
+        t = _shogu_x_rowtext(cells)
+        m = re.search(r"(令和[0-9０-９一二三四五六七八九十元]+)年度", t)
+        if m and not out["year"]:
+            out["year"] = m.group(1) + "年度"
+        if not out["kind"]:
+            if "処遇改善実績報告書" in t:
+                out["kind"] = "実績報告書"
+            elif "処遇改善計画書" in t:
+                out["kind"] = "計画書"
+        if out["year"] and out["kind"]:
+            break
+
+    #   法人名・提出先
+    for rno, cells in rows[:20]:
+        t = _shogu_x_rowtext(cells)
+        if not out["corp"] and "法人名" in t:
+            out["corp"] = _shogu_x_rightof(cells, "法人名")
+        if not out["to"] and "提出先" in t:
+            out["to"] = _shogu_x_rightof(cells, "提出先")
+
+    #   お金。★「１／２」や「月額」の行は別ものなので、はっきり分ける。
+    out["kasan_yen"], r1 = _shogu_x_findnum(rows, "加算の見込額", deny=("１／２", "1/2", "月額賃金改善"))
+    out["kaizen_yen"], _ = _shogu_x_findnum(rows, "賃金改善の見込額",
+                                        deny=("月額賃金改善による額", "１／２", "1/2"))
+    out["getsugaku_need"], _ = _shogu_x_findnum(rows, "相当の見込額の１／２")
+    out["getsugaku_plan"], _ = _shogu_x_findnum(rows, "月額賃金改善による額")
+
+    #   事業所ごとの加算区分
+    out["offices"], out["kohyo"] = _shogu_x_offices(wb)
+
+    #   職場環境等要件（チェックした項目だけ）
+    s_env, _ = _shogu_x_findrow(rows, "職場環境等要件")
+    e_env, _ = _shogu_x_findrow(rows, "見える化要件", after=(s_env or 0))
+    if s_env:
+        out["env"] = _shogu_x_env(rows, s_env, e_env)
+
+    #   職員への周知（見える化要件）
+    if e_env:
+        for rno, cells in rows:
+            if rno <= e_env or rno > e_env + 8:
+                continue
+            pairs = [(c, _shogu_x_s(v)) for c, v in cells]
+            chk = [c for c, t in pairs if t in _SHOGU_CHECK]
+            if not chk:
+                continue
+            #   ★チェックより【右】の言葉を拾う。左には区分の名前
+            #     （「ホームページへの掲載」）が置かれていて、それを拾うと
+            #     何をすると言っているのか分からない行になる。
+            long = [t for c, t in pairs if c > min(chk) and len(t) >= 10]
+            if long:
+                out["mieruka"].append(re.sub(r"\s+", " ", long[0]))
+
+    #   誓約した日
+    for rno, cells in rows:
+        t = _shogu_x_rowtext(cells)
+        m = re.search(r"令和([0-9０-９]+)年([0-9０-９]+)月([0-9０-９]+)日", t)
+        if m:
+            out["pledge"] = m.group(0)
+            break
+        #   「令和 8 年 3 月 26 日」とセルが割れている様式もある
+        m2 = re.match(r"^令和(\d+)年(\d+)月(\d+)日", re.sub(r"[^\d令和年月日]", "", t))
+        if m2 and "法人名" in t:
+            out["pledge"] = m2.group(0)
+            break
+
+    #   何も読めていないなら、整形して見せる意味がない
+    if not (out["kasan_yen"] or out["offices"] or out["env"]):
+        return None
+    return out
+
+
+# ───────── 読み取った要点を、書類につけておく（shogu-view-v1） ─────────
+
+#   ★大きすぎるExcelは読まない。読み込みでCloud Runが詰まる。
+#     読まなかったときは、原本を開いてもらう（何も壊れない）。
+SHOGU_XLSX_MAX = 12 * 1024 * 1024
+SHOGU_XLSX_EXTS = ("xlsx", "xlsm")
+
+
+def _shogu_summary_from(raw, file_name):  # shogu-view-v1
+    """Excelなら要点を読み取る。それ以外・読めないときは None。"""
+    ext = (file_name.rsplit(".", 1)[-1].lower() if "." in (file_name or "") else "")
+    if ext not in SHOGU_XLSX_EXTS or not raw or len(raw) > SHOGU_XLSX_MAX:
+        return None
+    try:
+        return _shogu_xlsx_summary(raw)
+    except Exception as e:
+        #   ★読み取りで転んでも、書類の保存そのものは止めない。
+        #     整えて見せるのは「おまけ」で、正本は提出したファイル。
+        print("[shogu] 計画書を読み取れませんでした: %s" % e, flush=True)
+        return None
+
+
+def _shogu_save_summary(supabase, f_code, did, summary):  # shogu-view-v1
+    """読み取った要点を書類に付ける。付けられなくても止めない。"""
+    if not summary:
+        return False
+    try:
+        (supabase.table("shogu_docs")
+         .update({"summary": summary,
+                  "updated_at": datetime.now(timezone.utc).isoformat()})
+         .eq("id", did).eq("facility_code", f_code).execute())
+        return True
+    except Exception as e:
+        print("[shogu] 要点を保存できませんでした: %s" % e, flush=True)
+        return False
+
+
+@app.route("/api/shogu/doc/<did>/reparse", methods=["POST"])  # shogu-view-v1
+def api_shogu_reparse(did):
+    """付いているExcelを読み直して、要点を作り直す。
+
+    ★この仕組みを入れる前に取り込んだ書類のために要る。
+      新しい順に試して、最初に読めたものを使う。
+    """
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (did or "").strip()
+    try:
+        chk = (supabase.table("shogu_docs").select("id")
+               .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        if not chk.data:
+            return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+        fr = (supabase.table("shogu_files").select("file_name,storage_path,file_size")
+              .eq("doc_id", did).eq("facility_code", f_code)
+              .order("created_at", desc=True).execute())
+        files = fr.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    tried = 0
+    for f in files:
+        nm = f.get("file_name") or ""
+        ext = (nm.rsplit(".", 1)[-1].lower() if "." in nm else "")
+        if ext not in SHOGU_XLSX_EXTS:
+            continue
+        tried += 1
+        try:
+            raw = supabase.storage.from_(SHOGU_BUCKET).download(f["storage_path"])
+        except Exception as e:
+            print("[shogu] 読み直しで落とせませんでした: %s" % e, flush=True)
+            continue
+        s = _shogu_summary_from(raw, nm)
+        if s:
+            _shogu_save_summary(supabase, f_code, did, s)
+            return jsonify({"status": "success", "summary": s, "file_name": nm})
+    if not tried:
+        return jsonify({"status": "error",
+                        "message": "Excelの計画書が付いていません（PDFだけでは中身を読めません）"}), 400
+    return jsonify({"status": "error",
+                    "message": "Excelを読み取れませんでした。様式が違うかもしれません。原本はそのまま開けます。"}), 400
+
+
+@app.route("/api/shogu/my", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_my():
+    """職員が見る一覧。公開されているものだけ。自分が署名したかも一緒に返す。"""
+    supabase, f_code, my_name, err = _shogu_me()
+    if err:
+        return err
+    try:
+        r = (supabase.table("shogu_docs")
+             .select("id,fiscal_year,doc_type,title,note,need_sign,sign_round,"
+                     "published_at,summary,notified_on")   # shogu-view-v1 / shogu-notified-v3
+             .eq("facility_code", f_code).eq("status", "公開")
+             .order("fiscal_year", desc=True).order("doc_type").execute())
+        docs = r.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    files, _ = _shogu_pack(supabase, f_code, docs, want_signs=False)
+    ids = [d["id"] for d in docs if d.get("id")]
+    mine = {}
+    if ids:
+        try:
+            sr = (supabase.table("shogu_signs").select("doc_id,sign_round,signed_at")
+                  .in_("doc_id", ids).eq("staff_name", my_name).execute())
+            for x in (sr.data or []):
+                mine.setdefault(x["doc_id"], []).append(x)
+        except Exception as e:
+            print("[shogu] 自分の署名を読めませんでした: %s" % e, flush=True)
+    out = []
+    for d in docs:
+        rnd = int(d.get("sign_round") or 1)
+        #   ★いまの回のぶんだけ見る。差し替えたら、もう一度署名してもらう。
+        hit = [x for x in mine.get(d["id"], []) if int(x.get("sign_round") or 1) == rnd]
+        d["files"] = files.get(d["id"], [])
+        d["mine_signed"] = bool(hit)
+        d["mine_signed_at"] = hit[0].get("signed_at") if hit else None
+        out.append(d)
+    return jsonify({"status": "success", "docs": out})
+
+
+@app.route("/api/shogu/pending", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_pending():
+    """TOPの帯用。まだ署名していない件数だけ返す。
+
+    ★使えない事業所や、読めなかったときは 0 を返す。
+      エラーにすると、TOPの画面に赤い字が出て、職員が怖がる。
+    """
+    try:
+        supabase = get_supabase()
+        f_code = session.get("f_code")
+        my_name = (session.get("my_name") or "").strip()
+        if not f_code or not my_name or not is_shogu_enabled(supabase, f_code):
+            return jsonify({"status": "success", "count": 0})
+        r = (supabase.table("shogu_docs").select("id,sign_round")
+             .eq("facility_code", f_code).eq("status", "公開")
+             .eq("need_sign", True).execute())
+        docs = r.data or []
+        if not docs:
+            return jsonify({"status": "success", "count": 0})
+        ids = [d["id"] for d in docs]
+        sr = (supabase.table("shogu_signs").select("doc_id,sign_round")
+              .in_("doc_id", ids).eq("staff_name", my_name).execute())
+        done = set((x["doc_id"], int(x.get("sign_round") or 1)) for x in (sr.data or []))
+        n = sum(1 for d in docs if (d["id"], int(d.get("sign_round") or 1)) not in done)
+        return jsonify({"status": "success", "count": n})
+    except Exception as e:
+        print("[shogu] 帯を出せませんでした: %s" % e, flush=True)
+        return jsonify({"status": "success", "count": 0})
+
+
+@app.route("/api/shogu/sign", methods=["POST"])  # shogu-v1
+@login_required
+def api_shogu_sign():
+    """手書きの署名を受け取る。JSON: doc_id, image(data:image/png;base64,...)"""
+    supabase, f_code, my_name, err = _shogu_me()
+    if err:
+        return err
+    data = request.json or {}
+    did = (data.get("doc_id") or "").strip()
+    if not did:
+        return jsonify({"status": "error", "message": "書類が選ばれていません"}), 400
+    try:
+        r = (supabase.table("shogu_docs")
+             .select("status,need_sign,sign_round,notified_on")   # shogu-notified-v3
+             .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        doc = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not doc or doc.get("status") != "公開":
+        return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+    if not doc.get("need_sign"):
+        return jsonify({"status": "error", "message": "この書類は署名が要りません"}), 400
+    rnd = int(doc.get("sign_round") or 1)
+
+    #   ★二度押し。すでに署名していたら、そのまま「できた」と返す。
+    #     ここでエラーにすると、通信が遅れただけの人に失敗と出る。
+    try:
+        ex = (supabase.table("shogu_signs").select("id")
+              .eq("doc_id", did).eq("staff_name", my_name)
+              .eq("sign_round", rnd).limit(1).execute())
+        if ex.data:
+            return jsonify({"status": "success", "id": ex.data[0]["id"], "already": True})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    #   ★受け取るのはPNGだけ。中身まで見る（_shogu_sign_bytes）。
+    raw = _shogu_sign_bytes(data.get("image"))
+    if not raw:
+        return jsonify({"status": "error", "message": "署名を読み取れませんでした"}), 400
+
+    sid = str(uuid.uuid4())
+    path = "shogu/%s/sign/%s/%s_%s.png" % (f_code, did, rnd, sid)
+    try:
+        supabase.storage.from_(SHOGU_BUCKET).upload(
+            path=path, file=raw, file_options={"content-type": "image/png"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    try:
+        supabase.table("shogu_signs").insert({
+            "id": sid, "facility_code": f_code, "doc_id": did,
+            "sign_round": rnd, "staff_name": my_name,
+            #   shogu-notified-v3: 周知した日が入っていれば、その日として残す。
+            #   ★あとから直すのではなく、はじめからその日で入る。
+            "signed_at": _shogu_signed_at(doc),
+            "image_path": path,
+        }).execute()
+    except Exception as e:
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).remove([path])
+        except Exception:
+            pass
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": sid})
+
+
+@app.route("/api/shogu/sign/manual", methods=["POST"])  # shogu-paper-v4
+def api_shogu_sign_manual():
+    """紙でもらった確認を、管理者が代わりに記録する。
+
+    ★退職した人は、もうログインできない。けれど在職中に周知した記録は要る。
+    ★紙の署名があれば、その画像も一緒に入れられる。実物が残るほうが強い。
+    multipart/form-data: doc_id, staff_name, date（任意）, file（任意）
+    """
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (request.form.get("doc_id") or "").strip()
+    name = (request.form.get("staff_name") or "").strip()[:100]
+    if not did or not name:
+        return jsonify({"status": "error", "message": "書類とお名前が要ります"}), 400
+    try:
+        r = (supabase.table("shogu_docs")
+             .select("status,need_sign,sign_round,notified_on")
+             .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        doc = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not doc or doc.get("status") != "公開":
+        return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+    if not doc.get("need_sign"):
+        return jsonify({"status": "error", "message": "この書類は署名が要りません"}), 400
+    rnd = int(doc.get("sign_round") or 1)
+
+    #   ★同じ人を二度は記録しない。数が合わなくなる。
+    try:
+        ex = (supabase.table("shogu_signs").select("id")
+              .eq("facility_code", f_code).eq("doc_id", did)
+              .eq("staff_name", name).eq("sign_round", rnd).limit(1).execute())
+        if ex.data:
+            return jsonify({"status": "error",
+                            "message": "%s さんは、すでに記録されています" % name}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    #   いつとして残すか。日を指定していなければ、書類の周知日（無ければ今）。
+    day = str(request.form.get("date") or "").strip()
+    if day:
+        ok = _shogu_day_ok(day)
+        if not ok:
+            return jsonify({"status": "error",
+                            "message": "日付がおかしいです（先の日付にはできません）"}), 400
+        at = ok + "T03:00:00+00:00"
+    else:
+        at = _shogu_signed_at(doc)
+
+    sid = str(uuid.uuid4())
+    path = None
+    mime = None
+    up = request.files.get("file")
+    if up and up.filename:
+        raw = up.read()
+        if not raw:
+            return jsonify({"status": "error", "message": "空のファイルです"}), 400
+        if len(raw) > SHOGU_SIGN_UP_MAX:
+            return jsonify({"status": "error", "message": "ファイルが大きすぎます（8MBまで）"}), 400
+        ext = (up.filename.rsplit(".", 1)[-1].lower() if "." in up.filename else "")
+        if ext not in SHOGU_SIGN_UP_EXTS:
+            return jsonify({"status": "error",
+                            "message": "画像かPDFを選んでください（JPEG・PNG・PDF）"}), 400
+        path = "shogu/%s/sign/%s/%s_%s.%s" % (f_code, did, rnd, sid, ext)
+        mime = SHOGU_SIGN_UP_EXTS[ext]
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).upload(
+                path=path, file=raw, file_options={"content-type": mime})
+        except Exception as e:
+            return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    try:
+        supabase.table("shogu_signs").insert({
+            "id": sid, "facility_code": f_code, "doc_id": did,
+            "sign_round": rnd, "staff_name": name, "signed_at": at,
+            "image_path": path, "mime": mime,
+            #   ★誰が代わりに入れたかを残す。手書きが無い記録は、
+            #     出どころが分からないと根拠にならない。
+            "recorded_by": my_name,
+        }).execute()
+    except Exception as e:
+        if path:
+            try:
+                supabase.storage.from_(SHOGU_BUCKET).remove([path])
+            except Exception:
+                pass
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": sid})
+
+
+@app.route("/api/shogu/sign/<sid>/date", methods=["POST"])  # shogu-signdate-v1
+def api_shogu_sign_date(sid):
+    """署名の日付を、実際に確認した日に直す。
+
+    ★直せるのは管理者だけ。そして【元の日時・直した人・直した日時】を残す。
+      残さずに書き換えられる作りは、記録としての意味を失う。
+      「後から動かせる台帳」は、動かした跡が残って初めて信用される。
+    """
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    sid = (sid or "").strip()
+    day = str((request.json or {}).get("date") or "").strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
+        return jsonify({"status": "error", "message": "日付の形がちがいます"}), 400
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d")
+    except Exception:
+        return jsonify({"status": "error", "message": "その日付はありません"}), 400
+    #   ★先の日付は受け取らない。まだ確認していない日を記録できてしまう。
+    today = (datetime.now(timezone.utc) + timedelta(hours=9)).date()
+    if d.date() > today:
+        return jsonify({"status": "error", "message": "先の日付にはできません"}), 400
+    try:
+        r = (supabase.table("shogu_signs").select("signed_at,signed_at_original")
+             .eq("id", sid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+        if not row:
+            return jsonify({"status": "error", "message": "その署名は見つかりません"}), 404
+        upd = {
+            #   その日の昼12時（日本時間）にそろえる。日付だけが意味を持つので、
+            #   時刻のずれで日付が動かないところに置く。
+            "signed_at": day + "T03:00:00+00:00",
+            "date_edited_by": my_name,
+            "date_edited_at": datetime.now(timezone.utc).isoformat(),
+        }
+        #   ★元の日時は最初の1回だけ残す。2回目で上書きすると、本当の元が消える。
+        if not row.get("signed_at_original"):
+            upd["signed_at_original"] = row.get("signed_at")
+        (supabase.table("shogu_signs").update(upd)
+         .eq("id", sid).eq("facility_code", f_code).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "date": day})
+
+
+@app.route("/api/shogu/sign/<sid>", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_sign_get(sid):
+    """署名の画像を見る。★管理者と、書いた本人だけ。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    my_name = (session.get("my_name") or "").strip()
+    if not f_code or not is_shogu_enabled(supabase, f_code):
+        return ("unauthorized", 403)
+    try:
+        r = (supabase.table("shogu_signs").select("image_path,staff_name,mime")
+             .eq("id", (sid or "").strip()).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row or not row.get("image_path"):
+        return ("not found", 404)
+    if not session.get("admin_authenticated", False) and row.get("staff_name") != my_name:
+        return ("not found", 404)
+    try:
+        blob = supabase.storage.from_(SHOGU_BUCKET).download(row["image_path"])
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    import io as _sg_io2
+    from flask import send_file as _sg_send2
+    #   shogu-paper-v4: 取り込んだものは JPEG や PDF のこともある。
+    #   ★決め打ちにすると、PDFを画像として開こうとして真っ黒になる。
+    return _sg_send2(_sg_io2.BytesIO(blob),
+                     mimetype=row.get("mime") or "image/png", as_attachment=False)
+
+
 # ===== dev-setting-toggle-v1 : key/value でON/OFFする機能の一覧 =====
 #   ★次に機能のトグルを足すときは、ここに1行足すだけ。
 #     facilities に列を増やさないこと。列を増やすとDEVと本番の両方にDDLが要り、
 #     片方を忘れると施設一覧が丸ごと落ちる（2026-09-10 youshiki_exclude_enabled）。
 DEV_SETTING_TOGGLES = {
     "tsusho_keikaku_enabled": "通所介護計画書",
+    "shogu_kaizen_enabled": "処遇改善加算",   # shogu-v1
 }
 
 

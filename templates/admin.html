@@ -1395,8 +1395,16 @@ function dxStart() {
 <!-- keiyaku-menu-v1 -->
 <a href="/admin/keiyaku" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">description</span>契約書・重要事項説明書</a>
   <a href="/admin/bcp" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">menu_book</span>BCP管理（災害・感染症マニュアル）</a>
+  {# unei-v1: 運営規程。契約書のとなりに置く。
+     ★届出の【手前】に置く。規程が先にあって、その変更を届け出るという順番。 #}
+  <a href="/unei" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">gavel</span>運営規程</a>
   {# todokede-place-v2: 契約書・BCPと同じ引き出し。見た目もそろえる。 #}
   <a href="/todokede" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">inventory_2</span>介護保険課への届出（記録・保管）</a>
+  {# shogu-v1: 処遇改善加算の書類。届出のとなりに置く。
+     ★使う事業所だけに出す（開発者MENUのトグル）。 #}
+  {% if can_shogu %}
+  <a href="/shogu" style="display:flex;align-items:center;gap:10px;padding:14px 16px;margin-bottom:12px;background:#eef7f0;border-radius:12px;border:2px solid #2e7d32;text-decoration:none;color:#1e5e26;font-weight:700;font-size:0.95rem;"><span class="material-symbols-outlined">volunteer_activism</span>処遇改善加算の書類</a>
+  {% endif %}
 </div>{# /tab-keiyaku #}
 
 <div class="tab-panel" id="tab-settings">

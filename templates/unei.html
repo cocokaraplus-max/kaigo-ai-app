@@ -1,0 +1,434 @@
+{% extends "base.html" %}
+{% block title %}運営規程 - TASUKARU{% endblock %}
+
+{# unei-v1: 運営規程を【版】で持つ画面。
+   ★この画面の芯は「前の版を消さないこと」と「比べられること」。
+     令和6年4月に日曜営業の記載が抜けたのは、前の版と見比べる手段が
+     どこにも無かったから。並べ方や見た目より、そこを守る。 #}
+{% block extra_style %}
+<style>
+  .un-tabs { display:flex; gap:0; border:1.5px solid #2e7d32; border-radius:12px;
+             overflow:hidden; margin:0 0 14px; }
+  .un-tabs button { flex:1 1 0; border:none; background:#fff; color:#1b5e20;
+                    padding:11px 8px; font-size:0.82rem; font-weight:800;
+                    font-family:inherit; cursor:pointer; border-right:1px solid #cfe3d2; }
+  .un-tabs button:last-child { border-right:none; }
+  .un-tabs button.on { background:#2e7d32; color:#fff; }
+  .un-v { display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+          border:1.5px solid #e0e0e0; border-radius:12px; background:#fff;
+          padding:13px 14px; margin-bottom:8px; cursor:pointer; font-family:inherit; }
+  .un-v:active { background:#f1f3f4; }
+  .un-v-d { font-weight:800; font-size:0.96rem; color:#202124; flex:0 0 auto;
+            min-width:7.4em; white-space:nowrap; }
+  .un-v-b { flex:1 1 auto; min-width:0; font-size:0.8rem; color:#5f6368; }
+  .un-now { background:#1b5e20; color:#fff; border-radius:999px; padding:2px 11px;
+            font-size:0.74rem; font-weight:800; flex:0 0 auto; white-space:nowrap; }
+  .un-arw { flex:0 0 auto; color:#9aa0a6; }
+  .un-btn { border:1.5px solid #e0e0e0; background:#fff; border-radius:9px; padding:8px 13px;
+            font-size:0.82rem; font-weight:700; cursor:pointer; font-family:inherit; color:#3c4043; }
+  .un-btn-main { border-color:#2e7d32; background:#e8f5e9; color:#1b5e20; }
+  .un-btn-del { border-color:#f2b8b5; background:#fce8e6; color:#c5221f; }
+  .un-acts { display:flex; gap:8px; flex-wrap:wrap; margin:0 0 14px; }
+  .un-art { border:1px solid #e8eaed; border-radius:10px; padding:11px 13px; margin-bottom:8px; background:#fff; }
+  .un-art-h { font-weight:800; font-size:0.9rem; color:#1b5e20; margin-bottom:5px; }
+  .un-art-b { font-size:0.84rem; color:#3c4043; line-height:1.85; white-space:pre-wrap; }
+  .un-form { border:1.5px solid #2e7d32; border-radius:12px; padding:14px; background:#f6fbf6; margin-bottom:16px; }
+  /* drop-files-v1: Wordを落とせる枠。まとめて落とせる。 */
+  .un-drop { border:2px dashed #9aa0a6; border-radius:12px; padding:20px 14px; text-align:center;
+             color:#5f6368; font-size:0.84rem; line-height:1.7; cursor:pointer; background:#fff; }
+  .un-drop:hover { border-color:#2e7d32; color:#1b5e20; }
+  .un-drop-on { border-color:#2e7d32; background:#e8f5e9; color:#1b5e20; }
+  /* ★版ごとに施行日がちがう。だから1行ずつ入れてもらう。 */
+  .un-pick { border:1px solid #e0e0e0; border-radius:10px; background:#fff;
+             padding:10px 11px; margin-top:8px; }
+  .un-pick-h { display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:700;
+               color:#202124; margin-bottom:7px; }
+  .un-pick-n { flex:1 1 auto; min-width:0; word-break:break-all; }
+  .un-pick-x { flex:0 0 auto; white-space:nowrap; padding:3px 10px; font-size:0.72rem; min-width:4.2em; }
+  .un-lb { font-size:0.76rem; font-weight:700; color:#3c4043; display:block; margin-bottom:4px; }
+  .un-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  .un-empty { color:#5f6368; font-size:0.88rem; padding:24px 0; text-align:center; line-height:1.9; }
+  .un-dif { border:1.5px solid #f0b429; border-radius:12px; padding:12px 13px; margin-bottom:10px; background:#fffdf5; }
+  .un-dif-h { font-weight:800; font-size:0.9rem; color:#8a5a00; margin-bottom:8px; }
+  .un-dif-c { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .un-dif-x { border:1px solid #e8eaed; border-radius:8px; padding:9px 10px; background:#fff; }
+  .un-dif-t { font-size:0.72rem; font-weight:800; color:#5f6368; margin-bottom:4px; }
+  .un-dif-b { font-size:0.8rem; line-height:1.8; white-space:pre-wrap; color:#3c4043; }
+  /* unei-diff-red-v1: 変わった文字だけを赤で。
+     旧は取り消し線、新は下線。新旧対照表の書き方にそろえてある。 */
+  .un-del { color:#c5221f; background:#fce8e6; text-decoration:line-through;
+            border-radius:3px; padding:0 1px; }
+  .un-ins { color:#c5221f; background:#fce8e6; font-weight:800;
+            border-bottom:2px solid #c5221f; border-radius:3px; padding:0 1px; }
+  .un-leg { font-size:0.74rem; color:#5f6368; margin:0 0 10px; }
+  .un-leg .un-del, .un-leg .un-ins { font-size:0.74rem; }
+  @media (max-width: 560px) { .un-dif-c { grid-template-columns:1fr; } .un-row { grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="font-size:1.1rem;font-weight:800;color:#202124;margin:0 0 4px;">運営規程</h2>
+<p style="font-size:0.8rem;color:#5f6368;line-height:1.7;margin:0 0 14px;">
+  施行日ごとに<b>版で残します</b>。前の版と比べれば、どの条が変わったかがひと目で分かります。
+</p>
+
+<div class="un-tabs" id="unTabs"></div>
+
+<div id="unAdmin" style="display:none;">
+  <div class="un-acts">
+    <button type="button" class="un-btn un-btn-main" onclick="unOpenForm()">＋ 運営規程を取り込む</button>
+  </div>
+  <div class="un-form" id="unForm" style="display:none;">
+    <div style="font-size:0.78rem;color:#5f6368;line-height:1.7;margin-bottom:10px;">
+      Word（.docx）の運営規程を選ぶと、<b>第1条から順に条文へ切り分けて</b>取り込みます。
+      古い <b>.doc</b> は Word で <b>.docx</b> として保存し直してください。
+    </div>
+    {# drop-files-v1: ★ファイルが先。版ごとに施行日がちがうので、
+       選んだあと1行ずつ入れてもらう。 #}
+    <div class="un-drop" id="unDrop" onclick="unPick()">
+      <span class="material-symbols-outlined" style="font-size:30px;">upload_file</span>
+      <div>ここに Word（.docx）をドロップ<br>または押して選ぶ（<b>まとめて選べます</b>）</div>
+    </div>
+    <div id="unPicked"></div>
+    <div style="margin:12px 0 10px;">
+      <label class="un-lb">メモ（任意・選んだものすべてに付きます）</label>
+      <input type="text" id="unNote" class="form-control" placeholder="例：人員・利用料の変更">
+    </div>
+    <div class="un-acts">
+      <button type="button" class="un-btn un-btn-main" id="unGoBtn" onclick="unImportAll()">取り込む</button>
+      <button type="button" class="un-btn" onclick="unCloseForm()">やめる</button>
+    </div>
+  </div>
+</div>
+
+<div id="unBody"><div class="un-empty">読み込み中…</div></div>
+<input type="file" id="unFile" multiple accept=".docx" style="display:none">
+{% endblock %}
+
+{% block extra_script %}
+<script>
+// unei-v1
+var UN_SERVICES = {{ unei_services | tojson }};
+var UN = { versions: [], isAdmin: false, svc: UN_SERVICES[0], view: 'list', vid: null, cmp: [],
+           picked: [] };   /* drop-files-v1: 取り込む前に選んだWord */
+
+function unEsc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':s); return d.innerHTML; }
+function unDate(s){ if(!s) return '施行日なし'; var p=String(s).split('-'); return p[0]+'年'+parseInt(p[1],10)+'月'+parseInt(p[2],10)+'日 施行'; }
+
+async function unLoad(){
+  try {
+    var r = await fetch('/api/unei/list', { credentials:'include' });
+    var j = await r.json();
+    if (j.status !== 'success') throw new Error(j.message || '読み込めませんでした');
+    UN.versions = j.versions || [];
+    UN.isAdmin = !!j.is_admin;
+    unRender();
+  } catch (e) {
+    document.getElementById('unBody').innerHTML =
+      '<div class="un-empty">読み込めませんでした：' + unEsc(e.message || e) + '</div>';
+  }
+}
+
+function unOf(svc){ return UN.versions.filter(function(v){ return (v.service_type||'') === svc; }); }
+
+function unRender(){
+  // サービスのタブ。★版があるサービスには件数を出す
+  var t = document.getElementById('unTabs');
+  t.innerHTML = UN_SERVICES.map(function(s){
+    var n = unOf(s).length;
+    return '<button type="button" class="' + (s===UN.svc?'on':'') + '" onclick="unTab(\'' + unEsc(s) + '\')">'
+      + unEsc(s.replace('地域密着型','').replace('サービス','')) + (n?('<br><span style="font-weight:600;font-size:0.72rem;">'+n+'版</span>'):'')
+      + '</button>';
+  }).join('');
+  document.getElementById('unAdmin').style.display = (UN.isAdmin && UN.view === 'list') ? 'block' : 'none';
+  if (UN.view === 'detail') unDetail();
+  else if (UN.view === 'diff') unDiffView();
+  else unList();
+}
+
+function unTab(s){ UN.svc = s; UN.view = 'list'; UN.cmp = []; unRender(); }
+
+function unList(){
+  var box = document.getElementById('unBody');
+  var vs = unOf(UN.svc);
+  if (!vs.length) {
+    box.innerHTML = '<div class="un-empty">このサービスの運営規程はまだ入っていません。<br>'
+      + (UN.isAdmin ? '「＋ 運営規程を取り込む」から、過去の版も入れておけます。<br>'
+                      + '<b>前の版があるほど、変更のたびに何が変わったかが分かります。</b>'
+                    : '管理者メニューから取り込めます。') + '</div>';
+    return;
+  }
+  var h = '';
+  if (vs.length >= 2) {
+    h += '<div class="un-acts"><button type="button" class="un-btn un-btn-main" onclick="unStartCmp()">版を2つ選んで比べる</button></div>';
+  }
+  vs.forEach(function(v, i){
+    h += '<button type="button" class="un-v" onclick="unOpen(\'' + unEsc(v.id) + '\')">'
+      + '<span class="un-v-d">' + unEsc(unDate(v.effective_date)) + '</span>'
+      + '<span class="un-v-b">' + unEsc(v.label || v.source_name || '')
+      + (v.note ? '<br>' + unEsc(v.note) : '') + '</span>'
+      + (i === 0 ? '<span class="un-now">いまの規程</span>' : '')
+      + '<span class="material-symbols-outlined un-arw">chevron_right</span>'
+      + '</button>';
+  });
+  box.innerHTML = h;
+}
+
+function unStartCmp(){
+  var vs = unOf(UN.svc);
+  if (vs.length < 2) return;
+  // ★いちばん新しい2つを既定にする。ふだん見たいのはそこ。
+  UN.cmp = [vs[1].id, vs[0].id];
+  UN.view = 'diff';
+  unRender();
+}
+
+async function unOpen(id){
+  UN.vid = id; UN.view = 'detail';
+  document.getElementById('unBody').innerHTML = '<div class="un-empty">読み込み中…</div>';
+  unRender();
+}
+
+async function unDetail(){
+  var box = document.getElementById('unBody');
+  try {
+    var r = await fetch('/api/unei/version/' + encodeURIComponent(UN.vid), { credentials:'include' });
+    var j = await r.json();
+    if (j.status !== 'success') throw new Error(j.message || '読み込めませんでした');
+    var v = j.version, h = '';
+    h += '<div class="un-acts">'
+      + '<button type="button" class="un-btn" onclick="unBack()">← 一覧に戻る</button>'
+      + '<a class="un-btn un-btn-main" style="text-decoration:none;display:inline-block;" href="/unei/print/' + unEsc(v.id) + '" target="_blank">印刷する</a>'
+      + (UN.isAdmin ? '<button type="button" class="un-btn un-btn-del" onclick="unDel(\'' + unEsc(v.id) + '\')">この版を消す</button>' : '')
+      + '</div>';
+    h += '<div style="font-size:1rem;font-weight:800;color:#1b5e20;margin:0 0 4px;">' + unEsc(unDate(v.effective_date)) + '</div>';
+    if (v.label) h += '<div style="font-size:0.82rem;color:#5f6368;margin-bottom:10px;">' + unEsc(v.label) + '</div>';
+    (v.head || []).forEach(function(x){
+      h += '<div style="font-size:0.9rem;font-weight:700;color:#202124;">' + unEsc(x) + '</div>';
+    });
+    h += '<div style="height:10px;"></div>';
+    (v.articles || []).forEach(function(a){
+      h += '<div class="un-art"><div class="un-art-h">' + unEsc(a.no) + (a.title ? '（' + unEsc(a.title) + '）' : '') + '</div>'
+        + '<div class="un-art-b">' + unEsc((a.body || []).join('\n')) + '</div></div>';
+    });
+    box.innerHTML = h;
+    window.scrollTo({ top: 0 });
+  } catch (e) {
+    box.innerHTML = '<div class="un-empty">読み込めませんでした：' + unEsc(e.message || e) + '</div>';
+  }
+}
+
+async function unDiffView(){
+  var box = document.getElementById('unBody');
+  var vs = unOf(UN.svc);
+  var sel = function(id, cur){
+    return '<select id="' + id + '" class="form-control" onchange="unCmpChange()">'
+      + vs.map(function(v){ return '<option value="' + unEsc(v.id) + '"' + (v.id===cur?' selected':'') + '>'
+          + unEsc(unDate(v.effective_date)) + (v.label ? '（' + unEsc(v.label) + '）' : '') + '</option>'; }).join('')
+      + '</select>';
+  };
+  var h = '<div class="un-acts"><button type="button" class="un-btn" onclick="unBack()">← 一覧に戻る</button></div>'
+    + '<div class="un-row"><div><label class="un-lb">古いほう（旧）</label>' + sel('unOld', UN.cmp[0]) + '</div>'
+    + '<div><label class="un-lb">新しいほう（新）</label>' + sel('unNew', UN.cmp[1]) + '</div></div>'
+    + '<div id="unDiffOut"><div class="un-empty">比べています…</div></div>';
+  box.innerHTML = h;
+  unRunDiff();
+}
+
+function unCmpChange(){
+  UN.cmp = [document.getElementById('unOld').value, document.getElementById('unNew').value];
+  unRunDiff();
+}
+
+async function unRunDiff(){
+  var out = document.getElementById('unDiffOut');
+  if (!out) return;
+  var a = UN.cmp[0], b = UN.cmp[1];
+  if (!a || !b || a === b) { out.innerHTML = '<div class="un-empty">ちがう版を2つ選んでください。</div>'; return; }
+  try {
+    var r = await fetch('/api/unei/diff?old=' + encodeURIComponent(a) + '&new=' + encodeURIComponent(b), { credentials:'include' });
+    var j = await r.json();
+    if (j.status !== 'success') throw new Error(j.message || '比べられませんでした');
+    var ch = j.changes || [];
+    if (!ch.length) { out.innerHTML = '<div class="un-empty">変わった条はありません。</div>'; return; }
+    var h = '<p style="font-size:0.82rem;color:#5f6368;line-height:1.7;margin:0 0 10px;">'
+      + '<b>' + ch.length + 'つの条</b>が変わっています。新旧対照表に載せるのはここです。</p>'
+      + '<p class="un-leg">赤いところが変わった部分です。'
+      + '旧の<span class="un-del">取り消し線</span>が消えた文字、'
+      + '新の<span class="un-ins">下線</span>が入った文字です。</p>';
+    ch.forEach(function(c){
+      h += '<div class="un-dif"><div class="un-dif-h">' + unEsc(c.no)
+        + (c.title ? '（' + unEsc(c.title) + '）' : '') + '　' + unEsc(c.kind) + '</div>'
+        + '<div class="un-dif-c">'
+        /* unei-diff-red-v1: old_html / new_html は、変わった文字を赤で囲んだもの。
+           escape はサーバ側で済ませてある（_unei_wrap）。
+           万一 old_html が来なかったときは、これまでどおり素のまま出す。 */
+        + '<div class="un-dif-x"><div class="un-dif-t">旧</div><div class="un-dif-b">' + (c.old_html || unEsc((c.old||[]).join('\n'))) + '</div></div>'
+        + '<div class="un-dif-x"><div class="un-dif-t">新</div><div class="un-dif-b">' + (c.new_html || unEsc((c.new||[]).join('\n'))) + '</div></div>'
+        + '</div></div>';
+    });
+    out.innerHTML = h;
+  } catch (e) {
+    out.innerHTML = '<div class="un-empty">比べられませんでした：' + unEsc(e.message || e) + '</div>';
+  }
+}
+
+function unBack(){ UN.view = 'list'; UN.vid = null; unRender(); }
+
+function unOpenForm(){
+  UN.picked = [];                      /* drop-files-v1: 前に選んだものを持ち越さない */
+  unRenderPicked();
+  var f = document.getElementById('unForm');
+  f.style.display = 'block';
+  /* ★scrollIntoView は古い端末に無いことがある。そこで止めない。 */
+  try { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+}
+function unCloseForm(){
+  document.getElementById('unForm').style.display = 'none';
+  UN.picked = [];
+  unRenderPicked();
+  document.getElementById('unNote').value = '';
+}
+function unPick(){ var i = document.getElementById('unFile'); i.value = ''; i.click(); }
+
+/* ───────── Wordを選ぶ・落とす（drop-files-v1） ───────── */
+
+function unAddPicked(files){
+  if (!files || !files.length) return;
+  var bad = [];
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    /* ★.doc は読めない。ここで断らないと、取り込んでから失敗して分かりにくい。 */
+    if (!/\.docx$/i.test(f.name)) { bad.push(f.name); continue; }
+    UN.picked.push({ file: f, eff: '', label: f.name.replace(/\.docx$/i, '') });
+  }
+  unRenderPicked();
+  if (bad.length) {
+    alert('Word（.docx）だけ取り込めます。次のものは入れられません：\n' + bad.join('\n')
+        + '\n\n古い .doc は、Word で「.docx」として保存し直してください。');
+  }
+}
+
+function unDropPicked(i){
+  unKeepPicked();
+  UN.picked.splice(i, 1);
+  unRenderPicked();
+}
+
+/* ★描き直す前に、入力中の施行日と名前を覚えておく。
+   覚えずに描き直すと、2つ目を選んだ瞬間に1つ目の入力が消える。 */
+function unKeepPicked(){
+  UN.picked.forEach(function(p, i){
+    var e = document.getElementById('unEff' + i);
+    var l = document.getElementById('unLabel' + i);
+    if (e) p.eff = e.value || '';
+    if (l) p.label = l.value || '';
+  });
+}
+
+function unRenderPicked(){
+  var box = document.getElementById('unPicked');
+  if (!box) return;
+  if (!UN.picked.length) { box.innerHTML = ''; return; }
+  var h = '<div style="font-size:0.76rem;font-weight:700;color:#1b5e20;margin:12px 0 2px;">'
+        + '選んだ運営規程 ' + UN.picked.length + '本'
+        + '<span style="font-weight:400;color:#5f6368;">'
+        + '（施行日を入れておくと、新しい順に並びます）</span></div>';
+  UN.picked.forEach(function(p, i){
+    h += '<div class="un-pick">'
+      + '<div class="un-pick-h"><span class="un-pick-n">' + unEsc(p.file.name) + '</span>'
+      + '<button type="button" class="un-btn un-pick-x" onclick="unDropPicked(' + i + ')">外す</button>'
+      + '</div>'
+      + '<div class="un-row" style="margin-bottom:0;">'
+      + '<div><label class="un-lb">施行日</label>'
+      + '<input type="date" id="unEff' + i + '" class="form-control" value="' + unEsc(p.eff) + '"></div>'
+      + '<div><label class="un-lb">名前（任意）</label>'
+      + '<input type="text" id="unLabel' + i + '" class="form-control" value="' + unEsc(p.label) + '"></div>'
+      + '</div></div>';
+  });
+  box.innerHTML = h;
+}
+
+document.getElementById('unFile').addEventListener('change', function(){
+  unKeepPicked();
+  unAddPicked(Array.prototype.slice.call(this.files || []));
+  this.value = '';
+});
+
+(function unBindDrop(){
+  var z = document.getElementById('unDrop');
+  if (!z) return;
+  ['dragenter', 'dragover'].forEach(function(ev){
+    z.addEventListener(ev, function(e){ e.preventDefault(); z.classList.add('un-drop-on'); });
+  });
+  ['dragleave', 'dragend'].forEach(function(ev){
+    z.addEventListener(ev, function(){ z.classList.remove('un-drop-on'); });
+  });
+  z.addEventListener('drop', function(e){
+    e.preventDefault();
+    z.classList.remove('un-drop-on');
+    unKeepPicked();
+    unAddPicked(Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []));
+  });
+  /* ★枠の外に落とすと、ブラウザがそのファイルを開いて画面ごと飛ぶ。 */
+  ['dragover', 'drop'].forEach(function(ev){
+    window.addEventListener(ev, function(e){
+      var t = e.target;
+      if (!(t && t.closest && t.closest('.un-drop'))) e.preventDefault();
+    });
+  });
+})();
+
+/* 1本ずつ順に取り込む。★何本目で何が起きたかを言えるようにする。 */
+async function unImportAll(){
+  unKeepPicked();
+  if (!UN.picked.length) { alert('先に Word（.docx）を選んでください。'); return; }
+  var btn = document.getElementById('unGoBtn');
+  var back = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; }
+  var note = document.getElementById('unNote').value || '';
+  var done = [], ng = [];
+  for (var i = 0; i < UN.picked.length; i++) {
+    var p = UN.picked[i];
+    if (btn) btn.textContent = '取り込んでいます… ' + (i + 1) + '/' + UN.picked.length;
+    var fd = new FormData();
+    fd.append('file', p.file);
+    fd.append('service_type', UN.svc);
+    fd.append('effective_date', p.eff || '');
+    fd.append('label', p.label || '');
+    fd.append('note', note);
+    try {
+      var r = await fetch('/api/unei/import', { method: 'POST', credentials: 'include', body: fd });
+      var j = await r.json();
+      if (j.status === 'success') done.push(p.file.name + '　' + j.articles + 'つの条');
+      else ng.push(p.file.name + '（' + (j.message || '') + '）');
+    } catch (e) {
+      ng.push(p.file.name + '（通信できませんでした）');
+    }
+  }
+  if (btn) { btn.disabled = false; btn.textContent = back || '取り込む'; }
+  /* ★何を読み取ったかを見せる。黙って入ると、ちゃんと切り分けられたのか分からない。 */
+  var msg = '';
+  if (done.length) msg += '取り込みました（' + done.length + '本）\n' + done.join('\n');
+  if (ng.length) msg += (msg ? '\n\n' : '') + '取り込めませんでした\n' + ng.join('\n');
+  alert(msg);
+  if (done.length) {
+    unCloseForm();
+    await unLoad();
+  }
+}
+
+async function unDel(id){
+  if (!confirm('この版を消します。\n\n前の版は、あとで「何が変わったか」を調べるための証拠になります。\n本当に消しますか？（元に戻せません）')) return;
+  try {
+    var r = await fetch('/api/unei/version/' + encodeURIComponent(id), { method:'DELETE', credentials:'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('消せませんでした：' + (j.message || '')); return; }
+    UN.view = 'list'; UN.vid = null;
+    await unLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+unLoad();
+</script>
+{% endblock %}

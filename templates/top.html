@@ -192,6 +192,36 @@
 </a>
 {% endif %}
 
+{# shogu-v1: 処遇改善の書類で、まだ確認していないものがあれば帯を出す。
+   ★出すかどうかは開いてから聞く（件数は毎日変わる）。
+     ただし【使っている事業所だけ】。can_shogu がOFFなら、この帯ごと出ない。
+   ★読めなかったときは何も出さない。TOPに赤い字が出ると、職員が怖がる。 #}
+{% if can_shogu %}
+<a id="shogu-banner" href="/shogu/my"
+   style="display:none;align-items:center;gap:8px;text-decoration:none;background:#fff4e5;
+          border:1.5px solid #f0b429;border-radius:12px;padding:11px 14px;margin-bottom:1rem;
+          color:#8a5a00;font-size:0.82rem;line-height:1.6;font-weight:700;">
+  <span class="material-symbols-outlined" style="font-size:20px;flex-shrink:0;">draw</span>
+  <span id="shogu-banner-t">処遇改善の書類を確認してください</span>
+</a>
+<script>
+(function(){
+  var b = document.getElementById('shogu-banner');
+  if (!b) return;
+  fetch('/api/shogu/pending', { credentials: 'include' })
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      var n = (j && j.count) || 0;
+      if (!n) return;                      /* 0件なら、何も出さない */
+      document.getElementById('shogu-banner-t').textContent =
+        '処遇改善の書類が' + n + '件あります。確認して署名してください。';
+      b.style.display = 'flex';
+    })
+    .catch(function(){ /* 読めないときは、黙って出さない */ });
+})();
+</script>
+{% endif %}
+
 <div class="user-info" style="display:flex;align-items:center;gap:10px;">
     <div id="my-icon-btn"
         style="width:44px;height:44px;border-radius:50%;flex-shrink:0;cursor:pointer;overflow:hidden;
