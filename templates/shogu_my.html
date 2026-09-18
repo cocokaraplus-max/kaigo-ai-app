@@ -19,6 +19,9 @@
   /* shogu-open-v6: 押すと保存される書類（Excel・Word）の印 */
   .sm-dl { font-size:0.7rem; color:#5f6368; background:#f1f3f4; border-radius:6px;
            padding:2px 7px; flex:0 0 auto; white-space:nowrap; margin-left:6px; }
+  /* shogu-pdf-v7: リンクにしない書類の名前（押す先が無い） */
+  .sm-file-x { flex:1 1 auto; min-width:0; word-break:break-all;
+               color:#5f6368; font-weight:700; }
   .sm-file { display:flex; align-items:center; gap:8px; font-size:0.84rem; padding:5px 0; }
   .sm-file a { color:#1a73e8; text-decoration:none; word-break:break-all;
                flex:1 1 auto; min-width:0; font-weight:700; }
@@ -100,8 +103,17 @@ function smOpenable(name){
 /* 書類へのリンクを1つ作る。
    ★開けるものは新しいタブ、開けないものは download で【保存】。
      download を付けると新しいタブが開かないので、白い画面に入り込まない。 */
-function smFileLink(f, tail){
+function smFileLink(f, tail, hasSummary){
   var op = smOpenable(f.file_name);
+  /* shogu-pdf-v7: 開けないもの（Excel・Word）は、要点が出ているならリンクにしない。
+     ★スマホでExcelを開ける人のほうが例外。押す先があるかぎり、誰かが押して
+       白い画面に入り、そこから戻れなくなる。押す先を無くすのがいちばん確実。 */
+  if (!op && hasSummary) {
+    return '<div class="sm-file"><span class="sm-file-x">📄 ' + smEsc(f.file_name)
+      + '</span><span class="sm-dl">パソコン向け</span></div>';
+  }
+  /* 要点が読み取れていないときだけ、保存のリンクを残す。
+     ★それしか中身を見る手立てが無いため。 */
   return '<div class="sm-file"><a href="/api/shogu/file/' + smEsc(f.id) + '"'
     + (op ? ' target="_blank"' : ' download="' + smEsc(f.file_name) + '"')
     + ' onclick="smOpened()">📄 ' + smEsc(f.file_name) + (tail || '')
@@ -163,7 +175,7 @@ function smCard(d, isYet){
   if (!(d.files || []).length) {
     h += '<div style="font-size:0.78rem;color:#a56300;">書類が付いていません。</div>';
   } else {
-    (d.files || []).forEach(function(f){ h += smFileLink(f, ''); });
+    (d.files || []).forEach(function(f){ h += smFileLink(f, '', !!d.summary); });
   }
   h += '</div>';
   if (d.need_sign && d.mine_signed) {
@@ -191,13 +203,23 @@ function smOpen(id){
   document.getElementById('smBoxT').textContent = d.title || '';
   /* shogu-notified-v3: ちがう日付で残るときは、黙って残さない。
      ★押した人が「今日押したのに日付がちがう」と戸惑わないように、先に伝える。 */
+  /* shogu-sum-v8: 読むものが窓の中にあるのだから、そう書く。
+     ★要約が読み取れていないときだけ、原本を開いてもらう必要がある。 */
   document.getElementById('smBoxS').textContent =
-    '下の書類に目を通してから、お名前を書いてください。'
+    (d.summary ? '下の内容を確認して、お名前を書いてください。'
+               : '下の書類に目を通してから、お名前を書いてください。')
     + (d.notified_on
         ? '（この書類は ' + smDate(d.notified_on) + ' の周知として記録されます）' : '');
   var fh = '';
-  (d.files || []).forEach(function(f){ fh += smFileLink(f, ' を開く'); });
+  /* shogu-sum-v8: 確認する中身を、この窓の中に出す。
+     ★「確認して署名する」窓なのに、確認するものがここに無いのはおかしい。
+       開けないExcelを押させて行き止まりに入れるより、読めるものをここに置く。 */
+  if (window.shoguViewHtml && d.summary) fh += shoguViewHtml(d.summary);
+  (d.files || []).forEach(function(f){ fh += smFileLink(f, ' を開く', !!d.summary); });
   if (!fh) fh = '<div style="font-size:0.78rem;color:#a56300;">書類が付いていません。</div>';
+  /* shogu-sum-v8: 窓が長くなるので、いちばん上から読めるようにしておく。 */
+  var _box = document.querySelector('#smMask .sm-box');
+  if (_box) _box.scrollTop = 0;
   document.getElementById('smBoxF').innerHTML = fh;
   document.getElementById('smMask').style.display = 'flex';
   smSetOk();

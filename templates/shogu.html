@@ -73,6 +73,11 @@
   /* 署名の画像が無い記録。★出さないと、後で「なぜこの人だけ署名が無いのか」が分からない。 */
   .sg-paper { font-size:0.7rem; color:#5f6368; background:#f1f3f4; border-radius:6px;
               padding:2px 8px; flex:0 0 auto; white-space:nowrap; }
+  /* shogu-pdf-v7: PDFが付いていない公開書類への注意。
+     ★画面を直すだけでは足りない。PDFを1枚足すのがいちばん確実な解決になる。 */
+  .sg-warn { font-size:0.76rem; color:#8a5a00; background:#fff4e5;
+             border:1px solid #f0b429; border-radius:9px; padding:8px 10px;
+             margin-top:8px; line-height:1.7; }
   .sg-mask { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
              z-index:3000; align-items:center; justify-content:center; padding:14px; }
   .sg-box { background:#fff; border-radius:16px; width:100%; max-width:460px;
@@ -414,6 +419,14 @@ function sgCard(d){
 
   /* shogu-view-v1: Excelから読み取った要点。読めていなければ何も出ない。 */
   if (window.shoguViewHtml) h += shoguViewHtml(d.summary);
+
+  /* shogu-pdf-v7: 職員はスマホでExcelを開けない。PDFが1枚も無いなら、そう伝える。 */
+  if (SG.isAdmin && d.status === '公開' && (d.files || []).length
+      && !(d.files || []).some(function(f){ return sgOpenable(f.file_name); })) {
+    h += '<div class="sg-warn">職員はスマホで Excel を開けません。'
+      + 'Excelで「PDFとして保存」したものを<b>一緒に取り込んでおく</b>と、'
+      + 'その場で読めます。</div>';
+  }
 
   /* 付いている書類 */
   h += '<div class="sg-files">';
