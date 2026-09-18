@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block title %}処遇改善の書類 - TASUKARU{% endblock %}
+
+{# shogu-v1: 職員が処遇改善の書類を見て、手書きで署名する画面。
+   ★まだ確認していないものを【上に】出す。下に埋もれると、そのままになる。 #}
+{% block extra_style %}
+<style>
+  .sm-sec { font-size:0.95rem; font-weight:800; color:#1b5e20; margin:18px 0 8px; }
+  .sm-card { border:1.5px solid #e0e0e0; border-radius:12px; padding:13px 14px;
+             margin-bottom:10px; background:#fff; }
+  .sm-card-yet { border-color:#f0b429; background:#fffdf5; }
+  .sm-head { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .sm-type { background:#e8f0fe; color:#1a73e8; border-radius:999px; padding:2px 10px;
+             font-size:0.76rem; font-weight:700; flex:0 0 auto; white-space:nowrap; }
+  .sm-yr { font-size:0.76rem; color:#5f6368; flex:0 0 auto; }
+  .sm-ttl { font-weight:800; font-size:0.96rem; color:#202124; margin-top:6px; }
+  .sm-note { font-size:0.8rem; color:#5f6368; margin-top:5px; line-height:1.6; }
+  .sm-files { margin-top:9px; }
+  .sm-file { display:flex; align-items:center; gap:8px; font-size:0.84rem; padding:5px 0; }
+  .sm-file a { color:#1a73e8; text-decoration:none; word-break:break-all;
+               flex:1 1 auto; min-width:0; font-weight:700; }
+  .sm-done { display:flex; align-items:center; gap:6px; font-size:0.82rem;
+             color:#137333; font-weight:700; margin-top:10px; }
+  .sm-btn { border:1.5px solid #e0e0e0; background:#fff; border-radius:9px; padding:9px 14px;
+            font-size:0.86rem; font-weight:700; cursor:pointer; font-family:inherit; color:#3c4043; }
+  .sm-btn-main { border-color:#2e7d32; background:#e8f5e9; color:#1b5e20; }
+  .sm-btn:disabled { opacity:0.45; cursor:default; }
+  .sm-empty { color:#5f6368; font-size:0.88rem; padding:24px 0; text-align:center; line-height:1.8; }
+
+  /* 署名の窓 */
+  .sm-mask { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+             z-index:3000; align-items:center; justify-content:center; padding:14px; }
+  .sm-box { background:#fff; border-radius:16px; width:100%; max-width:520px;
+            padding:18px; max-height:92vh; overflow-y:auto; }
+  .sm-box-t { font-size:1rem; font-weight:800; color:#202124; margin:0 0 4px; }
+  .sm-box-s { font-size:0.8rem; color:#5f6368; line-height:1.7; margin:0 0 12px; }
+  /* ★touch-action:none を付けないと、指で書こうとして画面がスクロールする。 */
+  .sm-pad { width:100%; height:190px; border:2px dashed #9aa0a6; border-radius:12px;
+            background:#fff; touch-action:none; display:block; cursor:crosshair; }
+  .sm-pad-w { position:relative; }
+  .sm-pad-h { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+              color:#bdc1c6; font-size:0.9rem; pointer-events:none; }
+  .sm-acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="font-size:1.1rem;font-weight:800;color:#202124;margin:0 0 4px;">処遇改善の書類</h2>
+<p style="font-size:0.8rem;color:#5f6368;line-height:1.7;margin:0 0 14px;">
+  事業所が出した処遇改善加算の計画書・実績報告書です。
+  目を通したら、<b>手書きで署名</b>してください。確認した記録として残ります。
+</p>
+
+<div id="smBody"><div class="sm-empty">読み込み中…</div></div>
+
+<div class="sm-mask" id="smMask">
+  <div class="sm-box">
+    <p class="sm-box-t" id="smBoxT">　</p>
+    <p class="sm-box-s" id="smBoxS">　</p>
+    <div id="smBoxF" style="margin-bottom:12px;"></div>
+    <div class="sm-pad-w">
+      <canvas class="sm-pad" id="smPad"></canvas>
+      <div class="sm-pad-h" id="smPadH">ここに指かペンで名前を書いてください</div>
+    </div>
+    <div class="sm-acts">
+      <button type="button" class="sm-btn sm-btn-main" id="smOk" onclick="smSave()">署名する</button>
+      <button type="button" class="sm-btn" onclick="smClear()">書き直す</button>
+      <button type="button" class="sm-btn" onclick="smClose()">やめる</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+var SM = { docs: [], cur: null, opened: false, drawn: false, drawing: false, ctx: null, busy: false };
+
+function smEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+function smWareki(y){
+  var r = y - 2018;
+  if (r < 1) return y + '年度';
+  return y + '年度（令和' + (r === 1 ? '元' : r) + '年度）';
+}
+function smDate(s){
+  if (!s) return '';
+  var d = new Date(s);
+  if (isNaN(d.getTime())) return String(s).slice(0, 10);
+  return d.getFullYear() + '年' + (d.getMonth() + 1) + '月' + d.getDate() + '日';
+}
+
+async function smLoad(){
+  try {
+    var r = await fetch('/api/shogu/my', { credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') throw new Error(j.message || '読めませんでした');
+    SM.docs = j.docs || [];
+    smRender();
+  } catch (e) {
+    document.getElementById('smBody').innerHTML =
+      '<div class="sm-empty">読み込めませんでした：' + smEsc(e.message || e) + '</div>';
+  }
+}
+
+function smRender(){
+  var box = document.getElementById('smBody');
+  if (!SM.docs.length) {
+    box.innerHTML = '<div class="sm-empty">いまは確認する書類がありません。</div>';
+    return;
+  }
+  var yet = SM.docs.filter(function(d){ return d.need_sign && !d.mine_signed; });
+  var done = SM.docs.filter(function(d){ return !(d.need_sign && !d.mine_signed); });
+  var h = '';
+  if (yet.length) {
+    h += '<div class="sm-sec">確認してください（' + yet.length + '件）</div>';
+    yet.forEach(function(d){ h += smCard(d, true); });
+  }
+  if (done.length) {
+    h += '<div class="sm-sec">確認したもの</div>';
+    done.forEach(function(d){ h += smCard(d, false); });
+  }
+  box.innerHTML = h;
+}
+
+function smCard(d, isYet){
+  var h = '<div class="sm-card' + (isYet ? ' sm-card-yet' : '') + '">'
+    + '<div class="sm-head">'
+    + '<span class="sm-type">' + smEsc(d.doc_type) + '</span>'
+    + '<span class="sm-yr">' + smEsc(smWareki(d.fiscal_year)) + '</span>'
+    + '</div>'
+    + '<div class="sm-ttl">' + smEsc(d.title || '') + '</div>';
+  if (d.note) h += '<div class="sm-note">' + smEsc(d.note) + '</div>';
+  h += '<div class="sm-files">';
+  if (!(d.files || []).length) {
+    h += '<div style="font-size:0.78rem;color:#a56300;">書類が付いていません。</div>';
+  } else {
+    (d.files || []).forEach(function(f){
+      h += '<div class="sm-file">'
+        + '<a href="/api/shogu/file/' + smEsc(f.id) + '" target="_blank">'
+        + '📄 ' + smEsc(f.file_name) + '</a></div>';
+    });
+  }
+  h += '</div>';
+  if (d.need_sign && d.mine_signed) {
+    h += '<div class="sm-done"><span class="material-symbols-outlined" style="font-size:19px;">check_circle</span>'
+      + smEsc(smDate(d.mine_signed_at)) + ' に確認しました</div>';
+  } else if (d.need_sign) {
+    h += '<div class="sm-acts"><button type="button" class="sm-btn sm-btn-main" onclick="smOpen(\''
+      + smEsc(d.id) + '\')">確認して署名する</button></div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+/* ───────── 署名の窓 ───────── */
+
+function smOpen(id){
+  var d = SM.docs.filter(function(x){ return x.id === id; })[0];
+  if (!d) return;
+  SM.cur = d;
+  SM.opened = !(d.files || []).length;   /* 書類が無いなら、開くものが無い */
+  document.getElementById('smBoxT').textContent = d.title || '';
+  document.getElementById('smBoxS').textContent =
+    '下の書類に目を通してから、お名前を書いてください。';
+  var fh = '';
+  (d.files || []).forEach(function(f){
+    fh += '<div class="sm-file"><a href="/api/shogu/file/' + smEsc(f.id)
+       + '" target="_blank" onclick="smOpened()">📄 ' + smEsc(f.file_name) + ' を開く</a></div>';
+  });
+  if (!fh) fh = '<div style="font-size:0.78rem;color:#a56300;">書類が付いていません。</div>';
+  document.getElementById('smBoxF').innerHTML = fh;
+  document.getElementById('smMask').style.display = 'flex';
+  smSetOk();
+  /* ★窓を出してから大きさを測る。display:none のままだと幅が0になり、
+       指で書いても線がどこにも出ない。 */
+  setTimeout(smPadInit, 30);
+}
+
+function smOpened(){ SM.opened = true; smSetOk(); }
+
+function smClose(){
+  document.getElementById('smMask').style.display = 'none';
+  SM.cur = null;
+}
+
+function smSetOk(){
+  var b = document.getElementById('smOk');
+  if (!b) return;
+  var ok = SM.opened && SM.drawn && !SM.busy;
+  b.disabled = !ok;
+  b.textContent = SM.busy ? '送っています…'
+    : (!SM.opened ? 'まず書類を開いてください' : (SM.drawn ? '署名する' : '名前を書いてください'));
+}
+
+function smPadInit(){
+  var c = document.getElementById('smPad');
+  if (!c) return;
+  var r = c.getBoundingClientRect();
+  var dpr = window.devicePixelRatio || 1;
+  c.width = Math.max(1, Math.round(r.width * dpr));
+  c.height = Math.max(1, Math.round(r.height * dpr));
+  var x = c.getContext('2d');
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  /* ★白でうめておく。透けたままだと、印刷したときに何も出ない。 */
+  x.fillStyle = '#fff';
+  x.fillRect(0, 0, r.width, r.height);
+  x.lineWidth = 2.6;
+  x.lineCap = 'round';
+  x.lineJoin = 'round';
+  x.strokeStyle = '#1a1a1a';
+  SM.ctx = x;
+  SM.drawn = false;
+  SM.drawing = false;
+  document.getElementById('smPadH').style.display = 'flex';
+  smSetOk();
+}
+
+function smClear(){ smPadInit(); }
+
+function smPos(e){
+  var c = document.getElementById('smPad');
+  var r = c.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+(function smBind(){
+  var c = document.getElementById('smPad');
+  if (!c) return;
+  c.addEventListener('pointerdown', function(e){
+    if (!SM.ctx) return;
+    e.preventDefault();
+    SM.drawing = true;
+    try { c.setPointerCapture(e.pointerId); } catch (err) {}
+    var p = smPos(e);
+    SM.ctx.beginPath();
+    SM.ctx.moveTo(p.x, p.y);
+    /* ★点を打つだけの署名（「.」や句点）でも線が残るように、最初に一度打つ。 */
+    SM.ctx.lineTo(p.x + 0.1, p.y);
+    SM.ctx.stroke();
+    SM.drawn = true;
+    document.getElementById('smPadH').style.display = 'none';
+    smSetOk();
+  });
+  c.addEventListener('pointermove', function(e){
+    if (!SM.drawing || !SM.ctx) return;
+    e.preventDefault();
+    var p = smPos(e);
+    SM.ctx.lineTo(p.x, p.y);
+    SM.ctx.stroke();
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function(ev){
+    c.addEventListener(ev, function(){ SM.drawing = false; });
+  });
+})();
+
+async function smSave(){
+  if (!SM.cur || !SM.drawn || SM.busy) return;
+  SM.busy = true;
+  smSetOk();
+  try {
+    var img = document.getElementById('smPad').toDataURL('image/png');
+    var r = await fetch('/api/shogu/sign', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_id: SM.cur.id, image: img }) });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('署名できませんでした：' + (j.message || '')); return; }
+    smClose();
+    await smLoad();
+  } catch (e) {
+    alert('通信できませんでした：' + e);
+  } finally {
+    SM.busy = false;
+    smSetOk();
+  }
+}
+
+/* 窓の外を押したら閉じる（うっかり消えないよう、中は拾わない） */
+document.getElementById('smMask').addEventListener('click', function(e){
+  if (e.target === this) smClose();
+});
+
+smLoad();
+</script>
+{% endblock %}

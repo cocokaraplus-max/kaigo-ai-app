@@ -1,0 +1,402 @@
+{% extends "base.html" %}
+{% block title %}処遇改善加算の書類 - TASUKARU{% endblock %}
+
+{# shogu-v1: 処遇改善加算の計画書・実績報告書を保管し、職員に周知して署名をもらう。
+   ★この画面のいちばんの用は「誰がまだ確認していないか」。
+     それが一目で分かるように、署名の進み具合を先に出す。 #}
+{% block extra_style %}
+<style>
+  .sg-year { font-size:1.05rem; font-weight:800; color:#1b5e20; margin:22px 0 8px;
+             border-bottom:2px solid #c8e6c9; padding-bottom:6px; }
+  .sg-card { border:1.5px solid #e0e0e0; border-radius:12px; padding:13px 14px;
+             margin-bottom:10px; background:#fff; }
+  .sg-head { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
+  .sg-type { background:#e8f0fe; color:#1a73e8; border-radius:999px; padding:2px 10px;
+             font-size:0.76rem; font-weight:700; flex:0 0 auto; white-space:nowrap; }
+  .sg-st { border-radius:999px; padding:2px 10px; font-size:0.76rem; font-weight:700;
+           flex:0 0 auto; white-space:nowrap; }
+  .sg-st-公開 { background:#e6f4ea; color:#137333; }
+  .sg-st-下書き { background:#f1f3f4; color:#5f6368; }
+  .sg-ttl { font-weight:800; font-size:0.96rem; color:#202124; }
+  .sg-note { font-size:0.8rem; color:#5f6368; margin-top:5px; line-height:1.6; }
+
+  /* 署名の進み具合。★まず目に入るところに置く。 */
+  .sg-prog { margin-top:10px; }
+  .sg-prog-t { font-size:0.82rem; font-weight:700; color:#3c4043; margin-bottom:5px; }
+  .sg-bar { height:9px; border-radius:999px; background:#e8eaed; overflow:hidden; }
+  .sg-bar-i { height:100%; background:#2e7d32; border-radius:999px; }
+  .sg-bar-full { background:#1b5e20; }
+  .sg-who { font-size:0.76rem; color:#5f6368; margin-top:6px; line-height:1.8; }
+  .sg-yet { color:#c5221f; font-weight:700; }
+  .sg-done-n { color:#137333; font-weight:700; }
+  .sg-round { font-size:0.72rem; color:#a56300; background:#fef7e0;
+              border-radius:6px; padding:2px 8px; flex:0 0 auto; white-space:nowrap; }
+
+  .sg-files { margin-top:10px; border-top:1px dashed #e0e0e0; padding-top:8px; }
+  .sg-file { display:flex; align-items:center; gap:8px; font-size:0.82rem; padding:4px 0; }
+  .sg-file a { color:#1a73e8; text-decoration:none; word-break:break-all;
+               flex:1 1 auto; min-width:0; }
+  .sg-size { color:#9aa0a6; font-size:0.72rem; flex:0 0 auto; white-space:nowrap; }
+  /* ★ボタンの形は、どの行でも同じにする（届出で直したのと同じ考え方）。 */
+  .sg-file-del { flex:0 0 auto; white-space:nowrap; padding:4px 12px; font-size:0.72rem;
+                 min-width:4.2em; text-align:center; }
+
+  .sg-acts { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .sg-btn { border:1.5px solid #e0e0e0; background:#fff; border-radius:9px; padding:7px 12px;
+            font-size:0.8rem; font-weight:700; cursor:pointer; font-family:inherit; color:#3c4043; }
+  .sg-btn-main { border-color:#2e7d32; background:#e8f5e9; color:#1b5e20; }
+  .sg-btn-del { border-color:#f2b8b5; background:#fce8e6; color:#c5221f; }
+  .sg-form { border:1.5px solid #2e7d32; border-radius:12px; padding:14px;
+             background:#f6fbf6; margin-bottom:18px; }
+  .sg-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  .sg-lb { font-size:0.76rem; font-weight:700; color:#3c4043; display:block; margin-bottom:4px; }
+  .sg-empty { color:#5f6368; font-size:0.88rem; padding:24px 0; text-align:center; line-height:1.8; }
+  .sg-sign-img { max-width:200px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; }
+  @media (max-width: 560px) { .sg-row { grid-template-columns:1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<h2 style="font-size:1.1rem;font-weight:800;color:#202124;margin:0 0 4px;">処遇改善加算の書類</h2>
+<p style="font-size:0.8rem;color:#5f6368;line-height:1.7;margin:0 0 14px;">
+  計画書と実績報告書を保管し、職員に周知します。<b>公開</b>にすると、職員のTOPページに出て、
+  その場で手書きの署名をもらえます。誰がまだ確認していないかが、ここで分かります。
+</p>
+
+<div id="sgAdminOnly" style="display:none;">
+  <button type="button" class="sg-btn sg-btn-main" onclick="sgOpenForm()" style="margin-bottom:12px;">
+    ＋ 書類を足す
+  </button>
+
+  <div class="sg-form" id="sgForm" style="display:none;">
+    <input type="hidden" id="sgId">
+    <div class="sg-row">
+      <div>
+        <label class="sg-lb">年度 <span style="color:#c5221f;">必須</span></label>
+        <select id="sgYear" class="form-control"></select>
+      </div>
+      <div>
+        <label class="sg-lb">種類</label>
+        <select id="sgType" class="form-control">
+          {% for t in sg_doc_types %}<option value="{{ t }}">{{ t }}</option>{% endfor %}
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">題（空なら「年度＋種類」になります）</label>
+      <input type="text" id="sgTitle" class="form-control" placeholder="例：令和8年度 介護職員等処遇改善計画書">
+    </div>
+    <div class="sg-row">
+      <div>
+        <label class="sg-lb">状態</label>
+        <select id="sgStatus" class="form-control">
+          {% for s in sg_status %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <label class="sg-lb">署名</label>
+        <select id="sgNeed" class="form-control">
+          <option value="1">職員の署名をもらう</option>
+          <option value="0">見せるだけ（署名は不要）</option>
+        </select>
+      </div>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">おぼえ書き</label>
+      <textarea id="sgNote" class="form-control" rows="2"
+                placeholder="例：賃金規程の改定もあわせて周知"></textarea>
+    </div>
+    <div class="sg-acts">
+      <button type="button" class="sg-btn sg-btn-main" onclick="sgSave()">保存する</button>
+      <button type="button" class="sg-btn" onclick="sgCloseForm()">やめる</button>
+    </div>
+    <p style="font-size:0.74rem;color:#5f6368;margin:10px 0 0;line-height:1.7;">
+      ★<b>下書き</b>のあいだは職員に見えません。書類を付けてから<b>公開</b>にしてください。
+    </p>
+  </div>
+</div>
+
+<input type="file" id="sgFile" style="display:none;"
+       accept=".pdf,.docx,.doc,.xlsx,.xls,.jpg,.jpeg,.png">
+
+<div id="sgBody"><div class="sg-empty">読み込み中…</div></div>
+{% endblock %}
+
+{% block extra_script %}
+<script>
+var SG = { docs: [], staff: [], isAdmin: false, yearNow: {{ sg_year_now }}, upDoc: null };
+
+function sgEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+/* 年度の見出し。令和元年度だけ「1年度」にならないようにする。 */
+function sgWareki(y){
+  var r = y - 2018;
+  if (r < 1) return y + '年度';
+  return y + '年度（令和' + (r === 1 ? '元' : r) + '年度）';
+}
+
+function sgSize(n){
+  n = Number(n || 0);
+  if (n < 1024) return n + 'B';
+  if (n < 1024 * 1024) return Math.round(n / 1024) + 'KB';
+  return (n / 1024 / 1024).toFixed(1) + 'MB';
+}
+
+function sgDate(s){
+  if (!s) return '';
+  var d = new Date(s);
+  if (isNaN(d.getTime())) return String(s).slice(0, 10);
+  return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+}
+
+async function sgLoad(){
+  try {
+    var r = await fetch('/api/shogu/list', { credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') throw new Error(j.message || '読めませんでした');
+    SG.docs = j.docs || [];
+    SG.staff = j.staff || [];
+    SG.isAdmin = !!j.is_admin;
+    document.getElementById('sgAdminOnly').style.display = SG.isAdmin ? 'block' : 'none';
+    sgFillYears();
+    sgRender();
+  } catch (e) {
+    document.getElementById('sgBody').innerHTML =
+      '<div class="sg-empty">読み込めませんでした：' + sgEsc(e.message || e) + '</div>';
+  }
+}
+
+/* 年度の選べる幅。いまの年度を軸に、前後を出す。
+   ★すでにある書類の年度も混ぜる（古いものを直せなくならないように）。 */
+function sgFillYears(){
+  var sel = document.getElementById('sgYear');
+  if (!sel) return;
+  var ys = {};
+  for (var i = -3; i <= 1; i++) ys[SG.yearNow + i] = true;
+  SG.docs.forEach(function(d){ if (d.fiscal_year) ys[d.fiscal_year] = true; });
+  var list = Object.keys(ys).map(Number).sort(function(a, b){ return b - a; });
+  sel.innerHTML = list.map(function(y){
+    return '<option value="' + y + '"' + (y === SG.yearNow ? ' selected' : '') + '>'
+      + sgEsc(sgWareki(y)) + '</option>';
+  }).join('');
+}
+
+function sgRender(){
+  var box = document.getElementById('sgBody');
+  if (!SG.docs.length) {
+    box.innerHTML = '<div class="sg-empty">まだ書類がありません。<br>'
+      + (SG.isAdmin ? '「＋ 書類を足す」から始めてください。' : '管理者が用意すると、ここに出ます。') + '</div>';
+    return;
+  }
+  /* 年度ごとにまとめる。並べ替えはサーバ側で済んでいるので、ここでは順に見るだけ。 */
+  var h = '';
+  var cur = null;
+  SG.docs.forEach(function(d){
+    if (d.fiscal_year !== cur) {
+      cur = d.fiscal_year;
+      h += '<div class="sg-year">' + sgEsc(sgWareki(cur)) + '</div>';
+    }
+    h += sgCard(d);
+  });
+  box.innerHTML = h;
+}
+
+function sgCard(d){
+  var done = (d.signed || []).length;
+  var yet = (d.pending || []).length;
+  var all = done + yet;
+  var pct = all ? Math.round(done * 100 / all) : 0;
+  var h = '<div class="sg-card">'
+    + '<div class="sg-head">'
+    + '<span class="sg-type">' + sgEsc(d.doc_type) + '</span>'
+    + '<span class="sg-st sg-st-' + sgEsc(d.status) + '">' + sgEsc(d.status) + '</span>'
+    + (d.sign_round > 1 ? '<span class="sg-round">' + d.sign_round + '回目の周知</span>' : '')
+    + '</div>'
+    + '<div class="sg-ttl" style="margin-top:6px;">' + sgEsc(d.title || '') + '</div>';
+  if (d.note) h += '<div class="sg-note">' + sgEsc(d.note) + '</div>';
+
+  /* 署名の進み具合。★署名が要らない書類には出さない（意味のない0/12を見せない）。 */
+  if (d.need_sign) {
+    h += '<div class="sg-prog">'
+      + '<div class="sg-prog-t">確認した人 <span class="sg-done-n">' + done + '</span> / ' + all + '人</div>'
+      + '<div class="sg-bar"><div class="sg-bar-i' + (all && done >= all ? ' sg-bar-full' : '')
+      + '" style="width:' + pct + '%;"></div></div>';
+    if (d.status !== '公開') {
+      h += '<div class="sg-who">下書きのあいだは、職員に見えません。</div>';
+    } else if (yet) {
+      h += '<div class="sg-who"><span class="sg-yet">まだの人</span>：'
+        + (d.pending || []).map(sgEsc).join('、') + '</div>';
+    } else if (all) {
+      h += '<div class="sg-who">全員が確認しました。</div>';
+    } else {
+      h += '<div class="sg-who">在籍している職員がいません。</div>';
+    }
+    if (done && SG.isAdmin) {
+      h += '<div class="sg-who">'
+        + (d.signed || []).map(function(s){
+            return sgEsc(s.staff_name) + '（' + sgEsc(sgDate(s.signed_at)) + '）'
+              + (s.id ? ' <a href="/api/shogu/sign/' + sgEsc(s.id) + '" target="_blank" '
+                        + 'style="color:#1a73e8;text-decoration:none;">署名を見る</a>' : '');
+          }).join(' ／ ')
+        + '</div>';
+    }
+    h += '</div>';
+  }
+
+  /* 付いている書類 */
+  h += '<div class="sg-files">';
+  if (!(d.files || []).length) {
+    h += '<div style="font-size:0.78rem;color:#a56300;">まだ書類が付いていません。</div>';
+  } else {
+    (d.files || []).forEach(function(f){
+      h += '<div class="sg-file">'
+        + '<a href="/api/shogu/file/' + sgEsc(f.id) + '" target="_blank">' + sgEsc(f.file_name) + '</a>'
+        + '<span class="sg-size">' + sgSize(f.file_size) + '</span>'
+        + (SG.isAdmin ? '<button type="button" class="sg-btn sg-btn-del sg-file-del" onclick="sgFileDel(\'' + sgEsc(f.id) + '\')">消す</button>' : '')
+        + '</div>';
+    });
+  }
+  h += '</div>';
+
+  if (SG.isAdmin) {
+    h += '<div class="sg-acts">'
+      + '<button type="button" class="sg-btn sg-btn-main" onclick="sgPick(\'' + sgEsc(d.id) + '\')">書類を付ける</button>'
+      + '<button type="button" class="sg-btn" onclick="sgEdit(\'' + sgEsc(d.id) + '\')">直す</button>'
+      + (d.status === '公開'
+          ? '<button type="button" class="sg-btn" onclick="sgStatus(\'' + sgEsc(d.id) + '\',\'下書き\')">下書きに戻す</button>'
+          : '<button type="button" class="sg-btn sg-btn-main" onclick="sgStatus(\'' + sgEsc(d.id) + '\',\'公開\')">公開する</button>')
+      + (d.need_sign && d.status === '公開'
+          ? '<button type="button" class="sg-btn" onclick="sgRound(\'' + sgEsc(d.id) + '\')">もう一度署名をもらう</button>' : '')
+      + '<button type="button" class="sg-btn sg-btn-del" onclick="sgDel(\'' + sgEsc(d.id) + '\')">消す</button>'
+      + '</div>';
+  }
+  h += '</div>';
+  return h;
+}
+
+function sgOpenForm(){
+  document.getElementById('sgId').value = '';
+  document.getElementById('sgTitle').value = '';
+  document.getElementById('sgNote').value = '';
+  document.getElementById('sgStatus').value = '下書き';
+  document.getElementById('sgNeed').value = '1';
+  document.getElementById('sgForm').style.display = 'block';
+}
+function sgCloseForm(){ document.getElementById('sgForm').style.display = 'none'; }
+
+function sgEdit(id){
+  var d = SG.docs.filter(function(x){ return x.id === id; })[0];
+  if (!d) return;
+  document.getElementById('sgId').value = d.id;
+  document.getElementById('sgYear').value = String(d.fiscal_year);
+  document.getElementById('sgType').value = d.doc_type;
+  document.getElementById('sgTitle').value = d.title || '';
+  document.getElementById('sgStatus').value = d.status;
+  document.getElementById('sgNeed').value = d.need_sign ? '1' : '0';
+  document.getElementById('sgNote').value = d.note || '';
+  document.getElementById('sgForm').style.display = 'block';
+  document.getElementById('sgForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+async function sgSave(){
+  var body = {
+    id: document.getElementById('sgId').value || null,
+    fiscal_year: Number(document.getElementById('sgYear').value),
+    doc_type: document.getElementById('sgType').value,
+    title: document.getElementById('sgTitle').value,
+    status: document.getElementById('sgStatus').value,
+    need_sign: document.getElementById('sgNeed').value === '1',
+    note: document.getElementById('sgNote').value
+  };
+  try {
+    var r = await fetch('/api/shogu/doc', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('保存できませんでした：' + (j.message || '')); return; }
+    sgCloseForm();
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+async function sgStatus(id, st){
+  var d = SG.docs.filter(function(x){ return x.id === id; })[0];
+  if (!d) return;
+  if (st === '公開' && !(d.files || []).length
+      && !confirm('書類がまだ付いていません。このまま公開しますか？')) return;
+  try {
+    var r = await fetch('/api/shogu/doc', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id, status: st }) });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('変えられませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+async function sgRound(id){
+  if (!confirm('書類を差し替えたときに使います。\n\nいまの署名はそのまま残り、'
+             + '職員にもう一度「確認してください」と出ます。\n\nよろしいですか？')) return;
+  try {
+    var r = await fetch('/api/shogu/doc/' + encodeURIComponent(id) + '/round',
+                        { method: 'POST', credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('できませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+async function sgDel(id){
+  var d = SG.docs.filter(function(x){ return x.id === id; })[0];
+  var n = d ? (d.signed || []).length : 0;
+  if (!confirm('この書類と、付いている書類・署名をすべて消します。'
+             + (n ? '\n\n★' + n + '人ぶんの署名も消えます。' : '') + '\n\n戻せません。よろしいですか？')) return;
+  try {
+    var r = await fetch('/api/shogu/doc/' + encodeURIComponent(id),
+                        { method: 'DELETE', credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('消せませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+function sgPick(id){
+  SG.upDoc = id;
+  var i = document.getElementById('sgFile');
+  i.value = '';
+  i.click();
+}
+
+document.getElementById('sgFile').addEventListener('change', async function(){
+  var f = this.files && this.files[0];
+  if (!f || !SG.upDoc) return;
+  var fd = new FormData();
+  fd.append('file', f);
+  fd.append('doc_id', SG.upDoc);
+  try {
+    var r = await fetch('/api/shogu/file', { method: 'POST', credentials: 'include', body: fd });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('付けられませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+});
+
+async function sgFileDel(fid){
+  if (!confirm('この書類を消します。戻せません。よろしいですか？')) return;
+  try {
+    var r = await fetch('/api/shogu/file/' + encodeURIComponent(fid),
+                        { method: 'DELETE', credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('消せませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+sgLoad();
+</script>
+{% endblock %}

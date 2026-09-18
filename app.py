@@ -3668,6 +3668,8 @@ MENU_ITEMS = [   # top-grid-v1
     {"href": "/assessment-select", "icon": "assignment",          "label": "評価",           "need": None},
     # tsusho-keikaku-v1: トグルでオンにした事業所だけに出る
     {"href": "/tsusho_keikaku", "icon": "description",            "label": "通所介護計画書", "need": "tsusho"},
+    # shogu-v1: トグルでオンにした事業所だけに出る。職員が書類を見て署名する画面。
+    {"href": "/shogu/my",       "icon": "draw",                   "label": "処遇改善の書類", "need": "shogu"},
     {"href": "/print_output",   "icon": "print",                  "label": "書類出力",       "need": None},
     {"href": "/admin/meetings", "icon": "groups",                 "label": "会議記録",       "need": None, "tier": "pro"},
     {"href": "/tasks",          "icon": "task_alt",               "label": "タスク",         "need": None},
@@ -3985,6 +3987,10 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         can_tsusho = bool(is_tsusho_keikaku_enabled(supabase, f_code))  # tsusho-keikaku-v1
     except Exception:
         can_tsusho = False
+    try:
+        can_shogu = bool(is_shogu_enabled(supabase, f_code))  # shogu-v1
+    except Exception:
+        can_shogu = False
 
     # plan-gating-v1: 施設プランと体験期間を判定（共有ヘルパー）。
     #   体験中(in_trial)は上位機能も表示（開放）し、プランを上回る項目に badge を付ける。
@@ -4006,6 +4012,8 @@ def _menu_items_visible(supabase, f_code, my_name):  # top-grid-v1
         if need == "photo" and not can_photo:  # photo-sales-v1: 既定OFF。開発者MENUで許可した施設のみ
             continue
         if need == "tsusho" and not can_tsusho:  # tsusho-keikaku-v1: 既定OFF
+            continue
+        if need == "shogu" and not can_shogu:  # shogu-v1: 既定OFF
             continue
         if need == "dev" and not is_dev:
             continue
@@ -18017,12 +18025,649 @@ def api_dev_toggle_photo_sales():
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+# ═══════════════════════════════════════════════════════════════
+# shogu-v1 : 処遇改善加算の書類（保管・周知・署名）
+#
+#   処遇改善加算は、計画書を【全職員に周知する】ことが要件。
+#   令和6年度からは、賃金改善の【実績】の周知も求められる。
+#   紙で回すと「誰が見たか」が残らず、監査で説明できない。
+#   書類と、見た記録と、手書きの署名を、同じ場所に置いておく。
+#
+#   ★署名は sign_round（何回目の周知か）で数える。
+#     書類を差し替えたら round を1つ増やす。前の署名は消さない。
+#     消すと「去年は誰が見たか」が分からなくなる。
+#
+#   ★保管庫は BCP・届出と同じ case-photos を使う。処遇改善は shogu/ の下。
+#     新しいバケットを作るとDEVと本番の両方にRLSの設定が要り、片方を忘れる。
+#
+#   ★事業所ごとのトグル（DEV_SETTING_TOGGLES の shogu_kaizen_enabled）。
+#     既定はOFF。OFFの事業所では、画面も口も開かない。
+# ═══════════════════════════════════════════════════════════════
+
+SHOGU_BUCKET = BCP_BUCKET
+SHOGU_MAX_BYTES = 30 * 1024 * 1024
+#   ★手書きの署名。ふつうは数十KB。大きすぎるものは受け取らない。
+SHOGU_SIGN_MAX_BYTES = 1024 * 1024
+SHOGU_ENABLED_KEY = "shogu_kaizen_enabled"
+SHOGU_DOC_TYPES = ["計画書", "実績報告書", "その他"]
+SHOGU_STATUS = ["下書き", "公開"]
+#   受け取る種類は届出と同じ。ここで別の一覧を作らない。
+SHOGU_EXTS = TODOKEDE_EXTS
+
+
+def is_shogu_enabled(supabase, f_code):  # shogu-v1
+    """処遇改善加算のモジュールが使えるか。admin_settings の key/value。"""
+    try:
+        r = (supabase.table("admin_settings").select("value")
+             .eq("facility_code", f_code).eq("key", SHOGU_ENABLED_KEY).execute())
+        return bool(r.data and r.data[0].get("value") == "true")
+    except Exception:
+        return False
+
+
+@app.context_processor
+def inject_can_shogu():  # shogu-v1
+    """画面の出し分け用。1リクエスト内では g に覚えて往復を1回にする。"""
+    from flask import g as _g
+    try:
+        f_code = session.get("f_code")
+        if not f_code:
+            return {"can_shogu": False}
+        if not hasattr(_g, "_can_shogu"):
+            _g._can_shogu = is_shogu_enabled(get_supabase(), f_code)
+        return {"can_shogu": bool(_g._can_shogu)}
+    except Exception:
+        return {"can_shogu": False}
+
+
+def _shogu_guard():  # shogu-v1
+    """管理者だけ。書類を置く・公開するのは管理者の仕事。"""
+    supabase, f_code, my_name, err = _bcp_admin_guard()
+    if err:
+        return None, None, None, err
+    if not is_shogu_enabled(supabase, f_code):
+        return None, None, None, (jsonify(
+            {"status": "error", "message": "この事業所では使えません"}), 403)
+    return supabase, f_code, my_name, None
+
+
+def _shogu_me():  # shogu-v1
+    """職員として使う。見るのと署名するのは、職員の仕事。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    my_name = (session.get("my_name") or "").strip()
+    if not f_code or not my_name:
+        return None, None, None, (jsonify(
+            {"status": "error", "message": "未ログイン"}), 401)
+    if not is_shogu_enabled(supabase, f_code):
+        return None, None, None, (jsonify(
+            {"status": "error", "message": "この事業所では使えません"}), 403)
+    return supabase, f_code, my_name, None
+
+
+def _shogu_year_of(t):  # shogu-v1
+    """その時刻が属する年度。★4月はじまり。
+
+    3月に「来年度の計画書」を出すので、ここを1つ間違えると
+    出したばかりの計画書が前の年度に並ぶ。
+    """
+    return t.year - (1 if t.month < 4 else 0)
+
+
+def _shogu_year_now():  # shogu-v1
+    """いまの年度（日本時間で見る）。"""
+    return _shogu_year_of(datetime.now(timezone.utc) + timedelta(hours=9))
+
+
+def _shogu_sign_bytes(s):  # shogu-v1
+    """手書き署名のデータURLを、PNGの中身にする。おかしければ None。
+
+    ★頭の合図だけでなく、中身がPNGかどうかも見る。
+      拡張子や名乗りは、いくらでも詐称できる。
+    """
+    pre = "data:image/png;base64,"
+    if not isinstance(s, str) or not s.startswith(pre):
+        return None
+    try:
+        raw = base64.b64decode(s[len(pre):], validate=True)
+    except Exception:
+        return None
+    if not raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        return None
+    if len(raw) > SHOGU_SIGN_MAX_BYTES:
+        return None
+    return raw
+
+
+def _shogu_year_ok(y):  # shogu-v1
+    """年度として通せる数字か。通せなければ None。"""
+    try:
+        y = int(y)
+    except Exception:
+        return None
+    return y if 2000 <= y <= 2100 else None
+
+
+def _shogu_staff_names(supabase, f_code):  # shogu-v1
+    """署名をもらう相手。★在籍している職員ぜんぶ。
+
+    周知の義務は全職員にかかるので、名簿を別に持たない。
+    職員が増えたら、その人も自動で「まだの人」に並ぶ。
+    """
+    try:
+        r = (supabase.table("staffs").select("staff_name")
+             .eq("facility_code", f_code).eq("is_active", True).execute())
+        names = [(x.get("staff_name") or "").strip() for x in (r.data or [])]
+        return sorted(set(n for n in names if n))
+    except Exception as e:
+        print("[shogu] 職員を読めませんでした: %s" % e, flush=True)
+        return []
+
+
+def _shogu_title(year, doc_type, title):  # shogu-v1
+    """題が空なら、年度と種類から作る。空のまま並ぶと見分けがつかない。"""
+    t = (title or "").strip()
+    if t:
+        return t[:200]
+    r = int(year) - 2018
+    w = ("令和元" if r == 1 else ("令和%d" % r)) if r >= 1 else str(year)
+    return "%s年度 %s" % (w, doc_type)
+
+
+def _shogu_pack(supabase, f_code, docs, want_signs=True):  # shogu-v1
+    """書類に、添付と署名をくっつける。
+
+    ★SELECTは多くても3回。書類の数だけ撃つと、年を重ねるほど遅くなる。
+    """
+    ids = [d["id"] for d in docs if d.get("id")]
+    files = {}
+    signs = {}
+    if ids:
+        try:
+            fr = (supabase.table("shogu_files")
+                  .select("id,doc_id,file_name,file_size,created_at")
+                  .in_("doc_id", ids).order("created_at").execute())
+            for x in (fr.data or []):
+                files.setdefault(x["doc_id"], []).append(x)
+        except Exception as e:
+            print("[shogu] 添付を読めませんでした: %s" % e, flush=True)
+        if want_signs:
+            try:
+                sr = (supabase.table("shogu_signs")
+                      .select("id,doc_id,sign_round,staff_name,signed_at")
+                      .in_("doc_id", ids).order("signed_at").execute())
+                for x in (sr.data or []):
+                    signs.setdefault(x["doc_id"], []).append(x)
+            except Exception as e:
+                print("[shogu] 署名を読めませんでした: %s" % e, flush=True)
+    return files, signs
+
+
+@app.route("/shogu")  # shogu-v1
+@login_required
+def shogu_page():
+    """処遇改善加算の書類（管理者）。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code or not is_shogu_enabled(supabase, f_code):
+        return redirect("/admin")
+    return render("shogu.html",
+                  sg_doc_types=SHOGU_DOC_TYPES,
+                  sg_status=SHOGU_STATUS,
+                  sg_year_now=_shogu_year_now())
+
+
+@app.route("/shogu/my")  # shogu-v1
+@login_required
+def shogu_my_page():
+    """処遇改善の書類を見て署名する（職員）。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code or not is_shogu_enabled(supabase, f_code):
+        return redirect("/top")
+    return render("shogu_my.html")
+
+
+@app.route("/api/shogu/list", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_list():
+    """書類と、添付と、署名の進み具合をまとめて返す（管理者の画面用）。"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    try:
+        r = (supabase.table("shogu_docs").select("*")
+             .eq("facility_code", f_code)
+             .order("fiscal_year", desc=True).order("doc_type")
+             .order("created_at").execute())
+        docs = r.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    files, signs = _shogu_pack(supabase, f_code, docs)
+    staff = _shogu_staff_names(supabase, f_code)
+    out = []
+    for d in docs:
+        rnd = int(d.get("sign_round") or 1)
+        mine = [s for s in signs.get(d["id"], []) if int(s.get("sign_round") or 1) == rnd]
+        done = set((s.get("staff_name") or "").strip() for s in mine)
+        d["files"] = files.get(d["id"], [])
+        d["signed"] = mine
+        #   ★「まだの人」は、在籍している人のうち署名していない人。
+        #     辞めた人の署名は残すが、まだの人には数えない。
+        d["pending"] = [n for n in staff if n not in done]
+        out.append(d)
+    return jsonify({"status": "success", "docs": out, "staff": staff, "is_admin": True})
+
+
+@app.route("/api/shogu/doc", methods=["POST"])  # shogu-v1
+def api_shogu_doc_save():
+    """書類を足す・直す。id があれば直す。"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    data = request.json or {}
+    did = (data.get("id") or "").strip()
+    row = {}
+    if "fiscal_year" in data:
+        y = _shogu_year_ok(data.get("fiscal_year"))
+        if y is None:
+            return jsonify({"status": "error", "message": "年度がおかしいです"}), 400
+        row["fiscal_year"] = y
+    if "doc_type" in data:
+        t = (data.get("doc_type") or "").strip()
+        if t not in SHOGU_DOC_TYPES:
+            return jsonify({"status": "error", "message": "種類がおかしいです"}), 400
+        row["doc_type"] = t
+    if "status" in data:
+        st = (data.get("status") or "").strip()
+        if st not in SHOGU_STATUS:
+            return jsonify({"status": "error", "message": "状態がおかしいです"}), 400
+        row["status"] = st
+        #   ★公開にした日を残す。周知した日を後から聞かれる。
+        if st == "公開":
+            row["published_at"] = datetime.now(timezone.utc).isoformat()
+    if "need_sign" in data:
+        row["need_sign"] = bool(data.get("need_sign"))
+    if "note" in data:
+        row["note"] = (data.get("note") or "").strip()[:2000] or None
+    row["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    try:
+        if did:
+            cur = (supabase.table("shogu_docs").select("fiscal_year,doc_type,title")
+                   .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+            if not cur.data:
+                return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+            if "title" in data:
+                row["title"] = _shogu_title(
+                    row.get("fiscal_year", cur.data[0].get("fiscal_year")),
+                    row.get("doc_type", cur.data[0].get("doc_type")),
+                    data.get("title"))
+            (supabase.table("shogu_docs").update(row)
+             .eq("id", did).eq("facility_code", f_code).execute())
+            return jsonify({"status": "success", "id": did})
+        if "fiscal_year" not in row or "doc_type" not in row:
+            return jsonify({"status": "error", "message": "年度と種類が要ります"}), 400
+        nid = str(uuid.uuid4())
+        row.update({
+            "id": nid, "facility_code": f_code,
+            "title": _shogu_title(row["fiscal_year"], row["doc_type"], data.get("title")),
+            "status": row.get("status", "下書き"),
+            "sign_round": 1,
+            "created_by": my_name,
+        })
+        supabase.table("shogu_docs").insert(row).execute()
+        return jsonify({"status": "success", "id": nid})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/shogu/doc/<did>/round", methods=["POST"])  # shogu-v1
+def api_shogu_round(did):
+    """もう一度署名をもらう。★前の署名は消さず、数える回だけを次へ進める。"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (did or "").strip()
+    try:
+        r = (supabase.table("shogu_docs").select("sign_round")
+             .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        if not r.data:
+            return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+        nxt = int(r.data[0].get("sign_round") or 1) + 1
+        (supabase.table("shogu_docs")
+         .update({"sign_round": nxt,
+                  "updated_at": datetime.now(timezone.utc).isoformat()})
+         .eq("id", did).eq("facility_code", f_code).execute())
+        return jsonify({"status": "success", "sign_round": nxt})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route("/api/shogu/doc/<did>", methods=["DELETE"])  # shogu-v1
+def api_shogu_doc_del(did):
+    """書類を消す。添付と署名の画像も、保管庫から消す。
+
+    ★行は FK の cascade で消えるが、保管庫のファイルは残る。
+      残すと、どこにも出てこないのに容量だけ食う。先に消す。
+    """
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (did or "").strip()
+    try:
+        chk = (supabase.table("shogu_docs").select("id")
+               .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        if not chk.data:
+            return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    paths = []
+    try:
+        fr = supabase.table("shogu_files").select("storage_path").eq("doc_id", did).execute()
+        paths += [x["storage_path"] for x in (fr.data or []) if x.get("storage_path")]
+    except Exception:
+        pass
+    try:
+        sr = supabase.table("shogu_signs").select("image_path").eq("doc_id", did).execute()
+        paths += [x["image_path"] for x in (sr.data or []) if x.get("image_path")]
+    except Exception:
+        pass
+    if paths:
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).remove(paths)
+        except Exception as e:
+            print("[shogu] 保管庫から消せませんでした: %s" % e, flush=True)
+    try:
+        supabase.table("shogu_docs").delete().eq("id", did).eq("facility_code", f_code).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/shogu/file", methods=["POST"])  # shogu-v1
+def api_shogu_file_add():
+    """書類を1枚付ける。multipart/form-data: file, doc_id"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (request.form.get("doc_id") or "").strip()
+    if not did:
+        return jsonify({"status": "error", "message": "書類が選ばれていません"}), 400
+    try:
+        chk = (supabase.table("shogu_docs").select("id")
+               .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        if not chk.data:
+            return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"status": "error", "message": "ファイルが選ばれていません"}), 400
+    raw = f.read()
+    if not raw:
+        return jsonify({"status": "error", "message": "空のファイルです"}), 400
+    if len(raw) > SHOGU_MAX_BYTES:
+        return jsonify({"status": "error", "message": "ファイルが大きすぎます（30MBまで）"}), 400
+    ext = (f.filename.rsplit(".", 1)[-1].lower() if "." in f.filename else "")
+    if ext not in SHOGU_EXTS:
+        return jsonify({"status": "error",
+                        "message": "この種類のファイルは保存できません（PDF・Word・Excel・画像）"}), 400
+    fid = str(uuid.uuid4())
+    path = "shogu/%s/%s/%s.%s" % (f_code, did, fid, ext)
+    try:
+        supabase.storage.from_(SHOGU_BUCKET).upload(
+            path=path, file=raw, file_options={"content-type": SHOGU_EXTS[ext]})
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    try:
+        supabase.table("shogu_files").insert({
+            "id": fid, "facility_code": f_code, "doc_id": did,
+            "file_name": f.filename[:200], "storage_path": path,
+            "file_size": len(raw), "mime": SHOGU_EXTS[ext],
+            "uploaded_by": my_name,
+        }).execute()
+    except Exception as e:
+        #   ★行を作れなかったらファイルも消す。残すとゴミになる。
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).remove([path])
+        except Exception:
+            pass
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": fid})
+
+
+@app.route("/api/shogu/file/<fid>", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_file_get(fid):
+    """書類を開く。★職員も開ける。開けないと確認のしようがない。
+
+    ただし【公開】のものだけ。下書きは管理者しか開けない。
+    """
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code or not is_shogu_enabled(supabase, f_code):
+        return ("unauthorized", 403)
+    fid = (fid or "").strip()
+    try:
+        r = (supabase.table("shogu_files").select("storage_path,file_name,mime,doc_id")
+             .eq("id", fid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row:
+        return ("not found", 404)
+    if not session.get("admin_authenticated", False):
+        try:
+            d = (supabase.table("shogu_docs").select("status")
+                 .eq("id", row["doc_id"]).eq("facility_code", f_code).limit(1).execute())
+            if not d.data or d.data[0].get("status") != "公開":
+                return ("not found", 404)
+        except Exception as e:
+            return jsonify({"status": "error", "message": str(e)}), 500
+    try:
+        blob = supabase.storage.from_(SHOGU_BUCKET).download(row["storage_path"])
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    import io as _sg_io
+    from flask import send_file as _sg_send
+    #   ★画面で開かせる（as_attachment=False）。PDFはそのまま読める。
+    #     落とさせると、開くまでに手間が増えて読まれなくなる。
+    return _sg_send(_sg_io.BytesIO(blob),
+                    mimetype=row.get("mime") or "application/octet-stream",
+                    as_attachment=False,
+                    download_name=row.get("file_name") or "shogu")
+
+
+@app.route("/api/shogu/file/<fid>", methods=["DELETE"])  # shogu-v1
+def api_shogu_file_del(fid):
+    """付けた書類を1枚消す。"""
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    fid = (fid or "").strip()
+    try:
+        r = (supabase.table("shogu_files").select("storage_path")
+             .eq("id", fid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+        if not row:
+            return jsonify({"status": "error", "message": "見つかりません"}), 404
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).remove([row["storage_path"]])
+        except Exception as e:
+            print("[shogu] 保管庫から消せませんでした: %s" % e, flush=True)
+        supabase.table("shogu_files").delete().eq("id", fid).eq("facility_code", f_code).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/shogu/my", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_my():
+    """職員が見る一覧。公開されているものだけ。自分が署名したかも一緒に返す。"""
+    supabase, f_code, my_name, err = _shogu_me()
+    if err:
+        return err
+    try:
+        r = (supabase.table("shogu_docs")
+             .select("id,fiscal_year,doc_type,title,note,need_sign,sign_round,published_at")
+             .eq("facility_code", f_code).eq("status", "公開")
+             .order("fiscal_year", desc=True).order("doc_type").execute())
+        docs = r.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    files, _ = _shogu_pack(supabase, f_code, docs, want_signs=False)
+    ids = [d["id"] for d in docs if d.get("id")]
+    mine = {}
+    if ids:
+        try:
+            sr = (supabase.table("shogu_signs").select("doc_id,sign_round,signed_at")
+                  .in_("doc_id", ids).eq("staff_name", my_name).execute())
+            for x in (sr.data or []):
+                mine.setdefault(x["doc_id"], []).append(x)
+        except Exception as e:
+            print("[shogu] 自分の署名を読めませんでした: %s" % e, flush=True)
+    out = []
+    for d in docs:
+        rnd = int(d.get("sign_round") or 1)
+        #   ★いまの回のぶんだけ見る。差し替えたら、もう一度署名してもらう。
+        hit = [x for x in mine.get(d["id"], []) if int(x.get("sign_round") or 1) == rnd]
+        d["files"] = files.get(d["id"], [])
+        d["mine_signed"] = bool(hit)
+        d["mine_signed_at"] = hit[0].get("signed_at") if hit else None
+        out.append(d)
+    return jsonify({"status": "success", "docs": out})
+
+
+@app.route("/api/shogu/pending", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_pending():
+    """TOPの帯用。まだ署名していない件数だけ返す。
+
+    ★使えない事業所や、読めなかったときは 0 を返す。
+      エラーにすると、TOPの画面に赤い字が出て、職員が怖がる。
+    """
+    try:
+        supabase = get_supabase()
+        f_code = session.get("f_code")
+        my_name = (session.get("my_name") or "").strip()
+        if not f_code or not my_name or not is_shogu_enabled(supabase, f_code):
+            return jsonify({"status": "success", "count": 0})
+        r = (supabase.table("shogu_docs").select("id,sign_round")
+             .eq("facility_code", f_code).eq("status", "公開")
+             .eq("need_sign", True).execute())
+        docs = r.data or []
+        if not docs:
+            return jsonify({"status": "success", "count": 0})
+        ids = [d["id"] for d in docs]
+        sr = (supabase.table("shogu_signs").select("doc_id,sign_round")
+              .in_("doc_id", ids).eq("staff_name", my_name).execute())
+        done = set((x["doc_id"], int(x.get("sign_round") or 1)) for x in (sr.data or []))
+        n = sum(1 for d in docs if (d["id"], int(d.get("sign_round") or 1)) not in done)
+        return jsonify({"status": "success", "count": n})
+    except Exception as e:
+        print("[shogu] 帯を出せませんでした: %s" % e, flush=True)
+        return jsonify({"status": "success", "count": 0})
+
+
+@app.route("/api/shogu/sign", methods=["POST"])  # shogu-v1
+@login_required
+def api_shogu_sign():
+    """手書きの署名を受け取る。JSON: doc_id, image(data:image/png;base64,...)"""
+    supabase, f_code, my_name, err = _shogu_me()
+    if err:
+        return err
+    data = request.json or {}
+    did = (data.get("doc_id") or "").strip()
+    if not did:
+        return jsonify({"status": "error", "message": "書類が選ばれていません"}), 400
+    try:
+        r = (supabase.table("shogu_docs").select("status,need_sign,sign_round")
+             .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        doc = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not doc or doc.get("status") != "公開":
+        return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+    if not doc.get("need_sign"):
+        return jsonify({"status": "error", "message": "この書類は署名が要りません"}), 400
+    rnd = int(doc.get("sign_round") or 1)
+
+    #   ★二度押し。すでに署名していたら、そのまま「できた」と返す。
+    #     ここでエラーにすると、通信が遅れただけの人に失敗と出る。
+    try:
+        ex = (supabase.table("shogu_signs").select("id")
+              .eq("doc_id", did).eq("staff_name", my_name)
+              .eq("sign_round", rnd).limit(1).execute())
+        if ex.data:
+            return jsonify({"status": "success", "id": ex.data[0]["id"], "already": True})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    #   ★受け取るのはPNGだけ。中身まで見る（_shogu_sign_bytes）。
+    raw = _shogu_sign_bytes(data.get("image"))
+    if not raw:
+        return jsonify({"status": "error", "message": "署名を読み取れませんでした"}), 400
+
+    sid = str(uuid.uuid4())
+    path = "shogu/%s/sign/%s/%s_%s.png" % (f_code, did, rnd, sid)
+    try:
+        supabase.storage.from_(SHOGU_BUCKET).upload(
+            path=path, file=raw, file_options={"content-type": "image/png"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    try:
+        supabase.table("shogu_signs").insert({
+            "id": sid, "facility_code": f_code, "doc_id": did,
+            "sign_round": rnd, "staff_name": my_name,
+            "signed_at": datetime.now(timezone.utc).isoformat(),
+            "image_path": path,
+        }).execute()
+    except Exception as e:
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).remove([path])
+        except Exception:
+            pass
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": sid})
+
+
+@app.route("/api/shogu/sign/<sid>", methods=["GET"])  # shogu-v1
+@login_required
+def api_shogu_sign_get(sid):
+    """署名の画像を見る。★管理者と、書いた本人だけ。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    my_name = (session.get("my_name") or "").strip()
+    if not f_code or not is_shogu_enabled(supabase, f_code):
+        return ("unauthorized", 403)
+    try:
+        r = (supabase.table("shogu_signs").select("image_path,staff_name")
+             .eq("id", (sid or "").strip()).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row or not row.get("image_path"):
+        return ("not found", 404)
+    if not session.get("admin_authenticated", False) and row.get("staff_name") != my_name:
+        return ("not found", 404)
+    try:
+        blob = supabase.storage.from_(SHOGU_BUCKET).download(row["image_path"])
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    import io as _sg_io2
+    from flask import send_file as _sg_send2
+    return _sg_send2(_sg_io2.BytesIO(blob), mimetype="image/png", as_attachment=False)
+
+
 # ===== dev-setting-toggle-v1 : key/value でON/OFFする機能の一覧 =====
 #   ★次に機能のトグルを足すときは、ここに1行足すだけ。
 #     facilities に列を増やさないこと。列を増やすとDEVと本番の両方にDDLが要り、
 #     片方を忘れると施設一覧が丸ごと落ちる（2026-09-10 youshiki_exclude_enabled）。
 DEV_SETTING_TOGGLES = {
     "tsusho_keikaku_enabled": "通所介護計画書",
+    "shogu_kaizen_enabled": "処遇改善加算",   # shogu-v1
 }
 
 

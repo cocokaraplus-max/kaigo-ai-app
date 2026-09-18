@@ -215,6 +215,7 @@
                     <th>写真販売</th>  <!-- photo-sales-devtoggle-v1 -->
                     <th>様式除外</th>  <!-- youshiki-exclude-v1: 様式(実績)に出さないトグルの表示可否 -->
                     <th>通所介護計画書</th>  <!-- dev-setting-toggle-v1: key/value。列は増やさない -->
+                    <th>処遇改善</th>  <!-- shogu-v1: 同じ key/value のしくみ。列は増やさない -->
                 </tr>
             </thead>
             <tbody>
@@ -312,6 +313,13 @@
                         <label style="cursor:pointer;">
                             <input type="checkbox" onchange="toggleSetting('{{ s.facility_code }}', 'tsusho_keikaku_enabled', this.checked)"
                                 {% if s.settings and s.settings.tsusho_keikaku_enabled %}checked{% endif %}>
+                        </label>
+                    </td>
+                    {# shogu-v1: 処遇改善加算。サーバもJSも書き足さず、升を1つ足すだけ。 #}
+                    <td style="text-align:center;">
+                        <label style="cursor:pointer;">
+                            <input type="checkbox" onchange="toggleSetting('{{ s.facility_code }}', 'shogu_kaizen_enabled', this.checked)"
+                                {% if s.settings and s.settings.shogu_kaizen_enabled %}checked{% endif %}>
                         </label>
                     </td>
                 </tr>
