@@ -168,8 +168,12 @@ function smOpen(id){
   SM.cur = d;
   SM.opened = !(d.files || []).length;   /* 書類が無いなら、開くものが無い */
   document.getElementById('smBoxT').textContent = d.title || '';
+  /* shogu-notified-v3: ちがう日付で残るときは、黙って残さない。
+     ★押した人が「今日押したのに日付がちがう」と戸惑わないように、先に伝える。 */
   document.getElementById('smBoxS').textContent =
-    '下の書類に目を通してから、お名前を書いてください。';
+    '下の書類に目を通してから、お名前を書いてください。'
+    + (d.notified_on
+        ? '（この書類は ' + smDate(d.notified_on) + ' の周知として記録されます）' : '');
   var fh = '';
   (d.files || []).forEach(function(f){
     fh += '<div class="sm-file"><a href="/api/shogu/file/' + smEsc(f.id)

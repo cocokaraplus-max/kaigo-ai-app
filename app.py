@@ -18260,6 +18260,38 @@ def api_shogu_list():
     return jsonify({"status": "success", "docs": out, "staff": staff, "is_admin": True})
 
 
+def _shogu_day_ok(day):  # shogu-notified-v3
+    """'YYYY-MM-DD' として通せる日かどうか。通せなければ None。
+
+    ★先の日付は通さない。まだ周知していない日を記録できてしまう。
+    ★書類の周知日でも、署名の日の直しでも、同じ決めごとを使う。
+      2か所に書くと、片方だけゆるくなる。
+    """
+    day = str(day or "").strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
+        return None
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d")
+    except Exception:
+        return None
+    if d.date() > (datetime.now(timezone.utc) + timedelta(hours=9)).date():
+        return None
+    return day
+
+
+def _shogu_signed_at(doc):  # shogu-notified-v3
+    """その書類の署名を、いつとして残すか。
+
+    ★周知した日が入っていれば、その日の昼12時（日本時間）。
+      日付だけが意味を持つので、時刻のずれで日付が動かないところに置く。
+    ★入っていなければ、いま。これまでどおり。
+    """
+    day = (doc or {}).get("notified_on")
+    if day:
+        return str(day)[:10] + "T03:00:00+00:00"
+    return datetime.now(timezone.utc).isoformat()
+
+
 @app.route("/api/shogu/doc", methods=["POST"])  # shogu-v1
 def api_shogu_doc_save():
     """書類を足す・直す。id があれば直す。"""
@@ -18287,6 +18319,17 @@ def api_shogu_doc_save():
         #   ★公開にした日を残す。周知した日を後から聞かれる。
         if st == "公開":
             row["published_at"] = datetime.now(timezone.utc).isoformat()
+    if "notified_on" in data:
+        #   shogu-notified-v3: 空にすると「署名したその日」に戻る。
+        raw_day = str(data.get("notified_on") or "").strip()
+        if not raw_day:
+            row["notified_on"] = None
+        else:
+            ok = _shogu_day_ok(raw_day)
+            if not ok:
+                return jsonify({"status": "error",
+                                "message": "周知した日がおかしいです（先の日付にはできません）"}), 400
+            row["notified_on"] = ok
     if "need_sign" in data:
         row["need_sign"] = bool(data.get("need_sign"))
     if "note" in data:
@@ -18884,7 +18927,7 @@ def api_shogu_my():
     try:
         r = (supabase.table("shogu_docs")
              .select("id,fiscal_year,doc_type,title,note,need_sign,sign_round,"
-                     "published_at,summary")   # shogu-view-v1: 要点も渡す
+                     "published_at,summary,notified_on")   # shogu-view-v1 / shogu-notified-v3
              .eq("facility_code", f_code).eq("status", "公開")
              .order("fiscal_year", desc=True).order("doc_type").execute())
         docs = r.data or []
@@ -18956,7 +18999,8 @@ def api_shogu_sign():
     if not did:
         return jsonify({"status": "error", "message": "書類が選ばれていません"}), 400
     try:
-        r = (supabase.table("shogu_docs").select("status,need_sign,sign_round")
+        r = (supabase.table("shogu_docs")
+             .select("status,need_sign,sign_round,notified_on")   # shogu-notified-v3
              .eq("id", did).eq("facility_code", f_code).limit(1).execute())
         doc = (r.data or [None])[0]
     except Exception as e:
@@ -18994,7 +19038,9 @@ def api_shogu_sign():
         supabase.table("shogu_signs").insert({
             "id": sid, "facility_code": f_code, "doc_id": did,
             "sign_round": rnd, "staff_name": my_name,
-            "signed_at": datetime.now(timezone.utc).isoformat(),
+            #   shogu-notified-v3: 周知した日が入っていれば、その日として残す。
+            #   ★あとから直すのではなく、はじめからその日で入る。
+            "signed_at": _shogu_signed_at(doc),
             "image_path": path,
         }).execute()
     except Exception as e:

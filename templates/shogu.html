@@ -136,6 +136,16 @@
         </select>
       </div>
     </div>
+    {# shogu-notified-v3: 過去のぶんを遡って記録するための欄。
+       ★空にしておけば、署名したその日が入る（いままでどおり）。 #}
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">周知した日（過去のぶんを遡って記録するとき）</label>
+      <input type="date" id="sgNotified" class="form-control">
+      <p style="font-size:0.72rem;color:#5f6368;line-height:1.7;margin:5px 0 0;">
+        ここに日を入れると、この書類への署名は<b>すべてその日</b>として記録されます。<br>
+        <b>空のままなら、職員が署名したその日</b>が入ります。ふだんは空のままで。
+      </p>
+    </div>
     <div style="margin-bottom:10px;">
       <label class="sg-lb">おぼえ書き</label>
       <textarea id="sgNote" class="form-control" rows="2"
@@ -284,6 +294,9 @@ function sgCard(d){
     + '<span class="sg-type">' + sgEsc(d.doc_type) + '</span>'
     + '<span class="sg-st sg-st-' + sgEsc(d.status) + '">' + sgEsc(d.status) + '</span>'
     + (d.sign_round > 1 ? '<span class="sg-round">' + d.sign_round + '回目の周知</span>' : '')
+    /* shogu-notified-v3: 遡って記録している書類は、それが分かるようにしておく。 */
+    + (d.notified_on
+        ? '<span class="sg-round">' + sgEsc(sgDate(d.notified_on)) + ' の周知として記録</span>' : '')
     + '</div>'
     + '<div class="sg-ttl" style="margin-top:6px;">' + sgEsc(d.title || '') + '</div>';
   if (d.note) h += '<div class="sg-note">' + sgEsc(d.note) + '</div>';
@@ -308,16 +321,17 @@ function sgCard(d){
       /* shogu-signdate-v1: 過去のぶんを今まとめて署名してもらうことがある。
          そのとき日付は今日になるので、実際に確認した日に直せるようにする。
          ★直すと、元の日時と直した人が記録に残る。 */
-      h += '<div class="sg-sign-h">確認した日は、実際の日に直せます。'
-        + '直すと、もとの日時と直した人が記録に残ります。</div>';
+      h += '<div class="sg-sign-h">'
+        + (d.notified_on
+            ? 'この書類は <b>' + sgEsc(sgDate(d.notified_on)) + '</b> の周知として記録しています。'
+            : '確認した日は、必要なら直せます。')
+        + '</div>';
       (d.signed || []).forEach(function(s){
         h += '<div class="sg-sign-row">'
           + '<span class="sg-sign-n">' + sgEsc(s.staff_name) + '</span>'
           + '<input type="date" class="sg-sign-d" id="sgd-' + sgEsc(s.id) + '"'
           + ' value="' + sgEsc(sgDay(s.signed_at)) + '" max="' + sgEsc(sgDay(new Date())) + '">'
           + '<button type="button" class="sg-btn sg-sign-x" onclick="sgSignDate(\'' + sgEsc(s.id) + '\')">直す</button>'
-          + (s.date_edited_by
-              ? '<span class="sg-sign-e">' + sgEsc(s.date_edited_by) + ' が直した</span>' : '')
           + (s.id ? '<a class="sg-sign-a" href="/api/shogu/sign/' + sgEsc(s.id)
                     + '" target="_blank">署名を見る</a>' : '')
           + '</div>';
@@ -365,6 +379,7 @@ function sgOpenForm(){
   document.getElementById('sgId').value = '';
   document.getElementById('sgTitle').value = '';
   document.getElementById('sgNote').value = '';
+  document.getElementById('sgNotified').value = '';   /* shogu-notified-v3 */
   document.getElementById('sgStatus').value = '下書き';
   document.getElementById('sgNeed').value = '1';
   SG.picked = [];                      /* drop-files-v1: 前に選んだものを持ち越さない */
@@ -496,6 +511,7 @@ function sgEdit(id){
   document.getElementById('sgStatus').value = d.status;
   document.getElementById('sgNeed').value = d.need_sign ? '1' : '0';
   document.getElementById('sgNote').value = d.note || '';
+  document.getElementById('sgNotified').value = (d.notified_on || '').slice(0, 10);  /* shogu-notified-v3 */
   SG.picked = [];                      /* drop-files-v1 */
   sgRenderPicked();
   document.getElementById('sgForm').style.display = 'block';
@@ -510,6 +526,7 @@ async function sgSave(){
     title: document.getElementById('sgTitle').value,
     status: document.getElementById('sgStatus').value,
     need_sign: document.getElementById('sgNeed').value === '1',
+    notified_on: document.getElementById('sgNotified').value || '',   /* shogu-notified-v3 */
     note: document.getElementById('sgNote').value
   };
   var btn = document.getElementById('sgSaveBtn');
