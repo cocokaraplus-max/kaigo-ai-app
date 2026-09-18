@@ -17,6 +17,13 @@
   .td-s-下書き { background:#f1f3f4; color:#5f6368; }
   .td-s-差戻し { background:#fce8e6; color:#c5221f; }
   .td-s-訂正済 { background:#fef7e0; color:#a56300; }
+  /* todokede-now-v4: そのサービスで【いま効いている】届出の印。
+     ★他の札より強く見せる。いちばん知りたいことなので、埋もれさせない。 */
+  .td-now { background:#1b5e20; color:#fff; border-radius:999px; padding:2px 11px;
+            font-size:0.76rem; font-weight:800; flex:0 0 auto; white-space:nowrap; }
+  .td-nosvc { font-size:0.7rem; color:#a56300; background:#fef7e0;
+              border-radius:6px; padding:2px 8px; }
+  .td-legend { font-size:0.74rem; color:#5f6368; line-height:1.7; margin:0 0 10px; }
   .td-sum { font-size:0.88rem; color:#3c4043; margin-top:6px; line-height:1.6; }
   .td-meta { font-size:0.74rem; color:#5f6368; margin-top:4px; }
   .td-files { margin-top:10px; border-top:1px dashed #e0e0e0; padding-top:8px; }
@@ -50,6 +57,11 @@
 <p style="font-size:0.8rem;color:#5f6368;line-height:1.7;margin:0 0 14px;">
   いつ・何を出したかを残し、提出した書類をそのまま保管します。
   必要なときに<b>一式まとめて</b>取り出せます。
+</p>
+{# todokede-now-v4: 印の意味を書いておく。書かないと、何の印か分からない。 #}
+<p class="td-legend">
+  <span class="td-now">いまの届出</span>
+  … そのサービスで<b>いちばん新しく出したもの</b>です。下書き・差戻しは数に入れません。
 </p>
 
 <div id="tdAdminOnly" style="display:none;">
@@ -155,6 +167,20 @@ function tdRender(){
                           : '管理者メニューから記録できます。') + '</div>';
     return;
   }
+  /* todokede-now-v4: サービスごとに「いまの届出」を1つだけ決める。
+     ★並びはサーバが決めている（年月 → 提出日の新しい順）。
+       ここで並べ替え直さない。見えている順と印がずれる。
+     ★下書きと差戻しは数に入れない。まだ効いていない／受け取られていないもの。 */
+  var nowId = {};
+  TD_STATE.records.forEach(function(rec){
+    var svc = String(rec.service_type || '').trim();
+    if (!svc) return;                                    // どのサービスか決まらない
+    var st = rec.status || '提出済';
+    if (st !== '提出済' && st !== '訂正済') return;
+    if (nowId[svc] === undefined) nowId[svc] = rec.id;   // 上から最初の1つだけ
+  });
+  TD_STATE.nowId = nowId;
+
   var html = '', lastYear = null;
   TD_STATE.records.forEach(function(rec){
     var y = tdYear(rec.filed_ym);
@@ -166,12 +192,19 @@ function tdRender(){
 
 function tdCard(rec){
   var st = rec.status || '提出済';
+  // todokede-now-v4: この届出が、そのサービスの「いま」かどうか
+  var isNow = (TD_STATE.nowId || {})[String(rec.service_type || '').trim()] === rec.id;
   var h = '<div class="td-card">'
     + '<div class="td-head">'
     + '<span class="td-ym">' + tdEsc(tdMonth(rec.filed_ym)) + '</span>'
     + '<span class="td-type">' + tdEsc(rec.doc_type || '届出') + '</span>'
     + '<span class="td-status td-s-' + tdEsc(st) + '">' + tdEsc(st) + '</span>'
     + (rec.service_type ? '<span style="font-size:0.76rem;color:#5f6368;">' + tdEsc(rec.service_type) + '</span>' : '')
+    /* todokede-now-v4: そのサービスの最新なら印。 */
+    + (isNow ? '<span class="td-now">いまの届出</span>' : '')
+    /* ★サービスが空だと印の付けようがない。管理者にだけ、その理由を出す。 */
+    + ((!String(rec.service_type || '').trim() && TD_STATE.isAdmin)
+        ? '<span class="td-nosvc">サービスを入れると「いまの届出」の印が付きます</span>' : '')
     + '</div>';
   if (rec.summary) h += '<div class="td-sum">' + tdEsc(rec.summary) + '</div>';
   var meta = [];
