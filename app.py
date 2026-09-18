@@ -14920,13 +14920,113 @@ def _unei_marks(old_s, new_s):  # unei-diff-red-v1
     return _unei_wrap(old_s, om, "un-del"), _unei_wrap(new_s, nm, "un-ins")
 
 
+_UNEI_SIM_MIN = 0.4   # unei-diff-line-v2 : これ未満しか似ていない行どうしは組まない
+
+
+def _unei_line_key(s):  # unei-diff-line-v2
+    """行を見くらべるための形。空白のちがいは差とみなさない。"""
+    return re.sub(r"[\s\u3000]+", "", s or "")
+
+
+def _unei_sim(a, b):  # unei-diff-line-v2
+    """2つの行がどれくらい似ているか（0〜1）。"""
+    import difflib
+    return difflib.SequenceMatcher(None, _unei_line_key(a), _unei_line_key(b)).ratio()
+
+
+def _unei_pair_block(olds, news):  # unei-diff-line-v2
+    """入れ替わった固まりの中で、行どうしを組む。
+
+    ★迷ったら先を見る。旧のこの行に似た行が新の先にいるなら、
+      あいだの新しい行は【増えた行】。無理に組むと、まるごと違う文を
+      文字で比べることになり、赤が細切れになる。
+    """
+    out = []
+    i = j = 0
+    while i < len(olds) and j < len(news):
+        if _unei_sim(olds[i], news[j]) >= _UNEI_SIM_MIN:
+            out.append((olds[i], news[j], False))
+            i += 1
+            j += 1
+            continue
+        fo = next((b for b in range(j + 1, len(news))
+                   if _unei_sim(olds[i], news[b]) >= _UNEI_SIM_MIN), None)
+        fn = next((a for a in range(i + 1, len(olds))
+                   if _unei_sim(olds[a], news[j]) >= _UNEI_SIM_MIN), None)
+        if fo is not None and (fn is None or (fo - j) <= (fn - i)):
+            out.append((None, news[j], False))      # 新のこの行は増えた行
+            j += 1
+        elif fn is not None:
+            out.append((olds[i], None, False))      # 旧のこの行は消えた行
+            i += 1
+        else:
+            out.append((olds[i], None, False))      # どちらにも相手がいない
+            out.append((None, news[j], False))
+            i += 1
+            j += 1
+    while i < len(olds):
+        out.append((olds[i], None, False))
+        i += 1
+    while j < len(news):
+        out.append((None, news[j], False))
+        j += 1
+    return out
+
+
+def _unei_pair(olds, news):  # unei-diff-line-v2
+    """行どうしを対応づける。→ [(旧の行, 新の行, 同じか)] を元の並びで返す。"""
+    import difflib
+    ok = [_unei_line_key(x) for x in olds]
+    nk = [_unei_line_key(x) for x in news]
+    out = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
+            None, ok, nk, autojunk=False).get_opcodes():
+        if tag == "equal":
+            for a, b in zip(range(i1, i2), range(j1, j2)):
+                out.append((olds[a], news[b], True))
+        elif tag == "delete":
+            for a in range(i1, i2):
+                out.append((olds[a], None, False))
+        elif tag == "insert":
+            for b in range(j1, j2):
+                out.append((None, news[b], False))
+        else:
+            out.extend(_unei_pair_block(olds[i1:i2], news[j1:j2]))
+    return out
+
+
+def _unei_body_marks(old_lines, new_lines):  # unei-diff-line-v2
+    """条の本文を比べて、変わったところに印を付けたHTMLを返す。→ (旧, 新)
+
+    ★増えた条・消えた条もここを通る。片方が空のリストなら、
+      もう片方が丸ごと印になる。道を1本にしておくと、直すところも1つで済む。
+    """
+    oh = []
+    nh = []
+    from html import escape as _esc
+    for o, n, same in _unei_pair(list(old_lines or []), list(new_lines or [])):
+        if same:
+            oh.append(_esc(o))
+            nh.append(_esc(n))
+        elif o is not None and n is not None:
+            a, b = _unei_marks(o, n)      # 対になった行の【中】を文字で比べる
+            oh.append(a)
+            nh.append(b)
+        elif o is not None:
+            oh.append(_unei_wrap(o, [True] * len(o), "un-del"))
+        else:
+            nh.append(_unei_wrap(n, [True] * len(n), "un-ins"))
+    return "\n".join(oh), "\n".join(nh)
+
+
 def _unei_diff(old_arts, new_arts):  # unei-v1
     """2つの版を比べて、変わった条だけ返す。
 
     ★これがこの機能の芯。令和6年4月のとき、第5条（営業日）と第6条（定員）が
       変わっているのに新旧対照表へ載らなかった。これがあれば出せた。
 
-    ★old_html / new_html は、変わった文字を赤で囲んだもの（unei-diff-red-v1）。
+    ★old_html / new_html は、変わったところを赤で囲んだもの。
+      行で対応づけてから中を比べる（unei-diff-line-v2）。
       old / new はそのまま残してある。あとで別の見せ方をするときのため。
     """
     o = {a.get("no"): a for a in (old_arts or [])}
@@ -14934,25 +15034,21 @@ def _unei_diff(old_arts, new_arts):  # unei-v1
     out = []
     for k, a in n.items():
         if k not in o:
-            nb = "\n".join(a.get("body") or [])
+            oh, nh = _unei_body_marks([], a.get("body") or [])
             out.append({"no": k, "title": a.get("title", ""), "kind": "追加",
                         "old": [], "new": a.get("body", []),
-                        "old_html": "",
-                        "new_html": _unei_wrap(nb, [True] * len(nb), "un-ins")})
+                        "old_html": oh, "new_html": nh})
         elif _unei_norm(o[k].get("body")) != _unei_norm(a.get("body")):
-            ob = "\n".join(o[k].get("body") or [])
-            nb = "\n".join(a.get("body") or [])
-            oh, nh = _unei_marks(ob, nb)
+            oh, nh = _unei_body_marks(o[k].get("body") or [], a.get("body") or [])
             out.append({"no": k, "title": a.get("title", ""), "kind": "変更",
                         "old": o[k].get("body", []), "new": a.get("body", []),
                         "old_html": oh, "new_html": nh})
     for k, a in o.items():
         if k not in n:
-            ob = "\n".join(a.get("body") or [])
+            oh, nh = _unei_body_marks(a.get("body") or [], [])
             out.append({"no": k, "title": a.get("title", ""), "kind": "削除",
                         "old": a.get("body", []), "new": [],
-                        "old_html": _unei_wrap(ob, [True] * len(ob), "un-del"),
-                        "new_html": ""})
+                        "old_html": oh, "new_html": nh})
     out.sort(key=lambda x: (999 if x["no"] == "附則" else _unei_num(
         (x["no"] or "").replace("第", "").replace("条", "") or 0)))
     return out
