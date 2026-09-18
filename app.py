@@ -20489,7 +20489,8 @@ EXPORT_TABLES = (
     "soge_settings", "soge_stops", "staff_join_requests",
     "staff_leave_days", "staff_meetings", "staff_settings",
     "staff_shift_defaults", "staff_shift_plan", "staffs", "task_projects",
-    "tasks", "timecard_records", "visit_day_overrides", "visit_records",
+    "tasks", "timecard_day_notes", "timecard_records",
+    "visit_day_overrides", "visit_records",
     "vital_alert_settings", "vital_daily_excludes", "vital_daily_includes",
     "vital_recheck_schedules", "vitals", "youshiki_day_type",
     "youshiki_excluded_days",
@@ -20595,6 +20596,7 @@ EXPORT_JP_NAMES = {
     "staff_shift_defaults":     ("07_職員・勤怠", "勤務予定の既定"),
     "staff_meetings":           ("07_職員・勤怠", "職員の会議・勉強会"),
     "timecard_records":         ("07_職員・勤怠", "打刻"),
+    "timecard_day_notes":       ("07_職員・勤怠", "その日のメモ"),  # tc-daynote-v1
     # ── 08_レク・行事 ──────────────────────────
     "rec_events":               ("08_レク・行事", "レク・行事"),
     "rec_places":               ("08_レク・行事", "レクの行き先"),
@@ -24868,6 +24870,13 @@ def admin_timecard_monthly():
         # timecard-leave-grid-v1: 休み申告を日次にマージ
         _tc_merge_leaves_into_monthly(supabase, f_code, year, month, result)
 
+        # tc-daynote-v1: その日のメモを一覧にも出す（休みのマージで職員が増えた後に）
+        _dn_map = _tc_day_notes_map(supabase, f_code, year, month)
+        for _s0 in result:
+            _m0 = _dn_map.get(_s0.get("name"))
+            if _m0:
+                _s0["day_notes"] = _m0
+
         # youshiki-exclude-v1: 様式除外機能がON施設なら、各日に excluded を付与
         yx_enabled = _youshiki_exclude_enabled(supabase, f_code)
         if yx_enabled:
@@ -24915,6 +24924,29 @@ def admin_timecard_monthly():
 #   window.print()が印刷に飛んでPDF保存できない問題を解決。
 #   月次データからPDF用HTMLを組み、pdfkit/wkhtmltopdfでPDF化してダウンロード。
 # ============================================================
+
+def _tc_day_notes_map(supabase, f_code, year, month):
+    """tc-daynote-v1: その月の「この日のメモ」を {職員名: {日付: メモ}} で返す。
+
+    ★開かないと読めないメモは、書かないのと同じ。一覧の行に出すために使う。
+    ★表がまだ無いうちは空で返す（画面を止めない）。
+    """
+    start = "%04d-%02d-01" % (year, month)
+    end = ("%04d-01-01" % (year + 1)) if month == 12 else ("%04d-%02d-01" % (year, month + 1))
+    out = {}
+    try:
+        r = (supabase.table("timecard_day_notes").select("staff_name,work_date,note")
+             .eq("facility_code", f_code).gte("work_date", start)
+             .lt("work_date", end).execute())
+        for x in (r.data or []):
+            nt = (x.get("note") or "").strip()
+            if not nt:
+                continue
+            out.setdefault(x.get("staff_name"), {})[str(x.get("work_date"))] = nt
+    except Exception as e:
+        print(f"_tc_day_notes_map error: {e}", flush=True)
+    return out
+
 
 def _tc_merge_leaves_into_monthly(supabase, f_code, year, month, result):
     """timecard-leave-grid-v1: staff_leave_days を月次result へマージ。
@@ -25425,10 +25457,64 @@ def admin_timecard_day():
         out = [{"id": r["id"], "type": r["punch_type"], "at": r["punched_at"],
                 "edited_by": r.get("edited_by"), "note": r.get("note")}
                for r in (res.data or [])]
-        return jsonify({"status": "success", "punches": out})
+        #   tc-daynote-v1: その日のメモ。打刻とは別に、日そのものに付く。
+        #   ★表がまだ無いうちは静かに空で返す（画面を止めない）。
+        day_note = ""
+        try:
+            _nr = (supabase.table("timecard_day_notes").select("note")
+                   .eq("facility_code", f_code).eq("staff_name", staff_name)
+                   .eq("work_date", date_str).limit(1).execute())
+            if _nr.data:
+                day_note = (_nr.data[0].get("note") or "")
+        except Exception as _ne:
+            print(f"admin_timecard_day note error: {_ne}", flush=True)
+        return jsonify({"status": "success", "punches": out, "day_note": day_note})
     except Exception as e:
         print(f"admin_timecard_day error: {e}", flush=True)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route("/admin/timecard/day_note/set", methods=["POST"])  # tc-daynote-v1
+@login_required
+def admin_timecard_day_note_set():
+    """tc-daynote-v1: その日のメモを保存する。
+
+    ★打刻にも休暇にもぶら下げない。「振替休だが勉強会のみ参加」のような
+      事情は、打刻が無い日にも休暇が無い日にも書けなければ意味がないため。
+    """
+    try:
+        f_code, my_name, supabase = _tc_admin_guard()
+        if f_code is None:
+            return jsonify({"status": "error", "message": "管理者権限がありません"}), 403
+        data = request.get_json(silent=True) or {}
+        staff_name = (data.get("staff_name") or "").strip()
+        date_str = (data.get("date") or "").strip()
+        note = (data.get("note") or "").strip()[:500]
+        if not staff_name:
+            return jsonify({"status": "error", "message": "職員名が必要です。"}), 400
+        if not _LEAVE_DATE_RE.match(date_str):
+            return jsonify({"status": "error", "message": "日付が不正です(YYYY-MM-DD)"}), 400
+        ex = (supabase.table("timecard_day_notes").select("id")
+              .eq("facility_code", f_code).eq("staff_name", staff_name)
+              .eq("work_date", date_str).limit(1).execute())
+        if not note:
+            #   空にしたら消す。空の行を残しても、読む人の役には立たない。
+            if ex.data:
+                supabase.table("timecard_day_notes").delete().eq(
+                    "id", ex.data[0]["id"]).eq("facility_code", f_code).execute()
+            return jsonify({"status": "success", "note": ""})
+        payload = {"facility_code": f_code, "staff_name": staff_name,
+                   "work_date": date_str, "note": note, "edited_by": my_name,
+                   "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat()}
+        if ex.data:
+            supabase.table("timecard_day_notes").update(payload).eq(
+                "id", ex.data[0]["id"]).eq("facility_code", f_code).execute()
+        else:
+            supabase.table("timecard_day_notes").insert(payload).execute()
+        return jsonify({"status": "success", "note": note})
+    except Exception as e:
+        print(f"admin_timecard_day_note_set error: {e}", flush=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 @app.route("/admin/timecard/device/delete", methods=["POST"])  # timecard-devdel-v1
 def admin_timecard_device_delete():
@@ -25567,11 +25653,17 @@ def admin_timecard_leave_set():
             "facility_code": f_code, "staff_name": staff_name,
             "leave_date": leave_date, "leave_type": leave_type,
             "substitute_for": sub_for,
-            "note": note, "created_by": my_name,
+            "created_by": my_name,
             # shift-leave-sync-v1: 手で入れた印。これが付いた行は勤務予定から上書き・削除されない
             "source": "manual",
             "updated_at": _tc_now_jst().astimezone(_tc_tz.utc).isoformat(),
         }
+        #   tc-daynote-v1: note を送って来なかったときは、今ある文を消さない。
+        #   ★管理者が休暇区分を選び直すたび、職員が自分で書いた休みの理由
+        #     （timecard-leave-note-v1）が黙って消えていた。画面は note を
+        #     送っていないのに、ここが None で上書きしていたため。
+        if "note" in data:
+            payload["note"] = note
         if existing.data:
             rid = existing.data[0]["id"]
             supabase.table("staff_leave_days").update(payload).eq("id", rid).execute()

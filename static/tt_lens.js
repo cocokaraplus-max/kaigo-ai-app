@@ -20,7 +20,9 @@
 
   // ===== 翻訳機能ON/OFF =====
   var TT_KEY = 'tt_enabled';
-  function isTTEnabled() { return localStorage.getItem(TT_KEY) !== '0'; }
+  // tt-off-default-v1: ONにした人だけON（既定はOFF）。
+  //   ★すでにONにしている人('1')・自分でOFFにした人('0')は、そのまま。
+  function isTTEnabled() { return localStorage.getItem(TT_KEY) === '1'; }
 
   window.ttSetEnabled = function (on) {
     localStorage.setItem(TT_KEY, on ? '1' : '0');
@@ -37,6 +39,9 @@
       if (btn) btn.style.display = '';
       if (langRow) langRow.style.display = '';
       document.querySelectorAll('.tt-field-btn').forEach(function (b) { b.style.display = ''; });
+      // tt-off-default-v1: まだ【文A】が付いていない入力欄に、その場で付ける。
+      //   ★OFFで開いた人がONにしたとき、これが無いと何も起きない。
+      if (typeof window.ttAttachAll === 'function') window.ttAttachAll();
       updateBtn();
     }
   };

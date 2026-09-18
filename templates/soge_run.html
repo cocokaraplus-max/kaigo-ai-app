@@ -377,6 +377,20 @@
   font-variant-numeric:tabular-nums; }
 .sr-pl .tag { font-size:0.68rem; font-weight:800; border-radius:6px; padding:2px 6px;
   background:rgba(255,255,255,.22); white-space:nowrap; }
+/* soge-acts-line-v1: ［直す］［戻す］の位置が行ごとにバラバラに崩れるのを直す。
+   ★文字を大きくすると、名前の長さしだいで折り返す場所が変わり、
+     ［戻す］だけが左端にひとつ落ちる行ができていた
+     （現場の指摘・iPhone 文字大 2026-09-18／390px・130% で実測）。
+   ★2つをひとまとめにして、離れないようにする。
+   ★折り返しても右端にそろえる。どの行も、押すところの右端が同じ位置になる。 */
+.sr-pl-acts { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
+/* ★この形にするのは、ボタンを持っている板だけ。
+     ほかの板（押せる板・先の人の板・まだの板）は今までどおりにする。 */
+.sr-pl.hasacts { justify-content:flex-end; }
+/* ★右へ寄せる力は【名前のうしろ】ひとつだけにする。
+     時刻にも寄せる力が残っていると、空きが2つに分かれて時刻が中央へ漂う。 */
+.sr-pl.hasacts .nm { margin-right:auto; }
+.sr-pl.hasacts .tm { margin-left:0; }
 /* 次の人の板。下の白い箱と1枚につなげる（角を上だけ丸める） */
 /* soge-drive-v5: ★名前を大きくするのはやめた。
      大きくしても探す助けにはならず、1人ぶん場所を取って
@@ -2674,14 +2688,18 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
          （消すと「押したか分からない」になる）。 */
     var depNode = t.departed_at
       /* soge-undo-v1: 押し間違えた出発を消せるようにする。★確認を出してから消す。 */
-      ? '<div class="sr-nd past"><div class="sr-pl dep done">'
+      /* soge-acts-line-v1: hasacts ＝ ボタンを持つ板の形にする */
+      ? '<div class="sr-nd past"><div class="sr-pl dep done hasacts">'
           + '<span class="nm">事業所を出発</span>'
           + '<span class="tm">' + esc(t.departed_at) + '</span>'
           /* soge-run-time-edit-v1: 消さずに時刻だけ直す。 */
+          /* soge-acts-line-v1: 2つをひとまとめに。離れて左端へ落ちないようにする。 */
+          + '<span class="sr-pl-acts">'
           + '<button type="button" class="sr-tm-e" data-tdd="' + escA(t.day_id) + '"'
             + ' data-tdk="departed" data-tdt="' + escA(t.departed_at) + '">直す</button>'
           + '<button type="button" class="sr-pl-u" data-udd="' + escA(t.day_id) + '"'
             + ' data-udk="depart" data-udt="' + escA(t.departed_at) + '">戻す</button>'
+          + '</span>'
           + '</div></div>'
       /* soge-drive-v3: 板そのものを押す。★data-dep は変えない
          （押したときの動きは、すでにある bind() がそのまま拾う）。 */
@@ -2702,16 +2720,20 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
          ただし黙って隠さない。すぐ上の〈済んだ人 N 人〉に全員ぶんが出る。 */
     var doneNodes = doneList.slice(-3).map(function (s) {
       var _pend = srqPendingStops()[s.id];
-      return '<div class="sr-nd past"><div class="sr-pl fin">'
+      /* soge-acts-line-v1: hasacts ＝ ボタンを持つ板の形にする */
+      return '<div class="sr-nd past"><div class="sr-pl fin hasacts">'
         + '<span class="nm">' + esc(s.user_name) + '</span>'
         + (_pend ? '<span class="sr-pend">未送信</span>' : '')
         + '<span class="tm">済 ' + esc(s.arrived_at) + '</span>'
         /* soge-run-time-edit-v1: 消さずに時刻だけ直す。 */
+        /* soge-acts-line-v1: 2つをひとまとめに。離れて左端へ落ちないようにする。 */
+        + '<span class="sr-pl-acts">'
         + '<button type="button" class="sr-tm-e" data-ted="' + escA(s.id) + '"'
           + ' data-tinit="' + escA(s.arrived_at) + '">直す</button>'
         + '<button type="button" class="sr-pl-u" data-uds="' + escA(s.id) + '"'
           + ' data-udk="arrive" data-udn="' + escA(s.user_name) + '"'
           + ' data-udt="' + escA(s.arrived_at) + '">戻す</button>'
+        + '</span>'
         + '</div></div>';
     }).join('');
 
@@ -2780,15 +2802,19 @@ body.sr-hasbar2 .sr-wrap { padding-top: var(--sr-bars, 112px); }
          全員おわるまでは押せるものを出さず、何をすればよいかを文字で出す。 */
     var goal;
     if (t.returned_at) {
-      goal = '<div class="sr-nd goal past"><div class="sr-pl dep done">'
+      /* soge-acts-line-v1: hasacts ＝ ボタンを持つ板の形にする */
+      goal = '<div class="sr-nd goal past"><div class="sr-pl dep done hasacts">'
         + '<span class="nm">事業所に帰着</span>'
         + '<span class="tm">' + esc(t.returned_at) + '</span>'
         /* soge-undo-v1: 押し間違えた帰着を消せるようにする。 */
         /* soge-run-time-edit-v1: 消さずに時刻だけ直す。 */
+        /* soge-acts-line-v1: 2つをひとまとめに。離れて左端へ落ちないようにする。 */
+        + '<span class="sr-pl-acts">'
         + '<button type="button" class="sr-tm-e" data-tdd="' + escA(t.day_id) + '"'
           + ' data-tdk="returned" data-tdt="' + escA(t.returned_at) + '">直す</button>'
         + '<button type="button" class="sr-pl-u" data-udd="' + escA(t.day_id) + '"'
           + ' data-udk="return" data-udt="' + escA(t.returned_at) + '">戻す</button>'
+        + '</span>'
         + '</div></div>';
     } else if (leftAll.length) {
       goal = '<div class="sr-nd goal"><div class="sr-pl dep wait">'
