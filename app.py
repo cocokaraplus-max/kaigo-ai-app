@@ -18194,7 +18194,8 @@ def _shogu_pack(supabase, f_code, docs, want_signs=True):  # shogu-v1
         if want_signs:
             try:
                 sr = (supabase.table("shogu_signs")
-                      .select("id,doc_id,sign_round,staff_name,signed_at")
+                      .select("id,doc_id,sign_round,staff_name,signed_at,"
+                              "date_edited_by,signed_at_original")   # shogu-signdate-v1
                       .in_("doc_id", ids).order("signed_at").execute())
                 for x in (sr.data or []):
                     signs.setdefault(x["doc_id"], []).append(x)
@@ -19003,6 +19004,52 @@ def api_shogu_sign():
             pass
         return jsonify({"status": "error", "message": str(e)}), 500
     return jsonify({"status": "success", "id": sid})
+
+
+@app.route("/api/shogu/sign/<sid>/date", methods=["POST"])  # shogu-signdate-v1
+def api_shogu_sign_date(sid):
+    """署名の日付を、実際に確認した日に直す。
+
+    ★直せるのは管理者だけ。そして【元の日時・直した人・直した日時】を残す。
+      残さずに書き換えられる作りは、記録としての意味を失う。
+      「後から動かせる台帳」は、動かした跡が残って初めて信用される。
+    """
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    sid = (sid or "").strip()
+    day = str((request.json or {}).get("date") or "").strip()
+    if not re.match(r"^\d{4}-\d{2}-\d{2}$", day):
+        return jsonify({"status": "error", "message": "日付の形がちがいます"}), 400
+    try:
+        d = datetime.strptime(day, "%Y-%m-%d")
+    except Exception:
+        return jsonify({"status": "error", "message": "その日付はありません"}), 400
+    #   ★先の日付は受け取らない。まだ確認していない日を記録できてしまう。
+    today = (datetime.now(timezone.utc) + timedelta(hours=9)).date()
+    if d.date() > today:
+        return jsonify({"status": "error", "message": "先の日付にはできません"}), 400
+    try:
+        r = (supabase.table("shogu_signs").select("signed_at,signed_at_original")
+             .eq("id", sid).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+        if not row:
+            return jsonify({"status": "error", "message": "その署名は見つかりません"}), 404
+        upd = {
+            #   その日の昼12時（日本時間）にそろえる。日付だけが意味を持つので、
+            #   時刻のずれで日付が動かないところに置く。
+            "signed_at": day + "T03:00:00+00:00",
+            "date_edited_by": my_name,
+            "date_edited_at": datetime.now(timezone.utc).isoformat(),
+        }
+        #   ★元の日時は最初の1回だけ残す。2回目で上書きすると、本当の元が消える。
+        if not row.get("signed_at_original"):
+            upd["signed_at_original"] = row.get("signed_at")
+        (supabase.table("shogu_signs").update(upd)
+         .eq("id", sid).eq("facility_code", f_code).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "date": day})
 
 
 @app.route("/api/shogu/sign/<sid>", methods=["GET"])  # shogu-v1

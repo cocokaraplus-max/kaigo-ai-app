@@ -52,6 +52,19 @@
   .sg-lb { font-size:0.76rem; font-weight:700; color:#3c4043; display:block; margin-bottom:4px; }
   .sg-empty { color:#5f6368; font-size:0.88rem; padding:24px 0; text-align:center; line-height:1.8; }
   .sg-sign-img { max-width:200px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; }
+  /* shogu-signdate-v1: 署名した人の一覧。日付をその場で直せる。 */
+  .sg-sign-row { display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+                 padding:6px 0; border-bottom:1px dashed #e8eaed; }
+  .sg-sign-n { font-size:0.82rem; font-weight:700; color:#202124;
+               flex:0 0 auto; min-width:5.5em; }
+  .sg-sign-d { flex:0 0 auto; width:9.6em; padding:5px 7px; font-size:0.78rem;
+               border:1.5px solid #e0e0e0; border-radius:8px; font-family:inherit; }
+  .sg-sign-x { flex:0 0 auto; white-space:nowrap; padding:4px 11px; font-size:0.72rem; }
+  .sg-sign-a { font-size:0.74rem; color:#1a73e8; text-decoration:none;
+               flex:0 0 auto; white-space:nowrap; }
+  .sg-sign-e { font-size:0.7rem; color:#a56300; background:#fef7e0;
+               border-radius:6px; padding:2px 7px; flex:0 0 auto; white-space:nowrap; }
+  .sg-sign-h { font-size:0.74rem; color:#5f6368; line-height:1.7; margin:8px 0 2px; }
   /* drop-files-v1: ファイルを落とせる枠。フォームのいちばん上に置いて、
      「ここが入口です」と一目で分かるようにする。 */
   .sg-drop { border:2px dashed #9aa0a6; border-radius:12px; padding:20px 14px; text-align:center;
@@ -172,6 +185,31 @@ function sgSize(n){
   return (n / 1024 / 1024).toFixed(1) + 'MB';
 }
 
+/* shogu-signdate-v1: 入力欄に入れる YYYY-MM-DD。
+   ★sgDate は見せる用（2026/9/18）。入力欄はこの形でないと受け取らない。 */
+function sgDay(s){
+  if (!s) return '';
+  var d = (s instanceof Date) ? s : new Date(s);
+  if (isNaN(d.getTime())) return String(s).slice(0, 10);
+  var z = function(n){ return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-' + z(d.getDate());
+}
+
+/* 署名の日付を、実際に確認した日に直す。 */
+async function sgSignDate(sid){
+  var el = document.getElementById('sgd-' + sid);
+  if (!el || !el.value) { alert('日付を入れてください。'); return; }
+  try {
+    var r = await fetch('/api/shogu/sign/' + encodeURIComponent(sid) + '/date', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: el.value }) });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('直せませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
 function sgDate(s){
   if (!s) return '';
   var d = new Date(s);
@@ -267,13 +305,23 @@ function sgCard(d){
       h += '<div class="sg-who">在籍している職員がいません。</div>';
     }
     if (done && SG.isAdmin) {
-      h += '<div class="sg-who">'
-        + (d.signed || []).map(function(s){
-            return sgEsc(s.staff_name) + '（' + sgEsc(sgDate(s.signed_at)) + '）'
-              + (s.id ? ' <a href="/api/shogu/sign/' + sgEsc(s.id) + '" target="_blank" '
-                        + 'style="color:#1a73e8;text-decoration:none;">署名を見る</a>' : '');
-          }).join(' ／ ')
-        + '</div>';
+      /* shogu-signdate-v1: 過去のぶんを今まとめて署名してもらうことがある。
+         そのとき日付は今日になるので、実際に確認した日に直せるようにする。
+         ★直すと、元の日時と直した人が記録に残る。 */
+      h += '<div class="sg-sign-h">確認した日は、実際の日に直せます。'
+        + '直すと、もとの日時と直した人が記録に残ります。</div>';
+      (d.signed || []).forEach(function(s){
+        h += '<div class="sg-sign-row">'
+          + '<span class="sg-sign-n">' + sgEsc(s.staff_name) + '</span>'
+          + '<input type="date" class="sg-sign-d" id="sgd-' + sgEsc(s.id) + '"'
+          + ' value="' + sgEsc(sgDay(s.signed_at)) + '" max="' + sgEsc(sgDay(new Date())) + '">'
+          + '<button type="button" class="sg-btn sg-sign-x" onclick="sgSignDate(\'' + sgEsc(s.id) + '\')">直す</button>'
+          + (s.date_edited_by
+              ? '<span class="sg-sign-e">' + sgEsc(s.date_edited_by) + ' が直した</span>' : '')
+          + (s.id ? '<a class="sg-sign-a" href="/api/shogu/sign/' + sgEsc(s.id)
+                    + '" target="_blank">署名を見る</a>' : '')
+          + '</div>';
+      });
     }
     h += '</div>';
   }
