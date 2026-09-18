@@ -24,6 +24,22 @@
   .td-nosvc { font-size:0.7rem; color:#a56300; background:#fef7e0;
               border-radius:6px; padding:2px 8px; }
   .td-legend { font-size:0.74rem; color:#5f6368; line-height:1.7; margin:0 0 10px; }
+  /* todokede-day-v5: 1段目（日付の一覧）。1日1行。 */
+  .td-day { display:flex; align-items:center; gap:12px; width:100%; text-align:left;
+            border:1.5px solid #e0e0e0; border-radius:12px; background:#fff;
+            padding:13px 14px; margin-bottom:8px; cursor:pointer; font-family:inherit; }
+  .td-day:active { background:#f1f3f4; }
+  .td-day-d { font-weight:800; font-size:1rem; color:#202124; flex:0 0 auto;
+              min-width:5.4em; white-space:nowrap; }
+  .td-day-b { flex:1 1 auto; min-width:0; }
+  .td-day-t { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .td-day-s { font-size:0.76rem; color:#5f6368; margin-top:3px; line-height:1.5; }
+  .td-day-c { flex:0 0 auto; color:#9aa0a6; font-size:0.74rem; white-space:nowrap; }
+  .td-day-arw { flex:0 0 auto; color:#9aa0a6; }
+  .td-back { border:1.5px solid #e0e0e0; background:#fff; border-radius:9px;
+             padding:9px 14px; font-size:0.86rem; font-weight:700; cursor:pointer;
+             font-family:inherit; color:#3c4043; margin-bottom:14px; }
+  .td-detail-h { font-size:1.02rem; font-weight:800; color:#1b5e20; margin:0 0 12px; }
   .td-sum { font-size:0.88rem; color:#3c4043; margin-top:6px; line-height:1.6; }
   .td-meta { font-size:0.74rem; color:#5f6368; margin-top:4px; }
   .td-files { margin-top:10px; border-top:1px dashed #e0e0e0; padding-top:8px; }
@@ -134,7 +150,8 @@
 <script>
 // todokede-v1
 var TD_KINDS = {{ td_file_kinds | tojson }};
-var TD_STATE = { records: [], isAdmin: false, uploadTo: null };
+var TD_STATE = { records: [], isAdmin: false, uploadTo: null,
+                 view: 'list', dayKey: null };   // todokede-day-v5
 
 function tdEsc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':s); return d.innerHTML; }
 function tdSize(n){ n=n||0; return n>=1048576 ? (n/1048576).toFixed(1)+'MB' : Math.max(1,Math.round(n/1024))+'KB'; }
@@ -152,8 +169,7 @@ async function tdLoad(){
     if (j.status !== 'success') throw new Error(j.message || '読み込めませんでした');
     TD_STATE.records = j.records || [];
     TD_STATE.isAdmin = !!j.is_admin;
-    document.getElementById('tdAdminOnly').style.display = TD_STATE.isAdmin ? 'block' : 'none';
-    tdRender();
+    tdRender();   // todokede-day-v5: 出し分けは tdRender の中でやる
   } catch (e) {
     box.innerHTML = '<div class="td-empty">読み込めませんでした：' + tdEsc(e.message || e) + '</div>';
   }
@@ -181,14 +197,117 @@ function tdRender(){
   });
   TD_STATE.nowId = nowId;
 
-  var html = '', lastYear = null;
+  // todokede-day-v5: 1段目（日付の一覧）か、2段目（中身）か
+  if (TD_STATE.view === 'detail' && TD_STATE.dayKey) tdRenderDetail(box);
+  else tdRenderList(box);
+}
+
+/* todokede-day-v5: 同じ日の届出をひとまとめにする。
+   ★鍵は【提出日】。入っていないものは届出の年月でまとめ、「日付なし」と出す。
+     黙って今日にしない。日付は人が入れたものをそのまま使う。
+   ★並びはサーバのまま。ここで並べ替え直すと、印と順がずれる。 */
+function tdDayKey(rec){
+  return rec.filed_date ? ('d:' + rec.filed_date) : ('m:' + (rec.filed_ym || ''));
+}
+function tdDayLabel(key){
+  if (key.indexOf('d:') === 0) {
+    var p = key.slice(2).split('-');
+    return (parseInt(p[1], 10) + '月' + parseInt(p[2], 10) + '日');
+  }
+  var m = key.slice(2).split('-')[1];
+  return (m ? parseInt(m, 10) + '月' : '') + '（日付なし）';
+}
+function tdDayYear(key){
+  return (key.indexOf('d:') === 0 ? key.slice(2, 6) : key.slice(2, 6));
+}
+function tdGroups(){
+  var order = [], map = {};
   TD_STATE.records.forEach(function(rec){
-    var y = tdYear(rec.filed_ym);
+    var k = tdDayKey(rec);
+    if (!map[k]) { map[k] = []; order.push(k); }
+    map[k].push(rec);
+  });
+  return order.map(function(k){ return { key: k, recs: map[k] }; });
+}
+
+function tdRenderList(box){
+  var html = '', lastYear = null;
+  tdGroups().forEach(function(g){
+    var y = tdDayYear(g.key) || tdYear(g.recs[0].filed_ym);
     if (y !== lastYear) { html += '<div class="td-year">' + tdEsc(y) + '年</div>'; lastYear = y; }
-    html += tdCard(rec);
+
+    // その日の中身をまとめる（同じものは1つに）
+    var types = [], svcs = [], sts = [], files = 0, isNow = false;
+    g.recs.forEach(function(rec){
+      var t = rec.doc_type || '届出';
+      if (types.indexOf(t) < 0) types.push(t);
+      var s = String(rec.service_type || '').trim();
+      if (s && svcs.indexOf(s) < 0) svcs.push(s);
+      var st = rec.status || '提出済';
+      if (sts.indexOf(st) < 0) sts.push(st);
+      files += (rec.files || []).length;
+      if ((TD_STATE.nowId || {})[s] === rec.id) isNow = true;
+    });
+
+    html += '<button type="button" class="td-day" onclick="tdOpenDay(\'' + tdEsc(g.key) + '\')">'
+      + '<span class="td-day-d">' + tdEsc(tdDayLabel(g.key)) + '</span>'
+      + '<span class="td-day-b">'
+      +   '<span class="td-day-t">'
+      +     types.map(function(t){ return '<span class="td-type">' + tdEsc(t) + '</span>'; }).join('')
+      +     sts.map(function(s){ return '<span class="td-status td-s-' + tdEsc(s) + '">' + tdEsc(s) + '</span>'; }).join('')
+      +     (isNow ? '<span class="td-now">いまの届出</span>' : '')
+      +   '</span>'
+      +   (svcs.length ? '<span class="td-day-s">' + tdEsc(svcs.join('／')) + '</span>' : '')
+      + '</span>'
+      + '<span class="td-day-c">' + (g.recs.length > 1 ? (g.recs.length + '件・') : '')
+      +   (files ? ('書類' + files + '枚') : '書類なし') + '</span>'
+      + '<span class="material-symbols-outlined td-day-arw">chevron_right</span>'
+      + '</button>';
   });
   box.innerHTML = html;
+  tdShowAdminTools(true);
 }
+
+function tdRenderDetail(box){
+  var g = tdGroups().filter(function(x){ return x.key === TD_STATE.dayKey; })[0];
+  if (!g) { TD_STATE.view = 'list'; tdRenderList(box); return; }
+  var y = tdDayYear(g.key) || tdYear(g.recs[0].filed_ym);
+  var html = '<button type="button" class="td-back" onclick="tdBackToList()">← 一覧に戻る</button>'
+    + '<div class="td-detail-h">' + tdEsc(y) + '年 ' + tdEsc(tdDayLabel(g.key)) + ' の届出</div>';
+  g.recs.forEach(function(rec){ html += tdCard(rec); });
+  box.innerHTML = html;
+  tdShowAdminTools(false);
+}
+
+/* ★「＋記録する」と入力欄は【一覧のときだけ】出す。
+   中身を見ているときに出ていると、いま見ているものを直す欄だと思われる。 */
+function tdShowAdminTools(show){
+  var el = document.getElementById('tdAdminOnly');
+  if (!el) return;
+  el.style.display = (show && TD_STATE.isAdmin) ? 'block' : 'none';
+  if (!show) tdCloseForm();
+}
+
+function tdOpenDay(key){
+  TD_STATE.view = 'detail';
+  TD_STATE.dayKey = key;
+  /* ★端末の「戻る」でも一覧に帰れるようにする。
+     スマホは画面のボタンより端末の戻るを押す人が多い。
+     積んでおかないと、アプリごと閉じてしまう。 */
+  try { history.pushState({ td: key }, ''); } catch (e) {}
+  tdRender();
+  window.scrollTo({ top: 0 });
+}
+
+function tdBackToList(){
+  TD_STATE.view = 'list';
+  TD_STATE.dayKey = null;
+  tdRender();
+}
+
+window.addEventListener('popstate', function(){
+  if (TD_STATE.view === 'detail') tdBackToList();
+});
 
 function tdCard(rec){
   var st = rec.status || '提出済';
@@ -256,6 +375,8 @@ function tdCloseForm(){ document.getElementById('tdForm').style.display = 'none'
 function tdEdit(id){
   var rec = TD_STATE.records.find(function(x){ return x.id === id; });
   if (!rec) return;
+  // todokede-day-v5: 入力欄は一覧にしか無い。中身を見ているなら先に戻る。
+  if (TD_STATE.view === 'detail') tdBackToList();
   document.getElementById('tdId').value = rec.id;
   document.getElementById('tdYm').value = rec.filed_ym || '';
   document.getElementById('tdFiled').value = rec.filed_date || '';
@@ -303,6 +424,9 @@ async function tdDel(id){
     var r = await fetch('/api/todokede/record/' + encodeURIComponent(id), { method:'DELETE', credentials:'include' });
     var j = await r.json();
     if (j.status !== 'success') { alert('消せませんでした：' + (j.message || '')); return; }
+    // todokede-day-v5: その日の届出が全部消えたら、中身に留まる意味がない
+    TD_STATE.view = 'list';
+    TD_STATE.dayKey = null;
     await tdLoad();
   } catch (e) { alert('通信できませんでした：' + e); }
 }
