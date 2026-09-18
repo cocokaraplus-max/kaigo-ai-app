@@ -14676,6 +14676,305 @@ def api_get_patient_profile_by_number():
         return jsonify({'data': res.data})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+# ===== unei-v1 : 運営規程を【版】で持つ =====
+#   ★なぜ版で持つのか（次に触る人へ）
+#     令和6年4月の運営規程から日曜営業の記載（第5条・第6条）が抜け、
+#     新旧対照表にも載らず、誰も気づかないまま1年以上たった。
+#     前の版が残っていれば、その場で「第5条も変わっています」と出せた。
+#     だからこの機能の芯は【前の版を消さないこと】と【比べられること】。
+#
+#   ★取り込みに python-docx は使わない。
+#     .docx は中身がzipなので、標準ライブラリだけで段落を取り出せる。
+#     requirements.txt は固定してあり、増やすと入れ替えの手間と危険が増える。
+#     実物2本（令和5年9月版・令和6年4月版）で python-docx と1行も違わないことを
+#     確かめてから、この形にした。
+UNEI_SERVICES = ["地域密着型通所介護", "介護予防通所サービス", "生活支援通所サービス", "その他"]
+UNEI_MAX_BYTES = 10 * 1024 * 1024
+
+_UNEI_W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+_UNEI_Z2H = str.maketrans("０１２３４５６７８９", "0123456789")
+_UNEI_KAN = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+             "六": 6, "七": 7, "八": 8, "九": 9, "十": 10}
+#   ★「第N条」のあとに【空白か行末】が来るものだけを見出しとみなす。
+#     これを入れないと、第7条の本文にある「第９条の通常の事業の実施地域を…」という
+#     【引用】を新しい条として拾ってしまう（実物で踏んだ）。
+_UNEI_ART = re.compile(r"^\s*第\s*([0-9０-９一二三四五六七八九十]+)\s*条(?=[\s　]|$)")
+_UNEI_TTL = re.compile(r"^\s*[（(](.+?)[)）]\s*$")
+
+
+def _unei_num(s):  # unei-v1
+    """「１０」「十」「10」などを数にする。"""
+    s = str(s).translate(_UNEI_Z2H)
+    if s.isdigit():
+        return int(s)
+    if s == "十":
+        return 10
+    if len(s) == 2 and s[0] == "十":
+        return 10 + _UNEI_KAN.get(s[1], 0)
+    if len(s) == 2 and s[1] == "十":
+        return _UNEI_KAN.get(s[0], 0) * 10
+    if len(s) == 3 and s[1] == "十":
+        return _UNEI_KAN.get(s[0], 0) * 10 + _UNEI_KAN.get(s[2], 0)
+    return _UNEI_KAN.get(s, 0)
+
+
+def _unei_docx_lines(raw):  # unei-v1
+    """.docx から段落の文字だけを取り出す（標準ライブラリだけ）。"""
+    import io
+    import zipfile
+    from xml.etree import ElementTree as ET
+    with zipfile.ZipFile(io.BytesIO(raw)) as z:
+        root = ET.fromstring(z.read("word/document.xml"))
+    out = []
+    for p in root.iter(_UNEI_W + "p"):
+        buf = []
+        for n in p.iter():
+            if n.tag == _UNEI_W + "t" and n.text:
+                buf.append(n.text)
+            elif n.tag == _UNEI_W + "tab":
+                buf.append("\t")
+            elif n.tag == _UNEI_W + "br":
+                buf.append("\n")
+        t = "".join(buf).rstrip()
+        if t.strip():
+            out.extend([x for x in t.split("\n") if x.strip()])
+    return out
+
+
+def _unei_parse(lines):  # unei-v1
+    """段落の並びを、表題と条文に切り分ける。
+
+    戻り: (head, articles)
+      head     … 表題（「地域密着型通所介護」「… 運営規程」など）
+      articles … [{"no": "第5条", "n": 5, "title": "営業日及び営業時間", "body": [...]}]
+    ★条の番号が【増えるときだけ】新しい条とみなす。戻る番号は本文中の引用。
+    """
+    arts, cur, pending, head, last = [], None, None, [], 0
+    for p in lines:
+        if p.strip().startswith("附則"):
+            if cur:
+                arts.append(cur)
+            cur = {"no": "附則", "n": 999, "title": "附則", "body": []}
+            continue
+        m = _UNEI_ART.match(p)
+        n = _unei_num(m.group(1)) if m else 0
+        if m and n > last:
+            if cur:
+                arts.append(cur)
+            cur = {"no": "第%d条" % n, "n": n, "title": pending or "", "body": []}
+            rest = p[m.end():].strip()
+            if rest:
+                cur["body"].append(rest)
+            pending = None
+            last = n
+            continue
+        t = _UNEI_TTL.match(p)
+        if t and len(p) < 40:
+            pending = t.group(1).strip()
+            continue
+        (cur["body"] if cur else head).append(p)
+    if cur:
+        arts.append(cur)
+    return head, arts
+
+
+def _unei_norm(body):  # unei-v1
+    """比べるための形にそろえる。空白のちがいは差とみなさない。"""
+    return re.sub(r"[\s　]+", "", "\n".join(body or []))
+
+
+def _unei_diff(old_arts, new_arts):  # unei-v1
+    """2つの版を比べて、変わった条だけ返す。
+
+    ★これがこの機能の芯。令和6年4月のとき、第5条（営業日）と第6条（定員）が
+      変わっているのに新旧対照表へ載らなかった。これがあれば出せた。
+    """
+    o = {a.get("no"): a for a in (old_arts or [])}
+    n = {a.get("no"): a for a in (new_arts or [])}
+    out = []
+    for k, a in n.items():
+        if k not in o:
+            out.append({"no": k, "title": a.get("title", ""), "kind": "追加",
+                        "old": [], "new": a.get("body", [])})
+        elif _unei_norm(o[k].get("body")) != _unei_norm(a.get("body")):
+            out.append({"no": k, "title": a.get("title", ""), "kind": "変更",
+                        "old": o[k].get("body", []), "new": a.get("body", [])})
+    for k, a in o.items():
+        if k not in n:
+            out.append({"no": k, "title": a.get("title", ""), "kind": "削除",
+                        "old": a.get("body", []), "new": []})
+    out.sort(key=lambda x: (999 if x["no"] == "附則" else _unei_num(
+        (x["no"] or "").replace("第", "").replace("条", "") or 0)))
+    return out
+
+
+def _unei_guard():  # unei-v1
+    """管理者だけ。届出と同じ見張りを使う（同じことを2か所に書かない）。"""
+    return _bcp_admin_guard()
+
+
+@app.route("/unei")  # unei-v1
+@login_required
+def unei_page():
+    """運営規程（版で持つ）。"""
+    return render("unei.html", unei_services=UNEI_SERVICES)
+
+
+@app.route("/api/unei/list", methods=["GET"])  # unei-v1
+@login_required
+def api_unei_list():
+    """自事業所の版を、サービスごとに新しい順で返す。
+
+    ★条文そのものは重いので一覧では返さない。開いたときに取りにいく。
+    """
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"status": "error", "message": "未ログイン"}), 401
+    try:
+        r = (supabase.table("unei_versions")
+             .select("id,service_type,label,effective_date,source_name,note,created_at,created_by")
+             .eq("facility_code", f_code)
+             .order("service_type").order("effective_date", desc=True)
+             .order("created_at", desc=True).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "versions": r.data or [],
+                    "is_admin": session.get("admin_authenticated", False)})
+
+
+@app.route("/api/unei/version/<vid>", methods=["GET"])  # unei-v1
+@login_required
+def api_unei_version(vid):
+    """版を1つ、条文ごと返す。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"status": "error", "message": "未ログイン"}), 401
+    try:
+        r = (supabase.table("unei_versions").select("*")
+             .eq("id", (vid or "").strip()).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not row:
+        return jsonify({"status": "error", "message": "見つかりません"}), 404
+    return jsonify({"status": "success", "version": row})
+
+
+@app.route("/api/unei/import", methods=["POST"])  # unei-v1
+@login_required
+def api_unei_import():
+    """Wordの運営規程を読み取って、1つの版として入れる。
+
+    multipart/form-data: file(.docx), service_type, effective_date, label, note
+    ★読み取った結果はそのまま保存する。人が見て直すのは次の段。
+      いま大事なのは【前の版を残すこと】。
+    """
+    supabase, f_code, my_name, err = _unei_guard()
+    if err:
+        return err
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"status": "error", "message": "ファイルが選ばれていません"}), 400
+    raw = f.read()
+    if not raw:
+        return jsonify({"status": "error", "message": "空のファイルです"}), 400
+    if len(raw) > UNEI_MAX_BYTES:
+        return jsonify({"status": "error", "message": "ファイルが大きすぎます（10MBまで）"}), 400
+    if not f.filename.lower().endswith(".docx") or raw[:2] != b"PK":
+        return jsonify({"status": "error",
+                        "message": "Word（.docx）を選んでください。古い .doc は Word で保存し直すと読めます"}), 400
+    try:
+        head, arts = _unei_parse(_unei_docx_lines(raw))
+    except Exception as e:
+        return jsonify({"status": "error", "message": "読み取れませんでした: %s" % e}), 400
+    if not arts:
+        return jsonify({"status": "error",
+                        "message": "条文が見つかりませんでした。「第1条」で始まる形になっているか確かめてください"}), 400
+    svc = (request.form.get("service_type") or "").strip()
+    if svc not in UNEI_SERVICES:
+        svc = UNEI_SERVICES[0]
+    eff = (request.form.get("effective_date") or "").strip() or None
+    vid = str(uuid.uuid4())
+    try:
+        supabase.table("unei_versions").insert({
+            "id": vid, "facility_code": f_code, "service_type": svc,
+            "label": (request.form.get("label") or "")[:100] or None,
+            "effective_date": eff, "head": head, "articles": arts,
+            "source_name": f.filename[:200],
+            "note": (request.form.get("note") or "")[:2000] or None,
+            "created_by": my_name,
+        }).execute()
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": vid,
+                    "articles": len(arts),
+                    "titles": [a.get("no") + " " + (a.get("title") or "") for a in arts]})
+
+
+@app.route("/api/unei/version/<vid>", methods=["DELETE"])  # unei-v1
+@login_required
+def api_unei_delete(vid):
+    """版を1つ消す。★前の版は消さないのが芯なので、確認は画面側で強めにする。"""
+    supabase, f_code, my_name, err = _unei_guard()
+    if err:
+        return err
+    try:
+        (supabase.table("unei_versions").delete()
+         .eq("id", (vid or "").strip()).eq("facility_code", f_code).execute())
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success"})
+
+
+@app.route("/api/unei/diff", methods=["GET"])  # unei-v1
+@login_required
+def api_unei_diff():
+    """2つの版を比べて、変わった条だけ返す。?old=<id>&new=<id>"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return jsonify({"status": "error", "message": "未ログイン"}), 401
+    a = (request.args.get("old") or "").strip()
+    b = (request.args.get("new") or "").strip()
+    if not a or not b or a == b:
+        return jsonify({"status": "error", "message": "比べる版を2つ選んでください"}), 400
+    try:
+        r = (supabase.table("unei_versions").select("id,label,effective_date,articles")
+             .in_("id", [a, b]).eq("facility_code", f_code).execute())
+        rows = {x["id"]: x for x in (r.data or [])}
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if a not in rows or b not in rows:
+        return jsonify({"status": "error", "message": "版が見つかりません"}), 404
+    return jsonify({"status": "success",
+                    "old": {"id": a, "label": rows[a].get("label"),
+                            "effective_date": rows[a].get("effective_date")},
+                    "new": {"id": b, "label": rows[b].get("label"),
+                            "effective_date": rows[b].get("effective_date")},
+                    "changes": _unei_diff(rows[a].get("articles"), rows[b].get("articles"))})
+
+
+@app.route("/unei/print/<vid>")  # unei-v1
+@login_required
+def unei_print(vid):
+    """印刷用。ブラウザの印刷からPDFにできる。"""
+    supabase = get_supabase()
+    f_code = session.get("f_code")
+    if not f_code:
+        return ("unauthorized", 401)
+    try:
+        r = (supabase.table("unei_versions").select("*")
+             .eq("id", (vid or "").strip()).eq("facility_code", f_code).limit(1).execute())
+        row = (r.data or [None])[0]
+    except Exception as e:
+        return ("読み込めませんでした: %s" % e, 500)
+    if not row:
+        return ("not found", 404)
+    return render_template("unei_print.html", v=row)
+
+
 # ===== todokede-v1 : 介護保険課への届出の台帳と保管庫 =====
 #   ★ファイルは【既存のバケット】に todokede/ で置く。新しいバケットを作らない。
 #     BCPが同じ理由で case-photos を使い回している。増やすとRLSの設定も増える。
