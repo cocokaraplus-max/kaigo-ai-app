@@ -214,16 +214,40 @@
   });
 
   // ===== 初期化・動的要素対応 =====
-  function isTTEnabled() { return localStorage.getItem('tt_enabled') !== '0'; }
+  // tt-off-default-v1: ONにした人だけON。
+  //   ★これまでは「何も入っていなければON」だったので、外国語スタッフの
+  //     いない事業所でも入力欄すべての右下に【文A】が座り、
+  //     文字を打つ場所を隠していた（現場の指摘 2026-09-18）。
+  //   ★すでにONにしている人('1')・自分でOFFにした人('0')は、そのまま。
+  function isTTEnabled() { return localStorage.getItem('tt_enabled') === '1'; }
 
   function attachAll() {
     if (!isTTEnabled()) return;
     document.querySelectorAll('textarea').forEach(attach);
   }
 
+  // tt-off-default-v1: あとから足された入力欄も拾う見張り。
+  //   ★二重には付けない（付けると入力のたびに走る見張りが増える）。
+  var ttObs = null;
+  function startObs() {
+    if (ttObs || !document.body) return;
+    ttObs = new MutationObserver(function () { attachAll(); });
+    ttObs.observe(document.body, {childList: true, subtree: true});
+  }
+
+  // tt-off-default-v1: 設定でONにしたその場で付ける。
+  //   ★これまでは、開いた時点でOFFだと見張りも始まっていなかったので、
+  //     ONにしても画面を開き直すまで何も出なかった。
+  //     OFFが既定になると、ここが必ず通る道になる。
+  window.ttAttachAll = function () {
+    if (!isTTEnabled()) return;
+    attachAll();
+    startObs();
+  };
+
   document.addEventListener('DOMContentLoaded', function () {
     if (!isTTEnabled()) return;
     attachAll();
-    new MutationObserver(function () { attachAll(); }).observe(document.body, {childList: true, subtree: true});
+    startObs();
   });
 })();

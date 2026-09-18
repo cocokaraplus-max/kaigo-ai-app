@@ -93,6 +93,15 @@
     font-weight:700;font-size:.85rem;cursor:pointer;font-family:inherit}
   .tcm-note{width:100%;margin-top:12px;padding:9px;border:1px solid #d8d4cc;border-radius:9px;
     font-size:.9rem;font-family:inherit}
+  /* tc-daynote-v1: 「この日のメモ」。自分の保存ボタンを持つ。 */
+  .tcm-note-box{margin-top:14px;background:#f6f4ef;border:1px solid #e2ded4;border-radius:12px;padding:12px}
+  .tcm-note-box h4{font-size:.86rem;margin-bottom:8px;color:#555}
+  .tcm-note-row{display:flex;gap:8px;align-items:center}
+  .tcm-note-row .tcm-note{flex:1;margin-top:0;min-width:0}
+  .tcm-note-save{background:#2f6b5e;color:#fff;border:0;border-radius:8px;padding:9px 16px;
+    font-family:inherit;font-weight:700;font-size:.86rem;cursor:pointer;white-space:nowrap}
+  .tcm-note-sub{margin-top:6px;font-size:.76rem;color:#8a867c}
+  .tcr-memo{color:#7a6a3a;font-size:.72rem;margin-left:6px}
   .tcm-close{width:100%;margin-top:14px;background:#eee;border:0;border-radius:10px;padding:13px;
     font-weight:700;font-family:inherit;cursor:pointer;color:#555}
   .tcm-empty{color:#aaa;font-size:.85rem;padding:8px 0}
@@ -213,7 +222,16 @@
         <button class="add" id="tcm-add-btn">追加</button>
       </div>
     </div>
-    <input class="tcm-note" id="tcm-note" placeholder="修正メモ（任意・例：本人申告により修正）">
+    <!-- tc-daynote-v1: 「この日のメモ」。打刻にも休暇にもぶら下がらない事情を書く。
+         ★これまでは押す先の無い欄で、書いて閉じると黙って消えていた。 -->
+    <div class="tcm-note-box">
+      <h4>この日のメモ</h4>
+      <div class="tcm-note-row">
+        <input class="tcm-note" id="tcm-note" placeholder="例：振替休だが勉強会のみ参加">
+        <button class="tcm-note-save" id="tcm-note-save">保存</button>
+      </div>
+      <div class="tcm-note-sub" id="tcm-note-sub">一覧にも出ます。空にして保存すると消えます。</div>
+    </div>
     <button class="tcm-close" id="tcm-close">閉じる</button>
   </div>
 </div>
@@ -412,6 +430,11 @@
       +' title="様式のどちらのシートに出すか">'+opt("",autoTxt)+opt("full","1日型")+opt("half","半日型")+'</select>';
   }
 
+  /* tc-daynote-v1: その日のメモ。開かないと読めないメモは、書かないのと同じ。 */
+  function memoOf(s,d){
+    var m=(s.day_notes||{})[d.date];
+    return m ? '<span class="tcr-memo" title="この日のメモ">📝 '+esc(m)+'</span>' : "";
+  }
   function render(j){
     var staff=j.staff||[];
     YX_ENABLED=!!j.youshiki_exclude_enabled;  // youshiki-exclude-v1
@@ -457,7 +480,7 @@
                データからは決められない。決めつけずに空欄で出し、
                鉛筆からその場で登録できるようにする。 */
           html+='<div class="tcr-day tcr-none"><span class="d">'+dayLabel(d.date)+'</span>'
-            +'<span class="io"></span><span class="hrs"></span>'+editBtn+'</div>';
+            +'<span class="io">'+memoOf(s,d)+'</span><span class="hrs"></span>'+editBtn+'</div>';
           return;
         }
         var lv=d.leave, chip=lv?leaveChip(lv):"";
@@ -466,17 +489,17 @@
         var dts=dtSel(s.name,d);
         if(d.incomplete){
           html+='<div class="tcr-day bad'+yxOffCls(d)+'"><span class="d">'+dayLabel(d.date)+'</span>'
-            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+chip+'</span>'
+            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+chip+memoOf(s,d)+'</span>'
             +'<span class="tcr-flag">⚠ '+esc((d.flags||[]).join("／"))+'</span>'+dts+yxb+editBtn+'</div>';
         }else if(lv && !d.in && !d.out){
           // timecard-leave-grid-v1: 打刻なしの休暇日(有給/振替休/公休以外の申告)
           html+='<div class="tcr-day"><span class="d">'+dayLabel(d.date)+'</span>'
-            +'<span class="io">'+chip+subref+'</span>'
+            +'<span class="io">'+chip+subref+memoOf(s,d)+'</span>'
             +'<span class="hrs"></span>'+editBtn+'</div>';
         }else{
           var brk=d.break_min?'（休憩'+d.break_min+'分）':'';
           html+='<div class="tcr-day'+yxOffCls(d)+'"><span class="d">'+dayLabel(d.date)+'</span>'
-            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+' '+brk+chip+subref+'</span>'
+            +'<span class="io">'+fmtTime(d.in)+'→'+fmtTime(d.out)+' '+brk+chip+subref+memoOf(s,d)+'</span>'
             +'<span class="hrs">'+fmtHM(d.minutes)+'</span>'+dts+yxb+editBtn+'</div>';
         }
       });   /* timecard-allday-v1: _all（月ぜんぶ）を回している */
@@ -544,7 +567,9 @@
     editing.staff=staff; editing.date=date;
     $("tcm-title").textContent=staff+" さんの打刻";
     $("tcm-sub").textContent=date+" の記録を修正できます";
-    $("tcm-note").value="";
+    $("tcm-note").value=""; $("tcm-note-sub").textContent="";
+    /* tc-daynote-v1: この日のメモは loadDay で入れる（1回だけ・打ち込み中は上書きしない） */
+    editing.noteLoaded=false; editing.noteSaved="";
     $("tcm-rows").innerHTML='<div class="tcm-empty">読み込み中…</div>';
     $("tcm-back").classList.add("show");
     await loadDay();
@@ -575,6 +600,13 @@
     try{
       var res=await fetch("/admin/timecard/day?staff_name="+encodeURIComponent(editing.staff)+"&date="+editing.date);
       var j=await res.json();
+      /* tc-daynote-v1: 開いたときだけ入れる。打刻を保存して読み直したときに、
+         入力中のメモを消してしまわないようにする。 */
+      if(!editing.noteLoaded){
+        $("tcm-note").value=(j.day_note||"");
+        editing.noteSaved=(j.day_note||"").trim();
+        editing.noteLoaded=true;
+      }
       if(j.status!=="success"){ $("tcm-rows").innerHTML='<div class="tcm-empty">'+esc(j.message||"取得失敗")+'</div>'; return; }
       var ps=j.punches||[];
       if(!ps.length){ $("tcm-rows").innerHTML='<div class="tcm-empty">この日の打刻はありません。下から追加できます。</div>'; return; }
@@ -597,7 +629,8 @@
     if(!time){ alert("時刻を入力してください"); return; }
     try{
       var res=await fetch("/admin/timecard/edit",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({id:Number(id), date:editing.date, time:time, note:$("tcm-note").value.trim()})});
+        /* tc-daynote-v1: メモは「この日のメモ」に移した。打刻には相乗りさせない。 */
+        body:JSON.stringify({id:Number(id), date:editing.date, time:time})});
       var j=await res.json();
       if(j.status==="success"){ await loadDay(); load(); }
       else alert(j.message||"保存できませんでした");
@@ -608,7 +641,7 @@
     if(!confirm("この打刻を削除しますか？")) return;
     try{
       var res=await fetch("/admin/timecard/delete",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({id:Number(id), note:$("tcm-note").value.trim()})});
+        body:JSON.stringify({id:Number(id)})});  /* tc-daynote-v1 */
       var j=await res.json();
       if(j.status==="success"){ await loadDay(); load(); }
       else alert(j.message||"削除できませんでした");
@@ -620,7 +653,7 @@
     if(!time){ alert("時刻を入力してください"); return; }
     try{
       var res=await fetch("/admin/timecard/add",{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({staff_name:editing.staff, punch_type:type, date:editing.date, time:time, note:$("tcm-note").value.trim()})});
+        body:JSON.stringify({staff_name:editing.staff, punch_type:type, date:editing.date, time:time})});  /* tc-daynote-v1 */
       var j=await res.json();
       if(j.status==="success"){ $("tcm-add-time").value=""; await loadDay(); load(); }
       else alert(j.message||"追加できませんでした");
@@ -872,7 +905,32 @@
   // ===== /timecard-grid-csv-v1 =====
 
   $("tcm-add-btn").addEventListener("click", addPunch);
-  $("tcm-close").addEventListener("click",function(){ $("tcm-back").classList.remove("show"); });
+  /* tc-daynote-v1: この日のメモを、それだけで保存する */
+  $("tcm-note-save").addEventListener("click", async function(){
+    var btn=this, old=btn.textContent, v=$("tcm-note").value.trim();
+    btn.disabled=true; btn.textContent="保存中…";
+    try{
+      var res=await fetch("/admin/timecard/day_note/set",{method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({staff_name:editing.staff, date:editing.date, note:v})});
+      var j=await res.json();
+      if(j.status==="success"){
+        editing.noteSaved=v;
+        btn.textContent="保存しました";
+        $("tcm-note-sub").textContent = v ? "一覧にも出ます。" : "メモを消しました。";
+        load();
+        setTimeout(function(){ btn.textContent=old; btn.disabled=false; },1200);
+      }else{
+        alert(j.message||"保存できませんでした"); btn.textContent=old; btn.disabled=false;
+      }
+    }catch(e){ alert("通信エラー"); btn.textContent=old; btn.disabled=false; }
+  });
+  /* tc-daynote-v1: 書いたまま閉じようとしたら、一度だけ聞く。黙って消さない。 */
+  function tcmCanClose(){
+    if($("tcm-note").value.trim()===(editing.noteSaved||"")) return true;
+    return confirm("この日のメモが保存されていません。保存せずに閉じますか？");
+  }
+  $("tcm-close").addEventListener("click",function(){ if(tcmCanClose()) $("tcm-back").classList.remove("show"); });
 
   // timecard-config-ui-v1: 勤務設定モーダル
   function cfgTypeSvcRow(s){
@@ -1081,7 +1139,10 @@
       setTimeout(function(){ btn.textContent=old; btn.disabled=false; },1200);
     }catch(e){ btn.textContent="失敗"; setTimeout(function(){ btn.textContent=old; btn.disabled=false; },1200); }
   });
-  $("tcm-back").addEventListener("click",function(e){ if(e.target===$("tcm-back")) $("tcm-back").classList.remove("show"); });
+  $("tcm-back").addEventListener("click",function(e){
+    /* tc-daynote-v1: 枠の外を押したときも、書きかけを黙って消さない */
+    if(e.target===$("tcm-back") && tcmCanClose()) $("tcm-back").classList.remove("show");
+  });
 
   load();
 })();

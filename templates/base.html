@@ -777,7 +777,8 @@ body.nav-editing {
                 <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;">
                     <div>
                         <div style="font-size:0.85rem;font-weight:700;color:#202124;">翻訳レンズ・翻訳入力を使う</div>
-                        <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">外国語スタッフが使う機能です。不要な場合はOFFにしてください。</div>
+                        <!-- tt-off-default-v1: 既定はOFF。文の向きを合わせる。 -->
+                        <div style="font-size:0.72rem;color:#5f6368;margin-top:2px;">外国語スタッフが使う機能です。ふだんはOFFのまま。使う場合だけONにしてください。</div>
                     </div>
                     <label style="position:relative;display:inline-block;width:44px;height:24px;flex-shrink:0;margin-left:12px;">
                         <input type="checkbox" id="tt-enabled-toggle" onchange="ttToggleEnabled(this.checked)"
@@ -3622,7 +3623,8 @@ window.openSettings = function() {
         var slider = document.getElementById('tt-enabled-slider');
         var knob = document.getElementById('tt-enabled-knob');
         var langRow = document.getElementById('tt-settings-lang-row');
-        var enabled = localStorage.getItem('tt_enabled') !== '0';
+        /* tt-off-default-v1: ONにした人だけON（既定はOFF） */
+        var enabled = localStorage.getItem('tt_enabled') === '1';
         if (tog) tog.checked = enabled;
         if (slider) slider.style.background = enabled ? '#1a73e8' : '#ccc';
         if (knob) knob.style.left = enabled ? '22px' : '2px';
