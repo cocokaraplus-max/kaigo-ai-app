@@ -52,6 +52,19 @@
   .sg-lb { font-size:0.76rem; font-weight:700; color:#3c4043; display:block; margin-bottom:4px; }
   .sg-empty { color:#5f6368; font-size:0.88rem; padding:24px 0; text-align:center; line-height:1.8; }
   .sg-sign-img { max-width:200px; border:1px solid #e0e0e0; border-radius:6px; background:#fff; }
+  /* drop-files-v1: ファイルを落とせる枠。フォームのいちばん上に置いて、
+     「ここが入口です」と一目で分かるようにする。 */
+  .sg-drop { border:2px dashed #9aa0a6; border-radius:12px; padding:20px 14px; text-align:center;
+             color:#5f6368; font-size:0.84rem; line-height:1.7; cursor:pointer; background:#fff; }
+  .sg-drop:hover { border-color:#2e7d32; color:#1b5e20; }
+  .sg-drop-on { border-color:#2e7d32; background:#e8f5e9; color:#1b5e20; }
+  .sg-pick { display:flex; align-items:center; gap:8px; font-size:0.82rem; padding:6px 0;
+             border-bottom:1px dashed #e0e0e0; }
+  .sg-pick-n { flex:1 1 auto; min-width:0; word-break:break-all; }
+  .sg-pick-s { flex:0 0 auto; color:#9aa0a6; font-size:0.72rem; white-space:nowrap; }
+  .sg-pick-x { flex:0 0 auto; white-space:nowrap; padding:3px 10px; font-size:0.72rem; min-width:4.2em; }
+  /* 書類カードの上に落とせる。落とす先が光る。 */
+  .sg-card-on { outline:3px solid #2e7d32; outline-offset:2px; background:#f6fbf6; }
   @media (max-width: 560px) { .sg-row { grid-template-columns:1fr; } }
 </style>
 {% endblock %}
@@ -65,11 +78,20 @@
 
 <div id="sgAdminOnly" style="display:none;">
   <button type="button" class="sg-btn sg-btn-main" onclick="sgOpenForm()" style="margin-bottom:12px;">
-    ＋ 書類を足す
+    ＋ 書類を取り込む
   </button>
 
   <div class="sg-form" id="sgForm" style="display:none;">
     <input type="hidden" id="sgId">
+    {# drop-files-v1: ★ファイルが先。使う人は「書類を取り込む＝ファイルを選ぶ」と読む。 #}
+    <div style="margin-bottom:12px;">
+      <label class="sg-lb">書類（PDF・Word・Excel・画像）</label>
+      <div class="sg-drop" id="sgDrop" onclick="sgPickNew()">
+        <span class="material-symbols-outlined" style="font-size:30px;">upload_file</span>
+        <div>ここにファイルをドロップ<br>または押して選ぶ（<b>まとめて選べます</b>）</div>
+      </div>
+      <div id="sgPicked"></div>
+    </div>
     <div class="sg-row">
       <div>
         <label class="sg-lb">年度 <span style="color:#c5221f;">必須</span></label>
@@ -107,7 +129,7 @@
                 placeholder="例：賃金規程の改定もあわせて周知"></textarea>
     </div>
     <div class="sg-acts">
-      <button type="button" class="sg-btn sg-btn-main" onclick="sgSave()">保存する</button>
+      <button type="button" class="sg-btn sg-btn-main" id="sgSaveBtn" onclick="sgSave()">保存する</button>
       <button type="button" class="sg-btn" onclick="sgCloseForm()">やめる</button>
     </div>
     <p style="font-size:0.74rem;color:#5f6368;margin:10px 0 0;line-height:1.7;">
@@ -116,7 +138,7 @@
   </div>
 </div>
 
-<input type="file" id="sgFile" style="display:none;"
+<input type="file" id="sgFile" multiple style="display:none;"
        accept=".pdf,.docx,.doc,.xlsx,.xls,.jpg,.jpeg,.png">
 
 <div id="sgBody"><div class="sg-empty">読み込み中…</div></div>
@@ -124,7 +146,8 @@
 
 {% block extra_script %}
 <script>
-var SG = { docs: [], staff: [], isAdmin: false, yearNow: {{ sg_year_now }}, upDoc: null };
+var SG = { docs: [], staff: [], isAdmin: false, yearNow: {{ sg_year_now }}, upDoc: null,
+           picked: [] };   /* drop-files-v1: 取り込む前に選んだファイル */
 
 function sgEsc(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
@@ -189,7 +212,9 @@ function sgRender(){
   var box = document.getElementById('sgBody');
   if (!SG.docs.length) {
     box.innerHTML = '<div class="sg-empty">まだ書類がありません。<br>'
-      + (SG.isAdmin ? '「＋ 書類を足す」から始めてください。' : '管理者が用意すると、ここに出ます。') + '</div>';
+      + (SG.isAdmin ? '上の「＋ 書類を取り込む」から、計画書や実績報告書を入れてください。<br>'
+                    + 'ファイルは<b>まとめて</b>選べます。'
+                  : '管理者が用意すると、ここに出ます。') + '</div>';
     return;
   }
   /* 年度ごとにまとめる。並べ替えはサーバ側で済んでいるので、ここでは順に見るだけ。 */
@@ -210,7 +235,10 @@ function sgCard(d){
   var yet = (d.pending || []).length;
   var all = done + yet;
   var pct = all ? Math.round(done * 100 / all) : 0;
-  var h = '<div class="sg-card">'
+  /* drop-files-v1: カードの上に直接落とせる。「この書類に付ける」がいちばん短い動きになる。 */
+  var h = '<div class="sg-card" data-doc="' + sgEsc(d.id) + '"'
+    + ' ondragover="sgCardOver(event,this)" ondragleave="sgCardOut(this)"'
+    + ' ondrop="sgCardDrop(event,this)">'
     + '<div class="sg-head">'
     + '<span class="sg-type">' + sgEsc(d.doc_type) + '</span>'
     + '<span class="sg-st sg-st-' + sgEsc(d.status) + '">' + sgEsc(d.status) + '</span>'
@@ -284,9 +312,124 @@ function sgOpenForm(){
   document.getElementById('sgNote').value = '';
   document.getElementById('sgStatus').value = '下書き';
   document.getElementById('sgNeed').value = '1';
-  document.getElementById('sgForm').style.display = 'block';
+  SG.picked = [];                      /* drop-files-v1: 前に選んだものを持ち越さない */
+  sgRenderPicked();
+  var f = document.getElementById('sgForm');
+  f.style.display = 'block';
+  sgScrollTo(f);
 }
-function sgCloseForm(){ document.getElementById('sgForm').style.display = 'none'; }
+
+/* ★scrollIntoView は古い端末に無いことがある。
+   そこで止まると、以降の処理がまるごと動かなくなる。 */
+function sgScrollTo(el){
+  try { el.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+}
+function sgCloseForm(){
+  document.getElementById('sgForm').style.display = 'none';
+  SG.picked = [];
+  sgRenderPicked();
+}
+
+/* ───────── ファイルを選ぶ・落とす（drop-files-v1） ───────── */
+
+function sgPickNew(){
+  SG.upDoc = null;                     /* 新しく取り込むぶん */
+  var i = document.getElementById('sgFile');
+  i.value = '';
+  i.click();
+}
+
+function sgAddPicked(files){
+  if (!files || !files.length) return;
+  for (var i = 0; i < files.length; i++) SG.picked.push(files[i]);
+  sgRenderPicked();
+}
+
+function sgDropPicked(i){
+  SG.picked.splice(i, 1);
+  sgRenderPicked();
+}
+
+function sgRenderPicked(){
+  var box = document.getElementById('sgPicked');
+  if (!box) return;
+  if (!SG.picked.length) { box.innerHTML = ''; return; }
+  var h = '<div style="font-size:0.76rem;font-weight:700;color:#1b5e20;margin:10px 0 2px;">'
+        + '選んだ書類 ' + SG.picked.length + '枚</div>';
+  SG.picked.forEach(function(f, i){
+    h += '<div class="sg-pick"><span class="sg-pick-n">' + sgEsc(f.name) + '</span>'
+      + '<span class="sg-pick-s">' + sgSize(f.size) + '</span>'
+      + '<button type="button" class="sg-btn sg-pick-x" onclick="sgDropPicked(' + i + ')">外す</button>'
+      + '</div>';
+  });
+  box.innerHTML = h;
+}
+
+/* 1枚ずつ順に送る。★まとめて投げない。どれが入らなかったかを言えなくなる。 */
+async function sgSendFiles(docId, files, say){
+  var ok = 0, ng = [];
+  for (var i = 0; i < files.length; i++) {
+    if (say) say(i + 1, files.length);
+    var fd = new FormData();
+    fd.append('file', files[i]);
+    fd.append('doc_id', docId);
+    try {
+      var r = await fetch('/api/shogu/file', { method: 'POST', credentials: 'include', body: fd });
+      var j = await r.json();
+      if (j.status === 'success') ok++;
+      else ng.push(files[i].name + '（' + (j.message || '') + '）');
+    } catch (e) {
+      ng.push(files[i].name + '（通信できませんでした）');
+    }
+  }
+  return { ok: ok, ng: ng };
+}
+
+/* できている書類へ、そのまま付ける */
+async function sgSendTo(docId, files){
+  if (!docId || !files.length) return;
+  var res = await sgSendFiles(docId, files);
+  if (res.ng.length) alert('入らなかった書類があります：\n' + res.ng.join('\n'));
+  await sgLoad();
+}
+
+function sgCardOver(e, el){
+  if (!SG.isAdmin) return;
+  e.preventDefault();
+  el.classList.add('sg-card-on');
+}
+function sgCardOut(el){ el.classList.remove('sg-card-on'); }
+async function sgCardDrop(e, el){
+  if (!SG.isAdmin) return;
+  e.preventDefault();
+  el.classList.remove('sg-card-on');
+  var fs = Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []);
+  if (!fs.length) return;
+  await sgSendTo(el.getAttribute('data-doc'), fs);
+}
+
+(function sgBindDrop(){
+  var z = document.getElementById('sgDrop');
+  if (!z) return;
+  ['dragenter', 'dragover'].forEach(function(ev){
+    z.addEventListener(ev, function(e){ e.preventDefault(); z.classList.add('sg-drop-on'); });
+  });
+  ['dragleave', 'dragend'].forEach(function(ev){
+    z.addEventListener(ev, function(){ z.classList.remove('sg-drop-on'); });
+  });
+  z.addEventListener('drop', function(e){
+    e.preventDefault();
+    z.classList.remove('sg-drop-on');
+    sgAddPicked(Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []));
+  });
+  /* ★枠の外に落とすと、ブラウザがそのファイルを開いて画面ごと飛ぶ。書きかけが消える。 */
+  ['dragover', 'drop'].forEach(function(ev){
+    window.addEventListener(ev, function(e){
+      var t = e.target;
+      if (!(t && t.closest && t.closest('.sg-drop, .sg-card'))) e.preventDefault();
+    });
+  });
+})();
 
 function sgEdit(id){
   var d = SG.docs.filter(function(x){ return x.id === id; })[0];
@@ -298,8 +441,10 @@ function sgEdit(id){
   document.getElementById('sgStatus').value = d.status;
   document.getElementById('sgNeed').value = d.need_sign ? '1' : '0';
   document.getElementById('sgNote').value = d.note || '';
+  SG.picked = [];                      /* drop-files-v1 */
+  sgRenderPicked();
   document.getElementById('sgForm').style.display = 'block';
-  document.getElementById('sgForm').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  sgScrollTo(document.getElementById('sgForm'));
 }
 
 async function sgSave(){
@@ -312,15 +457,30 @@ async function sgSave(){
     need_sign: document.getElementById('sgNeed').value === '1',
     note: document.getElementById('sgNote').value
   };
+  var btn = document.getElementById('sgSaveBtn');
+  var back = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = '保存しています…'; }
   try {
     var r = await fetch('/api/shogu/doc', {
       method: 'POST', credentials: 'include',
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     var j = await r.json();
     if (j.status !== 'success') { alert('保存できませんでした：' + (j.message || '')); return; }
+    /* drop-files-v1: 選んだ書類を、そのまま続けて入れる。
+       ★ここで止めると「カードはできたのに書類が無い」状態が残る。 */
+    if (SG.picked.length) {
+      var res = await sgSendFiles(j.id, SG.picked, function(i, n){
+        if (btn) btn.textContent = '書類を入れています… ' + i + '/' + n;
+      });
+      if (res.ng.length) alert('入らなかった書類があります：\n' + res.ng.join('\n'));
+    }
     sgCloseForm();
     await sgLoad();
-  } catch (e) { alert('通信できませんでした：' + e); }
+  } catch (e) {
+    alert('通信できませんでした：' + e);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = back || '保存する'; }
+  }
 }
 
 async function sgStatus(id, st){
@@ -372,18 +532,16 @@ function sgPick(id){
   i.click();
 }
 
+/* drop-files-v1: 選び口は1つ。SG.upDoc があれば【その書類に付ける】、
+   無ければ【これから作る書類のぶん】。2つの入力欄を持つと、必ず片方が古くなる。 */
 document.getElementById('sgFile').addEventListener('change', async function(){
-  var f = this.files && this.files[0];
-  if (!f || !SG.upDoc) return;
-  var fd = new FormData();
-  fd.append('file', f);
-  fd.append('doc_id', SG.upDoc);
-  try {
-    var r = await fetch('/api/shogu/file', { method: 'POST', credentials: 'include', body: fd });
-    var j = await r.json();
-    if (j.status !== 'success') { alert('付けられませんでした：' + (j.message || '')); return; }
-    await sgLoad();
-  } catch (e) { alert('通信できませんでした：' + e); }
+  var fs = Array.prototype.slice.call(this.files || []);
+  var to = SG.upDoc;
+  SG.upDoc = null;
+  this.value = '';
+  if (!fs.length) return;
+  if (to) await sgSendTo(to, fs);
+  else sgAddPicked(fs);
 });
 
 async function sgFileDel(fid){

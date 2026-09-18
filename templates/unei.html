@@ -33,6 +33,18 @@
   .un-art-h { font-weight:800; font-size:0.9rem; color:#1b5e20; margin-bottom:5px; }
   .un-art-b { font-size:0.84rem; color:#3c4043; line-height:1.85; white-space:pre-wrap; }
   .un-form { border:1.5px solid #2e7d32; border-radius:12px; padding:14px; background:#f6fbf6; margin-bottom:16px; }
+  /* drop-files-v1: Wordを落とせる枠。まとめて落とせる。 */
+  .un-drop { border:2px dashed #9aa0a6; border-radius:12px; padding:20px 14px; text-align:center;
+             color:#5f6368; font-size:0.84rem; line-height:1.7; cursor:pointer; background:#fff; }
+  .un-drop:hover { border-color:#2e7d32; color:#1b5e20; }
+  .un-drop-on { border-color:#2e7d32; background:#e8f5e9; color:#1b5e20; }
+  /* ★版ごとに施行日がちがう。だから1行ずつ入れてもらう。 */
+  .un-pick { border:1px solid #e0e0e0; border-radius:10px; background:#fff;
+             padding:10px 11px; margin-top:8px; }
+  .un-pick-h { display:flex; align-items:center; gap:8px; font-size:0.82rem; font-weight:700;
+               color:#202124; margin-bottom:7px; }
+  .un-pick-n { flex:1 1 auto; min-width:0; word-break:break-all; }
+  .un-pick-x { flex:0 0 auto; white-space:nowrap; padding:3px 10px; font-size:0.72rem; min-width:4.2em; }
   .un-lb { font-size:0.76rem; font-weight:700; color:#3c4043; display:block; margin-bottom:4px; }
   .un-row { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
   .un-empty { color:#5f6368; font-size:0.88rem; padding:24px 0; text-align:center; line-height:1.9; }
@@ -71,36 +83,34 @@
       Word（.docx）の運営規程を選ぶと、<b>第1条から順に条文へ切り分けて</b>取り込みます。
       古い <b>.doc</b> は Word で <b>.docx</b> として保存し直してください。
     </div>
-    <div class="un-row">
-      <div>
-        <label class="un-lb">施行日</label>
-        <input type="date" id="unEff" class="form-control">
-      </div>
-      <div>
-        <label class="un-lb">名前（任意）</label>
-        <input type="text" id="unLabel" class="form-control" placeholder="例：令和6年4月版">
-      </div>
+    {# drop-files-v1: ★ファイルが先。版ごとに施行日がちがうので、
+       選んだあと1行ずつ入れてもらう。 #}
+    <div class="un-drop" id="unDrop" onclick="unPick()">
+      <span class="material-symbols-outlined" style="font-size:30px;">upload_file</span>
+      <div>ここに Word（.docx）をドロップ<br>または押して選ぶ（<b>まとめて選べます</b>）</div>
     </div>
-    <div style="margin-bottom:10px;">
-      <label class="un-lb">メモ（任意）</label>
+    <div id="unPicked"></div>
+    <div style="margin:12px 0 10px;">
+      <label class="un-lb">メモ（任意・選んだものすべてに付きます）</label>
       <input type="text" id="unNote" class="form-control" placeholder="例：人員・利用料の変更">
     </div>
     <div class="un-acts">
-      <button type="button" class="un-btn un-btn-main" onclick="unPick()">ファイルを選んで取り込む</button>
+      <button type="button" class="un-btn un-btn-main" id="unGoBtn" onclick="unImportAll()">取り込む</button>
       <button type="button" class="un-btn" onclick="unCloseForm()">やめる</button>
     </div>
   </div>
 </div>
 
 <div id="unBody"><div class="un-empty">読み込み中…</div></div>
-<input type="file" id="unFile" accept=".docx" style="display:none">
+<input type="file" id="unFile" multiple accept=".docx" style="display:none">
 {% endblock %}
 
 {% block extra_script %}
 <script>
 // unei-v1
 var UN_SERVICES = {{ unei_services | tojson }};
-var UN = { versions: [], isAdmin: false, svc: UN_SERVICES[0], view: 'list', vid: null, cmp: [] };
+var UN = { versions: [], isAdmin: false, svc: UN_SERVICES[0], view: 'list', vid: null, cmp: [],
+           picked: [] };   /* drop-files-v1: 取り込む前に選んだWord */
 
 function unEsc(s){ var d=document.createElement('div'); d.textContent=(s==null?'':s); return d.innerHTML; }
 function unDate(s){ if(!s) return '施行日なし'; var p=String(s).split('-'); return p[0]+'年'+parseInt(p[1],10)+'月'+parseInt(p[2],10)+'日 施行'; }
@@ -265,31 +275,148 @@ async function unRunDiff(){
 
 function unBack(){ UN.view = 'list'; UN.vid = null; unRender(); }
 
-function unOpenForm(){ document.getElementById('unForm').style.display = 'block'; }
-function unCloseForm(){ document.getElementById('unForm').style.display = 'none'; }
+function unOpenForm(){
+  UN.picked = [];                      /* drop-files-v1: 前に選んだものを持ち越さない */
+  unRenderPicked();
+  var f = document.getElementById('unForm');
+  f.style.display = 'block';
+  /* ★scrollIntoView は古い端末に無いことがある。そこで止めない。 */
+  try { f.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {}
+}
+function unCloseForm(){
+  document.getElementById('unForm').style.display = 'none';
+  UN.picked = [];
+  unRenderPicked();
+  document.getElementById('unNote').value = '';
+}
 function unPick(){ var i = document.getElementById('unFile'); i.value = ''; i.click(); }
 
-document.getElementById('unFile').addEventListener('change', async function(){
-  var f = this.files && this.files[0];
-  if (!f) return;
-  var fd = new FormData();
-  fd.append('file', f);
-  fd.append('service_type', UN.svc);
-  fd.append('effective_date', document.getElementById('unEff').value || '');
-  fd.append('label', document.getElementById('unLabel').value || '');
-  fd.append('note', document.getElementById('unNote').value || '');
-  try {
-    var r = await fetch('/api/unei/import', { method:'POST', credentials:'include', body: fd });
-    var j = await r.json();
-    if (j.status !== 'success') { alert('取り込めませんでした：' + (j.message || '')); return; }
-    /* ★何を読み取ったかを見せてから閉じる。黙って入ると、
-       ちゃんと切り分けられたのか分からないまま進んでしまう。 */
-    alert('取り込みました（' + j.articles + 'つの条）。\n\n' + (j.titles || []).join('\n'));
-    unCloseForm();
-    ['unEff','unLabel','unNote'].forEach(function(id){ document.getElementById(id).value = ''; });
-    await unLoad();
-  } catch (e) { alert('通信できませんでした：' + e); }
+/* ───────── Wordを選ぶ・落とす（drop-files-v1） ───────── */
+
+function unAddPicked(files){
+  if (!files || !files.length) return;
+  var bad = [];
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    /* ★.doc は読めない。ここで断らないと、取り込んでから失敗して分かりにくい。 */
+    if (!/\.docx$/i.test(f.name)) { bad.push(f.name); continue; }
+    UN.picked.push({ file: f, eff: '', label: f.name.replace(/\.docx$/i, '') });
+  }
+  unRenderPicked();
+  if (bad.length) {
+    alert('Word（.docx）だけ取り込めます。次のものは入れられません：\n' + bad.join('\n')
+        + '\n\n古い .doc は、Word で「.docx」として保存し直してください。');
+  }
+}
+
+function unDropPicked(i){
+  unKeepPicked();
+  UN.picked.splice(i, 1);
+  unRenderPicked();
+}
+
+/* ★描き直す前に、入力中の施行日と名前を覚えておく。
+   覚えずに描き直すと、2つ目を選んだ瞬間に1つ目の入力が消える。 */
+function unKeepPicked(){
+  UN.picked.forEach(function(p, i){
+    var e = document.getElementById('unEff' + i);
+    var l = document.getElementById('unLabel' + i);
+    if (e) p.eff = e.value || '';
+    if (l) p.label = l.value || '';
+  });
+}
+
+function unRenderPicked(){
+  var box = document.getElementById('unPicked');
+  if (!box) return;
+  if (!UN.picked.length) { box.innerHTML = ''; return; }
+  var h = '<div style="font-size:0.76rem;font-weight:700;color:#1b5e20;margin:12px 0 2px;">'
+        + '選んだ運営規程 ' + UN.picked.length + '本'
+        + '<span style="font-weight:400;color:#5f6368;">'
+        + '（施行日を入れておくと、新しい順に並びます）</span></div>';
+  UN.picked.forEach(function(p, i){
+    h += '<div class="un-pick">'
+      + '<div class="un-pick-h"><span class="un-pick-n">' + unEsc(p.file.name) + '</span>'
+      + '<button type="button" class="un-btn un-pick-x" onclick="unDropPicked(' + i + ')">外す</button>'
+      + '</div>'
+      + '<div class="un-row" style="margin-bottom:0;">'
+      + '<div><label class="un-lb">施行日</label>'
+      + '<input type="date" id="unEff' + i + '" class="form-control" value="' + unEsc(p.eff) + '"></div>'
+      + '<div><label class="un-lb">名前（任意）</label>'
+      + '<input type="text" id="unLabel' + i + '" class="form-control" value="' + unEsc(p.label) + '"></div>'
+      + '</div></div>';
+  });
+  box.innerHTML = h;
+}
+
+document.getElementById('unFile').addEventListener('change', function(){
+  unKeepPicked();
+  unAddPicked(Array.prototype.slice.call(this.files || []));
+  this.value = '';
 });
+
+(function unBindDrop(){
+  var z = document.getElementById('unDrop');
+  if (!z) return;
+  ['dragenter', 'dragover'].forEach(function(ev){
+    z.addEventListener(ev, function(e){ e.preventDefault(); z.classList.add('un-drop-on'); });
+  });
+  ['dragleave', 'dragend'].forEach(function(ev){
+    z.addEventListener(ev, function(){ z.classList.remove('un-drop-on'); });
+  });
+  z.addEventListener('drop', function(e){
+    e.preventDefault();
+    z.classList.remove('un-drop-on');
+    unKeepPicked();
+    unAddPicked(Array.prototype.slice.call((e.dataTransfer && e.dataTransfer.files) || []));
+  });
+  /* ★枠の外に落とすと、ブラウザがそのファイルを開いて画面ごと飛ぶ。 */
+  ['dragover', 'drop'].forEach(function(ev){
+    window.addEventListener(ev, function(e){
+      var t = e.target;
+      if (!(t && t.closest && t.closest('.un-drop'))) e.preventDefault();
+    });
+  });
+})();
+
+/* 1本ずつ順に取り込む。★何本目で何が起きたかを言えるようにする。 */
+async function unImportAll(){
+  unKeepPicked();
+  if (!UN.picked.length) { alert('先に Word（.docx）を選んでください。'); return; }
+  var btn = document.getElementById('unGoBtn');
+  var back = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; }
+  var note = document.getElementById('unNote').value || '';
+  var done = [], ng = [];
+  for (var i = 0; i < UN.picked.length; i++) {
+    var p = UN.picked[i];
+    if (btn) btn.textContent = '取り込んでいます… ' + (i + 1) + '/' + UN.picked.length;
+    var fd = new FormData();
+    fd.append('file', p.file);
+    fd.append('service_type', UN.svc);
+    fd.append('effective_date', p.eff || '');
+    fd.append('label', p.label || '');
+    fd.append('note', note);
+    try {
+      var r = await fetch('/api/unei/import', { method: 'POST', credentials: 'include', body: fd });
+      var j = await r.json();
+      if (j.status === 'success') done.push(p.file.name + '　' + j.articles + 'つの条');
+      else ng.push(p.file.name + '（' + (j.message || '') + '）');
+    } catch (e) {
+      ng.push(p.file.name + '（通信できませんでした）');
+    }
+  }
+  if (btn) { btn.disabled = false; btn.textContent = back || '取り込む'; }
+  /* ★何を読み取ったかを見せる。黙って入ると、ちゃんと切り分けられたのか分からない。 */
+  var msg = '';
+  if (done.length) msg += '取り込みました（' + done.length + '本）\n' + done.join('\n');
+  if (ng.length) msg += (msg ? '\n\n' : '') + '取り込めませんでした\n' + ng.join('\n');
+  alert(msg);
+  if (done.length) {
+    unCloseForm();
+    await unLoad();
+  }
+}
 
 async function unDel(id){
   if (!confirm('この版を消します。\n\n前の版は、あとで「何が変わったか」を調べるための証拠になります。\n本当に消しますか？（元に戻せません）')) return;
