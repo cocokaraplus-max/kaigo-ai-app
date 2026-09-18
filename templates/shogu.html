@@ -237,6 +237,12 @@ function sgWareki(y){
   return y + '年度（令和' + (r === 1 ? '元' : r) + '年度）';
 }
 
+/* shogu-open-v6: 画面で開けるかどうか。開けないものは新しいタブを開かず保存する。
+   ★管理者もスマホで見る。職員の画面と同じ決めごとにする。 */
+function sgOpenable(name){
+  return /\.(pdf|png|jpe?g)$/i.test(String(name || ''));
+}
+
 function sgSize(n){
   n = Number(n || 0);
   if (n < 1024) return n + 'B';
@@ -416,7 +422,10 @@ function sgCard(d){
   } else {
     (d.files || []).forEach(function(f){
       h += '<div class="sg-file">'
-        + '<a href="/api/shogu/file/' + sgEsc(f.id) + '" target="_blank">' + sgEsc(f.file_name) + '</a>'
+        + '<a href="/api/shogu/file/' + sgEsc(f.id) + '"'
+        + (sgOpenable(f.file_name) ? ' target="_blank"'
+                                   : ' download="' + sgEsc(f.file_name) + '"')
+        + '>' + sgEsc(f.file_name) + '</a>'
         + '<span class="sg-size">' + sgSize(f.file_size) + '</span>'
         + (SG.isAdmin ? '<button type="button" class="sg-btn sg-btn-del sg-file-del" onclick="sgFileDel(\'' + sgEsc(f.id) + '\')">消す</button>' : '')
         + '</div>';
