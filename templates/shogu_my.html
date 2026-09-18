@@ -16,6 +16,9 @@
   .sm-ttl { font-weight:800; font-size:0.96rem; color:#202124; margin-top:6px; }
   .sm-note { font-size:0.8rem; color:#5f6368; margin-top:5px; line-height:1.6; }
   .sm-files { margin-top:9px; }
+  /* shogu-open-v6: 押すと保存される書類（Excel・Word）の印 */
+  .sm-dl { font-size:0.7rem; color:#5f6368; background:#f1f3f4; border-radius:6px;
+           padding:2px 7px; flex:0 0 auto; white-space:nowrap; margin-left:6px; }
   .sm-file { display:flex; align-items:center; gap:8px; font-size:0.84rem; padding:5px 0; }
   .sm-file a { color:#1a73e8; text-decoration:none; word-break:break-all;
                flex:1 1 auto; min-width:0; font-weight:700; }
@@ -87,6 +90,24 @@ function smWareki(y){
   if (r < 1) return y + '年度';
   return y + '年度（令和' + (r === 1 ? '元' : r) + '年度）';
 }
+/* shogu-open-v6: その書類を、画面で開けるかどうか。
+   ★ブラウザが表示できるのは PDF と画像だけ。Excel や Word を
+     新しいタブで開こうとすると、スマホでは白いまま動けなくなる。 */
+function smOpenable(name){
+  return /\.(pdf|png|jpe?g)$/i.test(String(name || ''));
+}
+
+/* 書類へのリンクを1つ作る。
+   ★開けるものは新しいタブ、開けないものは download で【保存】。
+     download を付けると新しいタブが開かないので、白い画面に入り込まない。 */
+function smFileLink(f, tail){
+  var op = smOpenable(f.file_name);
+  return '<div class="sm-file"><a href="/api/shogu/file/' + smEsc(f.id) + '"'
+    + (op ? ' target="_blank"' : ' download="' + smEsc(f.file_name) + '"')
+    + ' onclick="smOpened()">📄 ' + smEsc(f.file_name) + (tail || '')
+    + '</a>' + (op ? '' : '<span class="sm-dl">保存されます</span>') + '</div>';
+}
+
 function smDate(s){
   if (!s) return '';
   var d = new Date(s);
@@ -142,11 +163,7 @@ function smCard(d, isYet){
   if (!(d.files || []).length) {
     h += '<div style="font-size:0.78rem;color:#a56300;">書類が付いていません。</div>';
   } else {
-    (d.files || []).forEach(function(f){
-      h += '<div class="sm-file">'
-        + '<a href="/api/shogu/file/' + smEsc(f.id) + '" target="_blank">'
-        + '📄 ' + smEsc(f.file_name) + '</a></div>';
-    });
+    (d.files || []).forEach(function(f){ h += smFileLink(f, ''); });
   }
   h += '</div>';
   if (d.need_sign && d.mine_signed) {
@@ -166,7 +183,11 @@ function smOpen(id){
   var d = SM.docs.filter(function(x){ return x.id === id; })[0];
   if (!d) return;
   SM.cur = d;
-  SM.opened = !(d.files || []).length;   /* 書類が無いなら、開くものが無い */
+  /* shogu-open-v6: 要点（Excelから読み取ったもの）が出ているなら、
+     原本を開くことは求めない。
+     ★確認すべき中身は画面に出ている。開けない端末で行き止まりにするより、
+       読めるものを読んでもらうほうがよい。 */
+  SM.opened = !(d.files || []).length || !!d.summary;
   document.getElementById('smBoxT').textContent = d.title || '';
   /* shogu-notified-v3: ちがう日付で残るときは、黙って残さない。
      ★押した人が「今日押したのに日付がちがう」と戸惑わないように、先に伝える。 */
@@ -175,10 +196,7 @@ function smOpen(id){
     + (d.notified_on
         ? '（この書類は ' + smDate(d.notified_on) + ' の周知として記録されます）' : '');
   var fh = '';
-  (d.files || []).forEach(function(f){
-    fh += '<div class="sm-file"><a href="/api/shogu/file/' + smEsc(f.id)
-       + '" target="_blank" onclick="smOpened()">📄 ' + smEsc(f.file_name) + ' を開く</a></div>';
-  });
+  (d.files || []).forEach(function(f){ fh += smFileLink(f, ' を開く'); });
   if (!fh) fh = '<div style="font-size:0.78rem;color:#a56300;">書類が付いていません。</div>';
   document.getElementById('smBoxF').innerHTML = fh;
   document.getElementById('smMask').style.display = 'flex';
@@ -202,6 +220,7 @@ function smSetOk(){
   b.disabled = !ok;
   b.textContent = SM.busy ? '送っています…'
     : (!SM.opened ? 'まず書類を開いてください' : (SM.drawn ? '署名する' : '名前を書いてください'));
+  /* shogu-open-v6: 押せない理由が「開いていないから」のときだけ、そう出す。 */
 }
 
 function smPadInit(){
