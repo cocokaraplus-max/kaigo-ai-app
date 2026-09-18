@@ -145,6 +145,9 @@
 {% endblock %}
 
 {% block extra_script %}
+{# shogu-view-v1: 要点の見せかたは1か所（static/shogu_view.js）にまとめてある。
+   職員の画面（shogu_my.html）も同じものを読む。 #}
+<script src="/static/shogu_view.js?v=1"></script>
 <script>
 var SG = { docs: [], staff: [], isAdmin: false, yearNow: {{ sg_year_now }}, upDoc: null,
            picked: [] };   /* drop-files-v1: 取り込む前に選んだファイル */
@@ -275,6 +278,9 @@ function sgCard(d){
     h += '</div>';
   }
 
+  /* shogu-view-v1: Excelから読み取った要点。読めていなければ何も出ない。 */
+  if (window.shoguViewHtml) h += shoguViewHtml(d.summary);
+
   /* 付いている書類 */
   h += '<div class="sg-files">';
   if (!(d.files || []).length) {
@@ -293,6 +299,7 @@ function sgCard(d){
   if (SG.isAdmin) {
     h += '<div class="sg-acts">'
       + '<button type="button" class="sg-btn sg-btn-main" onclick="sgPick(\'' + sgEsc(d.id) + '\')">書類を付ける</button>'
+      + '<button type="button" class="sg-btn" onclick="sgReparse(\'' + sgEsc(d.id) + '\')">Excelを読み直す</button>'
       + '<button type="button" class="sg-btn" onclick="sgEdit(\'' + sgEsc(d.id) + '\')">直す</button>'
       + (d.status === '公開'
           ? '<button type="button" class="sg-btn" onclick="sgStatus(\'' + sgEsc(d.id) + '\',\'下書き\')">下書きに戻す</button>'
@@ -521,6 +528,18 @@ async function sgDel(id){
                         { method: 'DELETE', credentials: 'include' });
     var j = await r.json();
     if (j.status !== 'success') { alert('消せませんでした：' + (j.message || '')); return; }
+    await sgLoad();
+  } catch (e) { alert('通信できませんでした：' + e); }
+}
+
+/* shogu-view-v1: 付いているExcelを読み直して、要点を作り直す。
+   ★この仕組みを入れる前に取り込んだ書類のために要る。 */
+async function sgReparse(id){
+  try {
+    var r = await fetch('/api/shogu/doc/' + encodeURIComponent(id) + '/reparse',
+                        { method: 'POST', credentials: 'include' });
+    var j = await r.json();
+    if (j.status !== 'success') { alert(j.message || '読み直せませんでした'); return; }
     await sgLoad();
   } catch (e) { alert('通信できませんでした：' + e); }
 }

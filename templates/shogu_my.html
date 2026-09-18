@@ -72,6 +72,8 @@
 {% endblock %}
 
 {% block extra_script %}
+{# shogu-view-v1: 管理者の画面と同じ見せかたを使う。 #}
+<script src="/static/shogu_view.js?v=1"></script>
 <script>
 var SM = { docs: [], cur: null, opened: false, drawn: false, drawing: false, ctx: null, busy: false };
 
@@ -133,6 +135,9 @@ function smCard(d, isYet){
     + '</div>'
     + '<div class="sm-ttl">' + smEsc(d.title || '') + '</div>';
   if (d.note) h += '<div class="sm-note">' + smEsc(d.note) + '</div>';
+  /* shogu-view-v1: 提出したExcelから読み取った要点。
+     ★職員がいちばん見たいのはここ。原本より先に出す。 */
+  if (window.shoguViewHtml) h += shoguViewHtml(d.summary);
   h += '<div class="sm-files">';
   if (!(d.files || []).length) {
     h += '<div style="font-size:0.78rem;color:#a56300;">書類が付いていません。</div>';

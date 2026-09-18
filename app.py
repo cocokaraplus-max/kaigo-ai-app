@@ -18434,7 +18434,12 @@ def api_shogu_file_add():
         except Exception:
             pass
         return jsonify({"status": "error", "message": str(e)}), 500
-    return jsonify({"status": "success", "id": fid})
+    #   shogu-view-v1: Excelの計画書なら、その場で要点を読み取って書類に付ける。
+    #   ★読めなくても、ここでは何も言わない。原本は入っていて、そのまま開ける。
+    _sv = _shogu_summary_from(raw, f.filename or "")
+    if _sv:
+        _shogu_save_summary(supabase, f_code, did, _sv)
+    return jsonify({"status": "success", "id": fid, "summary": bool(_sv)})
 
 
 @app.route("/api/shogu/file/<fid>", methods=["GET"])  # shogu-v1
@@ -18502,6 +18507,372 @@ def api_shogu_file_del(fid):
     return jsonify({"status": "success"})
 
 
+#   丸数字（①〜⑳ / ㉑〜㉘）。職場環境等要件の項目は、これで始まる。
+_SHOGU_MARU = "".join([chr(c) for c in range(0x2460, 0x2474)] +
+                   [chr(c) for c in range(0x3251, 0x325A)])
+_SHOGU_CHECK = ("✓", "✔", "☑", "レ")
+
+
+def _shogu_x_s(v):  # shogu-view-v1
+    """セルの値を、比べやすい文字にする。
+
+    ★見えない文字（ゼロ幅空白など）を落とす。様式のセルに紛れていて、
+      そのまま画面へ出すと、検索にも掛からない字が混ざる。
+    """
+    if v is None:
+        return ""
+    s = str(v).replace("\u3000", " ")
+    s = re.sub("[\\u200b-\\u200f\\ufeff\\u00a0]", "", s)
+    return s.strip()
+
+
+def _shogu_x_flat(s):
+    """空白と改行を落とす。様式の中の言葉は、版によって折り返しが変わる。"""
+    return re.sub(r"\s+", "", s or "")
+
+
+def _shogu_x_num(v):
+    """数っぽいものだけ数にする。「3,002,290」「3002290.0」どちらも。"""
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return int(round(v))
+    s = _shogu_x_s(v).replace(",", "")
+    if re.fullmatch(r"-?\d+(\.\d+)?", s):
+        return int(round(float(s)))
+    return None
+
+
+def _shogu_x_rows(ws, limit=200):
+    """行ごとに [(列番号, 値)] を返す。空の行は飛ばす。"""
+    out = []
+    for i, row in enumerate(ws.iter_rows(min_row=1, max_row=limit), start=1):
+        cells = [(c.column, c.value) for c in row if c.value is not None and _shogu_x_s(c.value)]
+        if cells:
+            out.append((i, cells))
+    return out
+
+
+def _shogu_x_rowtext(cells):
+    return _shogu_x_flat(" ".join(_shogu_x_s(v) for _, v in cells))
+
+
+def _shogu_x_findnum(rows, want, deny=(), after=0):
+    """その言葉がある行から、いちばん右の数を拾う。
+
+    ★言葉は「つながった形」で比べる。様式の折り返しが変わっても当たるように。
+    """
+    for rno, cells in rows:
+        if rno <= after:
+            continue
+        t = _shogu_x_rowtext(cells)
+        if _shogu_x_flat(want) not in t:
+            continue
+        if any(_shogu_x_flat(d) in t for d in deny):
+            continue
+        nums = [(_shogu_x_num(v), col) for col, v in cells]
+        nums = [(n, c) for n, c in nums if n is not None and n > 0]
+        if nums:
+            nums.sort(key=lambda x: x[1])
+            return nums[-1][0], rno
+    return None, None
+
+
+def _shogu_x_findrow(rows, want, after=0):
+    for rno, cells in rows:
+        if rno > after and _shogu_x_flat(want) in _shogu_x_rowtext(cells):
+            return rno, cells
+    return None, None
+
+
+def _shogu_x_rightof(cells, label):
+    """その言葉のセルの、右どなりから最初の中身を返す。"""
+    hit = None
+    for col, v in cells:
+        s = _shogu_x_flat(_shogu_x_s(v))
+        if hit is None and _shogu_x_flat(label) in s and len(s) <= len(_shogu_x_flat(label)) + 6:
+            hit = col
+            continue
+        if hit is not None and col > hit:
+            t = _shogu_x_s(v)
+            if t:
+                return t
+    return ""
+
+
+def _shogu_x_env(rows, start, end):
+    """職場環境等要件のうち、チェックが付いた項目を拾う。
+
+    ★区分（「入職促進に向けた取組」など）は、その行か、それより上の
+      いちばん近い左端の言葉。丸数字で始まらない短い言葉を区分とみなす。
+    """
+    out = []
+    group = ""
+    for rno, cells in rows:
+        if rno < start or (end and rno > end):
+            continue
+        texts = [(col, _shogu_x_s(v)) for col, v in cells]
+        #   いちばん左の、丸数字で始まらない言葉を区分とみなす
+        left = [t for col, t in texts if col <= 3 and t and t[0] not in _SHOGU_MARU]
+        if left and len(left[0]) <= 30:
+            group = re.sub(r"\s+", "", left[0])
+        item = ""
+        for _col, t in texts:
+            if t and t[0] in _SHOGU_MARU:
+                item = t
+                break
+        if not item:
+            continue
+        checked = any(t in _SHOGU_CHECK for _col, t in texts)
+        if checked:
+            out.append({"group": group, "text": re.sub(r"\s+", " ", item)})
+    return out
+
+
+def _shogu_x_offices(wb):
+    """事業所ごとの「算定する加算の区分」を拾う。
+
+    ★個票は【6月以降】と【4、5月】の2枚ある。いま効いているのは6月以降。
+      無ければ4、5月のほうを見る。
+    """
+    names = [n for n in wb.sheetnames if "個票" in n]
+    #   「6月以降」を先に見る
+    names.sort(key=lambda n: (0 if "６月以降" in n or "6月以降" in n else 1))
+    for nm in names:
+        ws = wb[nm]
+        rows = _shogu_x_rows(ws, limit=160)
+        head = None
+        for rno, cells in rows:
+            t = _shogu_x_rowtext(cells)
+            if "事業所名" in t and "サービス名" in t and "処遇改善加算の区分" in t:
+                head = (rno, cells)
+                break
+        if not head:
+            continue
+        #   ラベルから列を決める（列の位置は様式で動く）
+        col = {}
+        for c, v in head[1]:
+            s = _shogu_x_flat(_shogu_x_s(v))
+            if "事業所名" in s:
+                col.setdefault("name", c)
+            elif "サービス名" in s:
+                col.setdefault("svc", c)
+            elif "処遇改善加算の区分" in s:
+                col.setdefault("kubun", c)
+            elif "見込額" in s:
+                col.setdefault("yen", c)
+            elif "算定対象月" in s:
+                col.setdefault("term", c)
+        if "name" not in col or "kubun" not in col:
+            continue
+        out = []
+        for rno, cells in rows:
+            if rno <= head[0]:
+                continue
+            d = dict((c, v) for c, v in cells)
+            nm2 = _shogu_x_s(d.get(col["name"]))
+            ku = _shogu_x_s(d.get(col.get("kubun")))
+            if not nm2 or not ku:
+                continue
+            #   算定対象月は「令和/8/年/6/月～令和/9/年/3/月」と細かく割れている。
+            #   その行の、期間の列から右をつないで1つの言葉にする。
+            term = ""
+            if "term" in col:
+                parts = [_shogu_x_s(v) for c, v in cells
+                         if col["term"] <= c < col.get("yen", col["term"] + 30)]
+                term = re.sub(r"\s+", "", "".join(parts))
+            out.append({
+                "name": nm2,
+                "service": _shogu_x_s(d.get(col.get("svc"))),
+                "kubun": ku,
+                "term": term,
+                "yen": _shogu_x_num(d.get(col.get("yen"))),
+            })
+        if out:
+            return out, nm
+    return [], ""
+
+
+def _shogu_xlsx_summary(raw):
+    """計画書のExcelから要点を抜き出す。読めなければ None。"""
+    try:
+        import openpyxl
+    except ImportError:
+        return None
+    import io as _sx_io
+    try:
+        wb = openpyxl.load_workbook(_sx_io.BytesIO(raw), data_only=True, read_only=True)
+    except Exception:
+        return None
+
+    #   総括表を探す。無ければ最初のシート。
+    ws = None
+    for nm in wb.sheetnames:
+        if "総括" in nm:
+            ws = wb[nm]
+            break
+    if ws is None:
+        ws = wb[wb.sheetnames[0]]
+    rows = _shogu_x_rows(ws, limit=200)
+
+    out = {"kind": "", "year": "", "corp": "", "to": "",
+           "kasan_yen": None, "kaizen_yen": None,
+           "getsugaku_need": None, "getsugaku_plan": None,
+           "offices": [], "env": [], "mieruka": [], "pledge": "", "sheet": ws.title}
+
+    #   何の書類か・何年度か
+    for rno, cells in rows[:30]:
+        t = _shogu_x_rowtext(cells)
+        m = re.search(r"(令和[0-9０-９一二三四五六七八九十元]+)年度", t)
+        if m and not out["year"]:
+            out["year"] = m.group(1) + "年度"
+        if not out["kind"]:
+            if "処遇改善実績報告書" in t:
+                out["kind"] = "実績報告書"
+            elif "処遇改善計画書" in t:
+                out["kind"] = "計画書"
+        if out["year"] and out["kind"]:
+            break
+
+    #   法人名・提出先
+    for rno, cells in rows[:20]:
+        t = _shogu_x_rowtext(cells)
+        if not out["corp"] and "法人名" in t:
+            out["corp"] = _shogu_x_rightof(cells, "法人名")
+        if not out["to"] and "提出先" in t:
+            out["to"] = _shogu_x_rightof(cells, "提出先")
+
+    #   お金。★「１／２」や「月額」の行は別ものなので、はっきり分ける。
+    out["kasan_yen"], r1 = _shogu_x_findnum(rows, "加算の見込額", deny=("１／２", "1/2", "月額賃金改善"))
+    out["kaizen_yen"], _ = _shogu_x_findnum(rows, "賃金改善の見込額",
+                                        deny=("月額賃金改善による額", "１／２", "1/2"))
+    out["getsugaku_need"], _ = _shogu_x_findnum(rows, "相当の見込額の１／２")
+    out["getsugaku_plan"], _ = _shogu_x_findnum(rows, "月額賃金改善による額")
+
+    #   事業所ごとの加算区分
+    out["offices"], out["kohyo"] = _shogu_x_offices(wb)
+
+    #   職場環境等要件（チェックした項目だけ）
+    s_env, _ = _shogu_x_findrow(rows, "職場環境等要件")
+    e_env, _ = _shogu_x_findrow(rows, "見える化要件", after=(s_env or 0))
+    if s_env:
+        out["env"] = _shogu_x_env(rows, s_env, e_env)
+
+    #   職員への周知（見える化要件）
+    if e_env:
+        for rno, cells in rows:
+            if rno <= e_env or rno > e_env + 8:
+                continue
+            pairs = [(c, _shogu_x_s(v)) for c, v in cells]
+            chk = [c for c, t in pairs if t in _SHOGU_CHECK]
+            if not chk:
+                continue
+            #   ★チェックより【右】の言葉を拾う。左には区分の名前
+            #     （「ホームページへの掲載」）が置かれていて、それを拾うと
+            #     何をすると言っているのか分からない行になる。
+            long = [t for c, t in pairs if c > min(chk) and len(t) >= 10]
+            if long:
+                out["mieruka"].append(re.sub(r"\s+", " ", long[0]))
+
+    #   誓約した日
+    for rno, cells in rows:
+        t = _shogu_x_rowtext(cells)
+        m = re.search(r"令和([0-9０-９]+)年([0-9０-９]+)月([0-9０-９]+)日", t)
+        if m:
+            out["pledge"] = m.group(0)
+            break
+        #   「令和 8 年 3 月 26 日」とセルが割れている様式もある
+        m2 = re.match(r"^令和(\d+)年(\d+)月(\d+)日", re.sub(r"[^\d令和年月日]", "", t))
+        if m2 and "法人名" in t:
+            out["pledge"] = m2.group(0)
+            break
+
+    #   何も読めていないなら、整形して見せる意味がない
+    if not (out["kasan_yen"] or out["offices"] or out["env"]):
+        return None
+    return out
+
+
+# ───────── 読み取った要点を、書類につけておく（shogu-view-v1） ─────────
+
+#   ★大きすぎるExcelは読まない。読み込みでCloud Runが詰まる。
+#     読まなかったときは、原本を開いてもらう（何も壊れない）。
+SHOGU_XLSX_MAX = 12 * 1024 * 1024
+SHOGU_XLSX_EXTS = ("xlsx", "xlsm")
+
+
+def _shogu_summary_from(raw, file_name):  # shogu-view-v1
+    """Excelなら要点を読み取る。それ以外・読めないときは None。"""
+    ext = (file_name.rsplit(".", 1)[-1].lower() if "." in (file_name or "") else "")
+    if ext not in SHOGU_XLSX_EXTS or not raw or len(raw) > SHOGU_XLSX_MAX:
+        return None
+    try:
+        return _shogu_xlsx_summary(raw)
+    except Exception as e:
+        #   ★読み取りで転んでも、書類の保存そのものは止めない。
+        #     整えて見せるのは「おまけ」で、正本は提出したファイル。
+        print("[shogu] 計画書を読み取れませんでした: %s" % e, flush=True)
+        return None
+
+
+def _shogu_save_summary(supabase, f_code, did, summary):  # shogu-view-v1
+    """読み取った要点を書類に付ける。付けられなくても止めない。"""
+    if not summary:
+        return False
+    try:
+        (supabase.table("shogu_docs")
+         .update({"summary": summary,
+                  "updated_at": datetime.now(timezone.utc).isoformat()})
+         .eq("id", did).eq("facility_code", f_code).execute())
+        return True
+    except Exception as e:
+        print("[shogu] 要点を保存できませんでした: %s" % e, flush=True)
+        return False
+
+
+@app.route("/api/shogu/doc/<did>/reparse", methods=["POST"])  # shogu-view-v1
+def api_shogu_reparse(did):
+    """付いているExcelを読み直して、要点を作り直す。
+
+    ★この仕組みを入れる前に取り込んだ書類のために要る。
+      新しい順に試して、最初に読めたものを使う。
+    """
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (did or "").strip()
+    try:
+        chk = (supabase.table("shogu_docs").select("id")
+               .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        if not chk.data:
+            return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+        fr = (supabase.table("shogu_files").select("file_name,storage_path,file_size")
+              .eq("doc_id", did).eq("facility_code", f_code)
+              .order("created_at", desc=True).execute())
+        files = fr.data or []
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    tried = 0
+    for f in files:
+        nm = f.get("file_name") or ""
+        ext = (nm.rsplit(".", 1)[-1].lower() if "." in nm else "")
+        if ext not in SHOGU_XLSX_EXTS:
+            continue
+        tried += 1
+        try:
+            raw = supabase.storage.from_(SHOGU_BUCKET).download(f["storage_path"])
+        except Exception as e:
+            print("[shogu] 読み直しで落とせませんでした: %s" % e, flush=True)
+            continue
+        s = _shogu_summary_from(raw, nm)
+        if s:
+            _shogu_save_summary(supabase, f_code, did, s)
+            return jsonify({"status": "success", "summary": s, "file_name": nm})
+    if not tried:
+        return jsonify({"status": "error",
+                        "message": "Excelの計画書が付いていません（PDFだけでは中身を読めません）"}), 400
+    return jsonify({"status": "error",
+                    "message": "Excelを読み取れませんでした。様式が違うかもしれません。原本はそのまま開けます。"}), 400
+
+
 @app.route("/api/shogu/my", methods=["GET"])  # shogu-v1
 @login_required
 def api_shogu_my():
@@ -18511,7 +18882,8 @@ def api_shogu_my():
         return err
     try:
         r = (supabase.table("shogu_docs")
-             .select("id,fiscal_year,doc_type,title,note,need_sign,sign_round,published_at")
+             .select("id,fiscal_year,doc_type,title,note,need_sign,sign_round,"
+                     "published_at,summary")   # shogu-view-v1: 要点も渡す
              .eq("facility_code", f_code).eq("status", "公開")
              .order("fiscal_year", desc=True).order("doc_type").execute())
         docs = r.data or []
