@@ -14783,26 +14783,176 @@ def _unei_norm(body):  # unei-v1
     return re.sub(r"[\s　]+", "", "\n".join(body or []))
 
 
+_UNEI_NUMCH = "0123456789\uff10\uff11\uff12\uff13\uff14\uff15\uff16\uff17\uff18\uff19"  # unei-diff-red-v1
+
+
+def _unei_compact(s):  # unei-diff-red-v1
+    """空白を抜いた文字列と、その1文字ずつが元の何文字目だったかを返す。
+
+    ★Wordの空白は版によってゆれる。そのまま比べると、
+      中身が同じところまで赤くなってしまう。
+    """
+    idx = []
+    buf = []
+    for i, ch in enumerate(s):
+        if ch.isspace():          # 全角の空白も isspace() で True
+            continue
+        idx.append(i)
+        buf.append(ch)
+    return "".join(buf), idx
+
+
+def _unei_grow_num(mark, s):  # unei-diff-red-v1
+    """数字は塊で赤くする。
+
+    １５０ → ２００ は、文字で比べると「１５」と「２０」しか違わない。
+    でも人が見たいのは「１５０が２００になった」。
+    """
+    n = len(s)
+    for i in range(n):
+        if not mark[i] or s[i] not in _UNEI_NUMCH:
+            continue
+        j = i - 1
+        while j >= 0 and s[j] in _UNEI_NUMCH:
+            mark[j] = True
+            j -= 1
+        j = i + 1
+        while j < n and s[j] in _UNEI_NUMCH:
+            mark[j] = True
+            j += 1
+    return mark
+
+
+def _unei_smooth(mark, gap=4):  # unei-diff-red-v1
+    """近すぎる印はつなぐ。赤が細切れだと、かえって読みにくい。"""
+    n = len(mark)
+    i = 0
+    while i < n:
+        if not mark[i]:
+            i += 1
+            continue
+        j = i
+        while j < n:
+            while j < n and mark[j]:
+                j += 1
+            k = j
+            while k < n and not mark[k]:
+                k += 1
+            if k < n and (k - j) <= gap:
+                for x in range(j, k):
+                    mark[x] = True
+                j = k
+            else:
+                break
+        i = j
+    return mark
+
+
+def _unei_join_space(mark, s):  # unei-diff-red-v1
+    """印と印のあいだの空白も印にする（赤の帯が切れて見えないように）。
+
+    ★改行はまたがない。行をこえて赤帯が伸びると、かえって分かりにくい。
+    """
+    n = len(s)
+    for i in range(1, n - 1):
+        if mark[i] or not s[i].isspace() or s[i] == "\n":
+            continue
+        if not mark[i - 1]:
+            continue
+        j = i
+        while j < n and s[j].isspace() and s[j] != "\n":
+            j += 1
+        if j < n and mark[j]:
+            for x in range(i, j):
+                mark[x] = True
+    return mark
+
+
+def _unei_wrap(s, mark, cls):  # unei-diff-red-v1
+    """印の付いたところを span で囲んだHTMLにする。
+
+    ★必ずここで escape する。画面は innerHTML で出すので、
+      escape を外に出すと、いつか誰かが忘れる。
+    """
+    from html import escape as _esc
+    out = []
+    i = 0
+    n = len(s)
+    while i < n:
+        j = i
+        while j < n and mark[j] == mark[i]:
+            j += 1
+        piece = _esc(s[i:j])
+        out.append('<span class="%s">%s</span>' % (cls, piece) if mark[i] else piece)
+        i = j
+    return "".join(out)
+
+
+def _unei_marks(old_s, new_s):  # unei-diff-red-v1
+    """2つの文を比べて、変わったところに印を付けたHTMLを返す。→ (旧, 新)"""
+    import difflib
+    oc, oi = _unei_compact(old_s)
+    nc, ni = _unei_compact(new_s)
+    ocm = [False] * len(oc)
+    ncm = [False] * len(nc)
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(
+            None, oc, nc, autojunk=False).get_opcodes():
+        if tag == "equal":
+            continue
+        for i in range(i1, i2):
+            ocm[i] = True
+        for j in range(j1, j2):
+            ncm[j] = True
+    _unei_grow_num(ocm, oc)
+    _unei_grow_num(ncm, nc)
+    _unei_smooth(ocm)
+    _unei_smooth(ncm)
+    om = [False] * len(old_s)
+    nm = [False] * len(new_s)
+    for k, v in enumerate(ocm):
+        if v:
+            om[oi[k]] = True
+    for k, v in enumerate(ncm):
+        if v:
+            nm[ni[k]] = True
+    _unei_join_space(om, old_s)
+    _unei_join_space(nm, new_s)
+    return _unei_wrap(old_s, om, "un-del"), _unei_wrap(new_s, nm, "un-ins")
+
+
 def _unei_diff(old_arts, new_arts):  # unei-v1
     """2つの版を比べて、変わった条だけ返す。
 
     ★これがこの機能の芯。令和6年4月のとき、第5条（営業日）と第6条（定員）が
       変わっているのに新旧対照表へ載らなかった。これがあれば出せた。
+
+    ★old_html / new_html は、変わった文字を赤で囲んだもの（unei-diff-red-v1）。
+      old / new はそのまま残してある。あとで別の見せ方をするときのため。
     """
     o = {a.get("no"): a for a in (old_arts or [])}
     n = {a.get("no"): a for a in (new_arts or [])}
     out = []
     for k, a in n.items():
         if k not in o:
+            nb = "\n".join(a.get("body") or [])
             out.append({"no": k, "title": a.get("title", ""), "kind": "追加",
-                        "old": [], "new": a.get("body", [])})
+                        "old": [], "new": a.get("body", []),
+                        "old_html": "",
+                        "new_html": _unei_wrap(nb, [True] * len(nb), "un-ins")})
         elif _unei_norm(o[k].get("body")) != _unei_norm(a.get("body")):
+            ob = "\n".join(o[k].get("body") or [])
+            nb = "\n".join(a.get("body") or [])
+            oh, nh = _unei_marks(ob, nb)
             out.append({"no": k, "title": a.get("title", ""), "kind": "変更",
-                        "old": o[k].get("body", []), "new": a.get("body", [])})
+                        "old": o[k].get("body", []), "new": a.get("body", []),
+                        "old_html": oh, "new_html": nh})
     for k, a in o.items():
         if k not in n:
+            ob = "\n".join(a.get("body") or [])
             out.append({"no": k, "title": a.get("title", ""), "kind": "削除",
-                        "old": a.get("body", []), "new": []})
+                        "old": a.get("body", []), "new": [],
+                        "old_html": _unei_wrap(ob, [True] * len(ob), "un-del"),
+                        "new_html": ""})
     out.sort(key=lambda x: (999 if x["no"] == "附則" else _unei_num(
         (x["no"] or "").replace("第", "").replace("条", "") or 0)))
     return out

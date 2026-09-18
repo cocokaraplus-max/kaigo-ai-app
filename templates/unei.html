@@ -42,6 +42,14 @@
   .un-dif-x { border:1px solid #e8eaed; border-radius:8px; padding:9px 10px; background:#fff; }
   .un-dif-t { font-size:0.72rem; font-weight:800; color:#5f6368; margin-bottom:4px; }
   .un-dif-b { font-size:0.8rem; line-height:1.8; white-space:pre-wrap; color:#3c4043; }
+  /* unei-diff-red-v1: 変わった文字だけを赤で。
+     旧は取り消し線、新は下線。新旧対照表の書き方にそろえてある。 */
+  .un-del { color:#c5221f; background:#fce8e6; text-decoration:line-through;
+            border-radius:3px; padding:0 1px; }
+  .un-ins { color:#c5221f; background:#fce8e6; font-weight:800;
+            border-bottom:2px solid #c5221f; border-radius:3px; padding:0 1px; }
+  .un-leg { font-size:0.74rem; color:#5f6368; margin:0 0 10px; }
+  .un-leg .un-del, .un-leg .un-ins { font-size:0.74rem; }
   @media (max-width: 560px) { .un-dif-c { grid-template-columns:1fr; } .un-row { grid-template-columns:1fr; } }
 </style>
 {% endblock %}
@@ -234,13 +242,19 @@ async function unRunDiff(){
     var ch = j.changes || [];
     if (!ch.length) { out.innerHTML = '<div class="un-empty">変わった条はありません。</div>'; return; }
     var h = '<p style="font-size:0.82rem;color:#5f6368;line-height:1.7;margin:0 0 10px;">'
-      + '<b>' + ch.length + 'つの条</b>が変わっています。新旧対照表に載せるのはここです。</p>';
+      + '<b>' + ch.length + 'つの条</b>が変わっています。新旧対照表に載せるのはここです。</p>'
+      + '<p class="un-leg">赤いところが変わった部分です。'
+      + '旧の<span class="un-del">取り消し線</span>が消えた文字、'
+      + '新の<span class="un-ins">下線</span>が入った文字です。</p>';
     ch.forEach(function(c){
       h += '<div class="un-dif"><div class="un-dif-h">' + unEsc(c.no)
         + (c.title ? '（' + unEsc(c.title) + '）' : '') + '　' + unEsc(c.kind) + '</div>'
         + '<div class="un-dif-c">'
-        + '<div class="un-dif-x"><div class="un-dif-t">旧</div><div class="un-dif-b">' + unEsc((c.old||[]).join('\n')) + '</div></div>'
-        + '<div class="un-dif-x"><div class="un-dif-t">新</div><div class="un-dif-b">' + unEsc((c.new||[]).join('\n')) + '</div></div>'
+        /* unei-diff-red-v1: old_html / new_html は、変わった文字を赤で囲んだもの。
+           escape はサーバ側で済ませてある（_unei_wrap）。
+           万一 old_html が来なかったときは、これまでどおり素のまま出す。 */
+        + '<div class="un-dif-x"><div class="un-dif-t">旧</div><div class="un-dif-b">' + (c.old_html || unEsc((c.old||[]).join('\n'))) + '</div></div>'
+        + '<div class="un-dif-x"><div class="un-dif-t">新</div><div class="un-dif-b">' + (c.new_html || unEsc((c.new||[]).join('\n'))) + '</div></div>'
         + '</div></div>';
     });
     out.innerHTML = h;
