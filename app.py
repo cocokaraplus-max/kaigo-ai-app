@@ -18048,6 +18048,10 @@ SHOGU_BUCKET = BCP_BUCKET
 SHOGU_MAX_BYTES = 30 * 1024 * 1024
 #   ★手書きの署名。ふつうは数十KB。大きすぎるものは受け取らない。
 SHOGU_SIGN_MAX_BYTES = 1024 * 1024
+#   shogu-inline-v5: ブラウザがそのまま表示できる種類。
+#   ★これ以外（Excel・Word）は落として渡す。表示できないものを表示させようとすると、
+#     ブラウザは何も出さずに白いまま止まる。
+SHOGU_INLINE_MIMES = ("application/pdf", "image/png", "image/jpeg")
 #   shogu-paper-v4: 紙でもらった署名を取り込むぶん。
 #   ★画面で書いたものより大きくてよい。スマホで撮った写真が来るため。
 SHOGU_SIGN_UP_MAX = 8 * 1024 * 1024
@@ -18553,11 +18557,15 @@ def api_shogu_file_get(fid):
         return jsonify({"status": "error", "message": str(e)}), 500
     import io as _sg_io
     from flask import send_file as _sg_send
-    #   ★画面で開かせる（as_attachment=False）。PDFはそのまま読める。
-    #     落とさせると、開くまでに手間が増えて読まれなくなる。
+    #   shogu-inline-v5: 画面で読めるものだけ、そのまま開く。
+    #   ★ブラウザは Excel や Word を表示できない。表示できないものを
+    #     「表示せよ」と渡すと、何も出さず、落としもせず、白いまま止まる。
+    #     読めない種類は【落として渡す】。開くアプリは端末に任せる。
+    _mime = row.get("mime") or "application/octet-stream"
+    _inline = _mime in SHOGU_INLINE_MIMES
     return _sg_send(_sg_io.BytesIO(blob),
-                    mimetype=row.get("mime") or "application/octet-stream",
-                    as_attachment=False,
+                    mimetype=_mime,
+                    as_attachment=not _inline,
                     download_name=row.get("file_name") or "shogu")
 
 
