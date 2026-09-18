@@ -18048,6 +18048,15 @@ SHOGU_BUCKET = BCP_BUCKET
 SHOGU_MAX_BYTES = 30 * 1024 * 1024
 #   ★手書きの署名。ふつうは数十KB。大きすぎるものは受け取らない。
 SHOGU_SIGN_MAX_BYTES = 1024 * 1024
+#   shogu-paper-v4: 紙でもらった署名を取り込むぶん。
+#   ★画面で書いたものより大きくてよい。スマホで撮った写真が来るため。
+SHOGU_SIGN_UP_MAX = 8 * 1024 * 1024
+SHOGU_SIGN_UP_EXTS = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "pdf": "application/pdf",
+}
 SHOGU_ENABLED_KEY = "shogu_kaizen_enabled"
 SHOGU_DOC_TYPES = ["計画書", "実績報告書", "その他"]
 SHOGU_STATUS = ["下書き", "公開"]
@@ -18164,6 +18173,23 @@ def _shogu_staff_names(supabase, f_code):  # shogu-v1
         return []
 
 
+def _shogu_staff_left(supabase, f_code):  # shogu-paper-v4
+    """名簿に残っている、いま在籍していない人。
+
+    ★退職した人でも、在職中に周知していれば記録が要る。
+      名簿から消えている人は、画面で名前を直接入力してもらう。
+    """
+    try:
+        r = (supabase.table("staffs").select("staff_name,is_active")
+             .eq("facility_code", f_code).execute())
+        names = [(x.get("staff_name") or "").strip() for x in (r.data or [])
+                 if not x.get("is_active")]
+        return sorted(set(n for n in names if n))
+    except Exception as e:
+        print("[shogu] 退職した人を読めませんでした: %s" % e, flush=True)
+        return []
+
+
 def _shogu_title(year, doc_type, title):  # shogu-v1
     """題が空なら、年度と種類から作る。空のまま並ぶと見分けがつかない。"""
     t = (title or "").strip()
@@ -18195,7 +18221,8 @@ def _shogu_pack(supabase, f_code, docs, want_signs=True):  # shogu-v1
             try:
                 sr = (supabase.table("shogu_signs")
                       .select("id,doc_id,sign_round,staff_name,signed_at,"
-                              "date_edited_by,signed_at_original")   # shogu-signdate-v1
+                              "date_edited_by,signed_at_original,"
+                              "image_path,recorded_by")   # shogu-signdate-v1 / shogu-paper-v4
                       .in_("doc_id", ids).order("signed_at").execute())
                 for x in (sr.data or []):
                     signs.setdefault(x["doc_id"], []).append(x)
@@ -18252,12 +18279,18 @@ def api_shogu_list():
         mine = [s for s in signs.get(d["id"], []) if int(s.get("sign_round") or 1) == rnd]
         done = set((s.get("staff_name") or "").strip() for s in mine)
         d["files"] = files.get(d["id"], [])
+        #   shogu-paper-v4: 画像が「あるかどうか」だけを渡す。
+        #   ★置き場所（storage_path）は画面に出さない。出す必要が無く、出せば漏れる。
+        for s in mine:
+            s["has_image"] = bool(s.pop("image_path", None))
         d["signed"] = mine
         #   ★「まだの人」は、在籍している人のうち署名していない人。
         #     辞めた人の署名は残すが、まだの人には数えない。
         d["pending"] = [n for n in staff if n not in done]
         out.append(d)
-    return jsonify({"status": "success", "docs": out, "staff": staff, "is_admin": True})
+    return jsonify({"status": "success", "docs": out, "staff": staff,
+                    "staff_left": _shogu_staff_left(supabase, f_code),   # shogu-paper-v4
+                    "is_admin": True})
 
 
 def _shogu_day_ok(day):  # shogu-notified-v3
@@ -19052,6 +19085,96 @@ def api_shogu_sign():
     return jsonify({"status": "success", "id": sid})
 
 
+@app.route("/api/shogu/sign/manual", methods=["POST"])  # shogu-paper-v4
+def api_shogu_sign_manual():
+    """紙でもらった確認を、管理者が代わりに記録する。
+
+    ★退職した人は、もうログインできない。けれど在職中に周知した記録は要る。
+    ★紙の署名があれば、その画像も一緒に入れられる。実物が残るほうが強い。
+    multipart/form-data: doc_id, staff_name, date（任意）, file（任意）
+    """
+    supabase, f_code, my_name, err = _shogu_guard()
+    if err:
+        return err
+    did = (request.form.get("doc_id") or "").strip()
+    name = (request.form.get("staff_name") or "").strip()[:100]
+    if not did or not name:
+        return jsonify({"status": "error", "message": "書類とお名前が要ります"}), 400
+    try:
+        r = (supabase.table("shogu_docs")
+             .select("status,need_sign,sign_round,notified_on")
+             .eq("id", did).eq("facility_code", f_code).limit(1).execute())
+        doc = (r.data or [None])[0]
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+    if not doc or doc.get("status") != "公開":
+        return jsonify({"status": "error", "message": "その書類は見つかりません"}), 404
+    if not doc.get("need_sign"):
+        return jsonify({"status": "error", "message": "この書類は署名が要りません"}), 400
+    rnd = int(doc.get("sign_round") or 1)
+
+    #   ★同じ人を二度は記録しない。数が合わなくなる。
+    try:
+        ex = (supabase.table("shogu_signs").select("id")
+              .eq("facility_code", f_code).eq("doc_id", did)
+              .eq("staff_name", name).eq("sign_round", rnd).limit(1).execute())
+        if ex.data:
+            return jsonify({"status": "error",
+                            "message": "%s さんは、すでに記録されています" % name}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+    #   いつとして残すか。日を指定していなければ、書類の周知日（無ければ今）。
+    day = str(request.form.get("date") or "").strip()
+    if day:
+        ok = _shogu_day_ok(day)
+        if not ok:
+            return jsonify({"status": "error",
+                            "message": "日付がおかしいです（先の日付にはできません）"}), 400
+        at = ok + "T03:00:00+00:00"
+    else:
+        at = _shogu_signed_at(doc)
+
+    sid = str(uuid.uuid4())
+    path = None
+    mime = None
+    up = request.files.get("file")
+    if up and up.filename:
+        raw = up.read()
+        if not raw:
+            return jsonify({"status": "error", "message": "空のファイルです"}), 400
+        if len(raw) > SHOGU_SIGN_UP_MAX:
+            return jsonify({"status": "error", "message": "ファイルが大きすぎます（8MBまで）"}), 400
+        ext = (up.filename.rsplit(".", 1)[-1].lower() if "." in up.filename else "")
+        if ext not in SHOGU_SIGN_UP_EXTS:
+            return jsonify({"status": "error",
+                            "message": "画像かPDFを選んでください（JPEG・PNG・PDF）"}), 400
+        path = "shogu/%s/sign/%s/%s_%s.%s" % (f_code, did, rnd, sid, ext)
+        mime = SHOGU_SIGN_UP_EXTS[ext]
+        try:
+            supabase.storage.from_(SHOGU_BUCKET).upload(
+                path=path, file=raw, file_options={"content-type": mime})
+        except Exception as e:
+            return jsonify({"status": "error", "message": "保存に失敗しました: %s" % e}), 500
+    try:
+        supabase.table("shogu_signs").insert({
+            "id": sid, "facility_code": f_code, "doc_id": did,
+            "sign_round": rnd, "staff_name": name, "signed_at": at,
+            "image_path": path, "mime": mime,
+            #   ★誰が代わりに入れたかを残す。手書きが無い記録は、
+            #     出どころが分からないと根拠にならない。
+            "recorded_by": my_name,
+        }).execute()
+    except Exception as e:
+        if path:
+            try:
+                supabase.storage.from_(SHOGU_BUCKET).remove([path])
+            except Exception:
+                pass
+        return jsonify({"status": "error", "message": str(e)}), 500
+    return jsonify({"status": "success", "id": sid})
+
+
 @app.route("/api/shogu/sign/<sid>/date", methods=["POST"])  # shogu-signdate-v1
 def api_shogu_sign_date(sid):
     """署名の日付を、実際に確認した日に直す。
@@ -19108,7 +19231,7 @@ def api_shogu_sign_get(sid):
     if not f_code or not is_shogu_enabled(supabase, f_code):
         return ("unauthorized", 403)
     try:
-        r = (supabase.table("shogu_signs").select("image_path,staff_name")
+        r = (supabase.table("shogu_signs").select("image_path,staff_name,mime")
              .eq("id", (sid or "").strip()).eq("facility_code", f_code).limit(1).execute())
         row = (r.data or [None])[0]
     except Exception as e:
@@ -19123,7 +19246,10 @@ def api_shogu_sign_get(sid):
         return jsonify({"status": "error", "message": str(e)}), 500
     import io as _sg_io2
     from flask import send_file as _sg_send2
-    return _sg_send2(_sg_io2.BytesIO(blob), mimetype="image/png", as_attachment=False)
+    #   shogu-paper-v4: 取り込んだものは JPEG や PDF のこともある。
+    #   ★決め打ちにすると、PDFを画像として開こうとして真っ黒になる。
+    return _sg_send2(_sg_io2.BytesIO(blob),
+                     mimetype=row.get("mime") or "image/png", as_attachment=False)
 
 
 # ===== dev-setting-toggle-v1 : key/value でON/OFFする機能の一覧 =====

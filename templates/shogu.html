@@ -65,6 +65,20 @@
   .sg-sign-e { font-size:0.7rem; color:#a56300; background:#fef7e0;
                border-radius:6px; padding:2px 7px; flex:0 0 auto; white-space:nowrap; }
   .sg-sign-h { font-size:0.74rem; color:#5f6368; line-height:1.7; margin:8px 0 2px; }
+  /* shogu-paper-v4: まだの人は押せる。押すと、その人の記録を入れる窓が開く。 */
+  .sg-yet-b { border:1.5px solid #f2b8b5; background:#fce8e6; color:#c5221f; border-radius:8px;
+              padding:4px 11px; font-size:0.78rem; font-weight:700; cursor:pointer;
+              font-family:inherit; margin:0 5px 5px 0; }
+  .sg-yet-b:active { background:#f9d8d5; }
+  /* 署名の画像が無い記録。★出さないと、後で「なぜこの人だけ署名が無いのか」が分からない。 */
+  .sg-paper { font-size:0.7rem; color:#5f6368; background:#f1f3f4; border-radius:6px;
+              padding:2px 8px; flex:0 0 auto; white-space:nowrap; }
+  .sg-mask { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5);
+             z-index:3000; align-items:center; justify-content:center; padding:14px; }
+  .sg-box { background:#fff; border-radius:16px; width:100%; max-width:460px;
+            padding:18px; max-height:92vh; overflow-y:auto; }
+  .sg-box-t { font-size:1rem; font-weight:800; color:#202124; margin:0 0 4px; }
+  .sg-box-s { font-size:0.78rem; color:#5f6368; line-height:1.7; margin:0 0 12px; }
   /* drop-files-v1: ファイルを落とせる枠。フォームのいちばん上に置いて、
      「ここが入口です」と一目で分かるようにする。 */
   .sg-drop { border:2px dashed #9aa0a6; border-radius:12px; padding:20px 14px; text-align:center;
@@ -165,6 +179,40 @@
        accept=".pdf,.docx,.doc,.xlsx,.xls,.jpg,.jpeg,.png">
 
 <div id="sgBody"><div class="sg-empty">読み込み中…</div></div>
+
+{# shogu-paper-v4: 紙でもらった確認を記録する窓 #}
+<div class="sg-mask" id="sgPaperMask">
+  <div class="sg-box">
+    <p class="sg-box-t">確認したことを記録する</p>
+    <p class="sg-box-s" id="sgPaperS">
+      紙でもらった署名があれば、その写真や画像も一緒に入れられます。
+    </p>
+    <input type="hidden" id="sgPaperDoc">
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">お名前 <span style="color:#c5221f;">必須</span></label>
+      <input type="text" id="sgPaperName" class="form-control" list="sgStaffList"
+             placeholder="退職した方も入れられます">
+      <datalist id="sgStaffList"></datalist>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">確認した日</label>
+      <input type="date" id="sgPaperDate" class="form-control">
+    </div>
+    <div style="margin-bottom:10px;">
+      <label class="sg-lb">署名の画像（任意・写真でも可）</label>
+      <input type="file" id="sgPaperFile" class="form-control"
+             accept=".png,.jpg,.jpeg,.pdf">
+      <p style="font-size:0.72rem;color:#5f6368;line-height:1.7;margin:5px 0 0;">
+        紙の署名を撮った写真やスキャンを入れておくと、<b>本人の手書きがそのまま残ります</b>。<br>
+        無くても記録はできます（そのときは「紙で確認（画像なし）」と出ます）。
+      </p>
+    </div>
+    <div class="sg-acts">
+      <button type="button" class="sg-btn sg-btn-main" id="sgPaperOk" onclick="sgPaperSave()">記録する</button>
+      <button type="button" class="sg-btn" onclick="sgPaperClose()">やめる</button>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_script %}
@@ -172,7 +220,8 @@
    職員の画面（shogu_my.html）も同じものを読む。 #}
 <script src="/static/shogu_view.js?v=2"></script>
 <script>
-var SG = { docs: [], staff: [], isAdmin: false, yearNow: {{ sg_year_now }}, upDoc: null,
+var SG = { docs: [], staff: [], staffLeft: [], isAdmin: false, yearNow: {{ sg_year_now }},
+           upDoc: null,
            picked: [] };   /* drop-files-v1: 取り込む前に選んだファイル */
 
 function sgEsc(s){
@@ -234,6 +283,7 @@ async function sgLoad(){
     if (j.status !== 'success') throw new Error(j.message || '読めませんでした');
     SG.docs = j.docs || [];
     SG.staff = j.staff || [];
+    SG.staffLeft = j.staff_left || [];   /* shogu-paper-v4: 退職した人 */
     SG.isAdmin = !!j.is_admin;
     document.getElementById('sgAdminOnly').style.display = SG.isAdmin ? 'block' : 'none';
     sgFillYears();
@@ -310,12 +360,26 @@ function sgCard(d){
     if (d.status !== '公開') {
       h += '<div class="sg-who">下書きのあいだは、職員に見えません。</div>';
     } else if (yet) {
+      /* shepherd: shogu-paper-v4
+         名前を押すと、その人の「紙で確認した」記録を入れられる。
+         ★名前は文字で渡さない。「'」を含む名前でJSが壊れる。順番の数で渡す。 */
       h += '<div class="sg-who"><span class="sg-yet">まだの人</span>：'
-        + (d.pending || []).map(sgEsc).join('、') + '</div>';
+        + (d.pending || []).map(function(n, i){
+            return '<button type="button" class="sg-yet-b" onclick="sgPaperOpen(\''
+              + sgEsc(d.id) + '\',' + i + ')">' + sgEsc(n) + '</button>';
+          }).join('')
+        + '</div>';
     } else if (all) {
       h += '<div class="sg-who">全員が確認しました。</div>';
     } else {
       h += '<div class="sg-who">在籍している職員がいません。</div>';
+    }
+    /* shogu-paper-v4: 退職した人は「まだの人」に出ない（在籍者だけ数えるため）。
+       その人のぶんを足す入口を、いつでも押せるところに置く。 */
+    if (SG.isAdmin && d.status === '公開') {
+      h += '<div class="sg-who"><button type="button" class="sg-btn sg-sign-x"'
+        + ' onclick="sgPaperOpen(\'' + sgEsc(d.id) + '\',-1)">'
+        + '＋ 紙で確認したぶんを記録する（退職した人も）</button></div>';
     }
     if (done && SG.isAdmin) {
       /* shogu-signdate-v1: 過去のぶんを今まとめて署名してもらうことがある。
@@ -332,8 +396,10 @@ function sgCard(d){
           + '<input type="date" class="sg-sign-d" id="sgd-' + sgEsc(s.id) + '"'
           + ' value="' + sgEsc(sgDay(s.signed_at)) + '" max="' + sgEsc(sgDay(new Date())) + '">'
           + '<button type="button" class="sg-btn sg-sign-x" onclick="sgSignDate(\'' + sgEsc(s.id) + '\')">直す</button>'
-          + (s.id ? '<a class="sg-sign-a" href="/api/shogu/sign/' + sgEsc(s.id)
-                    + '" target="_blank">署名を見る</a>' : '')
+          + (s.has_image === false
+              ? '<span class="sg-paper">紙で確認（画像なし）</span>'
+              : (s.id ? '<a class="sg-sign-a" href="/api/shogu/sign/' + sgEsc(s.id)
+                        + '" target="_blank">署名を見る</a>' : ''))
           + '</div>';
       });
     }
@@ -374,6 +440,68 @@ function sgCard(d){
   h += '</div>';
   return h;
 }
+
+/* ───────── 紙でもらった確認を記録する（shogu-paper-v4） ───────── */
+
+/* idx は「まだの人」の順番。-1 なら空で開く（退職した人などを入れるとき）。
+   ★名前を文字で渡さない。「'」を含む名前でJSが壊れる。 */
+function sgPaperOpen(docId, idx){
+  var d = SG.docs.filter(function(x){ return x.id === docId; })[0];
+  if (!d) return;
+  document.getElementById('sgPaperDoc').value = docId;
+  document.getElementById('sgPaperName').value =
+    (idx >= 0 && (d.pending || [])[idx]) ? d.pending[idx] : '';
+  /* 日は、その書類の周知日。無ければ今日。 */
+  document.getElementById('sgPaperDate').value =
+    (d.notified_on || '').slice(0, 10) || sgDay(new Date());
+  document.getElementById('sgPaperDate').max = sgDay(new Date());
+  document.getElementById('sgPaperFile').value = '';
+  document.getElementById('sgPaperS').textContent =
+    d.title ? (d.title + ' について、確認したことを記録します。') : '確認したことを記録します。';
+  /* 名前の候補。★在籍している人と、名簿に残っている退職者の両方。 */
+  var list = document.getElementById('sgStaffList');
+  list.innerHTML = (SG.staff || []).concat(SG.staffLeft || [])
+    .map(function(n){ return '<option value="' + sgEsc(n) + '">'; }).join('');
+  document.getElementById('sgPaperMask').style.display = 'flex';
+}
+
+function sgPaperClose(){
+  document.getElementById('sgPaperMask').style.display = 'none';
+}
+
+async function sgPaperSave(){
+  var name = (document.getElementById('sgPaperName').value || '').trim();
+  var did = document.getElementById('sgPaperDoc').value;
+  if (!name) { alert('お名前を入れてください。'); return; }
+  var btn = document.getElementById('sgPaperOk');
+  var back = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '記録しています…';
+  try {
+    var fd = new FormData();
+    fd.append('doc_id', did);
+    fd.append('staff_name', name);
+    fd.append('date', document.getElementById('sgPaperDate').value || '');
+    var f = document.getElementById('sgPaperFile').files[0];
+    if (f) fd.append('file', f);
+    var r = await fetch('/api/shogu/sign/manual',
+                        { method: 'POST', credentials: 'include', body: fd });
+    var j = await r.json();
+    if (j.status !== 'success') { alert('記録できませんでした：' + (j.message || '')); return; }
+    sgPaperClose();
+    await sgLoad();
+  } catch (e) {
+    alert('通信できませんでした：' + e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = back;
+  }
+}
+
+/* 窓の外を押したら閉じる（中は拾わない） */
+document.getElementById('sgPaperMask').addEventListener('click', function(e){
+  if (e.target === this) sgPaperClose();
+});
 
 function sgOpenForm(){
   document.getElementById('sgId').value = '';
