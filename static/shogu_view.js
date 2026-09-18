@@ -1,4 +1,8 @@
-/* shogu-view-v1 : 処遇改善の計画書（Excel）から読み取った要点を、見やすく組み立てる。
+/* shogu-view-v1 / shogu-term-v2 : 処遇改善の計画書（Excel）から読み取った要点を並べる。
+ *
+ * ★見出しは【様式で使っている言葉】をそのまま使う。
+ *   分かりやすく言い換えると、職員が原本を開いたときに
+ *   同じものだと分からなくなる。監査でも使う言葉なのでそろえる。
  *
  * ★管理者の画面（/shogu）と職員の画面（/shogu/my）の両方から使う。
  *   同じ見た目を2か所に書くと、必ず片方だけ古くなる。
@@ -68,33 +72,39 @@
 
     /* お金。★この2つの関係がこの書類のいちばんの要点。 */
     if (s.kasan_yen || s.kaizen_yen) {
+      var pre = s.year ? esc(s.year) + 'の' : '';
       h += '<div class="sv-money">'
-        + '<div class="sv-box"><div class="sv-box-t">加算で入るお金</div>'
+        + '<div class="sv-box"><div class="sv-box-t">' + pre + '加算の見込額</div>'
         + '<div class="sv-box-v">' + yen(s.kasan_yen) + '</div></div>'
-        + '<div class="sv-box"><div class="sv-box-t">賃金の改善にあてるお金</div>'
+        + '<div class="sv-box"><div class="sv-box-t">' + pre + '賃金改善の見込額</div>'
         + '<div class="sv-box-v">' + yen(s.kaizen_yen) + '</div></div>'
         + '</div>'
-        + '<p class="sv-note">加算で入るお金は、<b>全額が職員の賃金改善に使われます</b>。'
-        + '賃金の改善にあてる額が、加算で入る額以上であることが要件です。</p>';
+        + '<p class="sv-note">処遇改善加算として給付される額は、'
+        + '<b>職員の賃金改善のために全額支出します</b>。'
+        + '賃金改善の見込額は、加算の見込額以上となることが要件です。</p>';
     }
 
     if (s.getsugaku_plan) {
-      h += '<p class="sv-note">このうち<b>毎月の賃金</b>（基本給や毎月の手当）で改善する額は '
-        + '<b>' + yen(s.getsugaku_plan) + '</b>'
-        + (s.getsugaku_need ? '（必要な額 ' + yen(s.getsugaku_need) + ' 以上）' : '')
-        + '。一時金だけでなく、毎月の給与で上げることが求められています。</p>';
+      h += '<p class="sv-note">このうち<b>月額賃金改善による額</b>'
+        + '（基本給又は決まって毎月支払われる手当による改善）は '
+        + '<b>' + yen(s.getsugaku_plan) + '</b>。'
+        + (s.getsugaku_need
+            ? '処遇改善加算Ⅳ相当の見込額の１／２（' + yen(s.getsugaku_need) + '）以上'
+              + 'であることが要件です。'
+            : '')
+        + '</p>';
     }
 
     /* 事業所ごとの加算区分 */
     if (s.offices && s.offices.length) {
-      h += '<div class="sv-sec">算定している加算の区分</div>';
+      h += '<div class="sv-sec">算定する処遇改善加算の区分</div>';
       s.offices.forEach(function (o) {
         h += '<div class="sv-off">'
           + '<span class="sv-kubun">' + esc(o.kubun) + '</span>'
           + '<div class="sv-off-s">' + esc(o.service || o.name || '') + '</div>'
           + (o.term || o.yen
               ? '<div class="sv-term">' + esc(o.term || '')
-                + (o.yen ? '　見込 ' + yen(o.yen) : '') + '</div>'
+                + (o.yen ? '　処遇改善加算の見込額 ' + yen(o.yen) : '') + '</div>'
               : '')
           + '</div>';
       });
@@ -107,7 +117,7 @@
         if (!cur || cur.g !== e.group) { cur = { g: e.group, items: [] }; byg.push(cur); }
         cur.items.push(e.text);
       });
-      h += '<details class="sv-fold"><summary>事業所が取り組むと約束したこと（'
+      h += '<details class="sv-fold"><summary>職場環境等要件（'
         + s.env.length + '項目）</summary>';
       byg.forEach(function (g) {
         if (g.g) h += '<div class="sv-g">' + esc(g.g) + '</div>';
@@ -117,7 +127,7 @@
     }
 
     if (s.mieruka && s.mieruka.length) {
-      h += '<details class="sv-fold"><summary>職員や外部への知らせかた（'
+      h += '<details class="sv-fold"><summary>見える化要件（'
         + s.mieruka.length + '）</summary>';
       s.mieruka.forEach(function (t) { h += '<div class="sv-i">' + esc(t) + '</div>'; });
       h += '</details>';
