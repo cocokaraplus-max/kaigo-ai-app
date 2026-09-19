@@ -18636,8 +18636,24 @@ def _shogu_x_rows(ws, limit=200):
     return out
 
 
+def _shogu_x_alert(v):
+    """shogu-alert-v10: 様式そのものが出す注意書きのセルか。
+
+    ★「！…」で始まるセルは、Excel が出している注意文であって【中身ではない】。
+      やっかいなのは、注意文が項目名をそのまま引用すること。
+        「！④賃金改善の見込額 (d) が ③賃金改善が必要な額 (c) を下回っています。」
+      これがあるせいで「賃金改善の見込額」で行を探すと、本物の④の行より先に
+      ③の行（賃金改善が必要な額）に当たり、加算の見込額と同じ数を拾っていた。
+      令和7年度の計画書で実際に起きた（本番・2026-09-19）。
+    """
+    s = _shogu_x_s(v).lstrip()
+    return bool(s) and s[0] in ("！", "!")
+
+
 def _shogu_x_rowtext(cells):
-    return _shogu_x_flat(" ".join(_shogu_x_s(v) for _, v in cells))
+    #   shogu-alert-v10: 注意書きは中身ではないので、行の言葉に混ぜない。
+    return _shogu_x_flat(" ".join(_shogu_x_s(v) for _, v in cells
+                                  if not _shogu_x_alert(v)))
 
 
 def _shogu_x_findnum(rows, want, deny=(), after=0):
@@ -18653,7 +18669,8 @@ def _shogu_x_findnum(rows, want, deny=(), after=0):
             continue
         if any(_shogu_x_flat(d) in t for d in deny):
             continue
-        nums = [(_shogu_x_num(v), col) for col, v in cells]
+        #   shogu-alert-v10: 注意書きの中に数があっても拾わない。
+        nums = [(_shogu_x_num(v), col) for col, v in cells if not _shogu_x_alert(v)]
         nums = [(n, c) for n, c in nums if n is not None and n > 0]
         if nums:
             nums.sort(key=lambda x: x[1])
@@ -18718,7 +18735,12 @@ def _shogu_x_offices(wb):
     ★個票は【6月以降】と【4、5月】の2枚ある。いま効いているのは6月以降。
       無ければ4、5月のほうを見る。
     """
-    names = [n for n in wb.sheetnames if "個票" in n]
+    #   shogu-alert-v10: シート名の表記が年度で違う。
+    #   ★令和7年度は「個表」、令和8年度は「個票」。シートの中の題はどちらも
+    #     「個票」で、中身の作りも同じ。両方を見る。
+    #   ★「補助金」の個票は別ものなので外す。
+    names = [n for n in wb.sheetnames
+             if ("個票" in n or "個表" in n) and "補助金" not in n]
     #   「6月以降」を先に見る
     names.sort(key=lambda n: (0 if "６月以降" in n or "6月以降" in n else 1))
     for nm in names:
