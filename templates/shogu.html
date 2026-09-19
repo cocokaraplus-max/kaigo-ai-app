@@ -6,8 +6,29 @@
      それが一目で分かるように、署名の進み具合を先に出す。 #}
 {% block extra_style %}
 <style>
-  .sg-year { font-size:1.05rem; font-weight:800; color:#1b5e20; margin:22px 0 8px;
-             border-bottom:2px solid #c8e6c9; padding-bottom:6px; }
+  /* shogu-tabs-v9: 種類をタブで分け、書類は押して開く。
+     ★年度の見出し（.sg-year）はやめた。年度は書類の見出しそのものに出す。
+       見出しと中身が別々に並んでいると、閉じたときに行が2段になって
+       かえって読みにくい。 */
+  .sg-tabs { display:flex; gap:6px; margin:0 0 14px; border-bottom:2px solid #e8eaed; }
+  .sg-tab { flex:1 1 0; min-width:0; border:none; background:none; font-family:inherit;
+            font-size:0.88rem; font-weight:800; color:#5f6368; cursor:pointer;
+            padding:10px 6px; border-bottom:3px solid transparent; margin-bottom:-2px;
+            white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+            -webkit-tap-highlight-color:transparent; }
+  .sg-tab.on { color:#1b5e20; border-bottom-color:#2e7d32; }
+  .sg-tab-n { font-size:0.74rem; font-weight:700; color:#9aa0a6; margin-left:4px; }
+  .sg-tab.on .sg-tab-n { color:#2e7d32; }
+  /* 押して開く見出し。★横並びの決めごとは .sg-head をそのまま使う。 */
+  .sg-h { width:100%; border:none; background:none; font-family:inherit; text-align:left;
+          cursor:pointer; padding:0; color:inherit; }
+  .sg-h-ar { flex:0 0 auto; color:#5f6368; font-size:0.8rem; width:1em; }
+  .sg-h-y { font-size:1rem; font-weight:800; color:#1b5e20; flex:0 0 auto; white-space:nowrap; }
+  /* 確認の進み。★閉じていても、まだの人がいるかどうかは出す。 */
+  .sg-h-n { margin-left:auto; font-size:0.78rem; font-weight:700; color:#137333;
+            flex:0 0 auto; white-space:nowrap; }
+  .sg-h-n.sg-h-yet { color:#c5221f; }
+  .sg-b { margin-top:10px; }
   .sg-card { border:1.5px solid #e0e0e0; border-radius:12px; padding:13px 14px;
              margin-bottom:10px; background:#fff; }
   .sg-head { display:flex; align-items:center; gap:9px; flex-wrap:wrap; }
@@ -227,6 +248,10 @@
 <script>
 var SG = { docs: [], staff: [], staffLeft: [], isAdmin: false, yearNow: {{ sg_year_now }},
            upDoc: null,
+           /* shogu-tabs-v9: いま見ているタブと、開いている書類。
+              ★画面を作り直すたびに消さない。公開や署名日の直しのたびに
+                作り直すので、消すと作業中の書類が毎回たたまれる。 */
+           tab: null, tabs: [], open: {},
            picked: [] };   /* drop-files-v1: 取り込む前に選んだファイル */
 
 function sgEsc(s){
@@ -320,6 +345,37 @@ function sgFillYears(){
   }).join('');
 }
 
+/* shogu-tabs-v9: 出すタブを決める。
+   ★【計画書】【実績報告書】は、まだ1枚も無くても出す。
+     この画面はその2つを入れる場所なので、入れ物が見えていないと
+     どこへ置けばよいのか分からない。
+   ★「その他」は、あるときだけ。押しても何も無いタブは迷うだけ。
+   ★決めていない種類があとから増えても落とさない。 */
+var SG_TAB_ORDER = ['計画書', '実績報告書', 'その他'];
+var SG_TAB_ALWAYS = { '計画書': true, '実績報告書': true };
+
+function sgTabList(){
+  var have = {};
+  SG.docs.forEach(function(d){ have[d.doc_type] = (have[d.doc_type] || 0) + 1; });
+  var out = SG_TAB_ORDER.filter(function(t){ return SG_TAB_ALWAYS[t] || have[t]; });
+  Object.keys(have).forEach(function(t){ if (out.indexOf(t) < 0) out.push(t); });
+  return out.map(function(t){ return { type: t, n: have[t] || 0 }; });
+}
+
+/* ★タブは【順番の数】で渡す。名前を文字で渡すとJSが壊れうる
+   （まだの人のボタンで踏んだのと同じ罠・shogu-paper-v4）。 */
+function sgTab(i){
+  var t = (SG.tabs || [])[i];
+  if (!t) return;
+  SG.tab = t.type;
+  sgRender();
+}
+
+function sgToggle(id){
+  SG.open[id] = !SG.open[id];
+  sgRender();
+}
+
 function sgRender(){
   var box = document.getElementById('sgBody');
   if (!SG.docs.length) {
@@ -329,16 +385,27 @@ function sgRender(){
                   : '管理者が用意すると、ここに出ます。') + '</div>';
     return;
   }
-  /* 年度ごとにまとめる。並べ替えはサーバ側で済んでいるので、ここでは順に見るだけ。 */
-  var h = '';
-  var cur = null;
-  SG.docs.forEach(function(d){
-    if (d.fiscal_year !== cur) {
-      cur = d.fiscal_year;
-      h += '<div class="sg-year">' + sgEsc(sgWareki(cur)) + '</div>';
-    }
-    h += sgCard(d);
-  });
+  var tabs = sgTabList();
+  SG.tabs = tabs;
+  if (!tabs.some(function(t){ return t.type === SG.tab; })) SG.tab = tabs[0].type;
+  /* 並べ替え（年度の新しい順）はサーバ側で済んでいる。ここでは選ぶだけ。 */
+  var mine = SG.docs.filter(function(d){ return d.doc_type === SG.tab; });
+  /* ★はじめは、いちばん新しいものだけ開く。
+     まだ一度も開き閉じしていないタブのときだけ。あとは人が決めたとおりにする。 */
+  if (mine.length && !mine.some(function(d){ return d.id in SG.open; })) {
+    SG.open[mine[0].id] = true;
+  }
+  var h = '<div class="sg-tabs">' + tabs.map(function(t, i){
+      return '<button type="button" class="sg-tab' + (t.type === SG.tab ? ' on' : '') + '"'
+        + ' onclick="sgTab(' + i + ')">' + sgEsc(t.type)
+        + '<span class="sg-tab-n">' + t.n + '</span></button>';
+    }).join('') + '</div>';
+  if (!mine.length) {
+    h += '<div class="sg-empty">' + sgEsc(SG.tab) + 'は、まだありません。'
+      + (SG.isAdmin ? '<br>上の「＋ 書類を取り込む」から入れてください。' : '') + '</div>';
+  } else {
+    mine.forEach(function(d){ h += sgCard(d); });
+  }
   box.innerHTML = h;
 }
 
@@ -348,18 +415,30 @@ function sgCard(d){
   var all = done + yet;
   var pct = all ? Math.round(done * 100 / all) : 0;
   /* drop-files-v1: カードの上に直接落とせる。「この書類に付ける」がいちばん短い動きになる。 */
+  /* shogu-tabs-v9: 押して開く。
+     ★閉じていても【いつの・どうなっているか・確認は何人ぶん済んだか】は出す。
+       閉じたときに何も分からなくなるなら、閉じる意味がない。
+     ★種類の札は出さない。いま見ているタブがそれなので、二度書きになる。 */
+  var open = !!SG.open[d.id];
   var h = '<div class="sg-card" data-doc="' + sgEsc(d.id) + '"'
     + ' ondragover="sgCardOver(event,this)" ondragleave="sgCardOut(this)"'
     + ' ondrop="sgCardDrop(event,this)">'
-    + '<div class="sg-head">'
-    + '<span class="sg-type">' + sgEsc(d.doc_type) + '</span>'
+    + '<button type="button" class="sg-head sg-h"'
+    + ' aria-expanded="' + (open ? 'true' : 'false') + '"'
+    + ' onclick="sgToggle(\'' + sgEsc(d.id) + '\')">'
+    + '<span class="sg-h-ar">' + (open ? '▾' : '▸') + '</span>'
+    + '<span class="sg-h-y">' + sgEsc(sgWareki(d.fiscal_year)) + '</span>'
     + '<span class="sg-st sg-st-' + sgEsc(d.status) + '">' + sgEsc(d.status) + '</span>'
     + (d.sign_round > 1 ? '<span class="sg-round">' + d.sign_round + '回目の周知</span>' : '')
     /* shogu-notified-v3: 遡って記録している書類は、それが分かるようにしておく。 */
     + (d.notified_on
         ? '<span class="sg-round">' + sgEsc(sgDate(d.notified_on)) + ' の周知として記録</span>' : '')
-    + '</div>'
-    + '<div class="sg-ttl" style="margin-top:6px;">' + sgEsc(d.title || '') + '</div>';
+    + (d.need_sign && d.status === '公開'
+        ? '<span class="sg-h-n' + (yet ? ' sg-h-yet' : '') + '">確認 ' + done + '/' + all + '</span>'
+        : '')
+    + '</button>'
+    + '<div class="sg-b"' + (open ? '' : ' style="display:none;"') + '>'
+    + '<div class="sg-ttl">' + sgEsc(d.title || '') + '</div>';
   if (d.note) h += '<div class="sg-note">' + sgEsc(d.note) + '</div>';
 
   /* 署名の進み具合。★署名が要らない書類には出さない（意味のない0/12を見せない）。 */
@@ -459,7 +538,8 @@ function sgCard(d){
       + '<button type="button" class="sg-btn sg-btn-del" onclick="sgDel(\'' + sgEsc(d.id) + '\')">消す</button>'
       + '</div>';
   }
-  h += '</div>';
+  /* shogu-tabs-v9: 中身の枠（.sg-b）と、カードの枠（.sg-card）を閉じる。 */
+  h += '</div></div>';
   return h;
 }
 
@@ -688,6 +768,11 @@ async function sgSave(){
       headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     var j = await r.json();
     if (j.status !== 'success') { alert('保存できませんでした：' + (j.message || '')); return; }
+    /* shogu-tabs-v9: いま保存したものを、開いた状態で見せる。
+       ★種類を変えて保存すると別のタブへ移る。移った先を出さないと
+         「消えた」と読まれる。 */
+    SG.tab = body.doc_type;
+    if (j.id) SG.open[j.id] = true;
     /* drop-files-v1: 選んだ書類を、そのまま続けて入れる。
        ★ここで止めると「カードはできたのに書類が無い」状態が残る。 */
     if (SG.picked.length) {
