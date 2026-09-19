@@ -18656,7 +18656,7 @@ def _shogu_x_rowtext(cells):
                                   if not _shogu_x_alert(v)))
 
 
-def _shogu_x_findnum(rows, want, deny=(), after=0):
+def _shogu_x_findnum(rows, want, deny=(), after=0, zero_ok=False):
     """その言葉がある行から、いちばん右の数を拾う。
 
     ★言葉は「つながった形」で比べる。様式の折り返しが変わっても当たるように。
@@ -18671,7 +18671,11 @@ def _shogu_x_findnum(rows, want, deny=(), after=0):
             continue
         #   shogu-alert-v10: 注意書きの中に数があっても拾わない。
         nums = [(_shogu_x_num(v), col) for col, v in cells if not _shogu_x_alert(v)]
-        nums = [(n, c) for n, c in nums if n is not None and n > 0]
+        #   shogu-hojo-v11: 0 が答えの欄もある（職場環境改善の所要額 0円など）。
+        #   ★ふだんは 0 を答えにしない。空欄や飾りの 0 を拾ってしまうため、
+        #     0 を認めるのは、呼ぶ側が「ここは0もある」と言ったときだけ。
+        nums = [(n, c) for n, c in nums
+                if n is not None and (n > 0 or (zero_ok and n == 0))]
         if nums:
             nums.sort(key=lambda x: x[1])
             return nums[-1][0], rno
@@ -18798,6 +18802,82 @@ def _shogu_x_offices(wb):
     return [], ""
 
 
+def _shogu_x_hojo_reqs(rows):
+    """shogu-hojo-v11: 補助金の「３　要件について」で、チェックの付いた項目を拾う。
+
+    ★チェックより【右】の言葉を拾う。左は番号や記号で、何を約束したのか読めない。
+    """
+    start, _ = _shogu_x_findrow(rows, "要件について")
+    if not start:
+        return []
+    out = []
+    for rno, cells in rows:
+        if rno <= start:
+            continue
+        t = _shogu_x_rowtext(cells)
+        if "記入上の注意" in t or "備考欄" in t:
+            break
+        pairs = [(c, _shogu_x_s(v)) for c, v in cells]
+        chk = [c for c, x in pairs if x in _SHOGU_CHECK]
+        if not chk:
+            continue
+        long = [x for c, x in pairs if c > min(chk) and len(x) >= 10]
+        if long:
+            out.append(re.sub(r"\s+", " ", long[0]))
+    return out
+
+
+def _shogu_x_hojo_offices(wb):
+    """shogu-hojo-v11: 補助金の個票から、事業所ごとの額を拾う。
+
+    ★様式は、事業所番号とサービス名の組み合わせが合わないと、事業所名の欄に
+      「…確認して下さい。」という注意文を出す。
+      それを事業所の名前として出してはいけない。
+    """
+    for nm in wb.sheetnames:
+        if "補助金" not in nm or ("個票" not in nm and "個表" not in nm):
+            continue
+        ws = wb[nm]
+        rows = _shogu_x_rows(ws, limit=120)
+        head = None
+        for rno, cells in rows:
+            t = _shogu_x_rowtext(cells)
+            if "事業所名" in t and "サービス名" in t and "補助金の総額" in t:
+                head = (rno, cells)
+                break
+        if not head:
+            continue
+        col = {}
+        for c, v in head[1]:
+            s = _shogu_x_flat(_shogu_x_s(v))
+            if "事業所名" in s:
+                col.setdefault("name", c)
+            elif "サービス名" in s:
+                col.setdefault("svc", c)
+            elif "補助金の総額" in s:
+                col.setdefault("yen", c)
+        if "svc" not in col or "yen" not in col:
+            continue
+        out = []
+        for rno, cells in rows:
+            if rno <= head[0]:
+                continue
+            d = dict((c, v) for c, v in cells)
+            yen = _shogu_x_num(d.get(col["yen"]))
+            svc = _shogu_x_s(d.get(col.get("svc")))
+            if yen is None or not svc:
+                continue
+            nm2 = _shogu_x_s(d.get(col.get("name")))
+            #   ★様式が出す注意文は、事業所の名前ではない。
+            if "下さい" in nm2 or "ください" in nm2:
+                nm2 = ""
+            out.append({"name": nm2, "service": svc,
+                        "kubun": "", "term": "", "yen": yen})
+        if out:
+            return out
+    return []
+
+
 def _shogu_xlsx_summary(raw):
     """計画書のExcelから要点を抜き出す。読めなければ None。"""
     try:
@@ -18811,18 +18891,32 @@ def _shogu_xlsx_summary(raw):
         return None
 
     #   総括表を探す。無ければ最初のシート。
+    #   shogu-hojo-v11: 処遇改善の計画書には【補助金の総括表】も一緒に入っている。
+    #   ★処遇改善のほうを先に選ぶ。シート名の並び順に頼っていると、
+    #     様式が変わったときに静かに別の表を読みはじめる。
     ws = None
     for nm in wb.sheetnames:
-        if "総括" in nm:
+        if "総括" in nm and "補助金" not in nm:
             ws = wb[nm]
             break
+    if ws is None:
+        for nm in wb.sheetnames:
+            if "総括" in nm:
+                ws = wb[nm]
+                break
     if ws is None:
         ws = wb[wb.sheetnames[0]]
     rows = _shogu_x_rows(ws, limit=200)
 
     out = {"kind": "", "year": "", "corp": "", "to": "",
+           #   shogu-hojo-v11: どの様式か。見せかたを決めるのに使う。
+           #   ★見出しの言葉（kind）で見分けない。言葉は変わるが、これは変えない。
+           "form": "kasan",
            "kasan_yen": None, "kaizen_yen": None,
            "getsugaku_need": None, "getsugaku_plan": None,
+           #   shogu-hojo-v11: 補助金（職員の賃上げ・職場環境改善支援事業）のぶん
+           "hojo_total": None, "hojo_wage_part": None,
+           "hojo_wage": None, "hojo_env": None, "hojo_reqs": [],
            "offices": [], "env": [], "mieruka": [], "pledge": "", "sheet": ws.title}
 
     #   何の書類か・何年度か
@@ -18836,6 +18930,12 @@ def _shogu_xlsx_summary(raw):
                 out["kind"] = "実績報告書"
             elif "処遇改善計画書" in t:
                 out["kind"] = "計画書"
+            elif "賃上げ・職場環境改善支援事業" in t and "実績報告書" in t:
+                #   shogu-hojo-v11: 処遇改善加算とは【別の制度】の実績報告書。
+                #   ★見出しは様式の言葉のまま。言い換えると、原本を開いた職員が
+                #     同じものだと分からなくなる。
+                out["kind"] = "職員の賃上げ・職場環境改善支援事業 実績報告書"
+                out["form"] = "hojo"
         if out["year"] and out["kind"]:
             break
 
@@ -18892,8 +18992,20 @@ def _shogu_xlsx_summary(raw):
             out["pledge"] = m2.group(0)
             break
 
+    #   shogu-hojo-v11: 補助金の様式は、拾う言葉も数も別もの。
+    #   ★0円も答えとして拾う（職場環境改善の所要額が0円、はふつうにある）。
+    if out["form"] == "hojo":
+        out["hojo_total"], _ = _shogu_x_findnum(rows, "補助金の総額", zero_ok=True)
+        out["hojo_wage_part"], _ = _shogu_x_findnum(rows, "賃金改善経費分", zero_ok=True)
+        out["hojo_wage"], _ = _shogu_x_findnum(rows, "賃金改善の所要額", zero_ok=True)
+        out["hojo_env"], _ = _shogu_x_findnum(rows, "職場環境改善の所要額", zero_ok=True)
+        out["hojo_reqs"] = _shogu_x_hojo_reqs(rows)
+        out["offices"] = _shogu_x_hojo_offices(wb)
+
     #   何も読めていないなら、整形して見せる意味がない
-    if not (out["kasan_yen"] or out["offices"] or out["env"]):
+    #   ★補助金のほうは、拾う数がちがう（0円も答えなので None と分けて見る）。
+    if not (out["kasan_yen"] or out["offices"] or out["env"]
+            or out["hojo_total"] is not None or out["hojo_wage"] is not None):
         return None
     return out
 
