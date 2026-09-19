@@ -70,6 +70,28 @@
     if (sub.length) h += '<br><span>' + sub.join('　／　') + '</span>';
     h += '</div>';
 
+    /* shogu-hojo-v11: 補助金（職員の賃上げ・職場環境改善支援事業）の実績報告書。
+       ★処遇改善加算とは別の制度。言葉も数も様式のものをそのまま使う。 */
+    var isHojo = (s.form === 'hojo');
+    function has(v) { return v !== null && v !== undefined && v !== ''; }
+    if (isHojo && (has(s.hojo_total) || has(s.hojo_wage))) {
+      h += '<div class="sv-money">'
+        + '<div class="sv-box"><div class="sv-box-t">補助金の総額</div>'
+        + '<div class="sv-box-v">' + yen(s.hojo_total) + '</div></div>'
+        + '<div class="sv-box"><div class="sv-box-t">賃金改善の所要額</div>'
+        + '<div class="sv-box-v">' + yen(s.hojo_wage) + '</div></div>'
+        + '</div>'
+        + '<p class="sv-note">補助金は<b>職員の賃金改善と職場環境改善に充てます</b>。'
+        + '賃金改善と職場環境改善の所要額の合計が、補助金の総額以上となることが要件です。</p>';
+      if (has(s.hojo_env)) {
+        h += '<p class="sv-note">このうち<b>職場環境改善の所要額</b>は '
+          + '<b>' + yen(s.hojo_env) + '</b>'
+          + (has(s.hojo_wage_part)
+              ? '。うち<b>賃金改善経費分</b>は ' + yen(s.hojo_wage_part) + ' です。' : '。')
+          + '</p>';
+      }
+    }
+
     /* お金。★この2つの関係がこの書類のいちばんの要点。 */
     if (s.kasan_yen || s.kaizen_yen) {
       var pre = s.year ? esc(s.year) + 'の' : '';
@@ -95,19 +117,31 @@
         + '</p>';
     }
 
-    /* 事業所ごとの加算区分 */
+    /* 事業所ごとの加算区分（補助金のときは、事業所ごとの補助金の額） */
     if (s.offices && s.offices.length) {
-      h += '<div class="sv-sec">算定する処遇改善加算の区分</div>';
+      h += '<div class="sv-sec">'
+        + (isHojo ? '事業所ごとの補助金の額' : '算定する処遇改善加算の区分') + '</div>';
       s.offices.forEach(function (o) {
         h += '<div class="sv-off">'
-          + '<span class="sv-kubun">' + esc(o.kubun) + '</span>'
+          /* shogu-hojo-v11: 補助金の様式には「区分」が無い。空の札を出さない。 */
+          + (o.kubun ? '<span class="sv-kubun">' + esc(o.kubun) + '</span>' : '')
           + '<div class="sv-off-s">' + esc(o.service || o.name || '') + '</div>'
           + (o.term || o.yen
               ? '<div class="sv-term">' + esc(o.term || '')
-                + (o.yen ? '　処遇改善加算の見込額 ' + yen(o.yen) : '') + '</div>'
+                + (o.yen
+                    ? '　' + (isHojo ? '補助金の総額 ' : '処遇改善加算の見込額 ') + yen(o.yen)
+                    : '') + '</div>'
               : '')
           + '</div>';
       });
+    }
+
+    /* shogu-hojo-v11: 満たしている要件。★これは職員への約束そのもの。 */
+    if (s.hojo_reqs && s.hojo_reqs.length) {
+      h += '<details class="sv-fold"><summary>満たしている要件（'
+        + s.hojo_reqs.length + '）</summary>';
+      s.hojo_reqs.forEach(function (t) { h += '<div class="sv-i">' + esc(t) + '</div>'; });
+      h += '</details>';
     }
 
     /* 職場環境等要件。★これは職員への約束そのもの。 */
